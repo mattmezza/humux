@@ -150,7 +150,7 @@ def test_build_user_message_no_preamble_is_plain(agent) -> None:
 async def test_session_system_built_once_and_reused(agent, monkeypatch) -> None:
     calls = {"n": 0}
 
-    async def fake_build() -> str:
+    async def fake_build(*args, **kwargs) -> str:
         calls["n"] += 1
         return f"SYSTEM-{calls['n']}"
 

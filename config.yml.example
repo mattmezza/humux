@@ -75,3 +75,27 @@ memory:
   db_path: "data/memory.db"
   long_term_limit: 50
   extraction_model: "claude-haiku-4-5"  # cheap model for post-turn memory extraction
+  consolidation_model: "claude-haiku-4-5"  # model for scheduled consolidation + hygiene
+
+  # Tier 2 — semantic similarity + relevance-ranked injection.
+  # Off by default: the memory pipeline works on lexical retrieval with no
+  # extra dependency. When enabled, vectors come from an OpenAI-compatible
+  # /embeddings endpoint and are stored alongside each long-term memory.
+  embedding:
+    enabled: false
+    provider: "openai"               # OpenAI-compatible embeddings endpoint
+    model: "text-embedding-3-small"
+    api_key: ""                      # falls back to the agent provider key when empty
+    base_url: ""                     # falls back to the agent provider base URL when empty
+    dimensions: 0                    # 0 = provider default
+    injection_top_k: 12              # relevance-ranked memories injected per turn
+
+  # Tier 3 — forgetting / importance / reinforcement
+  default_importance: 5.0            # 1-10 scale assigned to new long-term memories
+  archive_after_days: 90             # min age before a cold memory may be archived
+  archive_max_importance: 4.0        # only archive memories at/below this importance
+  archive_min_idle_days: 45          # require this long since last access/creation
+
+  # Tier 4 — long-term hygiene pass (cluster + merge near-duplicates)
+  hygiene_enabled: true
+  hygiene_similarity_threshold: 0.45 # min similarity to cluster two memories

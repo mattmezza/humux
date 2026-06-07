@@ -1096,6 +1096,39 @@ memory:
 
 You can also trigger consolidation manually via the admin API: `POST /memory/consolidate`.
 
+#### Semantic retrieval & relevance-ranked injection (Tier 2)
+
+Embeddings are **optional and off by default** — the pipeline runs on Tier-1 lexical retrieval with no extra dependency or network call. When `memory.embedding.enabled` is set, each long-term memory gets a vector from an OpenAI-compatible `/embeddings` endpoint, stored as a packed float32 blob in the `embedding` column. Similarity is brute-force cosine in Python (no native SQLite extension, so it behaves identically locally and in the container; trivial at <1k rows).
+
+With embeddings on:
+
+- `update_memory` retrieves ADD/UPDATE/DELETE/NOOP candidates by cosine similarity (with a lexical fallback for any memory that has no vector yet).
+- Prompt injection becomes **relevance-ranked**: instead of dumping the most recent `long_term_limit` rows, only the `injection_top_k` memories most relevant to the current message are injected, scored Generative-Agents style (relevance + importance + recency). The inbound message is threaded into prompt building as the query. In session mode (where the static prompt is snapshotted once), the first message of the session is used as the query.
+
+#### Forgetting, importance & reinforcement (Tier 3)
+
+`long_term` carries `importance` (1–10), `last_accessed`, `access_count`, and an `archived` flag. Recalled memories are reinforced (their `access_count`/`last_accessed` are bumped), and re-mentioning a fact (an UPDATE through the unified pipeline) raises its importance. The consolidation job archives **cold** memories — old, low-importance, and not accessed recently — via the `archived` flag (a soft delete, not a hard delete), so long-term memory stops growing without bound. Thresholds are configurable (`archive_after_days`, `archive_max_importance`, `archive_min_idle_days`).
+
+#### Long-term hygiene pass (Tier 4)
+
+Each consolidation run also clusters near-duplicate long-term memories (by embedding or lexical similarity, threshold `hygiene_similarity_threshold`) and resolves each cluster with one LLM call that merges duplicates and drops contradictions, keeping the most recent fact. This compacts memories that accumulated over time, not just at write time.
+
+These behaviours are configured in the `memory` section (see `config.yml.example` for the full set):
+
+```yaml
+memory:
+  embedding:
+    enabled: false
+    provider: "openai"
+    model: "text-embedding-3-small"
+    injection_top_k: 12
+  default_importance: 5.0
+  archive_after_days: 90
+  hygiene_enabled: true
+```
+
+The consolidation summary returned by `consolidate_and_cleanup` reports `active_reviewed`, `promoted_to_long_term`, `expired_deleted`, `hygiene_merged`, and `archived`. The new columns are added to existing databases by an in-place `ALTER TABLE` migration in `MemoryStore._ensure_schema`, so upgrading needs no manual steps.
+
 ### 8.5 Memory in the Agent Loop
 
 On each conversation turn, the orchestrator queries both memory tiers and injects them into the system prompt as context. This happens before the LLM call:
