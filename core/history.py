@@ -42,6 +42,14 @@ CREATE TABLE IF NOT EXISTS session_messages (
 );
 CREATE INDEX IF NOT EXISTS idx_session_lookup
     ON session_messages(channel, user_id, chat_id, id);
+CREATE TABLE IF NOT EXISTS session_system (
+    channel TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    chat_id TEXT NOT NULL DEFAULT '',
+    system TEXT NOT NULL,
+    created_at DATETIME DEFAULT (datetime('now')),
+    PRIMARY KEY (channel, user_id, chat_id)
+);
 """
 
 # Migrations applied after initial schema creation.
@@ -77,6 +85,8 @@ class ConversationHistory:
         self._ready = False
         # In-memory cache for sticky sessions: {(channel, user_id, chat_id): [message_dicts]}
         self._sessions: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
+        # In-memory cache for the static system prompt snapshot per session.
+        self._session_system: dict[tuple[str, str, str], str] = {}
 
     async def _ensure_schema(self) -> None:
         if self._ready:
@@ -159,9 +169,14 @@ class ConversationHistory:
                 "DELETE FROM session_messages WHERE channel = ? AND user_id = ? AND chat_id = ?",
                 (channel, user_id, chat_id),
             )
+            await db.execute(
+                "DELETE FROM session_system WHERE channel = ? AND user_id = ? AND chat_id = ?",
+                (channel, user_id, chat_id),
+            )
             await db.commit()
         # Clear in-memory session cache
         self._sessions.pop((channel, user_id, chat_id), None)
+        self._session_system.pop((channel, user_id, chat_id), None)
 
     # -------------------------------------------------------------------
     # Session mode — sticky session per (channel, user_id, chat_id)
@@ -238,5 +253,52 @@ class ConversationHistory:
                 "DELETE FROM session_messages WHERE channel = ? AND user_id = ? AND chat_id = ?",
                 (channel, user_id, chat_id),
             )
+            await db.execute(
+                "DELETE FROM session_system WHERE channel = ? AND user_id = ? AND chat_id = ?",
+                (channel, user_id, chat_id),
+            )
             await db.commit()
         self._sessions.pop((channel, user_id, chat_id), None)
+        self._session_system.pop((channel, user_id, chat_id), None)
+
+    # -------------------------------------------------------------------
+    # Session mode — static system prompt snapshot
+    # -------------------------------------------------------------------
+
+    async def get_session_system(self, channel: str, user_id: str, chat_id: str = "") -> str | None:
+        """Return the cached static system prompt for a session, or None if unset.
+
+        The system prompt is snapshotted once at the start of a session (after a
+        ``/new``) and reused for every subsequent turn, so the static content is
+        only built/sent once instead of being rebuilt each turn.
+        """
+        await self._ensure_schema()
+        key = (channel, user_id, chat_id)
+        if key in self._session_system:
+            return self._session_system[key]
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                "SELECT system FROM session_system "
+                "WHERE channel = ? AND user_id = ? AND chat_id = ?",
+                (channel, user_id, chat_id),
+            )
+            row = await cursor.fetchone()
+        if row is None:
+            return None
+        self._session_system[key] = row[0]
+        return row[0]
+
+    async def set_session_system(
+        self, channel: str, user_id: str, system: str, chat_id: str = ""
+    ) -> None:
+        """Persist the static system prompt snapshot for a session."""
+        await self._ensure_schema()
+        self._session_system[(channel, user_id, chat_id)] = system
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                "INSERT INTO session_system (channel, user_id, chat_id, system) "
+                "VALUES (?, ?, ?, ?) "
+                "ON CONFLICT(channel, user_id, chat_id) DO UPDATE SET system = excluded.system",
+                (channel, user_id, chat_id, system),
+            )
+            await db.commit()

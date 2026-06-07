@@ -125,10 +125,21 @@ class LLMClient:
         if self.provider == "anthropic":
             client_any = cast(Any, self._client)
             messages_client = cast(Any, getattr(client_any, "messages"))  # type: ignore[attr-defined]
+            # Mark the (static) system prompt as a cache breakpoint so the
+            # tools + system prefix is cached and not reprocessed every turn.
+            system_param: Any = system
+            if system:
+                system_param = [
+                    {
+                        "type": "text",
+                        "text": system,
+                        "cache_control": {"type": "ephemeral"},
+                    }
+                ]
             response = await messages_client.create(
                 model=resolved_model,
                 max_tokens=max_tokens,
-                system=system,
+                system=cast(Any, system_param),
                 messages=cast(Any, messages),
                 tools=cast(Any, tools),
             )

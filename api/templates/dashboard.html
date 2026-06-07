@@ -80,6 +80,10 @@
             @click="select('search')">
       Search
     </button>
+    <button class="tab-link" :class="tab === 'tools' && 'tab-link-active'"
+            @click="select('tools')">
+      Tools
+    </button>
     <button class="tab-link" :class="tab === 'permissions' && 'tab-link-active'"
             @click="select('permissions')">
       Permissions
@@ -675,6 +679,7 @@
       history: '/partials/history',
       channels: '/partials/channels',
       search: '/partials/search',
+      tools: '/partials/tools',
       permissions: '/partials/permissions',
       skills: '/partials/skills',
       jobs: '/partials/jobs',

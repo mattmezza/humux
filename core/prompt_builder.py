@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
-from zoneinfo import ZoneInfo
 
 from core.config import Config
 from core.goal_decomposition import DecomposedGoal
+from core.tools import active_tool_prompts
 
 DEFAULT_TOOL_USAGE_BLOCK = """For write actions
 (sending emails, replying to emails, sending messages, creating calendar events,
@@ -51,6 +50,7 @@ class PromptSections:
     character: str
     about_user: str
     tool_usage: str
+    tools: str
     memory_instruction: str
     history_handling: str
     memories: str
@@ -66,8 +66,10 @@ class PromptSections:
             self.character,
             self.about_user,
             self.tool_usage,
-            self.memory_instruction,
         ]
+        if self.tools:
+            parts.append(self.tools)
+        parts.append(self.memory_instruction)
         if self.history_handling:
             parts.append(self.history_handling)
         if self.memories:
@@ -87,6 +89,7 @@ class PromptSections:
             "character": self.character,
             "about_user": self.about_user,
             "tool_usage": self.tool_usage,
+            "tools": self.tools,
             "memory_instruction": self.memory_instruction,
             "history_handling": self.history_handling,
             "memories": self.memories,
@@ -107,11 +110,13 @@ def build_prompt_sections(
     include_memories: bool = True,
     include_reflections: bool = True,
 ) -> PromptSections:
-    """Build all prompt sections with current config and dynamic context."""
+    """Build all prompt sections with current config and dynamic context.
+
+    The prompt is intentionally **static** (no current date/time): it forms the
+    cacheable prefix sent to the LLM. The live date/time is injected per turn at
+    the start of each user message instead (see ``AgentCore._turn_preamble``).
+    """
     cfg = config.agent
-    now = datetime.now(ZoneInfo(cfg.timezone))
-    date_str = now.strftime("%A, %B %d, %Y")
-    time_str = now.strftime("%H:%M")
 
     about_user_block = config.you.personalia.strip()
     tool_usage_text = resolve_prompt_block(
@@ -125,13 +130,19 @@ def build_prompt_sections(
 
     intro = (
         f"You are {cfg.name}, a personal AI assistant for {cfg.owner_name}.\n\n"
-        f"Today is {date_str}. Current time: {time_str}. Timezone: {cfg.timezone}."
+        f"Your timezone is {cfg.timezone}. The current date and time is provided at the "
+        f"start of each user message — always use that as 'now'."
     )
 
     personalia = f"<personalia>\n{cfg.personalia}\n</personalia>"
     character = f"<character>\n{cfg.character}\n</character>"
     about_user = f"<about_user>\n{about_user_block}\n</about_user>" if about_user_block else ""
     tool_usage = f"<tool_usage>\n{tool_usage_text}\n</tool_usage>"
+
+    tool_blocks = active_tool_prompts(config)
+    tools_section = ""
+    if tool_blocks:
+        tools_section = "<tools>\n" + "\n\n".join(tool_blocks) + "\n</tools>"
     memory_instruction = (
         "You can store and recall memories using the sqlite3 CLI (see the memory skill).\n"
         "Proactively remember important facts about the user and their contacts.\n"
@@ -171,6 +182,7 @@ def build_prompt_sections(
         character=character,
         about_user=about_user,
         tool_usage=tool_usage,
+        tools=tools_section,
         memory_instruction=memory_instruction,
         history_handling=history_handling,
         memories=memory_section,

@@ -171,6 +171,19 @@ class PromptConfig(BaseModel):
     history_handling_override: str = ""
 
 
+class GhToolConfig(BaseModel):
+    """GitHub CLI (`gh`) tool — auth via a Personal Access Token."""
+
+    enabled: bool = False
+    token: str = ""  # GitHub PAT, injected as GH_TOKEN when running `gh`
+
+
+class ToolsConfig(BaseModel):
+    """Optional external CLI tools the agent can use (see core/tools.py)."""
+
+    gh: GhToolConfig = GhToolConfig()
+
+
 class Config(BaseModel):
     agent: AgentConfig = AgentConfig()
     channels: ChannelsConfig = ChannelsConfig()
@@ -185,6 +198,7 @@ class Config(BaseModel):
     search: SearchConfig = SearchConfig()
     you: YouConfig = YouConfig()
     prompt: PromptConfig = PromptConfig()
+    tools: ToolsConfig = ToolsConfig()
 
 
 def load_config(path: str | Path = "config.yml") -> Config:

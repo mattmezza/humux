@@ -8,6 +8,7 @@ stored admin password hash.
 
 from __future__ import annotations
 
+import asyncio
 import collections
 import hashlib
 import json
@@ -36,6 +37,8 @@ from core.prompt_builder import (
     DEFAULT_TOOL_USAGE_BLOCK,
     build_prompt_sections,
 )
+from core.tools import registry as tool_registry
+from core.tools import tool_env
 from core.wacli import WacliManager
 
 if TYPE_CHECKING:
@@ -545,6 +548,7 @@ def create_admin_app(
     _HISTORY_PREFIX = "history."
     _EMAIL_PREFIX = "email."
     _PROMPT_PREFIX = "prompt."
+    _TOOLS_PREFIX = "tools."
 
     def _is_managed_key(key: str) -> bool:
         """Return True if this key is managed by a dedicated tab (not Config)."""
@@ -562,6 +566,7 @@ def create_admin_app(
             _HISTORY_PREFIX,
             _EMAIL_PREFIX,
             _PROMPT_PREFIX,
+            _TOOLS_PREFIX,
         ):
             if key.startswith(prefix):
                 return True
@@ -836,6 +841,49 @@ def create_admin_app(
             default_history_handling=DEFAULT_HISTORY_HANDLING_BLOCK,
             prompt_capture_enabled=prompt_capture_enabled,
         )
+
+    @app.get("/partials/tools", dependencies=[Depends(auth)])
+    async def partial_tools() -> HTMLResponse:
+        """Tools tab partial — manage optional external CLI tools (e.g. gh)."""
+        gh_enabled = await config_store.get("tools.gh.enabled")
+        gh_enabled = gh_enabled if gh_enabled is not None else "false"
+        gh_token = await config_store.get("tools.gh.token") or ""
+        return _render_partial(
+            "partials/tools.html",
+            tools=tool_registry(),
+            gh_enabled=gh_enabled,
+            gh_token=gh_token,
+        )
+
+    @app.post("/tools/gh/test", dependencies=[Depends(auth)])
+    async def test_gh_tool(request: Request) -> dict:
+        """Verify a GitHub token by calling the GitHub API as that token."""
+        body = await request.json()
+        token = str(body.get("token", "")).strip()
+        if not token:
+            return {"ok": False, "error": "Token is required."}
+        try:
+            resp = await asyncio.to_thread(
+                http_requests.get,
+                "https://api.github.com/user",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/vnd.github+json",
+                    "X-GitHub-Api-Version": "2022-11-28",
+                },
+                timeout=10,
+            )
+        except Exception as exc:  # noqa: BLE001 — surface any network error to the UI
+            return {"ok": False, "error": str(exc)}
+        if resp.status_code == 200:
+            login = resp.json().get("login", "")
+            return {"ok": True, "login": login}
+        if resp.status_code in (401, 403):
+            return {
+                "ok": False,
+                "error": "Token rejected by GitHub (invalid or insufficient scope).",
+            }
+        return {"ok": False, "error": f"GitHub returned HTTP {resp.status_code}."}
 
     @app.get("/partials/search", dependencies=[Depends(auth)])
     async def partial_search() -> HTMLResponse:
@@ -1174,6 +1222,7 @@ def create_admin_app(
                 new_config = await config_store.export_to_config()
                 agent.config = new_config
                 agent.llm = LLMClient.from_agent_config(new_config.agent)
+                agent.executor.tool_env = tool_env(new_config)
                 agent.history_mode = new_config.history.mode
                 agent.memory.long_term_limit = new_config.memory.long_term_limit
                 agent.reflections.max_reflections = new_config.task_reflection.max_reflections

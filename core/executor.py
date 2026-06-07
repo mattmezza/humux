@@ -33,6 +33,11 @@ def _find_wacli_bin() -> str:
 class ToolExecutor:
     """Executes CLI commands on behalf of the LLM."""
 
+    def __init__(self, tool_env: dict[str, str] | None = None) -> None:
+        # Extra environment for optional tools (e.g. GH_TOKEN for `gh`).
+        # Injected into every spawned subprocess; updated on config reload.
+        self.tool_env: dict[str, str] = dict(tool_env or {})
+
     ALLOWED_PREFIXES = [
         "curl",
         "himalaya",
@@ -90,9 +95,12 @@ class ToolExecutor:
     async def _exec(self, command: str, timeout: int) -> dict:
         """Run a shell command and capture output."""
         env = None
-        if "himalaya" in command:
+        if "himalaya" in command or self.tool_env:
             env = os.environ.copy()
-            env.update(himalaya_env())
+            if "himalaya" in command:
+                env.update(himalaya_env())
+            # Tool auth (e.g. GH_TOKEN) — only set when a tool is enabled.
+            env.update(self.tool_env)
         proc = await asyncio.create_subprocess_shell(
             command,
             stdout=asyncio.subprocess.PIPE,
