@@ -445,6 +445,10 @@
       if (!r.ok) {
         throw new Error('Auth start failed');
       }
+      const d = await r.json();
+      if (d && d.ok === false) {
+        throw new Error(d.error || 'Auth start failed');
+      }
       await pollWhatsAppAuth();
     } catch (e) {
       result.textContent = e.message || 'Auth start failed.';

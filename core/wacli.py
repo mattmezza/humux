@@ -118,26 +118,28 @@ class WacliManager:
                 return
             self.latest_qr = ""
             self.latest_qr_at = 0.0
+            # wacli >=0.8 streams the QR as an NDJSON `qr_code` event on stderr
+            # (with --events), not as JSON on stdout. Parse stderr accordingly.
             self.auth_proc = await asyncio.create_subprocess_exec(
                 self.bin_path,
                 "--store",
                 self.store_dir,
-                "--json",
+                "--events",
                 "--lock-wait",
                 LOCK_WAIT,
                 "auth",
                 "--idle-exit",
                 "30s",
-                stdout=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.DEVNULL,
                 stderr=asyncio.subprocess.PIPE,
                 env=self._env(),
             )
             asyncio.create_task(self._consume_auth_output(self.auth_proc))
 
     async def _consume_auth_output(self, proc: asyncio.subprocess.Process) -> None:
-        if proc.stdout is None:
+        if proc.stderr is None:
             return
-        async for raw in proc.stdout:
+        async for raw in proc.stderr:
             line = raw.decode().strip()
             if not line:
                 continue
@@ -145,9 +147,12 @@ class WacliManager:
                 parsed = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            if parsed.get("success") is True and parsed.get("data", {}).get("qr"):
-                self.latest_qr = parsed["data"]["qr"]
-                self.latest_qr_at = time.time()
+            # NDJSON envelope: {"event": "qr_code", "data": {"code": "..."}}
+            if parsed.get("event") == "qr_code":
+                code = parsed.get("data", {}).get("code")
+                if code:
+                    self.latest_qr = code
+                    self.latest_qr_at = time.time()
         await proc.wait()
         if self.auth_proc is proc:
             self.auth_proc = None
@@ -160,14 +165,11 @@ class WacliManager:
             self.auth_proc = None
 
     async def fetch_latest_qr(self) -> None:
-        if self.latest_qr:
-            return
-        res = await self._run_json(["auth", "--idle-exit", "1s"])
-        if res.get("success") is True:
-            qr = res.get("data", {}).get("qr")
-            if qr:
-                self.latest_qr = qr
-                self.latest_qr_at = time.time()
+        # The QR is streamed by the long-lived `auth` process started in
+        # start_auth() (see _consume_auth_output). Spawning a second `auth`
+        # here would contend for the store lock, so this is a no-op: callers
+        # read self.latest_qr, which the streaming consumer keeps current.
+        return
 
     async def sync_once(self) -> dict[str, Any]:
         """Run a single sync pass (non-blocking, no long-lived process)."""

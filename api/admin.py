@@ -1761,8 +1761,15 @@ def create_admin_app(
 
     @app.post("/channels/whatsapp/auth/start", dependencies=[Depends(auth)])
     async def whatsapp_auth_start() -> dict:
+        if not wacli.available():
+            return {
+                "ok": False,
+                "available": False,
+                "error": "wacli binary not found. Run 'make dev-wa' to install it, "
+                "or set WACLI_BIN to its path.",
+            }
         await wacli.start_auth()
-        return {"ok": True}
+        return {"ok": True, "available": True}
 
     @app.post("/channels/whatsapp/auth/stop", dependencies=[Depends(auth)])
     async def whatsapp_auth_stop() -> dict:
