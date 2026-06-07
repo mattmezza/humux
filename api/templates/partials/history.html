@@ -2,8 +2,16 @@
 <div class="space-y-6" x-data="{
   mode: {{ mode|default('injection', true)|tojson|forceescape }},
   maxTurns: {{ max_turns|default('10', true)|tojson|forceescape }},
+  compactionEnabled: {{ compaction_enabled|default('true', true)|tojson|forceescape }},
+  thresholdType: {{ compaction_threshold_type|default('percent', true)|tojson|forceescape }},
+  thresholdPercent: {{ compaction_threshold_percent|default('80', true)|tojson|forceescape }},
+  thresholdTokens: {{ compaction_threshold_tokens|default('150000', true)|tojson|forceescape }},
+  contextWindow: {{ compaction_context_window|default('200000', true)|tojson|forceescape }},
+  keepRecentTurns: {{ compaction_keep_recent_turns|default('4', true)|tojson|forceescape }},
   result: '',
-  resultOk: false
+  resultOk: false,
+  cResult: '',
+  cResultOk: false
 }">
   <div class="card">
     <h2 class="text-base mb-1">Conversation History</h2>
@@ -64,6 +72,106 @@
 
     <template x-if="result">
       <div :class="resultOk ? 'alert-success' : 'alert-error'" class="mt-2" x-text="result"></div>
+    </template>
+  </div>
+
+  {# Compaction — only relevant in session mode #}
+  <div class="card">
+    <div class="flex items-center justify-between gap-3 mb-1">
+      <h2 class="text-base">Context compaction</h2>
+      <div class="flex items-center gap-2">
+        <label class="label mb-0">Enabled</label>
+        <input type="checkbox" x-model="compactionEnabled"
+               :checked="compactionEnabled === 'true' || compactionEnabled === true">
+      </div>
+    </div>
+    <p class="text-muted text-xs mb-4">
+      In <strong>session</strong> mode, when the conversation approaches the model's
+      context window, the oldest turns are summarized by a small model (configured in
+      the <strong>LLM</strong> tab) while recent turns are kept verbatim. The user is
+      notified with a system message when this happens. Has no effect in injection mode.
+    </p>
+
+    <div class="space-y-3" :class="(compactionEnabled === 'true' || compactionEnabled === true) ? '' : 'opacity-50'">
+      <div>
+        <label class="label">Trigger threshold</label>
+        <div class="flex gap-4 mt-1">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="threshold_type" value="percent"
+                   x-model="thresholdType" class="accent-primary">
+            <span class="text-sm">% of context window</span>
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="threshold_type" value="tokens"
+                   x-model="thresholdType" class="accent-primary">
+            <span class="text-sm">Absolute tokens</span>
+          </label>
+        </div>
+      </div>
+
+      <div x-show="thresholdType === 'percent'" x-transition class="flex gap-4 flex-wrap">
+        <div>
+          <label class="label">Percent</label>
+          <input type="number" class="input-sm" style="max-width:120px"
+                 x-model="thresholdPercent" min="10" max="99">
+          <p class="text-muted text-xs mt-1">Compact at this % of the window.</p>
+        </div>
+        <div>
+          <label class="label">Context window (fallback)</label>
+          <input type="number" class="input-sm" style="max-width:160px"
+                 x-model="contextWindow" min="8000" step="1000">
+          <p class="text-muted text-xs mt-1">Used when the model's window isn't known (e.g. 200000, 1000000).</p>
+        </div>
+      </div>
+
+      <div x-show="thresholdType === 'tokens'" x-transition>
+        <label class="label">Tokens</label>
+        <input type="number" class="input-sm" style="max-width:160px"
+               x-model="thresholdTokens" min="8000" step="1000">
+        <p class="text-muted text-xs mt-1">Compact once the context reaches this many tokens (e.g. 150000).</p>
+      </div>
+
+      <div>
+        <label class="label">Keep recent turns</label>
+        <input type="number" class="input-sm" style="max-width:120px"
+               x-model="keepRecentTurns" min="1" max="20">
+        <p class="text-muted text-xs mt-1">Most-recent user turns kept verbatim; everything older is summarized.</p>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-2 mt-4">
+      <button class="btn-primary btn-sm"
+              @click="
+                const vals = {
+                  'compaction.enabled': String(compactionEnabled === true || compactionEnabled === 'true'),
+                  'compaction.threshold_type': thresholdType,
+                  'compaction.threshold_percent': String(thresholdPercent),
+                  'compaction.threshold_tokens': String(thresholdTokens),
+                  'compaction.context_window': String(contextWindow),
+                  'compaction.keep_recent_turns': String(keepRecentTurns)
+                };
+                fetch('/config', {
+                  method: 'PATCH',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + (localStorage.getItem('admin_api_key') || '')
+                  },
+                  body: JSON.stringify({values: vals})
+                })
+                .then(r => { cResultOk = r.ok; return r.json(); })
+                .then(d => {
+                  cResult = cResultOk ? 'Compaction settings saved' : (d.detail || 'Error');
+                  if (cResultOk && window.showToast) { window.showToast('Compaction settings saved'); }
+                })
+                .catch(e => { cResultOk = false; cResult = e.message; })
+              ">
+        Save
+      </button>
+      <span class="text-muted text-xs">Compaction model is set in the LLM tab.</span>
+    </div>
+
+    <template x-if="cResult">
+      <div :class="cResultOk ? 'alert-success' : 'alert-error'" class="mt-2" x-text="cResult"></div>
     </template>
   </div>
 </div>

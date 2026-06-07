@@ -58,3 +58,6 @@ class AgentResponse:
     text: str
     voice: bytes | None = None
     attachments: list[Attachment] = field(default_factory=list)
+    # Optional out-of-band system message (e.g. "context was compacted"),
+    # delivered by the channel as a separate follow-up message.
+    system_notice: str | None = None

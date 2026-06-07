@@ -122,6 +122,8 @@ class WhatsAppChannel:
             chat_id=chat_id,
         )
         await self.send(sender, response.text)
+        if getattr(response, "system_notice", None):
+            await self.send(sender, response.system_notice)
         return {"ok": True}
 
     def _is_allowed(self, sender: str) -> bool:

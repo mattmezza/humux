@@ -549,6 +549,7 @@ def create_admin_app(
     _EMAIL_PREFIX = "email."
     _PROMPT_PREFIX = "prompt."
     _TOOLS_PREFIX = "tools."
+    _COMPACTION_PREFIX = "compaction."
 
     def _is_managed_key(key: str) -> bool:
         """Return True if this key is managed by a dedicated tab (not Config)."""
@@ -567,6 +568,7 @@ def create_admin_app(
             _EMAIL_PREFIX,
             _PROMPT_PREFIX,
             _TOOLS_PREFIX,
+            _COMPACTION_PREFIX,
         ):
             if key.startswith(prefix):
                 return True
@@ -806,6 +808,8 @@ def create_admin_app(
         tr_enabled = tr_enabled if tr_enabled is not None else "true"
         tr_provider = await config_store.get("task_reflection.provider") or "anthropic"
         tr_model = await config_store.get("task_reflection.model") or "claude-haiku-4-5"
+        compaction_provider = await config_store.get("compaction.provider") or "anthropic"
+        compaction_model = await config_store.get("compaction.model") or "claude-haiku-4-5"
         prompt_tool_usage_override = await config_store.get("prompt.tool_usage_override") or ""
         prompt_history_override = await config_store.get("prompt.history_handling_override") or ""
         prompt_capture_enabled = await config_store.get("admin.capture_prompts")
@@ -835,6 +839,8 @@ def create_admin_app(
             tr_enabled=tr_enabled,
             tr_provider=tr_provider,
             tr_model=tr_model,
+            compaction_provider=compaction_provider,
+            compaction_model=compaction_model,
             prompt_tool_usage_override=prompt_tool_usage_override,
             prompt_history_override=prompt_history_override,
             default_tool_usage=DEFAULT_TOOL_USAGE_BLOCK,
@@ -938,10 +944,23 @@ def create_admin_app(
         """History tab partial."""
         mode = await config_store.get("history.mode") or "injection"
         max_turns = await config_store.get("history.max_turns") or "10"
+        c_enabled = await config_store.get("compaction.enabled")
+        c_enabled = c_enabled if c_enabled is not None else "true"
+        c_threshold_type = await config_store.get("compaction.threshold_type") or "percent"
+        c_threshold_percent = await config_store.get("compaction.threshold_percent") or "80"
+        c_threshold_tokens = await config_store.get("compaction.threshold_tokens") or "150000"
+        c_context_window = await config_store.get("compaction.context_window") or "200000"
+        c_keep_recent_turns = await config_store.get("compaction.keep_recent_turns") or "4"
         return _render_partial(
             "partials/history.html",
             mode=mode,
             max_turns=max_turns,
+            compaction_enabled=c_enabled,
+            compaction_threshold_type=c_threshold_type,
+            compaction_threshold_percent=c_threshold_percent,
+            compaction_threshold_tokens=c_threshold_tokens,
+            compaction_context_window=c_context_window,
+            compaction_keep_recent_turns=c_keep_recent_turns,
         )
 
     @app.get("/partials/logs", dependencies=[Depends(auth)])

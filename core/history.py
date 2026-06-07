@@ -245,6 +245,33 @@ class ConversationHistory:
             )
             await db.commit()
 
+    async def replace_session(
+        self,
+        channel: str,
+        user_id: str,
+        messages: list[dict[str, Any]],
+        chat_id: str = "",
+    ) -> None:
+        """Atomically replace a session's messages (used by compaction).
+
+        Rewrites both the in-memory cache and the persisted ``session_messages``
+        rows. The system-prompt snapshot is left untouched.
+        """
+        await self._ensure_schema()
+        key = (channel, user_id, chat_id)
+        self._sessions[key] = list(messages)
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                "DELETE FROM session_messages WHERE channel = ? AND user_id = ? AND chat_id = ?",
+                (channel, user_id, chat_id),
+            )
+            await db.executemany(
+                "INSERT INTO session_messages (channel, user_id, chat_id, message) "
+                "VALUES (?, ?, ?, ?)",
+                [(channel, user_id, chat_id, json.dumps(m)) for m in messages],
+            )
+            await db.commit()
+
     async def clear_session(self, channel: str, user_id: str, chat_id: str = "") -> None:
         """Clear just the sticky session for a (channel, user_id, chat_id) triple."""
         await self._ensure_schema()

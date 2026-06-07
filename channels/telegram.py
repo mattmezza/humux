@@ -372,6 +372,9 @@ class TelegramChannel:
             await self.send(chat_id, response.text)
         else:
             log.warning("Skipping empty response for chat_id=%s", chat_id)
+        # Out-of-band system notice (e.g. context compaction), sent separately.
+        if getattr(response, "system_notice", None):
+            await self.send(chat_id, response.system_notice)
 
     async def _finalize_approval_response(
         self, query: CallbackQuery, resolved: bool, label: str

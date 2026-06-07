@@ -32,6 +32,44 @@ class LLMResponse:
     text: str
     tool_calls: list[LLMToolCall]
     raw: object | None = None
+    # Token usage for the request, when the provider reports it. Keys:
+    # input_tokens, output_tokens, cache_read_input_tokens,
+    # cache_creation_input_tokens, context_tokens (= full prompt size).
+    usage: dict[str, int] | None = None
+
+
+def _anthropic_usage(response: Any) -> dict[str, int] | None:
+    u = getattr(response, "usage", None)
+    if u is None:
+        return None
+    inp = getattr(u, "input_tokens", 0) or 0
+    out = getattr(u, "output_tokens", 0) or 0
+    cache_read = getattr(u, "cache_read_input_tokens", 0) or 0
+    cache_creation = getattr(u, "cache_creation_input_tokens", 0) or 0
+    # The true context size is the uncached input plus everything served
+    # from / written to the cache this request.
+    return {
+        "input_tokens": inp,
+        "output_tokens": out,
+        "cache_read_input_tokens": cache_read,
+        "cache_creation_input_tokens": cache_creation,
+        "context_tokens": inp + cache_read + cache_creation,
+    }
+
+
+def _openai_usage(response: Any) -> dict[str, int] | None:
+    u = getattr(response, "usage", None)
+    if u is None:
+        return None
+    prompt = getattr(u, "prompt_tokens", 0) or 0
+    completion = getattr(u, "completion_tokens", 0) or 0
+    return {
+        "input_tokens": prompt,
+        "output_tokens": completion,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "context_tokens": prompt,
+    }
 
 
 def _openai_tools(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -161,6 +199,7 @@ class LLMClient:
                 text="\n".join(text_parts).strip(),
                 tool_calls=tool_calls,
                 raw=response.content,
+                usage=_anthropic_usage(response),
             )
 
         openai_tools = _openai_tools(tools)
@@ -185,6 +224,7 @@ class LLMClient:
             text=(message.content or "").strip(),
             tool_calls=tool_calls,
             raw=message.model_dump(exclude_none=True),
+            usage=_openai_usage(response),
         )
 
     def assistant_message(self, response: LLMResponse) -> dict[str, Any]:

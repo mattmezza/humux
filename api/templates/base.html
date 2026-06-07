@@ -42,7 +42,7 @@
     }
     window.showToast = showToast;
 
-    function llmTab(provider, apiKey, model, openaiKey, openaiBaseUrl, googleKey, googleBaseUrl, grokKey, grokBaseUrl, deepseekKey, deepseekBaseUrl, extractionProvider, extractionModel, consolidationProvider, consolidationModel, gdEnabled, gdProvider, gdModel, trEnabled, trProvider, trModel, promptToolUsageOverride, promptHistoryOverride, defaultToolUsage, defaultHistoryHandling, promptCaptureEnabled) {
+    function llmTab(provider, apiKey, model, openaiKey, openaiBaseUrl, googleKey, googleBaseUrl, grokKey, grokBaseUrl, deepseekKey, deepseekBaseUrl, extractionProvider, extractionModel, consolidationProvider, consolidationModel, gdEnabled, gdProvider, gdModel, trEnabled, trProvider, trModel, promptToolUsageOverride, promptHistoryOverride, defaultToolUsage, defaultHistoryHandling, promptCaptureEnabled, compactionProvider, compactionModel) {
       const currentProvider = provider || 'anthropic';
       return {
         providerOptions: [
@@ -97,6 +97,10 @@
         gdResultOk: false,
         trResult: '',
         trResultOk: false,
+        compactionProvider: compactionProvider || 'anthropic',
+        compactionModel: compactionModel || 'claude-haiku-4-5',
+        compactionResult: '',
+        compactionResultOk: false,
         result: '',
         resultOk: false,
         tests: {

@@ -25,7 +25,9 @@
   {{ prompt_history_override|default('', true)|tojson|forceescape }},
   {{ default_tool_usage|default('', true)|tojson|forceescape }},
   {{ default_history_handling|default('', true)|tojson|forceescape }},
-  {{ prompt_capture_enabled|default(false, true)|tojson|forceescape }}
+  {{ prompt_capture_enabled|default(false, true)|tojson|forceescape }},
+  {{ compaction_provider|default('anthropic', true)|tojson|forceescape }},
+  {{ compaction_model|default('claude-haiku-4-5', true)|tojson|forceescape }}
 )">
   <div class="card">
     <h2 class="text-base mb-1">System Prompt Controls</h2>
@@ -412,6 +414,61 @@
     </div>
     <template x-if="trResult">
       <div :class="trResultOk ? 'alert-success' : 'alert-error'" class="mt-2" x-text="trResult"></div>
+    </template>
+  </div>
+
+  <div class="card">
+    <h2 class="text-base mb-1">History Compaction</h2>
+    <p class="text-muted text-xs mb-4">Model used to summarize older conversation turns when a session's context grows large. Enable compaction and set the trigger threshold in the <strong>History</strong> tab.</p>
+
+    <form class="space-y-4" @submit.prevent>
+      <div>
+        <label class="label">Provider</label>
+        <select class="input-sm" style="max-width:500px" x-model="compactionProvider" x-effect="$el.value = compactionProvider">
+          <template x-for="item in providerOptions" :key="'cp-' + item.value">
+            <option :value="item.value" :selected="item.value === compactionProvider" x-text="item.label"></option>
+          </template>
+        </select>
+      </div>
+      <div>
+        <label class="label">Model</label>
+        <input type="text" class="input-sm" style="max-width:500px" x-model="compactionModel"
+               list="dl-model-compaction" placeholder="Type or pick a model">
+        <datalist id="dl-model-compaction">
+          <template x-for="item in modelOptions(compactionProvider)" :key="'cp-m-' + item.value">
+            <option :value="item.value"></option>
+          </template>
+        </datalist>
+        <p class="text-muted text-xs mt-1">A small, fast model is recommended (summarization is cheap).</p>
+      </div>
+    </form>
+
+    <div class="flex items-center gap-2 mt-4">
+      <button class="btn-primary btn-sm"
+              @click="
+                fetch('/config', {
+                  method: 'PATCH',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + (localStorage.getItem('admin_api_key') || '')
+                  },
+                  body: JSON.stringify({values: {
+                    'compaction.provider': compactionProvider,
+                    'compaction.model': compactionModel
+                  }})
+                })
+                .then(r => { compactionResultOk = r.ok; return r.json(); })
+                .then(d => {
+                  compactionResult = compactionResultOk ? 'Compaction model saved' : (d.detail || 'Error');
+                  if (compactionResultOk && window.showToast) { window.showToast('Compaction model saved'); }
+                })
+                .catch(e => { compactionResultOk = false; compactionResult = e.message; })
+              ">
+        Save compaction model
+      </button>
+    </div>
+    <template x-if="compactionResult">
+      <div :class="compactionResultOk ? 'alert-success' : 'alert-error'" class="mt-2" x-text="compactionResult"></div>
     </template>
   </div>
 
