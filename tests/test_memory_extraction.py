@@ -19,15 +19,22 @@ async def store(tmp_path):
 
 
 class _LLMStub:
-    def __init__(self, response_json):
+    """Routes by prompt type: extraction calls return the canned array;
+    update_memory calls (ADD/UPDATE/DELETE/NOOP) return ``update_response``
+    (defaults to ADD so every extracted long-term fact is stored)."""
+
+    def __init__(self, response_json, update_response=None):
         self._response = json.dumps(response_json)
+        self._update_response = update_response or {"operation": "ADD"}
 
     async def generate_text(self, *, model: str, prompt: str, max_tokens: int = 1024) -> str:
+        if "Choose exactly ONE operation" in prompt:
+            return json.dumps(self._update_response)
         return self._response
 
 
-def _make_mock_llm(response_json):
-    return _LLMStub(response_json)
+def _make_mock_llm(response_json, update_response=None):
+    return _LLMStub(response_json, update_response)
 
 
 async def _count_rows(db_path: str, table: str) -> int:
@@ -250,8 +257,64 @@ async def test_cooldown_skips_rapid_extractions(store) -> None:
 
 
 @pytest.mark.asyncio
+async def test_cooldown_buffers_skipped_turn_for_next_extraction(store) -> None:
+    """A turn skipped by the cooldown is replayed into the next extraction."""
+
+    class _RecordingStub:
+        def __init__(self):
+            self.prompts: list[str] = []
+
+        async def generate_text(self, *, model, prompt, max_tokens=1024):
+            self.prompts.append(prompt)
+            return "[]"
+
+    llm = _RecordingStub()
+
+    # First turn runs and arms the cooldown.
+    await store.extract_memories(
+        llm, model="m", user_msg="turn one", agent_msg="ok", cooldown_seconds=300
+    )
+    # Second turn is inside the cooldown → buffered, not dropped.
+    await store.extract_memories(
+        llm, model="m", user_msg="buffered fact", agent_msg="reply", cooldown_seconds=300
+    )
+    assert store._pending_turns == [("buffered fact", "reply")]
+    assert len(llm.prompts) == 1  # the buffered turn made no LLM call
+
+    # Third turn (cooldown disabled) replays the buffered turn and clears it.
+    await store.extract_memories(
+        llm, model="m", user_msg="turn three", agent_msg="ok", cooldown_seconds=0
+    )
+    assert store._pending_turns == []
+    assert "buffered fact" in llm.prompts[-1]
+    assert "turn three" in llm.prompts[-1]
+
+
+@pytest.mark.asyncio
+async def test_pending_turns_buffer_is_capped(store) -> None:
+    """The cooldown buffer never grows past _MAX_PENDING_TURNS."""
+
+    class _Stub:
+        async def generate_text(self, *, model, prompt, max_tokens=1024):
+            return "[]"
+
+    llm = _Stub()
+    await store.extract_memories(
+        llm, model="m", user_msg="arm", agent_msg="ok", cooldown_seconds=300
+    )
+    for i in range(store._MAX_PENDING_TURNS + 5):
+        await store.extract_memories(
+            llm, model="m", user_msg=f"turn {i}", agent_msg="ok", cooldown_seconds=300
+        )
+    assert len(store._pending_turns) == store._MAX_PENDING_TURNS
+    # Oldest dropped, newest kept.
+    assert store._pending_turns[-1][0] == f"turn {store._MAX_PENDING_TURNS + 4}"
+
+
+@pytest.mark.asyncio
 async def test_cooldown_zero_allows_all(store) -> None:
     """cooldown_seconds=0 should allow every call."""
+    # The update pipeline rules the second (duplicate) candidate a NOOP.
     llm = _make_mock_llm(
         [
             {
@@ -260,7 +323,8 @@ async def test_cooldown_zero_allows_all(store) -> None:
                 "subject": "matteo",
                 "content": "Lives in Zurich",
             }
-        ]
+        ],
+        update_response={"operation": "NOOP"},
     )
 
     stored1 = await store.extract_memories(

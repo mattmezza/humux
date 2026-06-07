@@ -1065,6 +1065,17 @@ A scheduled job of type `memory_consolidation` runs on a configurable cron sched
 
 2. **Cleanup** — deletes all expired short-term memories regardless of whether the LLM call succeeded.
 
+#### Unified long-term write pipeline
+
+Every long-term write — both the automatic per-turn extraction and consolidation's promotions — flows through a single path, `MemoryStore.update_memory`. For each candidate fact it retrieves the most lexically similar existing long-term memories (cheap token-overlap ranking, no embeddings or extra dependencies), then makes one LLM call that decides exactly one operation:
+
+- **ADD** — genuinely new information.
+- **UPDATE** — refines, corrects, or re-words one existing memory (the LLM returns the merged content to keep).
+- **DELETE** — the candidate says an existing memory is no longer true, with nothing worth keeping in its place.
+- **NOOP** — duplicate or not worth keeping.
+
+The decision prompt includes each candidate's `created_at`/`updated_at`, so the model can prefer recent facts when resolving contradictions. When nothing similar exists the fact is added directly without an LLM call. This replaces the earlier exact-subject + substring + "longer content wins" heuristic, which missed semantic duplicates and never resolved contradictions. Malformed model output is a safe no-op.
+
 This is configured as a regular scheduled job in `config.yml`:
 
 ```yaml
