@@ -1,0 +1,115 @@
+---
+title: Personae
+description: Swappable agent identities — character, skills, tools, voice, and secret scope.
+---
+
+# Personae
+
+A **persona** is a first-class, swappable identity the agent can take on — a fitness
+coach, a finance assistant, a travel planner — without any bespoke code. It is the same
+idea as the base `character` / `personalia`, made selectable.
+
+A persona is exactly these things:
+
+- its own **identity** — `personalia` (who the agent is) and `character` (tone & behaviour);
+- an optional **agent name** it goes by (e.g. *Forge*), overriding the global assistant name;
+- a **skill allowlist** — which skills it may load (empty = all);
+- a **tool scope** — which function-tools are advertised (empty = all; `load_skill` is always available);
+- a **voice** — a TTS voice override (empty = the configured default);
+- a **secret scope** — vault namespaces it may use (stored now; enforced once the [secrets vault](https://github.com/mattmezza/mpa/issues/19) lands).
+
+When **no** persona is active, the agent uses the configured `character` / `personalia` from
+the **Assistant** tab — so first-run behaviour is unchanged. The default identity *is* the
+Assistant tab; personae are alternatives that replace it when activated.
+
+## Where personae live
+
+Personae mirror the [skills](/docs/skills) pipeline:
+
+- **Definitions** are stored in SQLite at `data/personae.db` (table `personae`), configurable
+  via `agent.personae_db_path`.
+- They are **seeded** at first access from markdown files in `personae/` (configurable via
+  `agent.personae_dir`) — this is the starter gallery.
+- The **active** persona is a single config value, `agent.active_persona`, in the config store
+  (`data/config.db`). Empty = the default identity.
+
+## Markdown format
+
+A persona is a markdown file with YAML frontmatter. Identity lives in the frontmatter as block
+scalars; any markdown body after the frontmatter is appended to `character`.
+
+```markdown
+---
+agent_name: Forge
+role: Fitness coach
+emoji: "🏋️"
+voice: en-US-GuyNeural
+skills: [scheduling, memory, weather]
+tools: [send_message, create_calendar_event, manage_jobs, web_search]
+secrets: []
+personalia: |
+  You are a strength & conditioning coach…
+character: |
+  ## Tone
+  - Direct and motivating. Short, punchy messages.
+---
+```
+
+The file stem is the persona's **slug** (its identifier, e.g. `fitness-coach`). `role` is the
+human label shown in the UI and injected into the prompt (*"acting as the Fitness coach
+persona"*). `agent_name` is the name the assistant goes by while this persona is active.
+
+## Managing personae (admin UI)
+
+The **Personae** tab (next to *Assistant* and *You*) lists every persona as a card and shows
+the active one. From there you can:
+
+- **Use** a persona (activates it; applies live to new turns) or revert to **Default**;
+- **edit** a persona in the editor — a **guided form** (identity, voice, skill + tool
+  checkboxes, secret scope) with a **raw markdown** toggle for power users;
+- **create** or **delete** personae.
+
+The page is responsive and touch-friendly: cards reflow to a single column at phone width.
+
+### Starter gallery
+
+Six ready-made personae ship seeded and ready to use or customise: fitness coach, finance
+assistant, travel planner, coding helper, writing editor, and language tutor. They are normal
+rows — edit them in place, or activate one as-is.
+
+## Setup wizard
+
+The setup wizard has a skippable **persona** step (after *identity*): pick a starter persona to
+specialise your assistant out of the box, or keep the default in one tap.
+
+## Testing a persona from the terminal
+
+The REPL can start with a specific persona active, so you can iterate on one without touching
+the global setting:
+
+```bash
+make repl PERSONA=fitness-coach
+# or
+uv run python -m core.repl --persona fitness-coach
+```
+
+An unknown name fails loudly and lists the available personae.
+
+## How activation affects the prompt
+
+When a persona is active, `_build_system_prompt` swaps in the persona's `personalia` and
+`character`, narrows the advertised skills index to the allowlist (and refuses `load_skill`
+for skills outside it), filters the function-tool set to the tool scope, and uses the
+persona's voice for TTS. Switching applies to **new** turns; an open session keeps its
+snapshotted identity until you send `/new`.
+
+## Roadmap
+
+Persona resolution is deliberately funnelled through one seam,
+`AgentCore._resolve_persona(channel, user_id, chat_id)`, so future work is additive:
+
+- **Per-chat personae** ([#14](https://github.com/mattmezza/mpa/issues/14)) — bind a persona
+  per Telegram forum topic (history is already keyed by `chat_id`), so several personae run
+  concurrently, each with its own isolated context, identity, scope, and voice.
+- **Secrets vault** ([#19](https://github.com/mattmezza/mpa/issues/19)) — turns the stored
+  secret scope into an enforced, reference-only ACL.

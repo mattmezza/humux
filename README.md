@@ -88,6 +88,7 @@ MPA uses a dual-layer config system:
 | `character.md` | Agent personality and communication style (editable) |
 | `personalia.md` | Agent identity facts — name, owner, context (append-only) |
 | `skills/*.md` | Skill documents that teach the agent how to use tools |
+| `personae/*.md` | Persona definitions — swappable agent identities (starter gallery) |
 
 ## Project structure
 
@@ -116,6 +117,7 @@ tools/          CLI helper scripts
   calendar_write.py  CalDAV event creator
   wacli/              WhatsApp CLI (vendor)
 skills/         Markdown skill files
+personae/       Persona definitions (starter gallery)
 schema/         Database schemas
 tests/          Test suite
 data/           Runtime SQLite databases (gitignored)

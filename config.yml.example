@@ -14,6 +14,8 @@ agent:
   model: "deepseek-v4-flash"
   timezone: "Europe/Zurich"
   skills_dir: "skills/"
+  personae_dir: "personae/"        # starter-gallery seed directory
+  active_persona: ""               # slug of the active persona; "" = default identity
 
 channels:
   telegram:

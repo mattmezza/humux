@@ -27,7 +27,8 @@ Overview of agent status, active channels, and quick stats.
 
 Edit agent settings without touching config files:
 
-- **Identity** — agent name and owner name
+- **Assistant** — the default identity (agent name, character, personalia), used when no persona is active
+- **Personae** — create, edit, and switch swappable agent identities (see below)
 - **LLM** — provider, model, and API key configuration. The model field is free-text (enter any model id the provider supports); a **Fetch models** button on each provider card loads the live model list from the provider API into the field's autocomplete, and **Copy list** copies all available ids. Also configures the background models for memory, goal decomposition, task reflection, and **history compaction** (the model used to summarize old conversation turns — see the History tab for the trigger threshold)
 - **Channels** — enable/disable Telegram and WhatsApp
 - **Calendar** — manage CalDAV providers
@@ -46,6 +47,10 @@ Enable optional external CLI tools. When a tool is enabled it is authenticated a
 ### Skills
 
 Built-in skill editor for creating, editing, and deleting skill files. Changes take effect immediately — no restart needed.
+
+### Personae
+
+Manage swappable agent identities — each with its own character, skill allowlist, tool scope, voice, and secret scope. Cards show every persona and the active one; **Use** activates one (applied live to new turns) or revert to **Default** (the Assistant-tab identity). The editor offers a **guided form** (identity, agent name, voice, skill + tool checkboxes, secret scope) and a **raw markdown** toggle for power users. Six starter personae ship seeded. The page is responsive at phone width. See [Personae](/docs/personae) for the full model.
 
 ### Memory
 

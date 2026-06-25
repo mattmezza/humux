@@ -11,4 +11,5 @@ tailwindcss/
 tests/
 *.md
 !skills/*.md
+!personae/*.md
 .tmux-session

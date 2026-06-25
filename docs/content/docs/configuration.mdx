@@ -54,6 +54,8 @@ agent:
   model: "claude-sonnet-4-5-20250514"
   timezone: "Europe/Zurich"
   skills_dir: "skills/"
+  personae_dir: "personae/"
+  active_persona: ""
 
 channels:
   telegram:
@@ -117,7 +119,7 @@ memory:
 
 #### `agent`
 
-Core agent settings including name, owner, LLM provider, model, and timezone. The `skills_dir` points to the directory containing markdown skill files.
+Core agent settings including name, owner, LLM provider, model, and timezone. The `skills_dir` points to the directory containing markdown skill files. `personae_dir` is the starter-gallery seed directory for [personae](/docs/personae), and `active_persona` is the slug of the active persona (`""` = the default identity).
 
 #### `channels`
 
