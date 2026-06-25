@@ -105,6 +105,11 @@ search:
   api_key: "${TAVILY_API_KEY}"
   max_results: 5
 
+vision:
+  enabled: false
+  provider: "anthropic"
+  model: "claude-haiku-4-5"
+
 history:
   db_path: "data/agent.db"
   max_turns: 10
@@ -149,6 +154,10 @@ Admin UI settings. The API key is required for authentication.
 #### `search`
 
 Web search configuration via Tavily.
+
+#### `vision`
+
+Vision fallback. When the active model can't read images, image attachments are routed to `model` (on `provider`, reusing that provider's `agent` API key) for a text description / OCR, injected in place of the image so non-multimodal models can still "see". Off by default; engages only when the active model lacks native vision. The admin LLM tab and the setup wizard surface a one-tap enable prompt when you select a model that can't read images.
 
 #### `history`
 

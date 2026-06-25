@@ -220,6 +220,16 @@ class SearchConfig(BaseModel):
     max_results: int = 5
 
 
+class VisionConfig(BaseModel):
+    """Vision fallback — caption images via a secondary vision-capable model
+    when the active model can't see images. Off by default; engages only when
+    the active model lacks vision and an image is present."""
+
+    enabled: bool = False
+    provider: str = "anthropic"
+    model: str = "claude-haiku-4-5"
+
+
 class YouConfig(BaseModel):
     personalia: str = ""
 
@@ -255,6 +265,7 @@ class Config(BaseModel):
     task_reflection: TaskReflectionConfig = TaskReflectionConfig()
     compaction: CompactionConfig = CompactionConfig()
     search: SearchConfig = SearchConfig()
+    vision: VisionConfig = VisionConfig()
     you: YouConfig = YouConfig()
     prompt: PromptConfig = PromptConfig()
     tools: ToolsConfig = ToolsConfig()

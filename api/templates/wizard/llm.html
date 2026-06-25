@@ -34,6 +34,7 @@
   fetchedModels: {anthropic: [], openai: [], google: [], grok: [], deepseek: []},
   fetchingModels: {anthropic: false, openai: false, google: false, grok: false, deepseek: false},
   fetchModelsResult: {anthropic: '', openai: '', google: '', grok: '', deepseek: ''},
+  visionFallback: true,
   init() {
     const savedModel = this.model;
     this.$nextTick(() => { this.model = savedModel; });
@@ -42,6 +43,17 @@
     const fetched = this.fetchedModels[prov];
     if (fetched && fetched.length) { return fetched.map(id => ({value: id, label: id})); }
     return this.models[prov] || [];
+  },
+  // Mirror of model_supports_vision() in core/llm.py — true when the model
+  // reads images natively, so the fallback prompt only shows when it can't.
+  modelSupportsVision(modelId, prov) {
+    const id = (modelId || '').toLowerCase();
+    if (!id) return false;
+    if (id.includes('deepseek')) return false;
+    if (prov === 'anthropic' || prov === 'google') return true;
+    return ['claude', 'gpt-4o', 'gpt-4.1', 'gpt-5', 'o1', 'o3', 'o4',
+            'gemini', 'grok-4', 'grok-2-vision', 'vision', 'llava', 'pixtral']
+      .some(pat => id.includes(pat));
   },
   resetModel() {
     if (this.model) return;
@@ -100,6 +112,15 @@
     </template>
   </datalist>
   <p class="hint">Type any model id, or pick from the list. Use “Fetch models” in the provider section below to load the live list.</p>
+
+  <p class="hint mt-2" x-show="model && modelSupportsVision(model, provider)">🖼️ This model reads images natively.</p>
+  <div class="mt-2 rounded border border-warn-dim/40 bg-warn-dim/20 px-3 py-2"
+       x-show="model && !modelSupportsVision(model, provider)">
+    <label class="inline-flex items-center gap-2 text-xs" style="color: var(--color-warn)">
+      <input type="checkbox" x-model="visionFallback">
+      This model can’t read images. Set up a vision fallback (recommended) so photos still work — captioned by claude-haiku-4-5.
+    </label>
+  </div>
 
   </div>
 
@@ -375,22 +396,31 @@
               const googleBaseUrlValue = googleBaseUrl || 'https://generativelanguage.googleapis.com/v1beta/openai';
               const grokBaseUrlValue = grokBaseUrl || 'https://api.x.ai/v1';
               const deepseekBaseUrlValue = deepseekBaseUrl || 'https://api.deepseek.com';
+              const modelValue = document.getElementById('w-model').value;
+              const vals = {
+                step: 'identity',
+                'values[agent.llm_provider]': provider,
+                'values[agent.anthropic_api_key]': anthropicKey,
+                'values[agent.openai_api_key]': openaiKey,
+                'values[agent.openai_base_url]': openaiBaseUrl,
+                'values[agent.google_api_key]': googleKey,
+                'values[agent.google_base_url]': googleBaseUrlValue,
+                'values[agent.grok_api_key]': grokKey,
+                'values[agent.grok_base_url]': grokBaseUrlValue,
+                'values[agent.deepseek_api_key]': deepseekKey,
+                'values[agent.deepseek_base_url]': deepseekBaseUrlValue,
+                'values[agent.model]': modelValue
+              };
+              // One-tap inline: enable the vision fallback when the picked model
+              // can't read images and the box is left checked.
+              if (this.visionFallback && !this.modelSupportsVision(modelValue, provider)) {
+                vals['values[vision.enabled]'] = 'true';
+                vals['values[vision.provider]'] = 'anthropic';
+                vals['values[vision.model]'] = 'claude-haiku-4-5';
+              }
               htmx.ajax('POST', '/setup/step', {
                 target: '#wizard-step', swap: 'innerHTML',
-                values: {
-                  step: 'identity',
-                  'values[agent.llm_provider]': provider,
-                  'values[agent.anthropic_api_key]': anthropicKey,
-                  'values[agent.openai_api_key]': openaiKey,
-                  'values[agent.openai_base_url]': openaiBaseUrl,
-                  'values[agent.google_api_key]': googleKey,
-                  'values[agent.google_base_url]': googleBaseUrlValue,
-                  'values[agent.grok_api_key]': grokKey,
-                  'values[agent.grok_base_url]': grokBaseUrlValue,
-                  'values[agent.deepseek_api_key]': deepseekKey,
-                  'values[agent.deepseek_base_url]': deepseekBaseUrlValue,
-                  'values[agent.model]': document.getElementById('w-model').value
-                }
+                values: vals
               })
             ">
       Next

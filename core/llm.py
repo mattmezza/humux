@@ -25,6 +25,42 @@ _ANTHROPIC_MODEL_ALIASES = {
     "claude-4-5-haiku": "claude-haiku-4-5",
 }
 
+# Vision-capable model heuristic — single source of truth for "can this model
+# read images natively". Mirrored client-side by modelSupportsVision() in the
+# admin UI (api/templates/base.html + wizard/llm.html); keep the two in sync.
+# ponytail: substring heuristic, extend as model ids change. The fallback only
+# engages when this returns False, so a wrong "True" just means no captioning.
+_VISION_TEXT_ONLY = ("deepseek",)  # families with no image input
+_VISION_CAPABLE_PATTERNS = (
+    "claude",
+    "gpt-4o",
+    "gpt-4.1",
+    "gpt-5",
+    "o1",
+    "o3",
+    "o4",
+    "gemini",
+    "grok-4",
+    "grok-2-vision",
+    "vision",
+    "llava",
+    "pixtral",
+)
+
+
+def model_supports_vision(provider: str, model: str) -> bool:
+    """True when (provider, model) accepts image input natively."""
+    mid = (model or "").lower()
+    if not mid:
+        return False
+    if any(p in mid for p in _VISION_TEXT_ONLY):
+        return False
+    # Anthropic and Google line-ups have no text-only chat models, so trust the
+    # provider even for an unrecognized id; others fall back to name patterns.
+    if _normalize_provider(provider) in ("anthropic", "google"):
+        return True
+    return any(p in mid for p in _VISION_CAPABLE_PATTERNS)
+
 
 @dataclass
 class LLMToolCall:
@@ -120,7 +156,7 @@ class LLMClient:
         self.thinking_level = (thinking_level or "").strip().lower()
         self._client: Any
         if self.provider == "anthropic":
-            self._client = AsyncAnthropic(api_key=api_key)
+            self._client = AsyncAnthropic(api_key=api_key, timeout=60)
         else:
             resolved_base = base_url or _DEFAULT_BASE_URLS.get(self.provider)
             try:
@@ -131,6 +167,7 @@ class LLMClient:
             client_kwargs: dict[str, Any] = {
                 "api_key": api_key,
                 "base_url": resolved_base or None,
+                "timeout": 60,
             }
             self._client = cast(Any, client_class)(**client_kwargs)  # type: ignore[call-arg]
 

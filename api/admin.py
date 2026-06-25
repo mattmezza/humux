@@ -889,6 +889,10 @@ def create_admin_app(
         compaction_provider = await config_store.get("compaction.provider") or "anthropic"
         compaction_model = await config_store.get("compaction.model") or "claude-haiku-4-5"
         compaction_thinking_level = await config_store.get("compaction.thinking_level") or ""
+        vision_enabled = await config_store.get("vision.enabled")
+        vision_enabled = vision_enabled if vision_enabled is not None else "false"
+        vision_provider = await config_store.get("vision.provider") or "anthropic"
+        vision_model = await config_store.get("vision.model") or "claude-haiku-4-5"
         prompt_tool_usage_override = await config_store.get("prompt.tool_usage_override") or ""
         prompt_history_override = await config_store.get("prompt.history_handling_override") or ""
         prompt_capture_enabled = await config_store.get("admin.capture_prompts")
@@ -926,6 +930,9 @@ def create_admin_app(
             compaction_provider=compaction_provider,
             compaction_model=compaction_model,
             compaction_thinking_level=compaction_thinking_level,
+            vision_enabled=vision_enabled,
+            vision_provider=vision_provider,
+            vision_model=vision_model,
             prompt_tool_usage_override=prompt_tool_usage_override,
             prompt_history_override=prompt_history_override,
             default_tool_usage=DEFAULT_TOOL_USAGE_BLOCK,

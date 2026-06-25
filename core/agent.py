@@ -9,7 +9,7 @@ import json
 import logging
 import shlex
 import uuid
-from collections import deque
+from collections import OrderedDict, deque
 from datetime import datetime
 from typing import Any, cast
 from zoneinfo import ZoneInfo
@@ -23,7 +23,7 @@ from core.executor import ToolExecutor
 from core.goal_decomposition import DecomposedGoal, classify_complexity, decompose_goal
 from core.history import ConversationHistory
 from core.job_store import JobStore
-from core.llm import LLMClient, LLMToolCall
+from core.llm import LLMClient, LLMToolCall, model_supports_vision
 from core.memory import MemoryStore
 from core.models import AgentResponse, Attachment
 from core.permissions import PermissionEngine, PermissionLevel, format_approval_message
@@ -36,6 +36,10 @@ from core.tools import tool_env
 from voice.pipeline import VoicePipeline
 
 log = logging.getLogger(__name__)
+
+# Vision fallback caption cache cap (per process). Captions are keyed by image
+# hash so repeated identical images don't re-hit the vision model.
+_VISION_CACHE_MAX = 256
 
 
 def _shell_quote(s: str) -> str:
@@ -296,6 +300,8 @@ class AgentCore:
         config_db = "data/config.db"
         self.permissions = PermissionEngine(db_path=config_db)
         self.prompt_capture: deque[dict[str, str]] = deque(maxlen=20)
+        # Vision fallback caption cache (image hash -> "[Image: ...]"), LRU-bounded.
+        self._vision_cache: OrderedDict[str, str] = OrderedDict()
 
         # Web search (Tavily)
         if config.search.enabled and config.search.api_key:
@@ -480,7 +486,7 @@ class AgentCore:
             "I summarized the earlier part to free up space; recent messages are kept as-is."
         )
 
-    def _build_user_message(
+    async def _build_user_message(
         self,
         message: str,
         attachments: list[Attachment] | None = None,
@@ -490,10 +496,20 @@ class AgentCore:
 
         ``preamble`` (live date/time + optional execution plan) is prepended to
         the message text so the agent always knows 'now' for the current turn.
+
+        When the active model can't see images and a vision fallback is
+        configured, images are captioned by a secondary model and the text is
+        injected in place of the image blocks so the model can still "see".
         """
         text = f"{preamble}\n\n{message}" if preamble else message
         image_attachments = [a for a in (attachments or []) if a.is_image]
         if image_attachments:
+            if self._vision_fallback_active():
+                captions = await self._caption_images(image_attachments, message)
+                if captions:
+                    text = "\n\n".join([text, *captions]) if text else "\n\n".join(captions)
+                    return {"role": "user", "content": text}
+                # Captioning failed entirely — fall through to native image blocks.
             content_blocks: list[dict] = []
             if text:
                 content_blocks.append({"type": "text", "text": text})
@@ -504,6 +520,64 @@ class AgentCore:
                     content_blocks.append(att.to_openai_block())
             return {"role": "user", "content": content_blocks}
         return {"role": "user", "content": text}
+
+    def _vision_fallback_active(self) -> bool:
+        """True when the active model lacks vision and a fallback is enabled."""
+        return self.config.vision.enabled and not model_supports_vision(
+            self.llm.provider, self.config.agent.model
+        )
+
+    async def _caption_images(self, images: list[Attachment], user_text: str) -> list[str]:
+        """Caption each image with a task-aware prompt, returning ``[Image: ...]``
+        strings. Returns ``[]`` on any failure so the caller can fall back to
+        passing the raw image blocks through. Captions are cached by image hash.
+        """
+        vis = self.config.vision
+        llm = self._vision_llm(vis.provider)
+        out: list[str] = []
+        for att in images:
+            key = hashlib.sha256(att.data).hexdigest()
+            cached = self._vision_cache.get(key)
+            if cached is not None:
+                self._vision_cache.move_to_end(key)
+                out.append(cached)
+                continue
+            try:
+                caption = await self._caption_one(llm, vis.model, att, user_text)
+            except Exception:
+                log.exception("Vision fallback captioning failed")
+                return []
+            entry = f"[Image: {caption}]"
+            self._vision_cache[key] = entry
+            # ponytail: bounded LRU, drop oldest past the cap — fine for a single
+            # process; swap for a shared store only if multi-instance dedup matters.
+            if len(self._vision_cache) > _VISION_CACHE_MAX:
+                self._vision_cache.popitem(last=False)
+            out.append(entry)
+        return out
+
+    async def _caption_one(
+        self, llm: LLMClient, model: str, att: Attachment, user_text: str
+    ) -> str:
+        """Caption a single image via the vision model. Task-aware: the user's
+        message steers what to extract (e.g. OCR vs. scene description)."""
+        block = att.to_anthropic_block() if llm.provider == "anthropic" else att.to_openai_block()
+        system = (
+            "You caption images for a model that cannot see them. "
+            "Describe the image so the reader understands it, and transcribe any "
+            "visible text verbatim (OCR). Be concise but complete."
+        )
+        ask = "Describe this image."
+        if user_text.strip():
+            ask += f' The user sent it with this message: "{user_text.strip()}" — '
+            ask += "focus on what is relevant to that."
+        messages = [{"role": "user", "content": [block, {"type": "text", "text": ask}]}]
+        response = await llm.generate(model=model, system=system, messages=messages, tools=[])
+        return response.text.strip() or "(no description available)"
+
+    def _vision_llm(self, provider: str) -> LLMClient:
+        """Return an LLM client for image captioning (mirrors ``_memory_llm``)."""
+        return self._background_llm(provider)
 
     async def _process_injection(
         self,
@@ -528,7 +602,7 @@ class AgentCore:
                 messages.append({"role": turn["role"], "content": turn["content"]})
 
         # The actual current request — always the last user message.
-        messages.append(self._build_user_message(message, attachments, preamble))
+        messages.append(await self._build_user_message(message, attachments, preamble))
 
         log.info(
             "Processing message (injection) from %s/%s/%s: %s",
@@ -629,7 +703,7 @@ class AgentCore:
         session = await self.history.get_session(channel, user_id, chat_id)
 
         # Append the new user message (with the live date/time preamble)
-        user_msg = self._build_user_message(message, attachments, preamble)
+        user_msg = await self._build_user_message(message, attachments, preamble)
         await self.history.append_session_message(channel, user_id, user_msg, chat_id)
 
         log.info(

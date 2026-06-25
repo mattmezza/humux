@@ -213,6 +213,15 @@ class TestPartialRoutes:
         assert "text/html" in resp.headers["content-type"]
         assert "run_command" in resp.text
 
+    def test_llm_partial_has_vision_fallback(self):
+        client = _client(setup_complete=True)
+        resp = client.get("/partials/llm", headers=AUTH)
+        assert resp.status_code == 200
+        assert "Vision Fallback" in resp.text
+        # One-tap enable prompt + capability indicator are wired in.
+        assert "enableVisionFallback()" in resp.text
+        assert "modelSupportsVision" in resp.text
+
     def test_logs_partial(self):
         client = _client(setup_complete=True)
         resp = client.get("/partials/logs", headers=AUTH)

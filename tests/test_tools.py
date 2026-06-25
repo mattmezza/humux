@@ -133,16 +133,18 @@ def test_turn_preamble_carries_datetime(agent) -> None:
     assert "execution_plan" not in preamble
 
 
-def test_build_user_message_prepends_preamble(agent) -> None:
+@pytest.mark.asyncio
+async def test_build_user_message_prepends_preamble(agent) -> None:
     preamble = agent._turn_preamble(None)
-    msg = agent._build_user_message("hello", None, preamble)
+    msg = await agent._build_user_message("hello", None, preamble)
     assert msg["role"] == "user"
     assert msg["content"].startswith(preamble)
     assert msg["content"].endswith("hello")
 
 
-def test_build_user_message_no_preamble_is_plain(agent) -> None:
-    msg = agent._build_user_message("hello", None, "")
+@pytest.mark.asyncio
+async def test_build_user_message_no_preamble_is_plain(agent) -> None:
+    msg = await agent._build_user_message("hello", None, "")
     assert msg["content"] == "hello"
 
 
