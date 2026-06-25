@@ -608,11 +608,12 @@ def cmd_explore(args) -> dict:
             host = urlparse(s.page.url).netloc or "page"
             shot = Path.home() / "Downloads" / f"clio-{host}-{int(time.time())}.png"
             s.snapshot(shot, full_page=True)
+            # Return only what the calling agent needs — the full step trail is
+            # debugging noise in its context (use BROWSER_EXPLORE_VERBOSE to see it).
             return {
-                "task": args.task,
                 "answer": answer,
                 "done": answer is not None,
-                "steps": trail,
+                "steps_taken": len(trail),
                 "url": s.page.url,
                 "screenshot": str(shot),
             }

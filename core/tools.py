@@ -55,15 +55,29 @@ browser stays open and an inner loop sees every frame and clicks/types on its
 own until done, then returns an answer. It is the ONLY verb that can drive
 embedded widgets and payment iframes; `read`/`act` only see the top page and
 will fail on them.
+CRITICAL: every browser command starts a BRAND-NEW browser that reloads `--url`
+from scratch — there is NO shared session or page state between calls. So you
+CANNOT do a flow step-by-step across several commands; each call would restart
+from the beginning and lose all progress. A whole interactive flow MUST be ONE
+explore call that carries the entire task.
 How to use it well:
-- Put the ENTIRE task in one `--task`, with every concrete value the flow needs
-  (product, dates/times, name, email, phone, full card number/expiry/CVC/ZIP).
-  It cannot ask you mid-run, so give it everything up front.
-- It runs autonomously for up to a few minutes and returns ONE JSON result with
-  an `answer`. That is expected — do NOT treat the wait as a hang, do NOT retry
-  it, and do NOT fall back to `read`/`act`. Call it once and wait.
-- Quote its returned `answer` (and screenshot path) back to the user.
-Use `read`/`screenshot` only for static pages where you already know the URL.
+- Put the ENTIRE task in one `--task`, as numbered steps, with every concrete
+  value the flow needs (product, dates/times, name, email, phone, full card
+  number/expiry/CVC/ZIP). It cannot ask you mid-run, so give it everything up
+  front. Example for a booking:
+  python3 /app/tools/browser.py explore --url https://shop.example/book --task \
+    "1) click 'Book now'. 2) select the Single Kayak product. 3) set pickup and
+     return date 2026-06-26, start 09:00, end 10:00. 4) click Next through each
+     step. 5) fill name Matteo Merola, email m@x.com, phone +41770000000.
+     6) at payment fill card 4242424242424242 exp 03/29 cvc 736 zip 8000 and
+     click Pay. 7) report the confirmation."
+- It runs autonomously for a few minutes and returns ONE JSON result with an
+  `answer`. That is expected — do NOT treat the wait as a hang, do NOT split the
+  task, do NOT retry, and do NOT fall back to `read`/`act` (they only see the top
+  page, never the widget/iframe, and will mislead you with stale content).
+- Quote its returned `answer` (and screenshot path) back to the user. If it
+  reports a pending/awaiting-approval status, say so — don't upgrade it to
+  "confirmed".
 `read`/`screenshot` run without asking. `act` changes state (click/fill/submit)
 so it asks for approval each time; on chat channels the approval shows a
 screenshot of the page. `--steps` is an ordered JSON array of single-key objects:
