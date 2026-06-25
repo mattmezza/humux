@@ -37,7 +37,7 @@ def _resolve_env_vars(obj: object) -> object:
 class AgentConfig(BaseModel):
     name: str = "Clio"
     owner_name: str = "Matteo"
-    llm_provider: str = "anthropic"
+    llm_provider: str = "deepseek"
     anthropic_api_key: str = ""
     openai_api_key: str = ""
     openai_base_url: str = ""
@@ -47,7 +47,7 @@ class AgentConfig(BaseModel):
     grok_base_url: str = ""
     deepseek_api_key: str = ""
     deepseek_base_url: str = ""
-    model: str = "claude-4-6-sonnet"
+    model: str = "deepseek-v4-flash"
     thinking_level: str = ""  # "" (off) | "low" | "medium" | "high" — only for reasoning models
     timezone: str = "Europe/Zurich"
     skills_dir: str = "skills/"

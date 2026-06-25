@@ -1,7 +1,7 @@
 agent:
   name: "Clio"
   owner_name: "Matteo"
-  llm_provider: "anthropic"
+  llm_provider: "deepseek"
   anthropic_api_key: "${ANTHROPIC_API_KEY}"
   openai_api_key: "${OPENAI_API_KEY}"
   openai_base_url: "${OPENAI_BASE_URL}"
@@ -11,7 +11,7 @@ agent:
   grok_base_url: "${GROK_BASE_URL}"
   deepseek_api_key: "${DEEPSEEK_API_KEY}"
   deepseek_base_url: "${DEEPSEEK_BASE_URL}"
-  model: "claude-sonnet-4-5-20250514"
+  model: "deepseek-v4-flash"
   timezone: "Europe/Zurich"
   skills_dir: "skills/"
 
