@@ -189,7 +189,7 @@ async def test_maybe_compact_replaces_session_and_notifies(agent, monkeypatch) -
     for m in _session_with_tool_pair():
         await agent.history.append_session_message("telegram", "u", m, "")
 
-    monkeypatch.setattr(agent, "_background_llm", lambda provider: FakeLLM("S"))
+    monkeypatch.setattr(agent, "_background_llm", lambda provider, thinking_level="": FakeLLM("S"))
     response = SimpleNamespace(usage={"context_tokens": 999})
 
     notice = await agent._maybe_compact("telegram", "u", "", response)
@@ -209,7 +209,7 @@ async def test_maybe_compact_below_threshold_noop(agent, monkeypatch) -> None:
     agent.config.compaction.threshold_tokens = 100000
     for m in _session_with_tool_pair():
         await agent.history.append_session_message("telegram", "u", m, "")
-    monkeypatch.setattr(agent, "_background_llm", lambda provider: FakeLLM("S"))
+    monkeypatch.setattr(agent, "_background_llm", lambda provider, thinking_level="": FakeLLM("S"))
     response = SimpleNamespace(usage={"context_tokens": 50})
     assert await agent._maybe_compact("telegram", "u", "", response) is None
 

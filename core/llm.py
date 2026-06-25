@@ -127,6 +127,18 @@ class LLMClient:
             }
             self._client = cast(Any, client_class)(**client_kwargs)  # type: ignore[call-arg]
 
+    def _reasoning_kwargs(self) -> dict[str, Any]:
+        """Provider-specific request kwargs for the configured thinking level.
+
+        Empty when no level is set, so non-reasoning calls are untouched.
+        """
+        level = self.thinking_level
+        if level not in ("low", "medium", "high"):
+            return {}
+        if self.provider == "anthropic":
+            return {"thinking": {"type": "adaptive"}, "output_config": {"effort": level}}
+        return {"reasoning_effort": level}
+
     @classmethod
     def from_agent_config(cls, config) -> LLMClient:
         provider = _normalize_provider(getattr(config, "llm_provider", "anthropic"))
@@ -187,19 +199,13 @@ class LLMClient:
                         "cache_control": {"type": "ephemeral"},
                     }
                 ]
-            extra: dict[str, Any] = {}
-            if self.thinking_level in ("low", "medium", "high"):
-                # Adaptive thinking at the requested effort. Only sent when a level is
-                # set — the UI exposes the control for reasoning models only.
-                extra["thinking"] = {"type": "adaptive"}
-                extra["output_config"] = {"effort": self.thinking_level}
             response = await messages_client.create(
                 model=resolved_model,
                 max_tokens=max_tokens,
                 system=cast(Any, system_param),
                 messages=cast(Any, messages),
                 tools=cast(Any, tools),
-                **extra,
+                **self._reasoning_kwargs(),
             )
             tool_calls = []
             text_parts = []
@@ -225,15 +231,12 @@ class LLMClient:
         openai_tools = _openai_tools(tools)
         client_any = cast(Any, self._client)
         full_messages = [{"role": "system", "content": system}, *messages]
-        extra = {}
-        if self.thinking_level in ("low", "medium", "high"):
-            extra["reasoning_effort"] = self.thinking_level
         response = await client_any.chat.completions.create(
             model=resolved_model,
             max_tokens=max_tokens,
             messages=cast(Any, full_messages),
             tools=cast(Any, openai_tools),
-            **extra,
+            **self._reasoning_kwargs(),
         )
         message = response.choices[0].message
         tool_calls = []
@@ -291,6 +294,7 @@ class LLMClient:
                 model=resolved_model,
                 max_tokens=max_tokens,
                 messages=cast(Any, [{"role": "user", "content": prompt}]),
+                **self._reasoning_kwargs(),
             )
             for block in response.content:
                 block_any = cast(Any, block)
@@ -303,5 +307,6 @@ class LLMClient:
             model=resolved_model,
             max_tokens=max_tokens,
             messages=cast(Any, [{"role": "user", "content": prompt}]),
+            **self._reasoning_kwargs(),
         )
         return (response.choices[0].message.content or "").strip()

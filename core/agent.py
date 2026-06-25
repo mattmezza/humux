@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import hashlib
 import json
 import logging
@@ -410,7 +411,7 @@ class AgentCore:
 
         session = await self.history.get_session(channel, user_id, chat_id)
         try:
-            llm = self._background_llm(cfg.provider)
+            llm = self._background_llm(cfg.provider, cfg.thinking_level)
             result = await compact_messages(llm, cfg.model, session, cfg.keep_recent_turns)
         except Exception:
             log.exception("Conversation compaction failed")
@@ -1136,7 +1137,10 @@ class AgentCore:
         main agent loop.
         """
         try:
-            llm = self._memory_llm(self.config.memory.extraction_provider)
+            llm = self._memory_llm(
+                self.config.memory.extraction_provider,
+                self.config.memory.extraction_thinking_level,
+            )
             stored = await self.memory.extract_memories(
                 llm=llm,
                 model=self.config.memory.extraction_model,
@@ -1149,29 +1153,33 @@ class AgentCore:
         except Exception:
             log.exception("Background memory extraction failed")
 
-    def _memory_llm(self, provider: str) -> LLMClient:
+    def _memory_llm(self, provider: str, thinking_level: str = "") -> LLMClient:
         """Return an LLM client for memory operations.
 
         If the requested provider matches the main inference provider the
         existing client is reused; otherwise a new one is created using the
         API key / base-URL already stored in the agent config.
         """
-        return self._background_llm(provider)
+        return self._background_llm(provider, thinking_level)
 
-    def _background_llm(self, provider: str) -> LLMClient:
+    def _background_llm(self, provider: str, thinking_level: str = "") -> LLMClient:
         """Return an LLM client for background tasks (memory, reflection, etc.).
 
-        If the requested provider matches the main inference provider the
-        existing client is reused; otherwise a new one is created using the
-        API key / base-URL already stored in the agent config.
+        Background tasks carry their own thinking level, independent of the
+        main inference one. When the provider matches the main client we clone
+        it (sharing the underlying SDK connection) and override only the level;
+        otherwise a fresh client is built from the stored credentials.
         """
         if provider == self.llm.provider:
-            return self.llm
+            clone = copy.copy(self.llm)
+            clone.thinking_level = (thinking_level or "").strip().lower()
+            return clone
         cfg = self.config.agent
         return LLMClient(
             provider=provider,
             api_key=getattr(cfg, f"{provider}_api_key", ""),
             base_url=getattr(cfg, f"{provider}_base_url", None),
+            thinking_level=thinking_level,
         )
 
     def _build_embedder(self):
@@ -1218,7 +1226,7 @@ class AgentCore:
         Returns None if the message is simple or decomposition fails/is disabled.
         """
         gd_cfg = self.config.goal_decomposition
-        llm = self._background_llm(gd_cfg.provider)
+        llm = self._background_llm(gd_cfg.provider, gd_cfg.thinking_level)
 
         try:
             is_complex = await classify_complexity(llm, gd_cfg.model, message)
@@ -1246,7 +1254,7 @@ class AgentCore:
         """
         try:
             tr_cfg = self.config.task_reflection
-            llm = self._background_llm(tr_cfg.provider)
+            llm = self._background_llm(tr_cfg.provider, tr_cfg.thinking_level)
             stored = await self.reflections.reflect_on_task(
                 llm=llm,
                 model=tr_cfg.model,

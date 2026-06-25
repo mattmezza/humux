@@ -62,9 +62,10 @@ async def test_run_memory_consolidation_calls_store(monkeypatch) -> None:
             memory=SimpleNamespace(
                 consolidation_model="model",
                 consolidation_provider="anthropic",
+                consolidation_thinking_level="",
             ),
         ),
-        _memory_llm=lambda self_provider: llm_sentinel,
+        _memory_llm=lambda self_provider, thinking_level="": llm_sentinel,
     )
     set_agent_context(agent)
 
