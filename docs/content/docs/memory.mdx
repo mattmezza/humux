@@ -1,24 +1,31 @@
 ---
 title: Memory
-description: MPA's two-tier persistent memory system for long-term facts and short-term context.
+description: MPA's persistent memory — two tiers, semantic retrieval, forgetting, and a self-healing hygiene pass.
 ---
 
 # Memory
 
-MPA has a two-tier memory system that lets the agent remember facts about you and your world. Memories are stored in SQLite and accessed via the `sqlite3` CLI — following the same "skills over code" philosophy as the rest of the system.
+MPA has a persistent memory system that lets the agent remember facts about you and your world. Memories are stored in SQLite at `data/memory.db`. The agent reads and writes them via the `sqlite3` CLI (guided by `skills/memory.md`), following the same "skills over code" philosophy as the rest of the system — but the heavy lifting (extraction, dedup, ranking, forgetting) runs in `core/memory.py`.
 
-## Memory tiers
+The system is layered in four tiers:
+
+| Tier | What it adds |
+|------|--------------|
+| **1 — Two-tier store** | Long-term (permanent) + short-term (expiring) memories |
+| **2 — Semantic retrieval** | Vector embeddings → match by *meaning*, relevance-ranked injection |
+| **3 — Forgetting & importance** | Reinforcement on recall, archiving of cold trivia |
+| **4 — Hygiene pass** | Clusters and merges near-duplicates / contradictions over time |
+
+## Tier 1 — Two-tier store
 
 | Tier | Purpose | Lifetime | Examples |
 |------|---------|----------|----------|
 | **Long-term** | Facts worth keeping forever | Permanent | "Matteo is lactose intolerant", "Accountant is Dr. Weber" |
-| **Short-term** | Transient context | Configurable TTL (default 24h) | "Working from home today", "Flight boards at 15:40" |
+| **Short-term** | Transient context | LLM-set TTL (2h–168h) | "Working from home today", "Flight boards at 15:40" |
 
 **Rule of thumb:** if it would still be useful next month, it's long-term. If it's situational context that will be stale in a day or two, it's short-term.
 
-## Schema
-
-The memory database lives at `data/memory.db`:
+### Schema
 
 ```sql
 CREATE TABLE long_term (
@@ -29,7 +36,14 @@ CREATE TABLE long_term (
     source TEXT,                   -- "conversation", "email", "inferred"
     confidence TEXT DEFAULT 'stated',
     created_at DATETIME DEFAULT (datetime('now')),
-    updated_at DATETIME DEFAULT (datetime('now'))
+    updated_at DATETIME DEFAULT (datetime('now')),
+    -- Tier 2: cached embedding vector (packed float32 blob; NULL until computed)
+    embedding BLOB,
+    -- Tier 3: forgetting / importance / reinforcement
+    importance REAL NOT NULL DEFAULT 5.0,
+    last_accessed DATETIME,
+    access_count INTEGER NOT NULL DEFAULT 0,
+    archived INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE short_term (
@@ -41,49 +55,90 @@ CREATE TABLE short_term (
 );
 ```
 
+The Tier 2–4 columns (`embedding`, `importance`, `last_accessed`, `access_count`, `archived`) are added to pre-existing databases by an in-place `ALTER TABLE` migration on startup — upgrading needs no manual steps.
+
 ### Long-term categories
 
-- `preference` — likes, dislikes, habits
-- `relationship` — connections between people
-- `fact` — biographical or factual information
-- `routine` — regular patterns and schedules
-- `work` — professional context
-- `health` — health-related information
-- `travel` — travel preferences and history
+`preference` · `relationship` · `fact` · `routine` · `work` · `health` · `travel`
 
-## How memory works
+## How memory is written
 
 ### Automatic extraction
 
-After each conversation turn, a lightweight LLM call (using a cheap model like `claude-haiku-4-5`) analyzes the exchange and extracts facts worth remembering:
+After each conversation turn, a lightweight LLM call (cheap model, e.g. `claude-haiku-4-5`) analyzes the exchange and extracts up to 3 facts worth remembering, classifying each as `LONG_TERM` or `SHORT_TERM`. Short-term facts get an LLM-chosen TTL (2–4h trivial, 8–12h day-scoped, 24–48h near-term plans, 72–168h week-scoped).
 
 ```
 User: "By the way, I'm lactose intolerant"
 Agent: "Got it, I'll remember that."
 
-→ Extracted: {tier: "LONG_TERM", category: "health", subject: "matteo",
-              content: "Lactose intolerant", source: "conversation"}
+→ {tier: "LONG_TERM", category: "health", subject: "matteo",
+   content: "Lactose intolerant"}
 ```
+
+Extraction is **rate-limited** by `extraction_cooldown_seconds` (default 120s). Turns skipped during the cooldown are buffered and replayed into the next extraction, so back-to-back salient turns aren't dropped.
+
+### Unified long-term write pipeline
+
+Every long-term write — both per-turn extraction and consolidation's promotions — flows through a single path, `MemoryStore.update_memory`. For each candidate fact it retrieves the most similar existing long-term memories, then makes **one LLM call** that decides exactly one operation:
+
+- **ADD** — genuinely new information.
+- **UPDATE** — refines, corrects, or re-words one existing memory (the model returns the merged content to keep). Re-mentioning a fact this way also bumps its importance.
+- **DELETE** — the candidate says an existing memory is no longer true, with nothing worth keeping in its place.
+- **NOOP** — duplicate or not worth keeping.
+
+The decision prompt includes each candidate's `created_at`/`updated_at`, so the model prefers recent facts when resolving contradictions. When nothing similar exists, the fact is added directly with no LLM call. Malformed model output is a safe no-op.
 
 ### Manual storage via CLI
 
-The agent can also store memories explicitly using the sqlite3 CLI, guided by the `skills/memory.md` skill file:
+The agent can also write directly using `sqlite3`, guided by `skills/memory.md`:
 
 ```bash
-# Store a long-term memory
 sqlite3 /app/data/memory.db \
   "INSERT INTO long_term (category, subject, content, source)
    VALUES ('preference', 'matteo', 'Prefers oat milk', 'conversation');"
 
-# Store a short-term fact (expires in 24h)
 sqlite3 /app/data/memory.db \
   "INSERT INTO short_term (content, context, expires_at)
    VALUES ('At the airport', 'telegram message', datetime('now', '+24 hours'));"
 ```
 
-### Memory in the system prompt
+## Tier 2 — Semantic retrieval & relevance-ranked injection
 
-On each conversation turn, both memory tiers are queried and injected into the system prompt:
+Each long-term memory gets a vector **embedding**, stored as a packed float32 blob in the `embedding` column. Similarity is brute-force cosine in Python (NumPy-vectorised) — no native SQLite extension, so it behaves identically locally and in the container, and stays trivial at under 1k rows.
+
+### Backends
+
+Set via `memory.embedding.provider`:
+
+- **`local`** (default) — runs a small on-device model via [`fastembed`](https://github.com/qdrant/fastembed): `BAAI/bge-small-en-v1.5`, 384-dim, ~130MB ONNX/CPU. Private (memory never leaves the box), no API key, free. The model is **prefetched at Docker build** into `/app/models` (outside the `/app/data` volume) so the first call has no download latency and the container works offline. It loads lazily on first use, in a worker thread.
+- **`openai` / `google`** (or any OpenAI-compatible `/embeddings` endpoint via `base_url`) — calls a remote API. Needs a key (falls back to the matching agent provider key); a few cents/year at typical volume, but memory text is sent to the provider. *(DeepSeek has no embeddings endpoint.)*
+
+Set `memory.embedding.enabled: false` to fall back to **Tier-1 lexical** (word-overlap / Jaccard) retrieval — still works, no model needed.
+
+### What embeddings power
+
+- **Relevance-ranked injection.** Instead of dumping the most recent `long_term_limit` rows into the prompt, only the `injection_top_k` (default 12) memories most relevant to the *current message* are injected. They're scored Generative-Agents style: `relevance + 0.5·importance + 0.3·recency`. (In session mode, where the static prompt is snapshotted once, the session's first message is the query.)
+- **Dedup.** `update_memory` retrieves ADD/UPDATE/DELETE/NOOP candidates by cosine similarity (with a per-row lexical fallback for any memory that has no vector yet).
+- **Hygiene clustering** (Tier 4, below).
+
+All of this is configurable live from the **admin Memory tab** (enable toggle, backend, model, top-k, plus Download / Test buttons).
+
+## Tier 3 — Forgetting, importance & reinforcement
+
+`long_term` carries `importance` (1–10), `last_accessed`, `access_count`, and an `archived` flag.
+
+- **Reinforcement** — recalling a memory bumps its `access_count` / `last_accessed`; re-stating a fact (an UPDATE through the pipeline) raises its `importance` (capped at 10). Memory strengthens with use.
+- **Forgetting** — during consolidation, memories that are **old, low-importance, and not accessed recently** are *archived* (soft-deleted via the `archived` flag, recoverable) instead of injected forever. Controlled by `archive_after_days`, `archive_max_importance`, `archive_min_idle_days`.
+
+Long-term memory stops growing without bound, but nothing is hard-deleted by the forgetting pass.
+
+## Tier 4 — Long-term hygiene pass
+
+Each consolidation run also clusters near-duplicate long-term memories (by embedding or lexical similarity, threshold `hygiene_similarity_threshold`, default 0.45) and resolves each cluster with one LLM call that merges duplicates and drops contradictions, keeping the most recent fact. This compacts memories that accumulate over time, not just at write time. Bounded to 10 clusters per run to cap LLM cost.
+
+## Memory in the system prompt
+
+On each turn, both tiers are queried and injected:
 
 ```
 <memories>
@@ -98,12 +153,16 @@ On each conversation turn, both memory tiers are queried and injected into the s
 </memories>
 ```
 
-## Memory consolidation
+## Consolidation job
 
-A scheduled job reviews short-term memories periodically (default: every 8 hours) and does two things:
+A scheduled job (type `memory_consolidation`, default every 8h) runs the maintenance passes in one shot:
 
-1. **Promotion** — reviews active short-term memories via an LLM call, promotes durable facts to long-term memory (compacting aggressively, deduplicating against existing memories)
-2. **Cleanup** — deletes all expired short-term memories
+1. **Promotion** — durable short-term facts are compacted and promoted to long-term (through the unified write pipeline, so they dedup/update correctly).
+2. **Cleanup** — expired short-term rows are deleted.
+3. **Hygiene** (Tier 4) — near-duplicate long-term memories are merged.
+4. **Forgetting** (Tier 3) — cold, low-importance long-term memories are archived.
+
+The returned summary reports `active_reviewed`, `promoted_to_long_term`, `expired_deleted`, `hygiene_merged`, and `archived`.
 
 Configure in `config.yml`:
 
@@ -114,12 +173,9 @@ scheduler:
       cron: "0 */8 * * *"
       task: "memory_consolidation"
       type: "memory_consolidation"
-
-memory:
-  consolidation_model: "claude-haiku-4-5"
 ```
 
-You can also trigger consolidation manually via the admin API: `POST /memory/consolidate`.
+Trigger it manually via the admin API: `POST /memory/consolidate`.
 
 ## Example interactions
 
@@ -130,7 +186,7 @@ Agent: Got it, I'll remember that.
 
 (Later...)
 You: "Find me a restaurant near Bahnhofstrasse"
-Agent: (checks memory, finds lactose intolerance)
+Agent: (semantic recall surfaces the lactose intolerance)
        Here are 3 options with good dairy-free choices: ...
 ```
 
@@ -141,8 +197,7 @@ Agent: Safe travels! Want me to check your Rome calendar?
 
 (2 hours later)
 You: "What time does my flight board?"
-Agent: (checks short-term memory)
-       Your flight to Rome boards at 15:40.
+Agent: (checks short-term memory) Your flight to Rome boards at 15:40.
 ```
 
 ## Configuration
@@ -150,6 +205,31 @@ Agent: (checks short-term memory)
 ```yaml
 memory:
   db_path: "data/memory.db"
-  long_term_limit: 50            # max memories injected into prompt
-  extraction_model: "claude-haiku-4-5"  # model for post-turn extraction
+  long_term_limit: 50                  # max memories considered for injection
+  extraction_model: "claude-haiku-4-5"     # post-turn extraction
+  consolidation_model: "claude-haiku-4-5"  # scheduled consolidation + hygiene
+  extraction_cooldown_seconds: 120     # min seconds between extractions
+
+  # Tier 2 — semantic similarity + relevance-ranked injection
+  embedding:
+    enabled: true
+    provider: "local"                  # "local" (on-device) | "openai" | "google"
+    model: "BAAI/bge-small-en-v1.5"    # local model id; for API e.g. text-embedding-3-small
+    cache_dir: "models"                # local model store (bundled in the image)
+    api_key: ""                        # API providers only; falls back to agent provider key
+    base_url: ""                       # API providers only; falls back to agent provider base URL
+    dimensions: 0                      # 0 = provider default (API providers only)
+    injection_top_k: 12                # relevance-ranked memories injected per turn
+
+  # Tier 3 — forgetting / importance / reinforcement
+  default_importance: 5.0              # 1-10 scale assigned to new long-term memories
+  archive_after_days: 90              # min age before a cold memory may be archived
+  archive_max_importance: 4.0         # only archive memories at/below this importance
+  archive_min_idle_days: 45           # require this long since last access/creation
+
+  # Tier 4 — long-term hygiene pass
+  hygiene_enabled: true
+  hygiene_similarity_threshold: 0.45  # min similarity to cluster two memories
 ```
+
+Everything in the `embedding` block and the Tier 3/4 thresholds can also be edited live from the **admin Memory tab**, applied to the running agent without a restart.

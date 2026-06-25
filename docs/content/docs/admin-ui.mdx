@@ -49,12 +49,15 @@ Built-in skill editor for creating, editing, and deleting skill files. Changes t
 
 ### Memory
 
-Inspect and manage the agent's memories:
+Inspect and manage the agent's memories, and tune the memory engine live:
 
-- View all long-term memories by category
-- View active short-term context
+- View all long-term memories by category, and active short-term context
 - Delete individual memories
 - Trigger manual memory consolidation
+- **Semantic memory (embeddings)** — toggle on/off, pick the backend (Local / OpenAI / Google), set the model, base URL, and injected-memories-per-turn (top-k). A status line shows whether the local model is downloaded, with **Download model** and **Test** buttons. Changes apply live (the local model loads on first use). See [Memory → Tier 2](/docs/memory#tier-2-semantic-retrieval-relevance-ranked-injection).
+- **Memory lifecycle (forgetting & hygiene)** — set default importance, the archiving thresholds (age / max importance / idle days), and toggle the hygiene pass with its similarity threshold. See [Memory → Tier 3 & 4](/docs/memory#tier-3-forgetting-importance-reinforcement).
+
+Both panels include a plain-language "How it works (the science)" explainer.
 
 ### Permissions
 

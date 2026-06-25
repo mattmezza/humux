@@ -66,6 +66,10 @@ docker pull ghcr.io/mattmezza/mpa:latest
 | `0.1` | Latest patch for minor version |
 | `0` | Latest minor for major version |
 
+### Bundled embedding model
+
+The image **prefetches the local embedding model** (semantic memory, Tier 2) at build time into `/app/models` — outside the `/app/data` volume, so the mounted volume can't shadow it. The container therefore works offline with no runtime download. The model is overridable at build via the `EMBED_MODEL` build arg (keep it in sync with `memory.embedding.model`). See [Memory → Tier 2](/docs/memory#tier-2-semantic-retrieval-relevance-ranked-injection).
+
 ## Volumes and persistence
 
 The Docker Compose file mounts these paths:
