@@ -42,7 +42,7 @@
     }
     window.showToast = showToast;
 
-    function llmTab(provider, apiKey, model, openaiKey, openaiBaseUrl, googleKey, googleBaseUrl, grokKey, grokBaseUrl, deepseekKey, deepseekBaseUrl, extractionProvider, extractionModel, consolidationProvider, consolidationModel, gdEnabled, gdProvider, gdModel, trEnabled, trProvider, trModel, promptToolUsageOverride, promptHistoryOverride, defaultToolUsage, defaultHistoryHandling, promptCaptureEnabled, compactionProvider, compactionModel, thinkingLevel) {
+    function llmTab(provider, apiKey, model, openaiKey, openaiBaseUrl, googleKey, googleBaseUrl, grokKey, grokBaseUrl, deepseekKey, deepseekBaseUrl, extractionProvider, extractionModel, consolidationProvider, consolidationModel, gdEnabled, gdProvider, gdModel, trEnabled, trProvider, trModel, promptToolUsageOverride, promptHistoryOverride, defaultToolUsage, defaultHistoryHandling, promptCaptureEnabled, compactionProvider, compactionModel, thinkingLevel, extractionThinkingLevel, consolidationThinkingLevel, gdThinkingLevel, trThinkingLevel, compactionThinkingLevel) {
       const currentProvider = provider || 'anthropic';
       return {
         providerOptions: [
@@ -56,6 +56,14 @@
         apiKey: apiKey || '',
         model: model || '',
         thinkingLevel: thinkingLevel || '',
+        extractionThinkingLevel: extractionThinkingLevel || '',
+        consolidationThinkingLevel: consolidationThinkingLevel || '',
+        gdThinkingLevel: gdThinkingLevel || '',
+        trThinkingLevel: trThinkingLevel || '',
+        compactionThinkingLevel: compactionThinkingLevel || '',
+        fetchedLevels: {anthropic: [], openai: [], google: [], grok: [], deepseek: []},
+        fetchingLevels: {anthropic: false, openai: false, google: false, grok: false, deepseek: false},
+        fetchLevelsResult: {anthropic: '', openai: '', google: '', grok: '', deepseek: ''},
         openaiKey: openaiKey || '',
         openaiBaseUrl: openaiBaseUrl || '',
         googleKey: googleKey || '',
@@ -169,6 +177,56 @@
           if (!id) return false;
           return ['opus', 'sonnet', 'thinking', 'pro', 'deep-think', 'reasoner', 'grok-4']
             .some(pat => id.includes(pat));
+        },
+        // Effort values offered in the thinking-level datalist. Anthropic can be
+        // enriched live via "Fetch levels"; others fall back to the common set.
+        levelOptions(prov) {
+          const fetched = this.fetchedLevels[prov];
+          if (fetched && fetched.length) return fetched;
+          return ['low', 'medium', 'high'];
+        },
+        fetchThinkingLevels(service, model) {
+          const apiKey = this.keyFor(service);
+          if (!apiKey) { this.fetchLevelsResult[service] = 'Missing API key — save/enter it first'; return; }
+          if (!model) { this.fetchLevelsResult[service] = 'Enter a model id first'; return; }
+          this.fetchingLevels[service] = true;
+          this.fetchLevelsResult[service] = '';
+          fetch('/setup/thinking-levels', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ' + (localStorage.getItem('admin_api_key') || '')
+            },
+            body: JSON.stringify({service: service, api_key: apiKey, model: model})
+          })
+            .then(r => r.json())
+            .then(d => {
+              if (d.ok && Array.isArray(d.levels) && d.levels.length) {
+                this.fetchedLevels[service] = d.levels;
+                this.fetchLevelsResult[service] = 'Supported: ' + d.levels.join(', ');
+              } else if (d.ok) {
+                this.fetchLevelsResult[service] = d.supported ? 'Thinking supported (no effort levels reported)' : 'Model does not support thinking';
+              } else {
+                this.fetchLevelsResult[service] = 'Failed: ' + (d.error || 'unknown');
+              }
+            })
+            .catch(e => { this.fetchLevelsResult[service] = 'Error: ' + e.message; })
+            .finally(() => { this.fetchingLevels[service] = false; });
+        },
+        // Docs for the reasoning-effort value to type, per provider.
+        providerDocsUrl(prov) {
+          return ({
+            anthropic: 'https://platform.claude.com/docs/en/build-with-claude/effort',
+            openai: 'https://platform.openai.com/docs/guides/reasoning',
+            google: 'https://ai.google.dev/gemini-api/docs/thinking',
+            grok: 'https://docs.x.ai/docs/guides/reasoning',
+            deepseek: 'https://api-docs.deepseek.com/guides/reasoning_model'
+          })[prov] || '';
+        },
+        // True when a background kind points at the exact same provider+model as
+        // main inference — surfaced in the UI so shared config is obvious.
+        sameAsMain(prov, model) {
+          return !!model && prov === this.provider && model === this.model;
         },
         fetchModels(service) {
           const apiKey = this.keyFor(service);
