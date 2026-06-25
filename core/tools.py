@@ -40,14 +40,14 @@ target repository. Use `-o json` / `gh api` and parse JSON when you need fields.
 
 # Advertisement injected into the system prompt when `browser` is active.
 _BROWSER_PROMPT = """<tool name="browser">
-A headless browser (`tools/browser.py`, Playwright) is available via `run_command`
+A headless browser (`/app/tools/browser.py`, Playwright) is available via `run_command`
 for JS-heavy pages and acting on the user's behalf. Prefer an existing API/CLI
 over the browser whenever one exists — it is a last resort.
 Verbs (always pass `--url`; add `--profile NAME` to reuse a logged-in session):
-  python3 tools/browser.py read --url URL                  # readable page text
-  python3 tools/browser.py screenshot --url URL            # save a PNG to ~/Downloads
-  python3 tools/browser.py act --url URL --profile P --steps JSON
-  python3 tools/browser.py profiles                         # list saved sessions
+  python3 /app/tools/browser.py read --url URL                  # readable page text
+  python3 /app/tools/browser.py screenshot --url URL            # save a PNG to ~/Downloads
+  python3 /app/tools/browser.py act --url URL --profile P --steps JSON
+  python3 /app/tools/browser.py profiles                        # list saved sessions
 `read`/`screenshot` run without asking. `act` changes state (click/fill/submit)
 so it asks for approval each time; on chat channels the approval shows a
 screenshot of the page. `--steps` is an ordered JSON array of single-key objects:
