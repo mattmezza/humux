@@ -12,6 +12,7 @@ A self-hosted personal AI agent that runs in a single Docker container. MPA acts
 - **Scheduled tasks** — Cron-based jobs for morning briefings, email checks, contact sync, and custom tasks
 - **Voice** — Speech-to-text (faster-whisper) and text-to-speech (edge-tts)
 - **Web search** — Tavily integration for real-time information
+- **Browser automation** — Optional headless browser (Playwright) to read JS-heavy pages and act on sites, with persistent logged-in profiles and per-domain approval (off by default)
 - **Permissions** — Glob-pattern rules (ALWAYS/ASK/NEVER) with interactive Telegram approval for write actions
 - **Admin UI** — Web dashboard for configuration, skills editing, memory inspection, job management, and agent lifecycle control
 - **Skills** — Teach the agent new capabilities by writing markdown files instead of code
@@ -153,6 +154,7 @@ Example skills included:
 - `voice.md` — Voice response conventions
 - `weather.md` — Weather lookups
 - `jq.md` — JSON processing
+- `browser.md` — Headless browser: read JS-heavy pages and act on sites
 
 Create new skills by adding `.md` files to `skills/`, through the admin UI's skill editor, or via the skills CLI:
 

@@ -37,6 +37,17 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 COPY pyproject.toml uv.lock ./
 RUN uv sync --no-dev --no-install-project
 
+# Optionally bundle Chromium for the browser tool (Tools tab: browser, issue #16).
+# OFF by default to keep the image lean — the tool is disabled by default and a
+# lean deployment can point it at a sidecar Chromium via tools.browser.cdp_url.
+# Bundle it with:  docker build --build-arg INSTALL_BROWSER=true .
+ARG INSTALL_BROWSER=false
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN if [ "$INSTALL_BROWSER" = "true" ]; then \
+      uv run playwright install --with-deps chromium && \
+      chmod -R a+rx /ms-playwright; \
+    fi
+
 # Create non-root user
 RUN groupadd --gid 10001 mpa && \
     useradd --uid 10001 --gid 10001 --create-home --shell /bin/bash mpa

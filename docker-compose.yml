@@ -12,3 +12,20 @@ services:
       - ./personalia.md:/app/personalia.md
       - ./skills:/app/skills:ro
     env_file: .env
+    # Browser tool (issue #16). Two options:
+    #  - All-in-one: build with `--build-arg INSTALL_BROWSER=true` to bundle Chromium.
+    #  - Lean core: run the sidecar below and set tools.browser.cdp_url to its CDP
+    #    endpoint (admin UI). Profiles persist on the shared ./data volume.
+    # environment:
+    #   - BROWSER_CDP_URL=ws://browser:3000
+
+  # Optional headless-Chromium sidecar (keeps the main image lean). Start with:
+  #   docker compose --profile browser up
+  # Exposes a CDP endpoint; point tools.browser.cdp_url at ws://browser:3000.
+  # browser:
+  #   image: browserless/chrome:latest
+  #   container_name: mpa-browser
+  #   restart: unless-stopped
+  #   profiles: ["browser"]
+  #   environment:
+  #     - MAX_CONCURRENT_SESSIONS=2
