@@ -15,12 +15,14 @@ from __future__ import annotations
 import asyncio
 import itertools
 import logging
+import mimetypes
 import os
 import sys
 import time
 
 from core.agent import AgentCore
 from core.config_store import ConfigStore
+from core.models import Attachment
 
 try:  # POSIX-only: lets us watch for an ESC keypress mid-turn
     import termios
@@ -145,6 +147,31 @@ class ReplChannel:
         self.spinner.start()
 
 
+def _clipboard_image() -> tuple[bytes | None, str]:
+    """Grab a PNG/JPEG image off the system clipboard, returning (data, mime).
+
+    Tries the usual clipboard CLIs in order; returns (None, "") if none yield
+    image bytes. ponytail: shell-outs over a clipboard dep — wl-paste/xclip/
+    pbpaste already cover Wayland/X11/macOS.
+    """
+    import shutil
+    import subprocess
+
+    for mime in ("image/png", "image/jpeg"):
+        if shutil.which("wl-paste"):
+            cmd = ["wl-paste", "-t", mime]
+        elif shutil.which("xclip"):
+            cmd = ["xclip", "-selection", "clipboard", "-t", mime, "-o"]
+        elif shutil.which("pbpaste"):
+            cmd = ["pbpaste"]  # macOS: only reliably yields PNG
+        else:
+            return None, ""
+        out = subprocess.run(cmd, capture_output=True).stdout
+        if out:
+            return out, mime
+    return None, ""
+
+
 def _setup_logging(spinner: Spinner) -> None:
     handler = _SpinnerHandler(spinner)
     root = logging.getLogger()
@@ -175,13 +202,22 @@ def _print_debug_config(config, persona=None) -> None:
     print(f"\n{_CYAN}── REPL debug config ──{_RESET}")
     for k, v in rows:
         print(f"  {_DIM}{k:>10}{_RESET}  {v}")
-    print("\nESC interrupts a turn · /clear resets context · Ctrl-D or /exit quits.\n")
+    print(
+        "\nESC interrupts a turn · /img PATH [caption] or /paste [caption] sends "
+        "an image · /clear resets context · Ctrl-D or /exit quits.\n"
+    )
 
 
-async def _run_turn(agent: AgentCore, spinner: Spinner, text: str):
+async def _run_turn(agent: AgentCore, spinner: Spinner, text: str, attachments=None):
     """Run one turn, cancellable by pressing ESC. Returns None if interrupted."""
     proc = asyncio.create_task(
-        agent.process(message=text, channel="repl", user_id=USER_ID, chat_id=USER_ID)
+        agent.process(
+            message=text,
+            channel="repl",
+            user_id=USER_ID,
+            chat_id=USER_ID,
+            attachments=attachments,
+        )
     )
     fd = sys.stdin.fileno()
     loop = asyncio.get_running_loop()
@@ -286,7 +322,26 @@ async def main() -> None:
             await agent.history.clear("repl", USER_ID, USER_ID)
             print("[context cleared]\n")
             continue
-        response = await _run_turn(agent, spinner, text)
+        attachments = None
+        if text.startswith("/img "):
+            path, _, caption = text[len("/img ") :].strip().partition(" ")
+            path = os.path.expanduser(path)
+            try:
+                data = open(path, "rb").read()
+            except OSError as e:
+                print(f"[can't read image: {e}]\n")
+                continue
+            mime = mimetypes.guess_type(path)[0] or "application/octet-stream"
+            attachments = [Attachment(data=data, mime_type=mime, filename=os.path.basename(path))]
+            text = caption.strip() or "What's in this image?"
+        elif text == "/paste" or text.startswith("/paste "):
+            data, mime = _clipboard_image()
+            if not data:
+                print("[no image in clipboard]\n")
+                continue
+            attachments = [Attachment(data=data, mime_type=mime, filename="clipboard")]
+            text = text[len("/paste") :].strip() or "What's in this image?"
+        response = await _run_turn(agent, spinner, text, attachments)
         if response is None:
             print("\n[interrupted]\n")
             continue

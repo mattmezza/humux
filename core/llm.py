@@ -156,7 +156,7 @@ class LLMClient:
         self.thinking_level = (thinking_level or "").strip().lower()
         self._client: Any
         if self.provider == "anthropic":
-            self._client = AsyncAnthropic(api_key=api_key)
+            self._client = AsyncAnthropic(api_key=api_key, timeout=60)
         else:
             resolved_base = base_url or _DEFAULT_BASE_URLS.get(self.provider)
             try:
@@ -167,6 +167,7 @@ class LLMClient:
             client_kwargs: dict[str, Any] = {
                 "api_key": api_key,
                 "base_url": resolved_base or None,
+                "timeout": 60,
             }
             self._client = cast(Any, client_class)(**client_kwargs)  # type: ignore[call-arg]
 
