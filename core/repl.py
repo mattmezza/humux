@@ -242,11 +242,11 @@ async def main() -> None:
 
     if args.persona is not None:
         # Validate against the persona store so a typo fails loudly with options.
-        from core.personas import PersonaStore
+        from core.personae import PersonaStore
 
-        ps = PersonaStore(db_path=config.agent.personas_db_path, seed_dir=config.agent.personas_dir)
+        ps = PersonaStore(db_path=config.agent.personae_db_path, seed_dir=config.agent.personae_dir)
         if not await ps.get(args.persona):
-            names = [p.name for p in await ps.list_personas()]
+            names = [p.name for p in await ps.list_personae()]
             print(f"Unknown persona: {args.persona!r}. Available: {', '.join(names) or '(none)'}")
             return
         config.agent.active_persona = args.persona

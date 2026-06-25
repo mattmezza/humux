@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from core.config import Config
 from core.goal_decomposition import DecomposedGoal
-from core.personas import Persona
+from core.personae import Persona
 from core.tools import active_tool_prompts
 
 DEFAULT_TOOL_USAGE_BLOCK = """For write actions

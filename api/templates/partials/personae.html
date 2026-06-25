@@ -1,4 +1,4 @@
-{# Personas tab partial — swappable agent identities #}
+{# Personae tab partial — swappable agent identities #}
 <div x-data="{ filter: '' }">
   {# Active-persona strip #}
   <div class="card mb-4">
@@ -18,7 +18,7 @@
       </div>
       {% if active %}
       <button class="btn btn-sm"
-              hx-post="/personas/activate" hx-vals='{"name": ""}'
+              hx-post="/personae/activate" hx-vals='{"name": ""}'
               hx-target="#tab-content" hx-swap="innerHTML">
         Use default
       </button>
@@ -31,15 +31,15 @@
 
   {# Toolbar #}
   <div class="flex items-center gap-2 mb-4 flex-wrap">
-    <a class="btn btn-sm" href="/admin/personas/new">+ Create persona</a>
+    <a class="btn btn-sm" href="/admin/personae/new">+ Create persona</a>
     <input type="text" class="input-sm flex-1" style="max-width:280px"
-           placeholder="Filter personas..." x-model="filter">
-    <span class="text-muted text-xs">{{ personas|length }} personas</span>
+           placeholder="Filter personae..." x-model="filter">
+    <span class="text-muted text-xs">{{ personae|length }} personae</span>
   </div>
 
   {# Card grid — 1 col on phone, 2 on small, 3 on large #}
   <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-    {% for p in personas %}
+    {% for p in personae %}
     <div class="card flex flex-col gap-2 {% if p.name == active %}border-accent{% endif %}"
          x-show="!filter
                  || {{ p.name|tojson|forceescape }}.toLowerCase().includes(filter.toLowerCase())
@@ -66,14 +66,14 @@
         <button class="btn btn-sm" disabled>Active</button>
         {% else %}
         <button class="btn-primary btn-sm"
-                hx-post="/personas/activate" hx-vals='{"name": {{ p.name|tojson }} }'
+                hx-post="/personae/activate" hx-vals='{"name": {{ p.name|tojson }} }'
                 hx-target="#tab-content" hx-swap="innerHTML">
           Use
         </button>
         {% endif %}
-        <a class="btn btn-sm" href="/admin/personas/{{ p.name }}">edit</a>
+        <a class="btn btn-sm" href="/admin/personae/{{ p.name }}">edit</a>
         <button class="btn-danger btn-sm ml-auto"
-                hx-post="/personas/delete" hx-target="#tab-content" hx-swap="innerHTML"
+                hx-post="/personae/delete" hx-target="#tab-content" hx-swap="innerHTML"
                 hx-vals='{"name": {{ p.name|tojson }} }'
                 hx-confirm="Delete persona &quot;{{ p.name }}&quot;?">
           x
@@ -81,8 +81,8 @@
       </div>
     </div>
     {% endfor %}
-    {% if not personas %}
-    <div class="text-muted text-xs text-center py-6 col-span-full">No personas yet.</div>
+    {% if not personae %}
+    <div class="text-muted text-xs text-center py-6 col-span-full">No personae yet.</div>
     {% endif %}
   </div>
 </div>

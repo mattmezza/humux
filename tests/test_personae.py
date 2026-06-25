@@ -6,7 +6,7 @@ import pytest
 
 from core.agent import scoped_tools
 from core.config import Config
-from core.personas import Persona, PersonaStore, parse_markdown, to_markdown
+from core.personae import Persona, PersonaStore, parse_markdown, to_markdown
 from core.prompt_builder import build_prompt_sections
 
 
@@ -128,7 +128,7 @@ def test_prompt_uses_persona_identity() -> None:
 async def test_store_seed_lists_files(tmp_path) -> None:
     (tmp_path / "coach.md").write_text("---\nrole: Coach\nskills: [memory]\n---\n")
     store = PersonaStore(db_path=str(tmp_path / "p.db"), seed_dir=tmp_path)
-    listed = await store.list_personas()
+    listed = await store.list_personae()
     assert [p.name for p in listed] == ["coach"]
     assert (await store.get("coach")).role == "Coach"
 

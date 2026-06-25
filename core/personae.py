@@ -23,7 +23,7 @@ import aiosqlite
 import yaml
 
 _SCHEMA = """
-CREATE TABLE IF NOT EXISTS personas (
+CREATE TABLE IF NOT EXISTS personae (
     name TEXT PRIMARY KEY,
     agent_name TEXT DEFAULT '',
     role TEXT DEFAULT '',
@@ -138,9 +138,9 @@ def to_markdown(p: Persona) -> str:
 
 
 class PersonaStore:
-    """SQLite-backed store for personas, seeded from a markdown directory."""
+    """SQLite-backed store for personae, seeded from a markdown directory."""
 
-    def __init__(self, db_path: str = "data/personas.db", seed_dir: str | Path = "personas/"):
+    def __init__(self, db_path: str = "data/personae.db", seed_dir: str | Path = "personae/"):
         self.db_path = db_path
         self.seed_dir = Path(seed_dir) if seed_dir else None
         self._ready = False
@@ -154,13 +154,13 @@ class PersonaStore:
         self._ready = True
 
     async def ensure_seeded(self) -> bool:
-        """Seed missing personas from the seed directory (idempotent)."""
+        """Seed missing personae from the seed directory (idempotent)."""
         await self._ensure_schema()
         if not self.seed_dir or not self.seed_dir.exists():
             return False
         inserted = 0
         async with aiosqlite.connect(self.db_path) as db:
-            cursor = await db.execute("SELECT name FROM personas")
+            cursor = await db.execute("SELECT name FROM personae")
             existing = {row[0] for row in await cursor.fetchall()}
             for f in sorted(self.seed_dir.glob("*.md")):
                 content = f.read_text().strip()
@@ -174,7 +174,7 @@ class PersonaStore:
     @staticmethod
     async def _upsert(db: aiosqlite.Connection, p: Persona) -> None:
         await db.execute(
-            "INSERT INTO personas "
+            "INSERT INTO personae "
             "(name, agent_name, role, emoji, voice, personalia, character, skills, tools, secrets) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(name) DO UPDATE SET "
@@ -211,18 +211,18 @@ class PersonaStore:
             secrets=_as_list(row["secrets"]),
         )
 
-    async def list_personas(self) -> list[Persona]:
+    async def list_personae(self) -> list[Persona]:
         await self.ensure_seeded()
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
-            cursor = await db.execute("SELECT * FROM personas ORDER BY name")
+            cursor = await db.execute("SELECT * FROM personae ORDER BY name")
             return [self._row_to_persona(r) for r in await cursor.fetchall()]
 
     async def get(self, name: str) -> Persona | None:
         await self.ensure_seeded()
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
-            cursor = await db.execute("SELECT * FROM personas WHERE name = ?", (name,))
+            cursor = await db.execute("SELECT * FROM personae WHERE name = ?", (name,))
             row = await cursor.fetchone()
             return self._row_to_persona(row) if row else None
 
@@ -235,7 +235,7 @@ class PersonaStore:
     async def delete(self, name: str) -> bool:
         await self._ensure_schema()
         async with aiosqlite.connect(self.db_path) as db:
-            cursor = await db.execute("DELETE FROM personas WHERE name = ?", (name,))
+            cursor = await db.execute("DELETE FROM personae WHERE name = ?", (name,))
             await db.commit()
             return cursor.rowcount > 0
 
@@ -277,4 +277,4 @@ Extra prose in the body.
     p2 = parse_markdown(to_markdown(p), name="fitness-coach")
     assert p2.agent_name == p.agent_name and p2.skills == p.skills and p2.tools == p.tools
     assert p2.personalia.strip() == p.personalia.strip()
-    print("personas.py self-check OK")
+    print("personae.py self-check OK")

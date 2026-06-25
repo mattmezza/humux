@@ -27,7 +27,7 @@ from core.llm import LLMClient, LLMToolCall
 from core.memory import MemoryStore
 from core.models import AgentResponse, Attachment
 from core.permissions import PermissionEngine, PermissionLevel, format_approval_message
-from core.personas import Persona, PersonaStore
+from core.personae import Persona, PersonaStore
 from core.prompt_builder import build_prompt_sections
 from core.scheduler import AgentScheduler
 from core.skills import SkillsEngine
@@ -246,7 +246,7 @@ TOOLS = [
 def scoped_tools(persona: Persona | None) -> list[dict]:
     """Filter the function-tool schemas by the active persona's tool scope.
 
-    ``load_skill`` is always retained — it is the core mechanic personas rely on
+    ``load_skill`` is always retained — it is the core mechanic personae rely on
     to read their allowlisted skills. An empty scope (or no persona) = all tools.
     """
     if persona is None or not persona.tools:
@@ -262,9 +262,9 @@ class AgentCore:
             db_path=config.agent.skills_db_path,
             seed_dir=config.agent.skills_dir,
         )
-        self.personas = PersonaStore(
-            db_path=config.agent.personas_db_path,
-            seed_dir=config.agent.personas_dir,
+        self.personae = PersonaStore(
+            db_path=config.agent.personae_db_path,
+            seed_dir=config.agent.personae_dir,
         )
         self.executor = ToolExecutor(tool_env=tool_env(config))
         self.history = ConversationHistory(
@@ -391,7 +391,7 @@ class AgentCore:
         if not name:
             return None
         try:
-            return await self.personas.get(name)
+            return await self.personae.get(name)
         except Exception:
             log.exception("Failed to load active persona %r", name)
             return None

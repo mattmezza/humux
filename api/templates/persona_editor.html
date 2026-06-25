@@ -13,7 +13,7 @@
         <button class="btn btn-sm" :class="mode === 'guided' && 'btn-primary'" @click="mode = 'guided'">Guided</button>
         <button class="btn btn-sm" :class="mode === 'raw' && 'btn-primary'" @click="syncRaw(); mode = 'raw'">Raw markdown</button>
       </div>
-      <a class="btn btn-sm" href="/admin?tab=personas">Back to Personas</a>
+      <a class="btn btn-sm" href="/admin?tab=personae">Back to Personae</a>
     </div>
   </div>
 
@@ -167,7 +167,7 @@
               skills: this.skills, tools: this.tools,
               secrets: this.secretsText.split('\n').map(s => s.trim()).filter(Boolean),
             };
-        fetch('/personas', {
+        fetch('/personae', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

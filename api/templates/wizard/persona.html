@@ -2,7 +2,7 @@
   <h2 class="text-base mb-1">Pick a starting persona <span class="text-muted font-normal text-xs">(optional)</span></h2>
   <p class="text-muted text-xs mb-3">
     A persona gives your assistant a specialty — its own character, skills, and voice.
-    Keep the default for a general assistant; you can add or switch personas anytime.
+    Keep the default for a general assistant; you can add or switch personae anytime.
   </p>
 
   <div class="space-y-1.5 max-h-72 overflow-y-auto">
@@ -12,7 +12,7 @@
       <span class="text-lg">🧭</span>
       <span><span class="font-semibold">Default</span> — general assistant</span>
     </label>
-    {% for p in step_ctx.personas %}
+    {% for p in step_ctx.personae %}
     <label class="flex items-center gap-2 text-sm cursor-pointer p-2 rounded hover:bg-surface"
            :class="selected === {{ p.name|tojson }} && 'bg-accent-dim/20'">
       <input type="radio" name="persona" value="{{ p.name }}" x-model="selected">

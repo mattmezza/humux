@@ -129,8 +129,8 @@ async def _wizard_step_context(step: str, config_store: ConfigStore) -> dict[str
     elif step == "persona":
         store = await _persona_store_from_config(config_store)
         # Plain dicts so the wizard template (Jinja) can read emoji/role/name.
-        ctx["personas"] = [  # type: ignore[assignment]
-            {"name": p.name, "role": p.role, "emoji": p.emoji} for p in await store.list_personas()
+        ctx["personae"] = [  # type: ignore[assignment]
+            {"name": p.name, "role": p.role, "emoji": p.emoji} for p in await store.list_personae()
         ]
         ctx["active"] = (await config_store.get("agent.active_persona") or "").strip()
     elif step == "email":
@@ -677,12 +677,12 @@ def create_admin_app(
         all_skills = [s["name"] for s in await store.list_skills()]
         return {"all_skills": all_skills, "all_tools": GATEABLE_TOOLS}
 
-    @app.get("/admin/personas/new", response_model=None)
+    @app.get("/admin/personae/new", response_model=None)
     async def admin_persona_new() -> Response:
         """New persona editor page."""
         if not await config_store.is_setup_complete():
             return RedirectResponse("/setup", status_code=302)
-        from core.personas import Persona, to_markdown
+        from core.personae import Persona, to_markdown
 
         ctx = await _persona_editor_ctx()
         return _render(
@@ -693,12 +693,12 @@ def create_admin_app(
             **ctx,
         )
 
-    @app.get("/admin/personas/{name}", response_model=None)
+    @app.get("/admin/personae/{name}", response_model=None)
     async def admin_persona_editor(name: str) -> Response:
         """Persona editor page."""
         if not await config_store.is_setup_complete():
             return RedirectResponse("/setup", status_code=302)
-        from core.personas import to_markdown
+        from core.personae import to_markdown
 
         store = await _persona_store_from_config(config_store)
         persona = await store.get(name)
@@ -797,13 +797,13 @@ def create_admin_app(
         skills = await store.list_skills()
         return _render_partial("partials/skills.html", skills=skills)
 
-    @app.get("/partials/personas", dependencies=[Depends(auth)])
-    async def partial_personas() -> HTMLResponse:
-        """Personas tab partial — cards + active-persona selector."""
+    @app.get("/partials/personae", dependencies=[Depends(auth)])
+    async def partial_personae() -> HTMLResponse:
+        """Personae tab partial — cards + active-persona selector."""
         store = await _persona_store_from_config(config_store)
-        personas = await store.list_personas()
+        personae = await store.list_personae()
         active = (await config_store.get("agent.active_persona") or "").strip()
-        return _render_partial("partials/personas.html", personas=personas, active=active)
+        return _render_partial("partials/personae.html", personae=personae, active=active)
 
     @app.get("/partials/channels", dependencies=[Depends(auth)])
     async def partial_channels() -> HTMLResponse:
@@ -2001,34 +2001,34 @@ def create_admin_app(
         skills = await store.list_skills()
         return _render_partial("partials/skills.html", skills=skills)
 
-    # ── Personas API ───────────────────────────────────────────────────
+    # ── Personae API ───────────────────────────────────────────────────
 
-    async def _personas_partial() -> HTMLResponse:
+    async def _personae_partial() -> HTMLResponse:
         store = await _persona_store_from_config(config_store)
-        personas = await store.list_personas()
+        personae = await store.list_personae()
         active = (await config_store.get("agent.active_persona") or "").strip()
-        return _render_partial("partials/personas.html", personas=personas, active=active)
+        return _render_partial("partials/personae.html", personae=personae, active=active)
 
-    @app.get("/personas", dependencies=[Depends(auth)])
-    async def list_personas() -> dict:
+    @app.get("/personae", dependencies=[Depends(auth)])
+    async def list_personae() -> dict:
         from dataclasses import asdict
 
-        from core.personas import to_markdown
+        from core.personae import to_markdown
 
         store = await _persona_store_from_config(config_store)
-        personas = await store.list_personas()
+        personae = await store.list_personae()
         active = (await config_store.get("agent.active_persona") or "").strip()
         return {
-            "count": len(personas),
+            "count": len(personae),
             "active": active,
-            "personas": [{**asdict(p), "markdown": to_markdown(p)} for p in personas],
+            "personae": [{**asdict(p), "markdown": to_markdown(p)} for p in personae],
         }
 
-    @app.get("/personas/{name}", dependencies=[Depends(auth)])
+    @app.get("/personae/{name}", dependencies=[Depends(auth)])
     async def get_persona(name: str) -> dict:
         from dataclasses import asdict
 
-        from core.personas import to_markdown
+        from core.personae import to_markdown
 
         store = await _persona_store_from_config(config_store)
         persona = await store.get(name)
@@ -2036,9 +2036,9 @@ def create_admin_app(
             raise HTTPException(404, f"Persona not found: {name}")
         return {**asdict(persona), "markdown": to_markdown(persona)}
 
-    @app.post("/personas", dependencies=[Depends(auth)])
+    @app.post("/personae", dependencies=[Depends(auth)])
     async def upsert_persona(body: PersonaUpsertIn) -> HTMLResponse:
-        from core.personas import Persona, parse_markdown
+        from core.personae import Persona, parse_markdown
 
         name = body.name.strip()
         if not name:
@@ -2061,9 +2061,9 @@ def create_admin_app(
             )
         store = await _persona_store_from_config(config_store)
         await store.upsert(persona)
-        return await _personas_partial()
+        return await _personae_partial()
 
-    @app.post("/personas/delete", dependencies=[Depends(auth)])
+    @app.post("/personae/delete", dependencies=[Depends(auth)])
     async def delete_persona(request: Request) -> HTMLResponse:
         content_type = request.headers.get("content-type", "")
         if "application/x-www-form-urlencoded" in content_type:
@@ -2079,7 +2079,7 @@ def create_admin_app(
         # If the deleted persona was active, fall back to the default identity.
         if (await config_store.get("agent.active_persona") or "").strip() == name:
             await _set_active_persona("")
-        return await _personas_partial()
+        return await _personae_partial()
 
     async def _set_active_persona(name: str) -> None:
         """Persist the active persona and hot-reload it into the running agent."""
@@ -2088,7 +2088,7 @@ def create_admin_app(
         if agent:
             agent.config.agent.active_persona = name
 
-    @app.post("/personas/activate", dependencies=[Depends(auth)])
+    @app.post("/personae/activate", dependencies=[Depends(auth)])
     async def activate_persona(request: Request) -> HTMLResponse:
         content_type = request.headers.get("content-type", "")
         if "application/x-www-form-urlencoded" in content_type:
@@ -2101,7 +2101,7 @@ def create_admin_app(
             if not await store.get(name):
                 raise HTTPException(404, f"Persona not found: {name}")
         await _set_active_persona(name)
-        return await _personas_partial()
+        return await _personae_partial()
 
     # ── Memory API ─────────────────────────────────────────────────────
 
@@ -2616,15 +2616,15 @@ async def _skills_store_from_config(config_store: ConfigStore) -> SkillsStore:
 
 
 async def _persona_store_from_config(config_store: ConfigStore):
-    from core.personas import PersonaStore
+    from core.personae import PersonaStore
 
-    db_path = await config_store.get("agent.personas_db_path") or "data/personas.db"
-    seed_dir = await config_store.get("agent.personas_dir") or "personas/"
+    db_path = await config_store.get("agent.personae_db_path") or "data/personae.db"
+    seed_dir = await config_store.get("agent.personae_dir") or "personae/"
     return PersonaStore(db_path=db_path, seed_dir=seed_dir)
 
 
 # Function-tools that a persona may scope. ``load_skill`` is intentionally
-# excluded — it is always available (the core mechanic personas use to read
+# excluded — it is always available (the core mechanic personae use to read
 # their allowlisted skills). Kept here (not imported from core.agent) to avoid
 # pulling the agent's heavy import graph into the admin app.
 GATEABLE_TOOLS = [
