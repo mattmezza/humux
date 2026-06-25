@@ -503,6 +503,7 @@ class AgentCore:
         request_state = self._new_request_state()
         tool_log: list[dict] = []
         while response.tool_calls:
+            await self._batch_approve_writes(response.tool_calls, channel, user_id, request_state)
             tool_results = []
             for call in response.tool_calls:
                 result = await self._execute_tool(call, channel, user_id, request_state)
@@ -599,6 +600,7 @@ class AgentCore:
         request_state = self._new_request_state()
         tool_log: list[dict] = []
         while response.tool_calls:
+            await self._batch_approve_writes(response.tool_calls, channel, user_id, request_state)
             tool_results = []
             for call in response.tool_calls:
                 result = await self._execute_tool(call, channel, user_id, request_state)
@@ -1107,21 +1109,79 @@ class AgentCore:
     async def _request_approval(
         self, tool_name: str, params: dict, channel: str, user_id: str
     ) -> str:
-        """Ask the user for approval via their channel (e.g. Telegram inline keyboard).
+        """Ask the user to approve a single tool call via their channel.
 
-        Creates a pending approval future, sends the prompt to the channel,
-        and waits for the user to respond.
+        Returns one of ``"approved"``, ``"denied"``, or ``"skipped"``.
+        """
+        return await self._await_approval(
+            format_approval_message(tool_name, params),
+            channel,
+            user_id,
+            tool_name,
+            params,
+        )
 
+    async def _batch_approve_writes(
+        self,
+        tool_calls: list,
+        channel: str,
+        user_id: str,
+        request_state: dict,
+    ) -> None:
+        """Approve a turn's pending write actions with a single prompt.
+
+        The LLM can emit several write tool calls in one response (e.g. "set
+        reminders for the next 5 days"). Prompting for each separately forces
+        the user to approve one-at-a-time. Instead, collect every write that
+        still needs a decision, ask once, and record the decision per action
+        so :meth:`_execute_tool` reuses it instead of prompting again.
+
+        A lone write is left to the per-call path — batching only helps when
+        there are two or more. The decision is all-or-nothing across the batch.
+        """
+        if channel == "system":
+            return
+        write_decisions = request_state.setdefault("write_decisions", {})
+        pending: list[tuple[str, str]] = []  # (signature, description)
+        seen: set[str] = set()
+        for call in tool_calls:
+            if not self.permissions.is_write_action(call.name, call.arguments):
+                continue
+            if self.permissions.check(call.name, call.arguments) != PermissionLevel.ASK:
+                continue
+            sig = self._write_signature(call.name, call.arguments)
+            if sig in write_decisions or sig in seen:
+                continue
+            seen.add(sig)
+            pending.append((sig, format_approval_message(call.name, call.arguments)))
+        if len(pending) < 2:
+            return
+        lines = "\n\n".join(f"{i}. {desc}" for i, (_, desc) in enumerate(pending, 1))
+        description = f"Approve these {len(pending)} actions?\n\n{lines}"
+        decision = await self._await_approval(description, channel, user_id)
+        for sig, _ in pending:
+            write_decisions[sig] = decision
+
+    async def _await_approval(
+        self,
+        description: str,
+        channel: str,
+        user_id: str,
+        tool_name: str | None = None,
+        params: dict | None = None,
+    ) -> str:
+        """Send an approval prompt to the channel and wait for the response.
+
+        Creates a pending approval future, sends the prompt, and waits.
         Returns one of ``"approved"``, ``"denied"``, or ``"skipped"``.
         """
         ch = self.channels.get(channel)
         if not ch:
             # No channel available to ask — auto-approve (e.g. admin API)
-            log.warning("No channel %r for approval, auto-approving %s", channel, tool_name)
+            log.warning("No channel %r for approval, auto-approving", channel)
             return "approved"
 
         request_id, future = self.permissions.create_approval_request(tool_name, params)
-        description = format_approval_message(tool_name, params)
 
         # Send the approval prompt via the channel
         try:
