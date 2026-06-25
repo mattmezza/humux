@@ -4,10 +4,16 @@ from __future__ import annotations
 
 import importlib
 import json
+import logging
 from dataclasses import dataclass
 from typing import Any, cast
 
 from anthropic import AsyncAnthropic
+
+# Dedicated logger for model chain-of-thought. Silent by default (WARNING);
+# the REPL bumps it to INFO to stream reasoning live without spamming server logs.
+reasoning_log = logging.getLogger("core.llm.reasoning")
+reasoning_log.setLevel(logging.WARNING)
 
 _DEFAULT_BASE_URLS = {
     "google": "https://generativelanguage.googleapis.com/v1beta/openai",
@@ -31,6 +37,7 @@ class LLMToolCall:
 class LLMResponse:
     text: str
     tool_calls: list[LLMToolCall]
+    reasoning: str = ""  # model chain-of-thought, when the provider exposes it
     raw: object | None = None
     # Token usage for the request, when the provider reports it. Keys:
     # input_tokens, output_tokens, cache_read_input_tokens,
@@ -209,6 +216,7 @@ class LLMClient:
             )
             tool_calls = []
             text_parts = []
+            reasoning_parts = []
             for block in response.content:
                 block_any = cast(Any, block)
                 if getattr(block_any, "type", None) == "tool_use":
@@ -221,9 +229,15 @@ class LLMClient:
                     )
                 if getattr(block_any, "type", None) == "text":
                     text_parts.append(getattr(block_any, "text", ""))
+                if getattr(block_any, "type", None) == "thinking":
+                    reasoning_parts.append(getattr(block_any, "thinking", ""))
+            reasoning = "\n".join(p for p in reasoning_parts if p).strip()
+            if reasoning:
+                reasoning_log.info("%s", reasoning)
             return LLMResponse(
                 text="\n".join(text_parts).strip(),
                 tool_calls=tool_calls,
+                reasoning=reasoning,
                 raw=response.content,
                 usage=_anthropic_usage(response),
             )
@@ -247,9 +261,16 @@ class LLMClient:
             except json.JSONDecodeError:
                 args = {}
             tool_calls.append(LLMToolCall(id=call.id, name=call.function.name, arguments=args))
+        # DeepSeek/others expose CoT as message.reasoning_content (or .reasoning).
+        reasoning = (
+            getattr(message, "reasoning_content", None) or getattr(message, "reasoning", None) or ""
+        ).strip()
+        if reasoning:
+            reasoning_log.info("%s", reasoning)
         return LLMResponse(
             text=(message.content or "").strip(),
             tool_calls=tool_calls,
+            reasoning=reasoning,
             raw=message.model_dump(exclude_none=True),
             usage=_openai_usage(response),
         )
