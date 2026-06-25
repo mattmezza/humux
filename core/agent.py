@@ -706,7 +706,11 @@ class AgentCore:
         write_sig = self._write_signature(name, params) if is_write_action else None
         executed_writes = request_state.setdefault("executed_writes", set())
         write_decisions = request_state.setdefault("write_decisions", {})
-        if is_write_action and write_sig in executed_writes:
+        # ``manage_jobs`` is exempt: job creation is idempotent and guarded on
+        # job id + status inside the tool, so an earlier write in the same turn
+        # must never block a (re)create — that was the "already fulfilled" bug
+        # against brand-new job ids (issue #11).
+        if is_write_action and name != "manage_jobs" and write_sig in executed_writes:
             return {
                 "error": (
                     "This exact action was already completed in this request; not repeating it."
@@ -978,6 +982,18 @@ class AgentCore:
             job_id = params.get("job_id", "").strip()
             if not job_id:
                 job_id = f"agent_{uuid.uuid4().hex[:8]}"
+            else:
+                # Block only when this explicit id is already live (active or
+                # paused). Done/cancelled ids may be recreated; auto-generated
+                # ids are unique by construction. (issue #11)
+                existing = await self.job_store.get_job(job_id)
+                if existing and existing["status"] in ("active", "paused"):
+                    return {
+                        "error": (
+                            f"Job already exists and is {existing['status']}: {job_id}. "
+                            "Cancel it first or use a different id."
+                        )
+                    }
 
             channel = params.get("channel", "telegram")
             description = params.get("description", "")

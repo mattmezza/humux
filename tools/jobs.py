@@ -116,10 +116,11 @@ def cmd_create(args) -> None:
         print(json.dumps({"error": "Must specify --cron or --once"}))
         sys.exit(1)
 
-    # Check if job already exists
+    # Block only a live (active/paused) id; done/cancelled may be recreated. (issue #11)
     existing = store.get_job_sync(args.id)
-    if existing:
-        print(json.dumps({"error": f"Job already exists: {args.id}. Use 'edit' to modify."}))
+    if existing and existing["status"] in ("active", "paused"):
+        msg = f"Job already exists and is {existing['status']}: {args.id}. Use 'edit' to modify."
+        print(json.dumps({"error": msg}))
         sys.exit(1)
 
     job = store.upsert_job_sync(
