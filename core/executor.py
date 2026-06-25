@@ -6,6 +6,7 @@ import asyncio
 import json
 import os
 import shutil
+import sys
 from pathlib import Path
 
 from core.email_config import himalaya_env
@@ -60,6 +61,11 @@ class ToolExecutor:
             wacli_bin = _find_wacli_bin()
             if wacli_bin != "wacli":
                 command = wacli_bin + command[5:]
+
+        # Use the running interpreter (venv-aware) instead of bare `python3`,
+        # so tool scripts see the same deps in Docker and local dev.
+        if command.startswith("python3 "):
+            command = f"{sys.executable} {command[len('python3 ') :]}"
 
         # Resolve /app/tools/ python script paths for local dev
         if "/app/tools/" not in command:

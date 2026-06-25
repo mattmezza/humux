@@ -28,6 +28,11 @@ try:  # POSIX-only: lets us watch for an ESC keypress mid-turn
 except ImportError:  # pragma: no cover - non-POSIX
     termios = tty = None
 
+try:  # readline auto-hooks input() for ↑/↓ history + line editing
+    import readline
+except ImportError:  # pragma: no cover - non-POSIX
+    readline = None
+
 log = logging.getLogger(__name__)
 
 USER_ID = "repl"
@@ -110,14 +115,33 @@ class ReplChannel:
     def __init__(self, agent: AgentCore, spinner: Spinner):
         self.agent = agent
         self.spinner = spinner
+        # Set per-turn by _run_turn: release/reclaim stdin from the ESC watcher
+        # so the approval prompt can read it (else _on_key eats the keystrokes).
+        self.pause_keys = None
+        self.resume_keys = None
 
     async def send(self, chat_id, text: str) -> None:
         print(f"\n{text}\n")
 
     async def send_approval_request(self, user_id: str, request_id: str, description: str) -> None:
         await self.spinner.stop()  # don't fight the prompt for the line
-        ans = await asyncio.to_thread(input, f"\n[approval] {description}\nallow? [y/N] ")
-        self.agent.permissions.resolve_approval(request_id, ans.strip().lower() in ("y", "yes"))
+        if self.pause_keys:
+            self.pause_keys()
+        hist_len = readline.get_current_history_length() if readline else 0
+        try:
+            ans = await asyncio.to_thread(
+                input, f"\n[approval] {description}\nApprove? Always|Yes|[No] "
+            )
+        finally:
+            if self.resume_keys:
+                self.resume_keys()
+        # Keep the approval reply out of ↑/↓ history — only real prompts belong there.
+        if readline and readline.get_current_history_length() > hist_len:
+            readline.remove_history_item(hist_len)
+        c = ans.strip().lower()[:1]  # first char: a→always, y→yes, else (incl. Enter)→deny
+        self.agent.permissions.resolve_approval(
+            request_id, approved=c in ("a", "y"), always_allow=c == "a"
+        )
         self.spinner.start()
 
 
@@ -167,9 +191,21 @@ async def _run_turn(agent: AgentCore, spinner: Spinner, text: str):
         except OSError:
             pass
 
+    chan = agent.channels.get("repl")
+
+    def _pause() -> None:  # hand stdin back to a blocking input() prompt
+        loop.remove_reader(fd)
+        termios.tcsetattr(fd, termios.TCSADRAIN, old)
+
+    def _resume() -> None:
+        tty.setcbreak(fd)
+        loop.add_reader(fd, _on_key)
+
     if watch:
         tty.setcbreak(fd)
         loop.add_reader(fd, _on_key)
+        if chan:
+            chan.pause_keys, chan.resume_keys = _pause, _resume
     spinner.start()
     try:
         return await proc
@@ -179,6 +215,8 @@ async def _run_turn(agent: AgentCore, spinner: Spinner, text: str):
         if watch:
             loop.remove_reader(fd)
             termios.tcsetattr(fd, termios.TCSADRAIN, old)
+            if chan:
+                chan.pause_keys = chan.resume_keys = None
         await spinner.stop()
 
 
