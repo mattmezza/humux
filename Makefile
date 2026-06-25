@@ -1,5 +1,6 @@
-.PHONY: help setup setup-hooks install install-dev sync lock lint format test run dev dev-agent dev-css dev-wa clean release css docs docs-dev
+.PHONY: help setup setup-hooks install install-dev sync lock lint format test run repl dev dev-agent dev-css dev-wa clean release css docs docs-dev
 
+PORT := 8001
 PYTHON := uv run python
 UV := uv
 TAILWIND := ./tailwindcss
@@ -23,6 +24,7 @@ help:
 	@echo "    make lock         Update lockfile after changing pyproject.toml"
 	@echo ""
 	@echo "  Development:"
+	@echo "    make repl         Chat with the agent from the terminal (no Telegram)"
 	@echo "    make dev          Show instructions for running dev services"
 	@echo "    make dev-agent    Run agent with auto-reload"
 	@echo "    make dev-css      Run Tailwind CSS watcher"
@@ -86,6 +88,10 @@ test:
 run:
 	$(UV) run python -m core.main
 
+# Local REPL — chat with the agent from the terminal (no Telegram)
+repl:
+	$(PYTHON) -m core.repl
+
 # Run in dev mode: instructions for running services in separate shells
 dev:
 	@echo ""
@@ -107,7 +113,7 @@ dev:
 # Dev: admin API with auto-reload on code changes (agent managed via UI)
 dev-agent:
 	PYTHONWARNINGS="ignore::UserWarning:multiprocessing.resource_tracker" \
-	$(UV) run uvicorn core.main:app --reload --host 0.0.0.0 --port 8000 --log-level info \
+	$(UV) run uvicorn core.main:app --reload --host 0.0.0.0 --port $(PORT) --log-level info \
 		--reload-dir api --reload-dir core --reload-dir channels --reload-dir schema \
 		--reload-dir skills --reload-dir tools --reload-dir voice
 
