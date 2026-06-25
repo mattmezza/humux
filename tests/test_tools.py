@@ -362,3 +362,79 @@ async def test_skipping_one_write_does_not_block_a_different_one(agent, monkeypa
     )
     assert "skipped" in skipped.get("error", "")
     assert other.get("ok") is True  # the skip did not leak onto a different write
+
+
+# ---------------------------------------------------------------------------
+# Batch approval — multiple writes in one turn share a single prompt (#12)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_batch_approval_asks_once_for_multiple_writes(agent, monkeypatch) -> None:
+    """Several writes in one turn must trigger exactly one approval prompt."""
+    prompts = {"n": 0}
+
+    async def fake_await(description, channel, user_id, tool_name=None, params=None):
+        prompts["n"] += 1
+        return "approved"
+
+    monkeypatch.setattr(agent, "_await_approval", fake_await)
+    monkeypatch.setattr(agent, "_tool_manage_jobs", _ok_manage_jobs)
+    agent.channels = {"telegram": object()}
+
+    state = agent._new_request_state()
+    c1 = _job_call("1", task="ping mum", run_at="2026-07-01T09:00:00")
+    c2 = _job_call("2", task="ping dad", run_at="2026-07-02T09:00:00")
+
+    await agent._batch_approve_writes([c1, c2], "telegram", "u1", state)
+    assert prompts["n"] == 1  # one prompt covered both writes
+
+    r1 = await agent._execute_tool(c1, "telegram", "u1", state)
+    r2 = await agent._execute_tool(c2, "telegram", "u1", state)
+    assert prompts["n"] == 1  # execution reused the batch decision, no re-prompt
+    assert r1.get("ok") is True and r2.get("ok") is True
+
+
+@pytest.mark.asyncio
+async def test_batch_approval_denied_blocks_every_write(agent, monkeypatch) -> None:
+    """Denying the batch blocks all of its writes, not just one."""
+
+    async def deny(description, channel, user_id, tool_name=None, params=None):
+        return "denied"
+
+    monkeypatch.setattr(agent, "_await_approval", deny)
+    monkeypatch.setattr(agent, "_tool_manage_jobs", _ok_manage_jobs)
+    agent.channels = {"telegram": object()}
+
+    state = agent._new_request_state()
+    c1 = _job_call("1", task="ping mum", run_at="2026-07-01T09:00:00")
+    c2 = _job_call("2", task="ping dad", run_at="2026-07-02T09:00:00")
+
+    await agent._batch_approve_writes([c1, c2], "telegram", "u1", state)
+    r1 = await agent._execute_tool(c1, "telegram", "u1", state)
+    r2 = await agent._execute_tool(c2, "telegram", "u1", state)
+    assert "denied" in r1.get("error", "")
+    assert "denied" in r2.get("error", "")
+
+
+@pytest.mark.asyncio
+async def test_single_write_is_not_batched(agent, monkeypatch) -> None:
+    """A lone write is left to the per-call path, not the batch prompt."""
+    prompts = {"n": 0}
+
+    async def fake_await(description, channel, user_id, tool_name=None, params=None):
+        prompts["n"] += 1
+        return "approved"
+
+    monkeypatch.setattr(agent, "_await_approval", fake_await)
+    agent.channels = {"telegram": object()}
+
+    state = agent._new_request_state()
+    await agent._batch_approve_writes(
+        [_job_call("1", task="ping mum", run_at="2026-07-01T09:00:00")],
+        "telegram",
+        "u1",
+        state,
+    )
+    assert prompts["n"] == 0  # nothing to batch for a single write
+    assert state["write_decisions"] == {}
