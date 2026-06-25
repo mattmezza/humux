@@ -42,7 +42,7 @@
     }
     window.showToast = showToast;
 
-    function llmTab(provider, apiKey, model, openaiKey, openaiBaseUrl, googleKey, googleBaseUrl, grokKey, grokBaseUrl, deepseekKey, deepseekBaseUrl, extractionProvider, extractionModel, consolidationProvider, consolidationModel, gdEnabled, gdProvider, gdModel, trEnabled, trProvider, trModel, promptToolUsageOverride, promptHistoryOverride, defaultToolUsage, defaultHistoryHandling, promptCaptureEnabled, compactionProvider, compactionModel, thinkingLevel, extractionThinkingLevel, consolidationThinkingLevel, gdThinkingLevel, trThinkingLevel, compactionThinkingLevel) {
+    function llmTab(provider, apiKey, model, openaiKey, openaiBaseUrl, googleKey, googleBaseUrl, grokKey, grokBaseUrl, deepseekKey, deepseekBaseUrl, extractionProvider, extractionModel, consolidationProvider, consolidationModel, gdEnabled, gdProvider, gdModel, trEnabled, trProvider, trModel, promptToolUsageOverride, promptHistoryOverride, defaultToolUsage, defaultHistoryHandling, promptCaptureEnabled, compactionProvider, compactionModel, thinkingLevel, extractionThinkingLevel, consolidationThinkingLevel, gdThinkingLevel, trThinkingLevel, compactionThinkingLevel, visionEnabled, visionProvider, visionModel) {
       const currentProvider = provider || 'anthropic';
       return {
         providerOptions: [
@@ -110,6 +110,11 @@
         compactionModel: compactionModel || 'claude-haiku-4-5',
         compactionResult: '',
         compactionResultOk: false,
+        visionEnabled: visionEnabled === 'true' || visionEnabled === true,
+        visionProvider: visionProvider || 'anthropic',
+        visionModel: visionModel || 'claude-haiku-4-5',
+        visionResult: '',
+        visionResultOk: false,
         result: '',
         resultOk: false,
         tests: {
@@ -177,6 +182,44 @@
           if (!id) return false;
           return ['opus', 'sonnet', 'thinking', 'pro', 'deep-think', 'reasoner', 'grok-4']
             .some(pat => id.includes(pat));
+        },
+        // ponytail: mirror of model_supports_vision() in core/llm.py — keep in
+        // sync. True when the model reads images natively (no fallback needed).
+        modelSupportsVision(modelId, prov) {
+          const id = (modelId || '').toLowerCase();
+          if (!id) return false;
+          if (id.includes('deepseek')) return false;
+          if (prov === 'anthropic' || prov === 'google') return true;
+          return ['claude', 'gpt-4o', 'gpt-4.1', 'gpt-5', 'o1', 'o3', 'o4',
+                  'gemini', 'grok-4', 'grok-2-vision', 'vision', 'llava', 'pixtral']
+            .some(pat => id.includes(pat));
+        },
+        // One-tap from the model picker: turn the fallback on (seeding a default
+        // vision model if blank) and persist — no trip to the Vision card needed.
+        enableVisionFallback() {
+          this.visionEnabled = true;
+          if (!this.visionModel) { this.visionModel = 'claude-haiku-4-5'; }
+          this.saveVision();
+        },
+        saveVision() {
+          fetch('/config', {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ' + (localStorage.getItem('admin_api_key') || '')
+            },
+            body: JSON.stringify({values: {
+              'vision.enabled': this.visionEnabled ? 'true' : 'false',
+              'vision.provider': this.visionProvider,
+              'vision.model': this.visionModel
+            }})
+          })
+            .then(r => { this.visionResultOk = r.ok; return r.json(); })
+            .then(d => {
+              this.visionResult = this.visionResultOk ? 'Vision settings saved' : (d.detail || 'Error');
+              if (this.visionResultOk && window.showToast) { window.showToast('Vision settings saved'); }
+            })
+            .catch(e => { this.visionResultOk = false; this.visionResult = e.message; });
         },
         // Effort values offered in the thinking-level datalist. Anthropic can be
         // enriched live via "Fetch levels"; others fall back to the common set.

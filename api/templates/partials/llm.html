@@ -60,7 +60,10 @@
   {{ consolidation_thinking_level|default('', true)|tojson|forceescape }},
   {{ gd_thinking_level|default('', true)|tojson|forceescape }},
   {{ tr_thinking_level|default('', true)|tojson|forceescape }},
-  {{ compaction_thinking_level|default('', true)|tojson|forceescape }}
+  {{ compaction_thinking_level|default('', true)|tojson|forceescape }},
+  {{ vision_enabled|default('false', true)|tojson|forceescape }},
+  {{ vision_provider|default('anthropic', true)|tojson|forceescape }},
+  {{ vision_model|default('claude-haiku-4-5', true)|tojson|forceescape }}
 )">
   <div class="card">
     <h2 class="text-base mb-1">System Prompt Controls</h2>
@@ -207,6 +210,22 @@
           </template>
         </datalist>
         <p class="text-muted text-xs mt-1">Type any model id, or pick from the list. Use “Fetch models” in the provider card below to load the live list from the API.</p>
+
+        {# Native-vision indicator + one-tap vision-fallback prompt. #}
+        <p class="text-muted text-xs mt-1" x-show="model && modelSupportsVision(model, provider)">
+          🖼️ This model reads images natively.
+        </p>
+        <div class="mt-2 rounded border border-warn-dim/40 bg-warn-dim/20 px-3 py-2"
+             x-show="model && !modelSupportsVision(model, provider)">
+          <p class="text-xs" style="color: var(--color-warn)">
+            <span x-show="!visionEnabled">This model can’t read images. Set up a vision fallback so photos still work?</span>
+            <span x-show="visionEnabled">Vision fallback is on — images are captioned by <span x-text="visionModel"></span>.</span>
+          </p>
+          <button type="button" class="btn-primary btn-sm mt-2" x-show="!visionEnabled"
+                  @click="enableVisionFallback()">
+            Enable vision fallback
+          </button>
+        </div>
       </div>
 
 {{ think('thinkingLevel', 'provider', 'model', 'dl-think-main') }}
@@ -515,6 +534,48 @@
     </div>
     <template x-if="compactionResult">
       <div :class="compactionResultOk ? 'alert-success' : 'alert-error'" class="mt-2" x-text="compactionResult"></div>
+    </template>
+  </div>
+
+  <div class="card">
+    <h2 class="text-base mb-1">Vision Fallback</h2>
+    <p class="text-muted text-xs mb-4">When the active model can’t read images, route image attachments to this model for a text description / OCR, injected in place of the image. Off by default; engages only when the active model lacks native vision. Reuses the provider keys configured below.</p>
+
+    <form class="space-y-4" @submit.prevent>
+      <div class="flex items-center gap-2">
+        <label class="label mb-0">Enabled</label>
+        <input type="checkbox" x-model="visionEnabled" class="rounded border-border">
+      </div>
+
+      <div>
+        <label class="label">Provider</label>
+        <select class="input-sm" style="max-width:500px" x-model="visionProvider" :disabled="!visionEnabled" x-effect="$el.value = visionProvider">
+          <template x-for="item in providerOptions" :key="'vis-' + item.value">
+            <option :value="item.value" :selected="item.value === visionProvider" x-text="item.label"></option>
+          </template>
+        </select>
+      </div>
+      <div>
+        <label class="label">Model</label>
+        <input type="text" class="input-sm" style="max-width:500px" x-model="visionModel" :disabled="!visionEnabled"
+               list="dl-model-vision" placeholder="Type or pick a model">
+        <datalist id="dl-model-vision">
+          <template x-for="item in modelOptions(visionProvider)" :key="'vis-m-' + item.value">
+            <option :value="item.value"></option>
+          </template>
+        </datalist>
+        <p class="text-amber-600 text-xs mt-1" x-show="visionModel && !modelSupportsVision(visionModel, visionProvider)">
+          Heads up: “<span x-text="visionModel"></span>” isn’t a recognized vision model — pick one that can read images, or captioning will fail.
+        </p>
+        <p class="text-muted text-xs mt-1">A small, cheap vision model is recommended (captioning is a single short call).</p>
+      </div>
+    </form>
+
+    <div class="flex items-center gap-2 mt-4">
+      <button class="btn-primary btn-sm" @click="saveVision()">Save vision fallback</button>
+    </div>
+    <template x-if="visionResult">
+      <div :class="visionResultOk ? 'alert-success' : 'alert-error'" class="mt-2" x-text="visionResult"></div>
     </template>
   </div>
 

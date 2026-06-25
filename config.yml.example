@@ -69,6 +69,15 @@ search:
   api_key: "${TAVILY_API_KEY}"
   max_results: 5
 
+# Vision fallback — when the active model can't read images, route image
+# attachments to this model for a text description / OCR. Off by default;
+# engages only when the active model lacks native vision. Reuses the provider
+# API keys configured under `agent`.
+vision:
+  enabled: false
+  provider: "anthropic"
+  model: "claude-haiku-4-5"
+
 history:
   db_path: "data/agent.db"
   max_turns: 10  # number of user-assistant pairs (not individual messages)
