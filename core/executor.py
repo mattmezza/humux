@@ -84,6 +84,10 @@ class ToolExecutor:
             return {
                 "error": f"Command not allowed. Must start with one of: {self.ALLOWED_PREFIXES}"
             }
+        # `browser.py explore` runs an inner LLM loop (many page steps) and needs
+        # minutes, not the 30s default — otherwise it's always killed mid-booking.
+        if "browser.py explore" in command:
+            timeout = max(timeout, 480)
         return await self._exec(self._resolve_command(command), timeout)
 
     async def run_command_trusted(self, command: str, timeout: int = 30) -> dict:

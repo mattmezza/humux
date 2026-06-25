@@ -49,10 +49,21 @@ Verbs (always pass `--url`; add `--profile NAME` to reuse a logged-in session):
   python3 /app/tools/browser.py act --url URL --profile P --steps JSON
   python3 /app/tools/browser.py explore --url URL --task "..."  # self-driving loop
   python3 /app/tools/browser.py profiles                        # list saved sessions
-Use `explore` for open-ended "find X / navigate to Y and tell me Z" tasks: one
-browser stays open and an inner loop clicks/types on its own until done, then
-returns an answer — far cheaper than you re-driving `read`/`act` round by round.
-Use `read`/`screenshot` when you already know the exact URL.
+PREFER `explore` for ANYTHING interactive — clicking buttons, opening modals/
+widgets, multi-step forms, bookings, checkouts, anything inside an iframe. One
+browser stays open and an inner loop sees every frame and clicks/types on its
+own until done, then returns an answer. It is the ONLY verb that can drive
+embedded widgets and payment iframes; `read`/`act` only see the top page and
+will fail on them.
+How to use it well:
+- Put the ENTIRE task in one `--task`, with every concrete value the flow needs
+  (product, dates/times, name, email, phone, full card number/expiry/CVC/ZIP).
+  It cannot ask you mid-run, so give it everything up front.
+- It runs autonomously for up to a few minutes and returns ONE JSON result with
+  an `answer`. That is expected — do NOT treat the wait as a hang, do NOT retry
+  it, and do NOT fall back to `read`/`act`. Call it once and wait.
+- Quote its returned `answer` (and screenshot path) back to the user.
+Use `read`/`screenshot` only for static pages where you already know the URL.
 `read`/`screenshot` run without asking. `act` changes state (click/fill/submit)
 so it asks for approval each time; on chat channels the approval shows a
 screenshot of the page. `--steps` is an ordered JSON array of single-key objects:

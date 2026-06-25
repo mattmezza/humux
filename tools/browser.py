@@ -506,6 +506,10 @@ def cmd_explore(args) -> dict:
     profile = _validate_profile(args.profile)
     agent_cfg = _load_agent_config()
     llm = LLMClient.from_agent_config(agent_cfg)
+    # Each step is a small mechanical action pick over rich state — high "thinking"
+    # just makes every step slow (and the whole loop time out). Force it low so a
+    # 25-step booking finishes in the time budget.
+    llm.thinking_level = "low"
     model = agent_cfg.model
     aio = _Aio()
     verbose = bool(os.environ.get("BROWSER_EXPLORE_VERBOSE"))
@@ -673,7 +677,7 @@ def main() -> None:
     p_exp.add_argument("--url", required=True)
     p_exp.add_argument("--task", required=True, help="what to accomplish on the site")
     p_exp.add_argument("--profile", default="default")
-    p_exp.add_argument("--max-steps", type=int, default=12, dest="max_steps")
+    p_exp.add_argument("--max-steps", type=int, default=35, dest="max_steps")
 
     sub.add_parser("profiles", help="List saved profiles + auth hint")
 
