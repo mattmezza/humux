@@ -45,6 +45,7 @@ from core.wacli import WacliManager
 
 if TYPE_CHECKING:
     from core.agent import AgentCore
+    from core.secret_store import SecretStore
     from core.skills import SkillsStore
 
 log = logging.getLogger(__name__)
@@ -191,6 +192,30 @@ async def _wizard_step_context(step: str, config_store: ConfigStore) -> dict[str
         val = await config_store.get("admin.password_hash")
         if val:
             ctx["admin_key"] = ""
+    elif step == "secrets":
+        import os as _os
+
+        from core.vault import load_machine_key
+
+        ctx["machine_key_present"] = bool(load_machine_key())  # type: ignore[assignment]
+        ctx["env_seed_present"] = bool(  # type: ignore[assignment]
+            _os.environ.get("ADMIN_PASSWORD") or _os.environ.get("ADMIN_API_KEY")
+        )
+        detected = []
+        for cfg_key in (
+            "agent.anthropic_api_key",
+            "agent.openai_api_key",
+            "agent.google_api_key",
+            "agent.grok_api_key",
+            "agent.deepseek_api_key",
+            "channels.telegram.bot_token",
+            "search.api_key",
+            "tools.gh.token",
+        ):
+            val = await config_store.get(cfg_key)
+            if val and not val.startswith("${"):
+                detected.append(cfg_key)
+        ctx["detected_secrets"] = detected  # type: ignore[assignment]
     return ctx
 
 
@@ -481,8 +506,13 @@ class PromptPreviewIn(BaseModel):
 _bearer = HTTPBearer(auto_error=False)
 
 
-def _make_auth_dependency(config_store: ConfigStore):
-    """Return a FastAPI dependency that validates the admin API key."""
+def _make_auth_dependency(config_store: ConfigStore, secret_store: SecretStore | None = None):
+    """Return a FastAPI dependency that validates the admin API key.
+
+    On a successful auth, if the persona secrets vault is still locked, the
+    bearer password is used to unseal it (issue #19) — so the first admin page
+    view after a boot caches the DEK for the agent runtime.
+    """
 
     async def _check_auth(
         credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
@@ -502,6 +532,13 @@ def _make_auth_dependency(config_store: ConfigStore):
         if not await config_store.verify_admin_password(credentials.credentials):
             raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
+        # Auth passed — unseal the persona vault if it isn't already.
+        if secret_store is not None and not secret_store.persona_unsealed():
+            try:
+                await secret_store.unseal_persona(credentials.credentials)
+            except Exception:
+                log.exception("Failed to unseal persona vault on auth")
+
     return _check_auth
 
 
@@ -514,6 +551,7 @@ def create_admin_app(
     agent_state: AgentState,
     config_store: ConfigStore,
     lifespan=None,
+    secret_store: SecretStore | None = None,
 ) -> tuple[FastAPI, object]:
     wacli = WacliManager()
 
@@ -541,7 +579,7 @@ def create_admin_app(
     if static_dir.exists():
         app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
-    auth = _make_auth_dependency(config_store)
+    auth = _make_auth_dependency(config_store, secret_store)
 
     # Keys managed by dedicated tabs — excluded from the generic Config tab.
     _IDENTITY_KEYS = {
@@ -1606,6 +1644,12 @@ def create_admin_app(
         if not await config_store.verify_admin_password(current):
             return {"ok": False, "error": "Current password is incorrect."}
         await config_store.set_admin_password(new_password)
+        # Re-wrap the persona vault DEK under the new password (preserves secrets).
+        if secret_store is not None:
+            try:
+                await secret_store.rotate_password(current, new_password)
+            except Exception:
+                log.exception("Failed to rotate persona vault password")
         return {"ok": True, "token": new_password}
 
     @app.post("/config/delete", dependencies=[Depends(auth)])
@@ -2468,6 +2512,13 @@ def create_admin_app(
         if values:
             await config_store.set_many(values)
             log.info("Setup step %r: saved %d values", step, len(values))
+            # Initialise the persona vault DEK from the admin password set in the
+            # wizard (the plaintext is available here, before it is hashed at boot).
+            if secret_store is not None and values.get("admin.api_key"):
+                try:
+                    await secret_store.ensure_wrapped_dek(values["admin.api_key"])
+                except Exception:
+                    log.exception("Failed to initialise persona vault DEK from wizard")
 
         if step not in SETUP_STEPS:
             raise HTTPException(400, f"Unknown step: {step}")
@@ -2714,6 +2765,287 @@ def create_admin_app(
             "error": "Autodiscovery is only available for Anthropic — "
             "enter the effort value manually for this provider.",
         }
+
+    # ── Secrets vault (issue #19) ──────────────────────────────────────
+    # Config keys that hold a single infra secret, with their vault names. Used
+    # by the wizard's "import from .env" step (provider blobs are not auto-moved).
+    _INFRA_MIGRATE = {
+        "agent.anthropic_api_key": "ANTHROPIC_API_KEY",
+        "agent.openai_api_key": "OPENAI_API_KEY",
+        "agent.google_api_key": "GOOGLE_API_KEY",
+        "agent.grok_api_key": "GROK_API_KEY",
+        "agent.deepseek_api_key": "DEEPSEEK_API_KEY",
+        "channels.telegram.bot_token": "TELEGRAM_BOT_TOKEN",
+        "search.api_key": "TAVILY_API_KEY",
+        "tools.gh.token": "GH_TOKEN",
+    }
+
+    def _duration_fields(duration: str, until: str) -> tuple[str | None, int | None]:
+        """Map a UI duration choice to (expires_at, max_uses)."""
+        if duration == "once":
+            return None, 1
+        if duration == "until" and until.strip():
+            return f"{until.strip()}T23:59:59+00:00", None
+        return None, None
+
+    async def _grant_personae(names: list[str], secret_name: str, grant: bool = True) -> None:
+        persona_store = await _persona_store_from_config(config_store)
+        for pname in names:
+            pname = pname.strip()
+            if not pname:
+                continue
+            p = await persona_store.get(pname)
+            if not p:
+                continue
+            s = set(p.secrets)
+            s.add(secret_name) if grant else s.discard(secret_name)
+            p.secrets = sorted(s)
+            await persona_store.upsert(p)
+
+    async def _secrets_ctx() -> dict:
+        persona_store = await _persona_store_from_config(config_store)
+        personae = await persona_store.list_personae()
+        meta = await secret_store.list_secret_meta()
+        for m in meta:
+            holders = [p.name for p in personae if m["name"] in p.secrets]
+            m["holders"] = holders
+            m["personae"] = "all" if m["shared"] else (", ".join(holders) if holders else "—")
+        return {
+            "configured": True,
+            "unsealed": secret_store.persona_unsealed(),
+            "infra_available": secret_store.infra.available,
+            "secrets": meta,
+            "infra": await secret_store.list_infra_names(),
+            "personae": [p.name for p in personae],
+        }
+
+    def _no_vault_partial() -> HTMLResponse:
+        return _render_partial("partials/secrets.html", configured=False)
+
+    @app.get("/partials/secrets", response_class=HTMLResponse, dependencies=[Depends(auth)])
+    async def partial_secrets() -> HTMLResponse:
+        if secret_store is None:
+            return _no_vault_partial()
+        return _render_partial("partials/secrets.html", **(await _secrets_ctx()))
+
+    @app.post("/admin/secrets", response_class=HTMLResponse, dependencies=[Depends(auth)])
+    async def add_secret(request: Request) -> HTMLResponse:
+        if secret_store is None:
+            return _no_vault_partial()
+        form = await request.form()
+        name = str(form.get("name", "")).strip()
+        value = str(form.get("value", ""))
+        from core.secret_store import valid_name
+
+        if not valid_name(name):
+            ctx = await _secrets_ctx()
+            ctx["error"] = "Invalid name — use letters, digits, _ - : only."
+            return _render_partial("partials/secrets.html", **ctx)
+        if not secret_store.persona_unsealed():
+            ctx = await _secrets_ctx()
+            ctx["error"] = "Vault is locked — reload the page to unlock it with your password."
+            return _render_partial("partials/secrets.html", **ctx)
+        scope = str(form.get("scope", "this"))
+        personae = str(form.get("personae", "")).replace("\n", ",").split(",")
+        expires_at, max_uses = _duration_fields(
+            str(form.get("duration", "forever")), str(form.get("until", ""))
+        )
+        await secret_store.set_secret(
+            name,
+            value,
+            shared=(scope == "all"),
+            description=str(form.get("description", "")),
+            expires_at=expires_at,
+            max_uses=max_uses,
+        )
+        if scope == "personae":
+            await _grant_personae(personae, name)
+        return _render_partial("partials/secrets.html", **(await _secrets_ctx()))
+
+    @app.post("/admin/secrets/delete", response_class=HTMLResponse, dependencies=[Depends(auth)])
+    async def delete_secret(request: Request) -> HTMLResponse:
+        if secret_store is None:
+            return _no_vault_partial()
+        form = await request.form()
+        await secret_store.delete_secret(str(form.get("name", "")).strip())
+        return _render_partial("partials/secrets.html", **(await _secrets_ctx()))
+
+    @app.post("/admin/secrets/grant", response_class=HTMLResponse, dependencies=[Depends(auth)])
+    async def grant_secret(request: Request) -> HTMLResponse:
+        if secret_store is None:
+            return _no_vault_partial()
+        form = await request.form()
+        name = str(form.get("name", "")).strip()
+        persona = str(form.get("persona", "")).strip()
+        grant = str(form.get("grant", "true")) == "true"
+        await _grant_personae([persona], name, grant=grant)
+        return _render_partial("partials/secrets.html", **(await _secrets_ctx()))
+
+    @app.post("/admin/secrets/infra", response_class=HTMLResponse, dependencies=[Depends(auth)])
+    async def add_infra_secret(request: Request) -> HTMLResponse:
+        if secret_store is None:
+            return _no_vault_partial()
+        form = await request.form()
+        name = str(form.get("name", "")).strip()
+        from core.secret_store import valid_name
+
+        if not secret_store.infra.available:
+            ctx = await _secrets_ctx()
+            ctx["error"] = "No machine key configured (set MPA_MASTER_KEY or generate one)."
+            return _render_partial("partials/secrets.html", **ctx)
+        if not valid_name(name):
+            ctx = await _secrets_ctx()
+            ctx["error"] = "Invalid infra secret name."
+            return _render_partial("partials/secrets.html", **ctx)
+        await secret_store.set_infra_secret(
+            name, str(form.get("value", "")), str(form.get("description", ""))
+        )
+        return _render_partial("partials/secrets.html", **(await _secrets_ctx()))
+
+    # -- Secure-link credential fill flow --
+    @app.get("/vault/request/{token}", dependencies=[Depends(auth)])
+    async def vault_request_detail(token: str) -> dict:
+        if secret_store is None:
+            raise HTTPException(404, "Vault not configured")
+        req = await secret_store.get_request(token)
+        if not req:
+            raise HTTPException(404, "Request not found or expired")
+        return {
+            "name": req["name"],
+            "reason": req["reason"],
+            "persona": req["persona"],
+            "suggested_scope": req["suggested_scope"],
+        }
+
+    @app.get("/vault/fill/{token}", response_class=HTMLResponse)
+    async def vault_fill_page(token: str) -> HTMLResponse:
+        # The page shell is public; details + submit require admin auth (the
+        # page fetches them with the stored bearer, like the rest of the UI).
+        return _render("vault_fill.html", token=token)
+
+    @app.post("/vault/fill/{token}", dependencies=[Depends(auth)])
+    async def vault_fill_submit(token: str, request: Request) -> dict:
+        if secret_store is None:
+            raise HTTPException(404, "Vault not configured")
+        req = await secret_store.get_request(token)
+        if not req:
+            raise HTTPException(404, "Request not found or expired")
+        if not secret_store.persona_unsealed():
+            return {"ok": False, "error": "Vault is locked."}
+        form = await request.form()
+        name = req["name"]
+        # Structured if any login field beyond a bare value/password is present.
+        fields = {
+            k: str(form.get(k, ""))
+            for k in ("username", "password", "url", "totp")
+            if str(form.get(k, "")).strip()
+        }
+        bare = str(form.get("value", ""))
+        value: str | dict
+        if fields and not (len(fields) == 1 and "password" in fields and not bare):
+            value = fields
+        else:
+            value = bare or fields.get("password", "")
+        scope = str(form.get("scope", "this"))
+        personae = str(form.get("personae", "")).replace("\n", ",").split(",")
+        expires_at, max_uses = _duration_fields(
+            str(form.get("duration", "forever")), str(form.get("until", ""))
+        )
+        await secret_store.set_secret(
+            name,
+            value,
+            shared=(scope == "all"),
+            owner=f"persona:{req['persona']}" if req["persona"] else "",
+            description=req["reason"][:200],
+            expires_at=expires_at,
+            max_uses=max_uses,
+        )
+        if scope == "personae":
+            await _grant_personae(personae, name)
+        elif scope == "this" and req["persona"]:
+            await _grant_personae([req["persona"]], name)
+        await secret_store.resolve_request(token)
+        return {"ok": True, "name": name}
+
+    # -- Bitwarden import --
+    @app.post(
+        "/admin/secrets/import/parse", response_class=HTMLResponse, dependencies=[Depends(auth)]
+    )
+    async def import_parse(request: Request) -> HTMLResponse:
+        if secret_store is None:
+            return _no_vault_partial()
+        from core.secret_store import parse_bitwarden_export
+
+        form = await request.form()
+        upload = form.get("file")
+        try:
+            raw = await upload.read() if hasattr(upload, "read") else str(upload).encode()
+            data = json.loads(raw)
+            items = parse_bitwarden_export(data)
+        except Exception as exc:
+            ctx = await _secrets_ctx()
+            ctx["error"] = f"Could not parse export: {exc}"
+            return _render_partial("partials/secrets.html", **ctx)
+        persona_store = await _persona_store_from_config(config_store)
+        return _render_partial(
+            "partials/secrets_import.html",
+            items=items,
+            personae=[p.name for p in await persona_store.list_personae()],
+        )
+
+    @app.post(
+        "/admin/secrets/import/commit", response_class=HTMLResponse, dependencies=[Depends(auth)]
+    )
+    async def import_commit(request: Request) -> HTMLResponse:
+        if secret_store is None:
+            return _no_vault_partial()
+        if not secret_store.persona_unsealed():
+            ctx = await _secrets_ctx()
+            ctx["error"] = "Vault is locked."
+            return _render_partial("partials/secrets.html", **ctx)
+        form = await request.form()
+        selected = form.getlist("selected")
+        scope = str(form.get("scope", "this"))
+        personae = str(form.get("personae", "")).replace("\n", ",").split(",")
+        count = 0
+        for name in selected:
+            value = {
+                "username": str(form.get(f"username__{name}", "")),
+                "password": str(form.get(f"password__{name}", "")),
+                "url": str(form.get(f"url__{name}", "")),
+                "totp": str(form.get(f"totp__{name}", "")),
+            }
+            value = {k: v for k, v in value.items() if v}
+            if not value:
+                continue
+            store_val = value if len(value) > 1 else next(iter(value.values()))
+            await secret_store.set_secret(name, store_val, shared=(scope == "all"))
+            if scope == "personae":
+                await _grant_personae(personae, name)
+            count += 1
+        ctx = await _secrets_ctx()
+        ctx["flash"] = f"Imported {count} secret(s)."
+        return _render_partial("partials/secrets.html", **ctx)
+
+    # -- Wizard: master key + import-from-.env --
+    @app.post("/setup/step/secrets")
+    async def setup_save_secrets(request: Request) -> HTMLResponse:
+        from core.config_store import SETUP_STEPS
+        from core.vault import generate_and_save_machine_key
+
+        form = await request.form()
+        action = str(form.get("action", ""))
+        if action == "generate" and secret_store is not None:
+            key = generate_and_save_machine_key()
+            secret_store.infra = type(secret_store.infra)(key)  # reload infra vault
+        elif action == "import" and secret_store is not None and secret_store.infra.available:
+            for cfg_key, vname in _INFRA_MIGRATE.items():
+                val = await config_store.get(cfg_key)
+                if val and not val.startswith("${"):
+                    await secret_store.set_infra_secret(vname, val, f"migrated from {cfg_key}")
+                    await config_store.set(cfg_key, f"${{vault:{vname}}}")
+        ctx = await _wizard_step_context("secrets", config_store)
+        return _render_wizard_step("secrets", SETUP_STEPS, ctx)
 
     return app, auth
 

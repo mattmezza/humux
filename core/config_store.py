@@ -84,6 +84,7 @@ SETUP_STEPS = [
     "search",
     "browser",
     "admin",
+    "secrets",
     "done",
 ]
 
@@ -300,10 +301,19 @@ class ConfigStore:
         config = load_config(yaml_path)
         return await self.import_from_config(config)
 
-    async def export_to_config(self) -> Config:
-        """Reconstruct a Config object from the store."""
+    async def export_to_config(self, vault_resolve=None) -> Config:
+        """Reconstruct a Config object from the store.
+
+        When ``vault_resolve`` (a ``name -> str | None`` callable) is supplied,
+        ``${vault:NAME}`` references are resolved against the encrypted infra
+        vault, with ``.env`` fallback handled by the resolver itself.
+        """
         flat = await self.get_many()
         nested = _unflatten(flat)
+        if vault_resolve is not None:
+            from core.config import resolve_vault_vars
+
+            nested = resolve_vault_vars(nested, vault_resolve)
         return Config.model_validate(nested)
 
     # -- Redacted views (for API responses) ----------------------------------

@@ -26,6 +26,7 @@ dependencies = [
     "fastembed",
     "numpy",
     "playwright",
+    "cryptography",
 ]
 
 [dependency-groups]

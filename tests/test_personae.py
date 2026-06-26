@@ -77,11 +77,13 @@ def test_scoped_tools_filters_but_keeps_load_skill() -> None:
 
 def test_gateable_tools_in_sync_with_tools() -> None:
     # The admin UI lists GATEABLE_TOOLS for the scope checkboxes; it must stay
-    # in sync with the real tool set (every tool except always-on load_skill).
+    # in sync with the real tool set (every tool except the always-on ones:
+    # load_skill plus the vault discovery/request tools — issue #19).
     from api.admin import GATEABLE_TOOLS
     from core.agent import TOOLS
 
-    assert set(GATEABLE_TOOLS) | {"load_skill"} == {t["name"] for t in TOOLS}
+    always_on = {"load_skill", "list_secrets", "request_secret"}
+    assert set(GATEABLE_TOOLS) | always_on == {t["name"] for t in TOOLS}
 
 
 def test_prompt_uses_persona_identity() -> None:

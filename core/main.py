@@ -25,6 +25,7 @@ from fastapi.responses import HTMLResponse
 from api.admin import AgentState, create_admin_app, install_log_buffer
 from core.config_store import ConfigStore
 from core.email_config import materialize_himalaya_config
+from core.secret_store import SecretStore
 
 logging.basicConfig(
     level=logging.INFO,
@@ -46,9 +47,13 @@ async def _start_agent(config_store: ConfigStore):
     from core.agent import AgentCore
     from voice.pipeline import VoicePipeline
 
-    config = await config_store.export_to_config()
+    # Decrypt infra secrets into memory so ${vault:NAME} resolves at config load
+    # (with .env fallback). Then build the config and hand the shared secret store
+    # to the agent so the executor can resolve {{secret:NAME}} at runtime.
+    await _secret_store.load_infra_cache()
+    config = await config_store.export_to_config(vault_resolve=_secret_store.infra_resolve)
 
-    agent = AgentCore(config)
+    agent = AgentCore(config, secret_store=_secret_store)
 
     # Ensure scheduler jobs can resolve the current agent instance
     from core.scheduler import set_agent_context
@@ -127,6 +132,7 @@ async def _stop_agent(agent) -> None:
 # ---------------------------------------------------------------------------
 
 _config_store = ConfigStore()
+_secret_store = SecretStore()
 _agent_state = AgentState()
 
 
@@ -136,6 +142,12 @@ async def _lifespan(application):  # noqa: ANN001
     # -- startup --
     await _config_store.seed_if_empty()
     await _config_store.ensure_admin_password()
+    # Initialise the persona vault's wrapped DEK when an admin password is set via
+    # the environment (the only point at boot where plaintext is available). When
+    # the password is set through the wizard/UI instead, the admin routes mint it.
+    seed_pw = environ.get("ADMIN_PASSWORD") or environ.get("ADMIN_API_KEY")
+    if seed_pw:
+        await _secret_store.ensure_wrapped_dek(seed_pw)
     await materialize_himalaya_config(_config_store)
 
     setup_complete = await _config_store.is_setup_complete()
@@ -168,7 +180,9 @@ async def _lifespan(application):  # noqa: ANN001
 # Build the FastAPI app at module level so ``uvicorn core.main:app`` works.
 # ---------------------------------------------------------------------------
 
-app, _auth = create_admin_app(_agent_state, _config_store, lifespan=_lifespan)
+app, _auth = create_admin_app(
+    _agent_state, _config_store, lifespan=_lifespan, secret_store=_secret_store
+)
 
 
 def _attach_lifecycle_routes(

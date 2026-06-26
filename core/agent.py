@@ -30,6 +30,7 @@ from core.permissions import PermissionEngine, PermissionLevel, format_approval_
 from core.personae import Persona, PersonaStore
 from core.prompt_builder import build_prompt_sections
 from core.scheduler import AgentScheduler
+from core.secret_store import SecretStore
 from core.skills import SkillsEngine
 from core.task_reflection import ReflectionStore
 from core.tools import tool_env
@@ -244,6 +245,42 @@ TOOLS = [
             "required": ["action"],
         },
     },
+    # Secrets vault (issue #19) — discover + request secrets by NAME only.
+    {
+        "name": "list_secrets",
+        "description": (
+            "List the names of stored secrets you may use (with descriptions). "
+            "Returns NAMES ONLY — never values. Use a listed name by reference as "
+            "{{secret:NAME}} inside run_command."
+        ),
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "request_secret",
+        "description": (
+            "Ask the owner to provide a secret you need but don't have (e.g. a website "
+            "login). Sends the owner a secure web link to enter the value; you never "
+            "handle the value yourself. Use when a needed {{secret:NAME}} is not listed."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "Name for the secret (letters, digits, _ - : only)",
+                },
+                "reason": {
+                    "type": "string",
+                    "description": "Why you need it / what you'll do with it",
+                },
+                "suggested_scope": {
+                    "type": "string",
+                    "description": "Optional hint: which persona(s) should be able to use it",
+                },
+            },
+            "required": ["name", "reason"],
+        },
+    },
 ]
 
 
@@ -255,12 +292,18 @@ def scoped_tools(persona: Persona | None) -> list[dict]:
     """
     if persona is None or not persona.tools:
         return TOOLS
-    return [t for t in TOOLS if persona.allows_tool(t["name"]) or t["name"] == "load_skill"]
+    # ``load_skill`` and the vault discovery/request tools are always retained:
+    # they are the mechanics personae rely on to read skills and obtain secrets.
+    _always = {"load_skill", "list_secrets", "request_secret"}
+    return [t for t in TOOLS if persona.allows_tool(t["name"]) or t["name"] in _always]
 
 
 class AgentCore:
-    def __init__(self, config: Config):
+    def __init__(self, config: Config, secret_store: SecretStore | None = None):
         self.config = config
+        # Secrets vault (issue #19). Shared, process-wide so the persona DEK
+        # unsealed by an admin login is visible to the agent at runtime.
+        self.secret_store = secret_store
         self.llm: LLMClient = LLMClient.from_agent_config(config.agent)
         self.skills = SkillsEngine(
             db_path=config.agent.skills_db_path,
@@ -357,6 +400,8 @@ class AgentCore:
         # make this per-chat; for now it is the globally selected persona.
         persona = await self._resolve_persona(channel, user_id, chat_id)
         tools = scoped_tools(persona)
+        if self.secret_store is None:
+            tools = [t for t in tools if t["name"] not in ("list_secrets", "request_secret")]
 
         # Static system prompt. In session mode it is snapshotted once at the
         # start of the session and reused for every turn (so the static content
@@ -905,7 +950,18 @@ class AgentCore:
         # --- Dispatch ---
         if name == "run_command":
             log.info("Tool call: run_command — %s", params.get("purpose", ""))
-            return await self.executor.run_command(params["command"])
+            command = params["command"]
+            # Secret substitution boundary (issue #19): {{secret:NAME}} is resolved
+            # ONLY here, for the model's generic command tool, after an ACL check.
+            # Structured tools (send_email/send_message/…) build their commands
+            # elsewhere and never pass through this path, so a secret cannot be
+            # exfiltrated through a message/email body.
+            if self.secret_store is not None:
+                allowed = set(request_state.get("persona_secrets") or [])
+                command, serr = await self.secret_store.resolve_command_secrets(command, allowed)
+                if serr:
+                    return {"error": serr}
+            return await self.executor.run_command(command)
 
         if name == "send_email":
             result = await self._tool_send_email(params)
@@ -954,6 +1010,28 @@ class AgentCore:
                 executed_writes.add(write_sig)
             return result
 
+        if name == "list_secrets":
+            if self.secret_store is None:
+                return {"error": "Secrets vault is not configured."}
+            allowed = set(request_state.get("persona_secrets") or [])
+            allowed |= await self.secret_store.shared_names()
+            meta = await self.secret_store.list_secret_meta(allowed=allowed)
+            return {
+                "secrets": [
+                    {
+                        "name": m["name"],
+                        "description": m["description"],
+                        "shared": m["shared"],
+                        "structured": m["structured"],
+                        "last_used_at": m["last_used_at"],
+                    }
+                    for m in meta
+                ]
+            }
+
+        if name == "request_secret":
+            return await self._tool_request_secret(params, channel, user_id, request_state)
+
         return {"error": f"Unknown tool: {name}"}
 
     @staticmethod
@@ -969,6 +1047,9 @@ class AgentCore:
             "write_decisions": {},
             "approvals": {},
             "allowed_skills": persona.skills if persona else None,
+            # Secret scope for {{secret:}} ACL in run_command (issue #19).
+            "persona_secrets": list(persona.secrets) if persona else [],
+            "persona_name": persona.name if persona else "",
         }
 
     @staticmethod
@@ -1062,6 +1143,61 @@ class AgentCore:
             return {"ok": True, "channel": channel_name, "to": to}
         except Exception as exc:
             return {"error": str(exc)}
+
+    def _vault_base_url(self) -> str:
+        import os
+
+        return os.getenv("MPA_BASE_URL", f"http://localhost:{self.config.admin.port}")
+
+    async def _notify_secret_request(
+        self, channel: str, user_id: str, name: str, reason: str, link: str
+    ) -> None:
+        """Best-effort: push the owner a secure link to provide a requested secret.
+
+        Link only — the value is NEVER entered or shown over the chat channel.
+        """
+        text = (
+            f"🔑 I need the secret '{name}' to continue"
+            + (f" ({reason})" if reason else "")
+            + ".\nAdd it securely via this link (no value over chat):\n"
+            + link
+        )
+        ch = self.channels.get(channel)
+        if ch is None:
+            return
+        try:
+            await ch.send(user_id, text)
+        except Exception:
+            log.exception("Failed to send secret-request link via %s", channel)
+
+    async def _tool_request_secret(
+        self, params: dict, channel: str, user_id: str, request_state: dict | None
+    ) -> dict:
+        """Create a pending secret request and send the owner a secure fill link."""
+        if self.secret_store is None:
+            return {"error": "Secrets vault is not configured."}
+        from core.secret_store import valid_name
+
+        sname = str(params.get("name", "")).strip()
+        if not valid_name(sname):
+            return {"error": "Invalid secret name (use letters, digits, _ - : only)."}
+        reason = str(params.get("reason", "")).strip()
+        scope = str(params.get("suggested_scope", "")).strip()
+        persona_name = (request_state or {}).get("persona_name", "")
+        log.info("Tool call: request_secret — %s (persona=%s)", sname, persona_name)
+        token = await self.secret_store.create_request(
+            sname, persona=persona_name, reason=reason, suggested_scope=scope
+        )
+        link = f"{self._vault_base_url()}/vault/fill/{token}"
+        await self._notify_secret_request(channel, user_id, sname, reason, link)
+        return {
+            "status": "requested",
+            "secure_link": link,
+            "message": (
+                f"Sent the owner a secure link to provide '{sname}'. It is not available "
+                "yet — let the user know, then continue once they confirm it's added."
+            ),
+        }
 
     async def _tool_create_calendar_event(self, params: dict) -> dict:
         """Create a calendar event via the CalDAV helper script."""
@@ -1524,6 +1660,17 @@ class AgentCore:
         skills_index = await self.skills.get_index_block(allow=persona.skills if persona else None)
         memories = await self.memory.format_for_prompt(query=query)
 
+        # Secret discoverability (issue #19): the NAMES in scope, never values.
+        secret_names: list[tuple[str, str]] = []
+        if self.secret_store is not None:
+            try:
+                allowed = set(persona.secrets) if persona else set()
+                allowed |= await self.secret_store.shared_names()
+                meta = await self.secret_store.list_secret_meta(allowed=allowed)
+                secret_names = [(m["name"], m["description"]) for m in meta]
+            except Exception:
+                log.exception("Failed to load secret names for prompt")
+
         # Task reflections — lessons learned from past tasks
         reflections = ""
         if self.config.task_reflection.enabled:
@@ -1540,6 +1687,7 @@ class AgentCore:
             reflections=reflections,
             decomposed_goal=decomposed_goal,
             persona=persona,
+            secrets=secret_names,
         )
         return sections.full_prompt
 

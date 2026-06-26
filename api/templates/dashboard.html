@@ -112,6 +112,10 @@
             @click="select('email')">
       Email
     </button>
+    <button class="tab-link" :class="tab === 'secrets' && 'tab-link-active'"
+            @click="select('secrets')">
+      Secrets
+    </button>
     <button class="tab-link" :class="tab === 'admin' && 'tab-link-active'"
             @click="select('admin')">
       Admin
@@ -695,6 +699,7 @@
       calendars: '/partials/calendars',
       contacts: '/partials/contacts',
       email: '/partials/email',
+      secrets: '/partials/secrets',
       admin: '/partials/admin',
       logs: '/partials/logs'
     };

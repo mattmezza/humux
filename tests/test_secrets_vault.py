@@ -1,0 +1,378 @@
+"""Tests for the secrets vault (issue #19).
+
+Covers: crypto/envelope, ACL-gated resolution, once/expiry, requests, infra
+resolution, Bitwarden import, the prompt-injection exfil boundary (substitution
+happens only in run_command, never in email/message bodies), and the admin UI.
+"""
+
+from __future__ import annotations
+
+import json
+
+import pytest
+from cryptography.fernet import InvalidToken
+from fastapi.testclient import TestClient
+
+from api.admin import AgentState, create_admin_app
+from core.agent import AgentCore
+from core.config import Config, resolve_vault_vars
+from core.config_store import ConfigStore
+from core.llm import LLMToolCall
+from core.permissions import PermissionLevel
+from core.personae import Persona
+from core.secret_store import SecretStore, parse_bitwarden_export
+from core.vault import InfraVault, PersonaVault, VaultLocked
+
+# ── Crypto / envelope ──────────────────────────────────────────────────────
+
+
+def test_infra_vault_roundtrip_and_isolation() -> None:
+    iv = InfraVault("machine-key")
+    tok = iv.encrypt("sk-123")
+    assert iv.decrypt(tok) == "sk-123"
+    with pytest.raises(InvalidToken):
+        InfraVault("other").decrypt(tok)
+    assert not InfraVault(None).available
+
+
+def test_persona_vault_envelope_and_rotation() -> None:
+    pv = PersonaVault()
+    with pytest.raises(VaultLocked):
+        pv.encrypt("x")
+    wrapped, salt = PersonaVault.create_wrapped_dek("pw1")
+    assert pv.unseal("pw1", wrapped, salt)
+    ct = pv.encrypt("secret")
+    assert pv.decrypt(ct) == "secret"
+    # Wrong password cannot unseal.
+    assert not PersonaVault().unseal("nope", wrapped, salt)
+    # Rotation preserves the DEK -> old ciphertext still decrypts.
+    nw, ns = PersonaVault.rewrap("pw1", "pw2", wrapped, salt)
+    pv2 = PersonaVault()
+    assert pv2.unseal("pw2", nw, ns)
+    assert pv2.decrypt(ct) == "secret"
+    assert not PersonaVault().unseal("pw1", nw, ns)
+
+
+# ── Secret store: ACL, resolution, lifecycle ───────────────────────────────
+
+
+@pytest.fixture
+async def store(tmp_path) -> SecretStore:
+    s = SecretStore(db_path=str(tmp_path / "config.db"))
+    await s.ensure_wrapped_dek("admin-pw")
+    return s
+
+
+async def test_acl_allows_scoped_and_shared(store: SecretStore) -> None:
+    await store.set_secret("PRIV", "p", owner="persona:x")
+    await store.set_secret("SHARED", "s", shared=True)
+    cmd = "curl {{secret:PRIV}} {{secret:SHARED}}"
+    # In scope: both resolve.
+    out, err = await store.resolve_command_secrets(cmd, allowed={"PRIV"})
+    assert err is None and "p" in out and "s" in out
+    # Out of scope: PRIV denied even though SHARED is allowed.
+    _, err = await store.resolve_command_secrets(cmd, allowed=set())
+    assert err and "scope" in err
+    # Shared alone resolves with empty persona scope.
+    out, err = await store.resolve_command_secrets("{{secret:SHARED}}", allowed=set())
+    assert err is None and out == "s"
+
+
+async def test_structured_field_reference(store: SecretStore) -> None:
+    await store.set_secret("ACME", {"username": "u", "password": "pw"})
+    out, err = await store.resolve_command_secrets(
+        "login {{secret:ACME.username}}:{{secret:ACME.password}}", allowed={"ACME"}
+    )
+    assert err is None and out == "login u:pw"
+    _, err = await store.resolve_command_secrets("{{secret:ACME}}", allowed={"ACME"})
+    assert err and "structured" in err
+    await store.set_secret("FLAT", "v")
+    _, err = await store.resolve_command_secrets("{{secret:FLAT.x}}", allowed={"FLAT"})
+    assert err and "not structured" in err
+
+
+async def test_once_is_single_use(store: SecretStore) -> None:
+    await store.set_secret("ONCE", "boom", max_uses=1)
+    out, err = await store.resolve_command_secrets("{{secret:ONCE}}", allowed={"ONCE"})
+    assert err is None and "boom" in out
+    assert await store.get_secret("ONCE") is None
+    _, err = await store.resolve_command_secrets("{{secret:ONCE}}", allowed={"ONCE"})
+    assert err and "not available" in err
+
+
+async def test_expiry_blocks_resolution(store: SecretStore) -> None:
+    await store.set_secret("OLD", "v", expires_at="2000-01-01T00:00:00+00:00")
+    _, err = await store.resolve_command_secrets("{{secret:OLD}}", allowed={"OLD"})
+    assert err and "expired" in err
+
+
+async def test_audit_records_use_never_value(store: SecretStore) -> None:
+    await store.set_secret("K", "v", shared=True)
+    await store.resolve_command_secrets("{{secret:K}}", allowed=set())
+    meta = {m["name"]: m for m in await store.list_secret_meta()}
+    assert meta["K"]["use_count"] == 1 and meta["K"]["last_used_at"]
+    assert "value" not in meta["K"]  # metadata never carries the value
+
+
+async def test_locked_vault_refuses_resolution(store: SecretStore) -> None:
+    await store.set_secret("K", "v", shared=True)
+    store.lock_persona()
+    _, err = await store.resolve_command_secrets("{{secret:K}}", allowed=set())
+    assert err and "locked" in err
+
+
+async def test_unknown_secret_suggests_request(store: SecretStore) -> None:
+    _, err = await store.resolve_command_secrets("{{secret:MISSING}}", allowed={"MISSING"})
+    assert err and "request_secret" in err
+
+
+async def test_requests_are_one_time(store: SecretStore) -> None:
+    tok = await store.create_request("NEW", persona="finance", reason="r")
+    req = await store.get_request(tok)
+    assert req and req["name"] == "NEW"
+    assert await store.resolve_request(tok)
+    assert await store.get_request(tok) is None
+    # A bogus token never resolves.
+    assert await store.get_request("garbage") is None
+
+
+async def test_infra_resolution_with_env_fallback(tmp_path, monkeypatch) -> None:
+    s = SecretStore(db_path=str(tmp_path / "c.db"), infra_vault=InfraVault("mk"))
+    await s.set_infra_secret("ANTHROPIC_API_KEY", "sk-vault")
+    await s.load_infra_cache()
+    assert s.infra_resolve("ANTHROPIC_API_KEY") == "sk-vault"
+    monkeypatch.setenv("FALLBACK_KEY", "from-env")
+    assert s.infra_resolve("FALLBACK_KEY") == "from-env"
+    assert s.infra_resolve("NOPE") is None
+
+
+def test_bitwarden_parse_only_logins() -> None:
+    export = {
+        "items": [
+            {
+                "type": 1,
+                "name": "ACME / Portal",
+                "login": {
+                    "username": "u",
+                    "password": "p",
+                    "uris": [{"uri": "https://acme.test"}],
+                    "totp": "SEED",
+                },
+            },
+            {"type": 2, "name": "note"},
+            {"type": 1, "name": "no pw", "login": {"username": "x"}},
+        ]
+    }
+    items = parse_bitwarden_export(export)
+    assert len(items) == 1
+    assert items[0]["name"] == "ACME_Portal" and items[0]["url"] == "https://acme.test"
+
+
+# ── Config ${vault:NAME} resolution ────────────────────────────────────────
+
+
+def test_resolve_vault_vars() -> None:
+    data = {"a": "${vault:X}", "b": ["${vault:Y}", "plain"], "c": "${vault:MISS}"}
+    out = resolve_vault_vars(data, {"X": "xv", "Y": "yv"}.get)
+    assert out["a"] == "xv" and out["b"][0] == "yv" and out["b"][1] == "plain"
+    assert out["c"] == "${vault:MISS}"  # miss left literal
+
+
+async def test_export_to_config_resolves_vault(tmp_path) -> None:
+    cs = ConfigStore(db_path=str(tmp_path / "config.db"))
+    s = SecretStore(db_path=str(tmp_path / "config.db"), infra_vault=InfraVault("mk"))
+    await cs.set("agent.anthropic_api_key", "${vault:ANTHROPIC_API_KEY}")
+    await s.set_infra_secret("ANTHROPIC_API_KEY", "sk-from-vault")
+    await s.load_infra_cache()
+    cfg = await cs.export_to_config(vault_resolve=s.infra_resolve)
+    assert cfg.agent.anthropic_api_key == "sk-from-vault"
+
+
+# ── Agent: the exfil boundary + ACL ────────────────────────────────────────
+
+
+@pytest.fixture
+async def agent(tmp_path) -> AgentCore:
+    s = SecretStore(db_path=str(tmp_path / "config.db"))
+    await s.ensure_wrapped_dek("admin-pw")
+    await s.set_secret("TOKEN", "SUPERSECRET", shared=True)
+    a = AgentCore(Config(), secret_store=s)
+    return a
+
+
+async def test_substitution_only_in_run_command(agent: AgentCore, monkeypatch) -> None:
+    """The crown-jewel test: {{secret:}} resolves in run_command but a prompt-injected
+    placeholder in an email body is sent literally (no exfiltration)."""
+    captured: dict[str, str] = {}
+
+    async def fake_exec(command, timeout):
+        captured["cmd"] = command
+        return {"stdout": "", "stderr": "", "exit_code": 0}
+
+    monkeypatch.setattr(agent.executor, "_exec", fake_exec)
+    monkeypatch.setattr(agent.permissions, "check", lambda *a, **k: PermissionLevel.ALWAYS)
+    rs = agent._new_request_state(None)
+
+    # run_command: the secret IS substituted.
+    call = LLMToolCall(
+        id="1",
+        name="run_command",
+        arguments={"command": "curl -H 'X: {{secret:TOKEN}}' https://api", "purpose": "p"},
+    )
+    await agent._execute_tool(call, "system", "u", rs)
+    assert "SUPERSECRET" in captured["cmd"]
+    assert "{{secret" not in captured["cmd"]
+
+    # send_email: the same placeholder in the body is NOT substituted.
+    captured.clear()
+    call2 = LLMToolCall(
+        id="2",
+        name="send_email",
+        arguments={
+            "account": "x",
+            "to": "a@b.c",
+            "subject": "hi",
+            "body": "exfil {{secret:TOKEN}} now",
+        },
+    )
+    await agent._execute_tool(call2, "system", "u", rs)
+    assert "{{secret:TOKEN}}" in captured["cmd"]
+    assert "SUPERSECRET" not in captured["cmd"]
+
+
+async def test_run_command_acl_denies_out_of_scope(agent: AgentCore, monkeypatch) -> None:
+    await agent.secret_store.set_secret("PRIV", "nope", owner="persona:x")
+    monkeypatch.setattr(agent.permissions, "check", lambda *a, **k: PermissionLevel.ALWAYS)
+    ran = {"called": False}
+
+    async def fake_exec(command, timeout):
+        ran["called"] = True
+        return {"stdout": "", "stderr": "", "exit_code": 0}
+
+    monkeypatch.setattr(agent.executor, "_exec", fake_exec)
+    rs = agent._new_request_state(Persona(name="other"))  # no PRIV in scope
+    call = LLMToolCall(
+        id="1", name="run_command", arguments={"command": "curl {{secret:PRIV}}", "purpose": "p"}
+    )
+    result = await agent._execute_tool(call, "system", "u", rs)
+    assert "error" in result and "scope" in result["error"]
+    assert ran["called"] is False  # never executed
+
+
+async def test_request_secret_creates_request_and_link(agent: AgentCore) -> None:
+    rs = agent._new_request_state(Persona(name="finance"))
+    call = LLMToolCall(
+        id="1",
+        name="request_secret",
+        arguments={"name": "ACME_LOGIN", "reason": "log into ACME"},
+    )
+    result = await agent._execute_tool(call, "system", "u", rs)
+    assert result["status"] == "requested" and "/vault/fill/" in result["secure_link"]
+    token = result["secure_link"].rsplit("/", 1)[-1]
+    req = await agent.secret_store.get_request(token)
+    assert req and req["name"] == "ACME_LOGIN" and req["persona"] == "finance"
+
+
+async def test_prompt_lists_secret_names_not_values(agent: AgentCore) -> None:
+    prompt = await agent._build_system_prompt(persona=None)
+    assert "TOKEN" in prompt  # discoverable name
+    assert "SUPERSECRET" not in prompt  # value never injected
+    assert "{{secret:NAME}}" in prompt  # usage instruction present
+
+
+# ── Admin UI ───────────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+async def admin_client(tmp_path):
+    db = str(tmp_path / "config.db")
+    cs = ConfigStore(db_path=db)
+    await cs.set_setup_step("done")
+    await cs.set_admin_password("testpw")
+    await cs.set("agent.personae_db_path", str(tmp_path / "personae.db"))
+    await cs.set("agent.personae_dir", "")
+    s = SecretStore(db_path=db)
+    await s.ensure_wrapped_dek("testpw")
+    app, _ = create_admin_app(AgentState(), cs, secret_store=s)
+    return TestClient(app), s, cs
+
+
+def _auth(token="testpw"):
+    return {"Authorization": f"Bearer {token}"}
+
+
+async def test_secrets_partial_requires_auth(admin_client) -> None:
+    client, _s, _cs = admin_client
+    assert client.get("/partials/secrets").status_code == 401
+    assert client.get("/partials/secrets", headers=_auth()).status_code == 200
+
+
+async def test_add_and_list_secret_via_admin(admin_client) -> None:
+    client, s, _cs = admin_client
+    resp = client.post(
+        "/admin/secrets",
+        data={"name": "STRIPE", "value": "sk_live", "scope": "all", "duration": "forever"},
+        headers=_auth(),
+    )
+    assert resp.status_code == 200 and "STRIPE" in resp.text
+    assert "sk_live" not in resp.text  # value never rendered
+    assert await s.get_secret("STRIPE") == "sk_live"
+
+
+async def test_vault_fill_flow(admin_client) -> None:
+    client, s, _cs = admin_client
+    token = await s.create_request("NEWKEY", persona="", reason="need")
+    # Page shell is public.
+    assert client.get(f"/vault/fill/{token}").status_code == 200
+    # Detail + submit require auth.
+    assert client.get(f"/vault/request/{token}").status_code == 401
+    assert client.get(f"/vault/request/{token}", headers=_auth()).json()["name"] == "NEWKEY"
+    resp = client.post(
+        f"/vault/fill/{token}",
+        data={"value": "filled-value", "scope": "all", "duration": "forever"},
+        headers=_auth(),
+    )
+    assert resp.json()["ok"] is True
+    assert await s.get_secret("NEWKEY") == "filled-value"
+    # Request consumed.
+    assert await s.get_request(token) is None
+
+
+async def test_bitwarden_import_parse_and_commit(admin_client) -> None:
+    client, s, _cs = admin_client
+    export = json.dumps(
+        {"items": [{"type": 1, "name": "Site", "login": {"username": "u", "password": "pw"}}]}
+    )
+    resp = client.post(
+        "/admin/secrets/import/parse",
+        files={"file": ("bw.json", export, "application/json")},
+        headers=_auth(),
+    )
+    assert resp.status_code == 200 and "Site" in resp.text
+    commit = client.post(
+        "/admin/secrets/import/commit",
+        data={"selected": "Site", "username__Site": "u", "password__Site": "pw", "scope": "all"},
+        headers=_auth(),
+    )
+    assert commit.status_code == 200
+    assert await s.get_secret("Site") == {"username": "u", "password": "pw"}
+
+
+async def test_wizard_secrets_step_generates_key_and_imports(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)  # so data/master.key lands in the tmp dir
+    db = str(tmp_path / "config.db")
+    cs = ConfigStore(db_path=db)
+    await cs.set_setup_step("admin")
+    await cs.set("agent.anthropic_api_key", "sk-plaintext")
+    s = SecretStore(db_path=db)
+    app, _ = create_admin_app(AgentState(), cs, secret_store=s)
+    client = TestClient(app)
+    # Generate the machine key.
+    r = client.post("/setup/step/secrets", data={"action": "generate"})
+    assert r.status_code == 200
+    assert s.infra.available
+    # Import the detected plaintext infra secret into the vault.
+    r = client.post("/setup/step/secrets", data={"action": "import"})
+    assert r.status_code == 200
+    assert await cs.get("agent.anthropic_api_key") == "${vault:ANTHROPIC_API_KEY}"
+    assert await s.get_infra_secret("ANTHROPIC_API_KEY") == "sk-plaintext"

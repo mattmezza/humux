@@ -41,7 +41,7 @@
               htmx.ajax('POST', '/setup/step', {
                 target: '#wizard-step', swap: 'innerHTML',
                 values: {
-                  step: 'done',
+                  step: 'secrets',
                   'values[admin.api_key]': key,
                   'values[admin.enabled]': 'true'
                 }

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import re
+from collections.abc import Callable
 from pathlib import Path
 
 import yaml
@@ -17,7 +18,12 @@ from pydantic import BaseModel, Field, field_validator
 
 
 def _resolve_env_vars(obj: object) -> object:
-    """Recursively resolve ${ENV_VAR} references in strings."""
+    """Recursively resolve ${ENV_VAR} references in strings.
+
+    ``${vault:NAME}`` references contain a ``:`` and so do not match ``\\w+`` —
+    they pass through here untouched and are resolved later against the encrypted
+    infra vault (see :func:`resolve_vault_vars`).
+    """
     if isinstance(obj, str):
         return re.sub(
             r"\$\{(\w+)\}",
@@ -28,6 +34,25 @@ def _resolve_env_vars(obj: object) -> object:
         return {k: _resolve_env_vars(v) for k, v in obj.items()}
     if isinstance(obj, list):
         return [_resolve_env_vars(v) for v in obj]
+    return obj
+
+
+_VAULT_RE = re.compile(r"\$\{vault:([A-Za-z0-9_:-]+)\}")
+
+
+def resolve_vault_vars(obj: object, resolve: Callable[[str], str | None]) -> object:
+    """Recursively resolve ``${vault:NAME}`` references via ``resolve``.
+
+    ``resolve(name)`` returns the decrypted infra-vault value, falling back to
+    the environment (so ``.env`` stays a fallback). A miss leaves the reference
+    literally in place rather than blanking the field.
+    """
+    if isinstance(obj, str):
+        return _VAULT_RE.sub(lambda m: resolve(m.group(1)) or m.group(0), obj)
+    if isinstance(obj, dict):
+        return {k: resolve_vault_vars(v, resolve) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [resolve_vault_vars(v, resolve) for v in obj]
     return obj
 
 

@@ -52,6 +52,7 @@ class PromptSections:
     about_user: str
     tool_usage: str
     tools: str
+    secrets: str
     memory_instruction: str
     history_handling: str
     memories: str
@@ -70,6 +71,8 @@ class PromptSections:
         ]
         if self.tools:
             parts.append(self.tools)
+        if self.secrets:
+            parts.append(self.secrets)
         parts.append(self.memory_instruction)
         if self.history_handling:
             parts.append(self.history_handling)
@@ -91,6 +94,7 @@ class PromptSections:
             "about_user": self.about_user,
             "tool_usage": self.tool_usage,
             "tools": self.tools,
+            "secrets": self.secrets,
             "memory_instruction": self.memory_instruction,
             "history_handling": self.history_handling,
             "memories": self.memories,
@@ -109,6 +113,7 @@ def build_prompt_sections(
     reflections: str,
     decomposed_goal: DecomposedGoal | None,
     persona: Persona | None = None,
+    secrets: list[tuple[str, str]] | None = None,
     include_memories: bool = True,
     include_reflections: bool = True,
 ) -> PromptSections:
@@ -155,6 +160,22 @@ def build_prompt_sections(
     tools_section = ""
     if tool_blocks:
         tools_section = "<tools>\n" + "\n\n".join(tool_blocks) + "\n</tools>"
+
+    # Secret discoverability: list the NAMES the active scope may use (never values).
+    secrets_section = ""
+    if secrets:
+        lines = "\n".join(f"- {name}" + (f" — {desc}" if desc else "") for name, desc in secrets)
+        secrets_section = (
+            "<secrets>\n"
+            "You may use these stored secrets BY REFERENCE inside `run_command` only, "
+            "as {{secret:NAME}} (or {{secret:NAME.field}} for a structured secret). "
+            "NEVER print, echo, or place a secret value or a {{secret:...}} placeholder "
+            "in a message, email, calendar event, or any other output — substitution "
+            "happens only inside `run_command`. If you need a secret that is not listed, "
+            "call `request_secret` to ask the owner for it.\n"
+            f"{lines}\n"
+            "</secrets>"
+        )
     memory_instruction = (
         "You can store and recall memories using the sqlite3 CLI (see the memory skill).\n"
         "Proactively remember important facts about the user and their contacts.\n"
@@ -195,6 +216,7 @@ def build_prompt_sections(
         about_user=about_user,
         tool_usage=tool_usage,
         tools=tools_section,
+        secrets=secrets_section,
         memory_instruction=memory_instruction,
         history_handling=history_handling,
         memories=memory_section,

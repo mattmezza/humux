@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="max-w-md mx-auto mt-8" x-data="vaultFill('{{ token }}')" x-init="load()">
+  <div class="card">
+    <h1 class="text-base mb-1">Provide a secret</h1>
+    <p class="text-muted text-xs mb-4">
+      Your agent asked for a secret. Enter the value below — it is encrypted on save and
+      never shown again. Nothing here is sent over chat.
+    </p>
+
+    <template x-if="needsLogin">
+      <div class="space-y-2 mb-4">
+        <label class="label">Admin password</label>
+        <input type="password" class="input" x-model="password" placeholder="admin password"
+               @keydown.enter="saveKeyAndLoad()">
+        <button class="btn-primary btn-sm" @click="saveKeyAndLoad()">Unlock</button>
+        <div class="alert-error" x-show="error" x-text="error"></div>
+      </div>
+    </template>
+
+    <template x-if="loaded && !needsLogin">
+      <div class="space-y-3">
+        <div class="text-sm">
+          Secret <span class="font-mono" x-text="req.name"></span>
+          <template x-if="req.reason"><span class="text-muted" x-text="' — ' + req.reason"></span></template>
+        </div>
+
+        <div>
+          <label class="label">Password / value</label>
+          <input type="password" class="input" x-model="password_val" autocomplete="new-password">
+        </div>
+        <details>
+          <summary class="text-muted text-xs cursor-pointer">Login fields (optional)</summary>
+          <div class="space-y-2 mt-2">
+            <input class="input-sm" x-model="username" placeholder="username">
+            <input class="input-sm" x-model="url" placeholder="url">
+            <input class="input-sm" x-model="totp" placeholder="TOTP secret">
+          </div>
+        </details>
+
+        <div>
+          <label class="label">Who can use it</label>
+          <select class="input-sm" x-model="scope">
+            <option value="this">This persona only</option>
+            <option value="personae">Specific persona(s)</option>
+            <option value="all">All personas</option>
+          </select>
+          <input class="input-sm mt-1" x-model="personae" placeholder="persona names, comma-separated"
+                 x-show="scope === 'personae'">
+        </div>
+
+        <div>
+          <label class="label">For how long</label>
+          <select class="input-sm" x-model="duration">
+            <option value="forever">Forever</option>
+            <option value="until">Until a date</option>
+            <option value="once">Once (single use)</option>
+          </select>
+          <input type="date" class="input-sm mt-1" x-model="until" x-show="duration === 'until'">
+        </div>
+
+        <button class="btn-primary" @click="submit()">Save secret</button>
+        <div class="alert-error" x-show="error" x-text="error"></div>
+        <div class="alert-success" x-show="done">Saved. You can close this page.</div>
+      </div>
+    </template>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function vaultFill(token) {
+  return {
+    token, req: {}, loaded: false, needsLogin: false, done: false, error: '',
+    password: '', password_val: '', username: '', url: '', totp: '',
+    scope: 'this', personae: '', duration: 'forever', until: '',
+    _key() { return localStorage.getItem('admin_api_key') || ''; },
+    async load() {
+      try {
+        const r = await fetch('/vault/request/' + this.token, {
+          headers: { 'Authorization': 'Bearer ' + this._key() }
+        });
+        if (r.status === 401) { this.needsLogin = true; return; }
+        if (!r.ok) { this.error = 'Request not found or expired.'; this.loaded = true; return; }
+        this.req = await r.json(); this.needsLogin = false; this.loaded = true;
+        if (this.req.suggested_scope) this.personae = this.req.suggested_scope;
+      } catch (e) { this.error = e.message; }
+    },
+    saveKeyAndLoad() {
+      if (!this.password.trim()) { this.error = 'Enter your admin password.'; return; }
+      localStorage.setItem('admin_api_key', this.password.trim());
+      this.error = ''; this.load();
+    },
+    async submit() {
+      this.error = ''; this.done = false;
+      const body = new URLSearchParams();
+      body.set('value', this.password_val);
+      if (this.username) body.set('username', this.username);
+      if (this.url) body.set('url', this.url);
+      if (this.totp) body.set('totp', this.totp);
+      body.set('scope', this.scope);
+      body.set('personae', this.personae);
+      body.set('duration', this.duration);
+      body.set('until', this.until);
+      try {
+        const r = await fetch('/vault/fill/' + this.token, {
+          method: 'POST',
+          headers: {
+            'Authorization': 'Bearer ' + this._key(),
+            'Content-Type': 'application/x-www-form-urlencoded'
+          },
+          body
+        });
+        const d = await r.json();
+        if (r.ok && d.ok) { this.done = true; }
+        else { this.error = d.error || ('Failed (' + r.status + ')'); }
+      } catch (e) { this.error = e.message; }
+    }
+  };
+}
+</script>
+{% endblock %}
