@@ -108,6 +108,48 @@ def test_resolve_rejects_hardlink_escape(tmp_path) -> None:
     assert store.resolve(art_id, "leak.html") is None
 
 
+def test_resolve_rejects_null_byte(tmp_path) -> None:
+    # A null byte makes Path.resolve raise ValueError; must degrade to None, not 500.
+    store = ArtifactStore(tmp_path)
+    art_id = store.create(files={"index.html": "<h1>x</h1>"})
+    assert store.resolve(art_id, "foo\x00.png") is None
+
+
+def test_route_null_byte_is_404_not_500(tmp_path) -> None:
+    art_id = ArtifactStore(tmp_path).create(files={"index.html": "<h1>x</h1>"})
+    r = _client(_Store(tmp_path)).get(f"/artifacts/{art_id}/foo%00.png")
+    assert r.status_code == 404
+
+
+# -- entrypoint resolution for source_path ------------------------------------
+
+
+def test_source_dir_autopicks_single_file_entrypoint(tmp_path) -> None:
+    site = tmp_path / "site"
+    site.mkdir()
+    (site / "report.pdf").write_bytes(b"%PDF fake")  # no index.html, one file
+    art_id = ArtifactStore(tmp_path / "store").create(source_path=str(site))
+    served = ArtifactStore(tmp_path / "store").resolve(art_id)
+    assert served is not None and served.name == "report.pdf"
+
+
+def test_source_dir_without_index_and_multiple_files_errors(tmp_path) -> None:
+    site = tmp_path / "site"
+    site.mkdir()
+    (site / "a.html").write_text("a")
+    (site / "b.html").write_text("b")
+    with pytest.raises(ValueError, match="entrypoint"):
+        ArtifactStore(tmp_path / "store").create(source_path=str(site))
+
+
+def test_single_file_source_ignores_explicit_entrypoint(tmp_path) -> None:
+    src = tmp_path / "r.pdf"
+    src.write_bytes(b"%PDF fake")
+    store = ArtifactStore(tmp_path / "store")
+    art_id = store.create(source_path=str(src), entrypoint="index.html")
+    assert store.resolve(art_id).name == "r.pdf"
+
+
 # -- cleanup: per-artifact TTL ------------------------------------------------
 
 

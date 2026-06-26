@@ -1158,7 +1158,10 @@ class AgentCore:
             return await self._tool_request_secret(params, channel, user_id, request_state)
 
         if name == "write_artifact":
-            return self._tool_write_artifact(params)
+            result = self._tool_write_artifact(params)
+            if is_write_action and self._is_tool_success(result):
+                executed_writes.add(write_sig)
+            return result
 
         return {"error": f"Unknown tool: {name}"}
 

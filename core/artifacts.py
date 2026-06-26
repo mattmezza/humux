@@ -70,7 +70,9 @@ def _safe_rel(name: str) -> str | None:
     can't expose ``.git``/``.env`` and ``.meta.json`` stays internal).
     """
     name = str(name).strip().replace("\\", "/").lstrip("/")
-    if not name:
+    # Reject control chars (incl. the null byte, which makes Path.resolve raise a
+    # ValueError that would otherwise surface as a 500 on the public route).
+    if not name or any(ord(c) < 32 for c in name):
         return None
     parts = [p for p in name.split("/") if p not in ("", ".")]
     if not parts or any(p == ".." or p.startswith(".") for p in parts):
@@ -134,12 +136,13 @@ class ArtifactStore:
                     shutil.copytree(src, base, dirs_exist_ok=True, symlinks=True)
                 else:
                     shutil.copy2(src, base / src.name)
-                    if entrypoint == "index.html":
-                        entrypoint = src.name
+                    entrypoint = src.name  # one file → it IS the entry, ignore default
 
             total = _dir_size(base)
             if total > MAX_ARTIFACT_BYTES:
                 raise ValueError(f"artifact too large ({total} bytes, max {MAX_ARTIFACT_BYTES})")
+
+            entrypoint = self._resolve_entrypoint(base, entrypoint)
 
             ttl = self.ttl_hours if ttl_hours is None else ttl_hours
             expires_at = None if ttl <= 0 else time.time() + ttl * 3600
@@ -151,6 +154,25 @@ class ArtifactStore:
 
         log.info("Artifact written: %s (%d bytes, entry=%s) %s", art_id, total, entrypoint, title)
         return art_id
+
+    @staticmethod
+    def _resolve_entrypoint(base: Path, entrypoint: str) -> str:
+        """Return the file served at the artifact root, or raise if none works.
+
+        Auto-picks the sole top-level file when the default ``index.html`` is
+        absent; otherwise the agent must name a valid ``entrypoint``.
+        """
+        rel = _safe_rel(entrypoint)
+        if rel and (base / rel).is_file():
+            return rel
+        if entrypoint == "index.html":
+            tops = [p.name for p in base.iterdir() if p.is_file() and not p.name.startswith(".")]
+            if len(tops) == 1:
+                return tops[0]
+        raise ValueError(
+            f"entrypoint {entrypoint!r} not found in the artifact; "
+            "include an index.html or pass a valid 'entrypoint'"
+        )
 
     def _meta(self, art_id: str) -> dict | None:
         try:
@@ -179,7 +201,7 @@ class ArtifactStore:
         target = base / rel
         try:
             resolved = target.resolve()
-        except OSError:
+        except OSError, ValueError:
             return None
         if target.is_symlink() or not resolved.is_relative_to(base.resolve()):
             return None
