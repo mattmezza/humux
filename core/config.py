@@ -88,6 +88,9 @@ class TelegramConfig(BaseModel):
     enabled: bool = False
     bot_token: str = ""
     allowed_user_ids: list[int] = Field(default_factory=list)
+    # Opt-in: fold forum topics into separate contexts (one persona per topic).
+    # Off by default so the plain 1:1 DM flow is unchanged.
+    topics_enabled: bool = False
 
     @field_validator("allowed_user_ids", mode="before")
     @classmethod

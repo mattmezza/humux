@@ -42,12 +42,55 @@ class TelegramChannel:
         self.config = config
         self.agent = agent
         self.voice = voice
-        self._last_chat_for_user: dict[int, int] = {}
+        # Last chat a user wrote from, used to route approval prompts. Holds a
+        # folded "<chat>:<thread>" string when the message came from a topic.
+        self._last_chat_for_user: dict[int, int | str] = {}
         self.app = Application.builder().token(config.bot_token).concurrent_updates(8).build()
         self.app.add_handler(MessageHandler(filters.TEXT, self._on_text))
         self.app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, self._on_voice))
         self.app.add_handler(MessageHandler(filters.PHOTO | filters.Document.IMAGE, self._on_photo))
+        if getattr(config, "topics_enabled", False):
+            self.app.add_handler(
+                MessageHandler(
+                    filters.StatusUpdate.FORUM_TOPIC_CREATED
+                    | filters.StatusUpdate.FORUM_TOPIC_EDITED,
+                    self._on_forum_topic,
+                )
+            )
         self.app.add_handler(CallbackQueryHandler(self._on_approval_callback))
+
+    # -- Topic folding helpers -----------------------------------------------
+
+    def _fold(self, chat, message) -> int | str | None:
+        """Derive the context id for a message.
+
+        With ``topics_enabled``, a forum-topic message folds its
+        ``message_thread_id`` into the chat id as ``"<chat>:<thread>"`` so each
+        topic is a separate context. The forum's General topic carries no thread
+        id, so it maps to the bare chat (the default context). Returns ``None``
+        when there is no chat (caller falls back to the user id).
+        """
+        if not chat:
+            return None
+        if not getattr(self.config, "topics_enabled", False):
+            return chat.id
+        thread = getattr(message, "message_thread_id", None)
+        if thread:
+            return f"{chat.id}:{thread}"
+        return chat.id
+
+    @staticmethod
+    def _route(chat_id: int | str) -> tuple[int | str, dict]:
+        """Split a folded ``"<chat>:<thread>"`` id for the Bot API.
+
+        Returns ``(chat_id, kwargs)`` where kwargs carries ``message_thread_id``
+        when a topic is encoded, and is empty otherwise — so non-topic calls are
+        unchanged.
+        """
+        base, sep, thread = str(chat_id).partition(":")
+        if sep and thread.isdigit() and base.lstrip("-").isdigit():
+            return int(base), {"message_thread_id": int(thread)}
+        return chat_id, {}
 
     # -- Incoming handlers ---------------------------------------------------
 
@@ -88,12 +131,13 @@ class TelegramChannel:
         if not user or not message:
             return
         user_id = user.id
-        if chat:
-            self._last_chat_for_user[user_id] = chat.id
+        folded = self._fold(chat, message)
+        if folded is not None:
+            self._last_chat_for_user[user_id] = folded
         if not self._is_allowed(user_id):
             return
 
-        chat_id = chat.id if chat else user_id
+        chat_id = folded if folded is not None else user_id
         reply_context = self._reply_context(message)
         text = (message.text or "").strip()
         payload = f"{reply_context}{text}" if reply_context else text
@@ -110,16 +154,19 @@ class TelegramChannel:
         if not user or not message:
             return
         user_id = user.id
-        if chat:
-            self._last_chat_for_user[user_id] = chat.id
+        folded = self._fold(chat, message)
+        if folded is not None:
+            self._last_chat_for_user[user_id] = folded
         if not self._is_allowed(user_id):
             return
 
-        chat_id = chat.id if chat else user_id
+        chat_id = folded if folded is not None else user_id
         if not self.voice:
+            cid, kw = self._route(chat_id)
             await self.app.bot.send_message(
-                chat_id,
+                cid,
                 "Voice messages are not supported (voice pipeline not configured).",
+                **kw,
             )
             return
 
@@ -141,12 +188,13 @@ class TelegramChannel:
         if not user or not message:
             return
         user_id = user.id
-        if chat:
-            self._last_chat_for_user[user_id] = chat.id
+        folded = self._fold(chat, message)
+        if folded is not None:
+            self._last_chat_for_user[user_id] = folded
         if not self._is_allowed(user_id):
             return
 
-        chat_id = chat.id if chat else user_id
+        chat_id = folded if folded is not None else user_id
         caption = message.caption or ""
 
         # Collect file IDs to download.
@@ -178,8 +226,9 @@ class TelegramChannel:
         await query.answer()  # Acknowledge the button press
 
         user_id = user.id
-        if chat:
-            self._last_chat_for_user[user_id] = chat.id
+        folded = self._fold(chat, getattr(query, "message", None))
+        if folded is not None:
+            self._last_chat_for_user[user_id] = folded
         if not self._is_allowed(user_id):
             return
 
@@ -200,6 +249,34 @@ class TelegramChannel:
             resolved = self.agent.permissions.resolve_approval(request_id, True, always_allow=True)
             await self._finalize_approval_response(query, resolved, "Always allowed")
 
+    async def _on_forum_topic(self, update: Update, context) -> None:
+        """Auto-bind a freshly created/renamed forum topic to a matching persona.
+
+        The topic name is only carried on these service messages (not on ordinary
+        messages), so this is the one place a topic→persona name match can happen
+        without a web round-trip. Binding is skipped when the topic is already
+        bound, so a manual rebind is never clobbered.
+        """
+        message = update.message
+        chat = update.effective_chat
+        user = update.effective_user
+        if not message or not chat:
+            return
+        created = getattr(message, "forum_topic_created", None)
+        edited = getattr(message, "forum_topic_edited", None)
+        name = getattr(created or edited, "name", None)
+        thread = getattr(message, "message_thread_id", None)
+        if not name or not thread:
+            return
+        user_id = user.id if user else None
+        if user_id is None or not self._is_allowed(user_id):
+            return
+        chat_id = f"{chat.id}:{thread}"
+        bound = await self.agent.bind_chat_persona_by_label("telegram", str(user_id), chat_id, name)
+        if bound:
+            cid, kw = self._route(chat_id)
+            await self.app.bot.send_message(cid, f"Bound this topic to {bound}.", **kw)
+
     # -- Outgoing ------------------------------------------------------------
 
     async def send(self, chat_id: int | str, text: str) -> None:
@@ -209,12 +286,13 @@ class TelegramChannel:
             html = text
         else:
             html = to_telegram_html(text)
+        cid, kw = self._route(chat_id)
         try:
-            await self.app.bot.send_message(chat_id, html, parse_mode="HTML")
+            await self.app.bot.send_message(cid, html, parse_mode="HTML", **kw)
         except BadRequest as exc:
             if "parse entities" in str(exc).lower():
                 log.warning("Telegram HTML parse failed; sending as plain text: %s", exc)
-                await self.app.bot.send_message(chat_id, text)
+                await self.app.bot.send_message(cid, text, **kw)
                 return
             raise
 
@@ -240,32 +318,34 @@ class TelegramChannel:
             ]
         )
         text = f"Permission request:\n\n{description}"
+        cid, kw = self._route(chat_id)
         if image_path:
             try:
                 with open(image_path, "rb") as photo:
                     # Telegram caption hard limit is 1024 chars.
                     await self.app.bot.send_photo(
-                        chat_id, photo, caption=text[:1024], reply_markup=keyboard
+                        cid, photo, caption=text[:1024], reply_markup=keyboard, **kw
                     )
                 return
             except Exception:
                 log.exception("Failed to send approval screenshot; falling back to text")
-        await self.app.bot.send_message(chat_id, text, reply_markup=keyboard)
+        await self.app.bot.send_message(cid, text, reply_markup=keyboard, **kw)
 
     # -- Helpers -------------------------------------------------------------
 
     @asynccontextmanager
-    async def _typing(self, chat_id: int):
+    async def _typing(self, chat_id: int | str):
         """Send 'typing' chat action continuously until the wrapped block completes.
 
         Telegram's typing indicator expires after ~5 seconds, so we resend it
         every 4 seconds to keep it visible for the duration of agent processing.
         """
+        cid, kw = self._route(chat_id)
 
         async def _send_typing():
             try:
                 while True:
-                    await self.app.bot.send_chat_action(chat_id, action=ChatAction.TYPING)
+                    await self.app.bot.send_chat_action(cid, action=ChatAction.TYPING, **kw)
                     await asyncio.sleep(4)
             except asyncio.CancelledError:
                 pass
@@ -281,7 +361,7 @@ class TelegramChannel:
                 pass
 
     @asynccontextmanager
-    async def _progress(self, chat_id: int):
+    async def _progress(self, chat_id: int | str):
         """Mirror an in-flight `browser.py explore` run into ONE edited message.
 
         explore writes a per-step line to data/browser/last/explore.status; we
@@ -290,6 +370,7 @@ class TelegramChannel:
         """
         status = Path("/app/data" if Path("/app/data").exists() else "data")
         status = status / "browser" / "last" / "explore.status"
+        cid, kw = self._route(chat_id)  # split a folded "<chat>:<thread>" topic id
         message_id: int | None = None
         last = None
 
@@ -308,11 +389,11 @@ class TelegramChannel:
                 last = text
                 try:
                     if message_id is None:
-                        msg = await self.app.bot.send_message(chat_id, text)
+                        msg = await self.app.bot.send_message(cid, text, **kw)
                         message_id = msg.message_id
                     else:
                         await self.app.bot.edit_message_text(
-                            text, chat_id=chat_id, message_id=message_id
+                            text, chat_id=cid, message_id=message_id
                         )
                 except Exception:
                     pass  # transient edit/rate-limit error — keep polling
@@ -328,7 +409,7 @@ class TelegramChannel:
                 pass
             if message_id is not None:  # tidy the progress message away
                 try:
-                    await self.app.bot.delete_message(chat_id, message_id)
+                    await self.app.bot.delete_message(cid, message_id)
                 except Exception:
                     pass
 
@@ -338,7 +419,7 @@ class TelegramChannel:
             return False
         return True
 
-    async def _handle_text(self, text: str, user_id: int, chat_id: int) -> None:
+    async def _handle_text(self, text: str, user_id: int, chat_id: int | str) -> None:
         async with self._typing(chat_id), self._progress(chat_id):
             response = await self.agent.process(
                 message=text,
@@ -349,7 +430,7 @@ class TelegramChannel:
         await self._send_response(chat_id, response)
 
     async def _handle_voice(
-        self, file_id: str, user_id: int, chat_id: int, reply_context: str
+        self, file_id: str, user_id: int, chat_id: int | str, reply_context: str
     ) -> None:
         async with self._typing(chat_id), self._progress(chat_id):
             file = await self.app.bot.get_file(file_id)
@@ -368,7 +449,8 @@ class TelegramChannel:
             transcript = await voice.transcribe(bytes(audio_bytes))
 
             if not transcript.strip():
-                await self.app.bot.send_message(chat_id, "(could not transcribe voice)")
+                cid, kw = self._route(chat_id)
+                await self.app.bot.send_message(cid, "(could not transcribe voice)", **kw)
                 return
 
             log.info("Transcript: %s", transcript[:200])
@@ -390,7 +472,7 @@ class TelegramChannel:
         caption: str,
         reply_context: str,
         user_id: int,
-        chat_id: int,
+        chat_id: int | str,
     ) -> None:
         from core.models import IMAGE_MIME_TYPES, Attachment
 
@@ -413,9 +495,11 @@ class TelegramChannel:
                 )
 
             if not attachments:
+                cid, kw = self._route(chat_id)
                 await self.app.bot.send_message(
-                    chat_id,
+                    cid,
                     "Sorry, I can only process image files (JPEG, PNG, GIF, WebP) for now.",
+                    **kw,
                 )
                 return
 
@@ -431,10 +515,11 @@ class TelegramChannel:
             )
         await self._send_response(chat_id, response)
 
-    async def _send_response(self, chat_id: int, response) -> None:
+    async def _send_response(self, chat_id: int | str, response) -> None:
         """Send an AgentResponse back — voice if present, otherwise text."""
         if response.voice:
-            await self.app.bot.send_voice(chat_id, response.voice)
+            cid, kw = self._route(chat_id)
+            await self.app.bot.send_voice(cid, response.voice, **kw)
         elif response.text:
             await self.send(chat_id, response.text)
         else:
