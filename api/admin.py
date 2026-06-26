@@ -31,6 +31,7 @@ from fastapi.staticfiles import StaticFiles
 from jinja2 import Environment, FileSystemLoader
 from pydantic import BaseModel
 
+from core.artifacts import ARTIFACT_CSP, NOT_FOUND_HTML, store_from_config
 from core.config_store import ConfigStore
 from core.goal_decomposition import classify_complexity, decompose_goal
 from core.llm import LLMClient
@@ -606,6 +607,24 @@ def create_admin_app(
     static_dir = Path(__file__).parent / "static"
     if static_dir.exists():
         app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+    # ── Agent web artifacts (public; the random id is the only secret) ──
+    @app.get("/artifacts/{artifact_id}", response_class=HTMLResponse)
+    async def serve_artifact(artifact_id: str) -> HTMLResponse:
+        """Serve an agent-crafted HTML page. No auth — the unguessable id gates it.
+
+        Single path segment only (no `:path`), and the id is validated, so the
+        route cannot be listed or traversed. The CSP sandbox keeps the page's JS
+        off the admin origin's localStorage.
+        """
+        store = await store_from_config(config_store)
+        path = store.path_for(artifact_id) if store.enabled else None
+        if path is None or not path.exists():
+            return HTMLResponse(NOT_FOUND_HTML, status_code=404)
+        return HTMLResponse(
+            path.read_text(encoding="utf-8"),
+            headers={"Content-Security-Policy": ARTIFACT_CSP},
+        )
 
     auth = _make_auth_dependency(config_store, secret_store)
 
@@ -3273,6 +3292,7 @@ GATEABLE_TOOLS = [
     "create_calendar_event",
     "web_search",
     "manage_jobs",
+    "write_artifact",
 ]
 
 

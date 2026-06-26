@@ -293,6 +293,14 @@ class ToolsConfig(BaseModel):
     browser: BrowserToolConfig = BrowserToolConfig()
 
 
+class ArtifactsConfig(BaseModel):
+    """Agent-crafted web artifacts served at /artifacts/<id> (see core/artifacts.py)."""
+
+    enabled: bool = True
+    directory: str = "data/artifacts"
+    ttl_hours: int = 168  # 7 days; 0 = keep forever (no auto-cleanup)
+
+
 class Config(BaseModel):
     agent: AgentConfig = AgentConfig()
     channels: ChannelsConfig = ChannelsConfig()
@@ -310,6 +318,7 @@ class Config(BaseModel):
     you: YouConfig = YouConfig()
     prompt: PromptConfig = PromptConfig()
     tools: ToolsConfig = ToolsConfig()
+    artifacts: ArtifactsConfig = ArtifactsConfig()
 
 
 def load_config(path: str | Path = "config.yml") -> Config:

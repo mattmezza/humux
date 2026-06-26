@@ -14,8 +14,9 @@ Usage:
 
 from __future__ import annotations
 
+import asyncio
 import logging
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from os import environ
 
 import uvicorn
@@ -156,6 +157,11 @@ async def _lifespan(application):  # noqa: ANN001
         await _secret_store.ensure_wrapped_dek(seed_pw)
     await materialize_himalaya_config(_config_store)
 
+    # Background sweep of expired web artifacts (runs regardless of setup state).
+    from core.artifacts import cleanup_loop
+
+    application.state.artifacts_task = asyncio.create_task(cleanup_loop(_config_store))
+
     setup_complete = await _config_store.is_setup_complete()
 
     if setup_complete:
@@ -175,6 +181,11 @@ async def _lifespan(application):  # noqa: ANN001
 
     # -- shutdown --
     log.info("Shutting down…")
+    artifacts_task = getattr(application.state, "artifacts_task", None)
+    if artifacts_task:
+        artifacts_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await artifacts_task
     if _agent_state.agent:
         _agent_state.status = "STOPPING"
         await _stop_agent(_agent_state.agent)

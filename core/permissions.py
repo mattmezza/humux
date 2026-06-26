@@ -127,6 +127,9 @@ DEFAULT_RULES: dict[str, str] = {
     "run_command:himalaya*move*": "ASK",
     "schedule_task": "ASK",
     "manage_jobs": "ASK",
+    # Writing a local HTML artifact served at an unguessable URL is low-risk and
+    # reversible (TTL cleanup) — no prompt, like web_search / load_skill.
+    "write_artifact": "ALWAYS",
     # Dangerous — never allow
     "run_command:sqlite3*DROP*": "NEVER",
     "run_command:sqlite3*ALTER*": "NEVER",

@@ -281,6 +281,37 @@ TOOLS = [
             "required": ["name", "reason"],
         },
     },
+    {
+        "name": "write_artifact",
+        "description": (
+            "Publish a self-contained HTML page and get back a shareable link "
+            "(e.g. https://host/artifacts/AbC123xy). Use this whenever the answer "
+            "is richer than chat can show: reports, dashboards, charts, comparison "
+            "tables, interactive checklists/trackers, or any 'give me a mini-site "
+            "for X'. The page is ONE standalone HTML document — inline all CSS in "
+            "<style> and all JS in <script>; there is no server, build step, or "
+            "second file. Climb only as high as the request needs: plain semantic "
+            "HTML for a quick report; add a classless CSS framework (e.g. MVP.css "
+            "or Water.css via CDN) for clean docs; custom CSS or TailwindCSS v4 "
+            "(CDN) for designed/branded pages; add JS, or Alpine.js (CDN), only "
+            "when it must be interactive. After writing, give the returned link to "
+            "the user — it expires after the configured TTL."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "html": {
+                    "type": "string",
+                    "description": "The complete HTML document (a full <!doctype html> … page).",
+                },
+                "title": {
+                    "type": "string",
+                    "description": "Optional short title, for your own reference and the logs.",
+                },
+            },
+            "required": ["html"],
+        },
+    },
 ]
 
 
@@ -1086,6 +1117,9 @@ class AgentCore:
         if name == "request_secret":
             return await self._tool_request_secret(params, channel, user_id, request_state)
 
+        if name == "write_artifact":
+            return self._tool_write_artifact(params)
+
         return {"error": f"Unknown tool: {name}"}
 
     @staticmethod
@@ -1198,10 +1232,26 @@ class AgentCore:
         except Exception as exc:
             return {"error": str(exc)}
 
-    def _vault_base_url(self) -> str:
+    def _base_url(self) -> str:
         import os
 
         return os.getenv("MPA_BASE_URL", f"http://localhost:{self.config.admin.port}")
+
+    def _tool_write_artifact(self, params: dict) -> dict:
+        """Persist a self-contained HTML artifact; return its shareable URL."""
+        from core.artifacts import ArtifactStore
+
+        cfg = self.config.artifacts
+        if not cfg.enabled:
+            return {"error": "Web artifacts are disabled in config (artifacts.enabled)."}
+        html = str(params.get("html") or "")
+        if not html.strip():
+            return {"error": "Missing 'html' content."}
+        title = str(params.get("title", "")).strip()
+        art_id = ArtifactStore(cfg.directory, cfg.ttl_hours).write(html, title=title)
+        url = f"{self._base_url()}/artifacts/{art_id}"
+        log.info("Tool call: write_artifact — %s (%s)", url, title or "untitled")
+        return {"ok": True, "url": url, "title": title}
 
     async def _notify_secret_request(
         self, channel: str, user_id: str, name: str, reason: str, link: str
@@ -1242,7 +1292,7 @@ class AgentCore:
         token = await self.secret_store.create_request(
             sname, persona=persona_name, reason=reason, suggested_scope=scope
         )
-        link = f"{self._vault_base_url()}/vault/fill/{token}"
+        link = f"{self._base_url()}/vault/fill/{token}"
         await self._notify_secret_request(channel, user_id, sname, reason, link)
         return {
             "status": "requested",
