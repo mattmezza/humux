@@ -103,14 +103,37 @@ for skills outside it), filters the function-tool set to the tool scope, and use
 persona's voice for TTS. Switching applies to **new** turns; an open session keeps its
 snapshotted identity until you send `/new`.
 
+## Per-chat personae
+
+By default the active persona is global. You can instead bind a persona to a single
+conversation — it overrides the global one **only there**. Resolution runs a ladder in
+`AgentCore._resolve_persona(channel, user_id, chat_id)`:
+
+1. the per-chat binding for `(channel, user_id, chat_id)`,
+2. the global active persona,
+3. the default identity.
+
+Bindings live in the `chat_persona` table and work on **any** channel (Telegram, WhatsApp,
+REPL). Manage them on the **Chats** tab of the admin UI: it lists every active context and
+lets you pick a persona per chat. A change applies on the next turn; the open chat keeps its
+current identity until then (its messages are preserved).
+
+### Telegram forum topics (optional)
+
+Set `channels.telegram.topics_enabled: true` (or tick *Separate persona per forum topic* in
+the Telegram channel setup) to treat each forum topic in a group as its own context. The
+topic's `message_thread_id` is folded into the `chat_id`, so every topic gets isolated
+history and its own persona binding; the group's General topic maps to the default context.
+Name a topic after a persona (its name, agent name, or role) and it auto-binds when the topic
+is created or renamed; rebind any topic from the Chats tab.
+
 ## Roadmap
 
 Persona resolution is deliberately funnelled through one seam,
 `AgentCore._resolve_persona(channel, user_id, chat_id)`, so future work is additive:
 
-- **Per-chat personae** ([#14](https://github.com/mattmezza/mpa/issues/14)) — bind a persona
-  per Telegram forum topic (history is already keyed by `chat_id`), so several personae run
-  concurrently, each with its own isolated context, identity, scope, and voice.
+- **Bot-per-persona** ([#29](https://github.com/mattmezza/mpa/issues/29)) — run each persona
+  as its own Telegram bot, so agents become separate, independently-addressable contacts.
 
 The **secret scope** facet is now enforced by the [secrets vault](/docs/secrets) — a persona
 uses a secret by reference (`{{secret:NAME}}`) only if it is shared or in scope, and values

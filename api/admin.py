@@ -162,6 +162,9 @@ async def _wizard_step_context(step: str, config_store: ConfigStore) -> dict[str
             val = await config_store.get(key)
             if val:
                 ctx[var] = val
+        ctx["topics_enabled"] = (
+            str(await config_store.get("channels.telegram.topics_enabled")).lower() == "true"
+        )
     elif step == "whatsapp":
         for key, var in (("channels.whatsapp.allowed_numbers", "allowed_numbers"),):
             val = await config_store.get(key)
@@ -1994,12 +1997,14 @@ def create_admin_app(
         bot_token = str(body.get("bot_token", "")).strip()
         user_ids = str(body.get("user_ids", "")).strip()
         enabled = str(body.get("enabled", "true")).lower() == "true"
+        topics_enabled = bool(body.get("topics_enabled", False))
         if not bot_token:
             raise HTTPException(400, "Bot token is required")
         values = {
             "channels.telegram.enabled": str(enabled).lower(),
             "channels.telegram.bot_token": bot_token,
             "channels.telegram.allowed_user_ids": user_ids,
+            "channels.telegram.topics_enabled": str(topics_enabled).lower(),
         }
         await config_store.set_many(values)
         channel_data = await _channel_list_context(config_store, wacli)
@@ -2296,18 +2301,11 @@ def create_admin_app(
             store = await _persona_store_from_config(config_store)
             if not await store.get(persona):
                 raise HTTPException(404, f"Persona not found: {persona}")
-        # Prefer the running agent so its in-memory caches stay coherent; fall
-        # back to a config-built store when the agent is not running.
+        # Use the running agent's history instance so its in-memory session cache
+        # is the one cleared; fall back to a config-built store when not running.
         agent = agent_state.agent
-        if agent:
-            await agent.bind_chat_persona(channel, user_id, chat_id, persona)
-        else:
-            history = await _history_from_config(config_store)
-            if persona:
-                await history.set_chat_persona(channel, user_id, persona, chat_id)
-            else:
-                await history.clear_chat_persona(channel, user_id, chat_id)
-            await history.clear_session_system(channel, user_id, chat_id)
+        history = agent.history if agent else await _history_from_config(config_store)
+        await history.bind_chat_persona(channel, user_id, chat_id, persona)
         return await _chats_partial()
 
     # ── Memory API ─────────────────────────────────────────────────────

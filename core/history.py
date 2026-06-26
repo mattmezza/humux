@@ -400,6 +400,24 @@ class ConversationHistory:
             )
             await db.commit()
 
+    async def bind_chat_persona(
+        self, channel: str, user_id: str, chat_id: str, persona: str
+    ) -> None:
+        """Bind (or, with an empty name, unbind) a chat to a persona.
+
+        Drops the snapshotted session system prompt so a new identity takes effect
+        on the next turn without wiping the conversation (in injection mode there
+        is no snapshot, so the clear is a harmless no-op). Call this on the running
+        agent's history instance so its ``_session_system`` cache is the one that
+        gets cleared.
+        """
+        name = (persona or "").strip()
+        if name:
+            await self.set_chat_persona(channel, user_id, name, chat_id)
+        else:
+            await self.clear_chat_persona(channel, user_id, chat_id)
+        await self.clear_session_system(channel, user_id, chat_id)
+
     async def list_chats(self) -> list[dict[str, str]]:
         """List every known (channel, user_id, chat_id) with its bound persona.
 

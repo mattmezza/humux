@@ -22,6 +22,8 @@ channels:
     enabled: true
     bot_token: "${TELEGRAM_BOT_TOKEN}"
     allowed_user_ids: "${TELEGRAM_ALLOWED_USER_IDS}"
+    # Opt-in: treat each forum topic as its own persona-bound context (#14).
+    topics_enabled: false
   whatsapp:
     enabled: false
     bridge_url: "local-wacli"

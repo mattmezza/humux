@@ -329,6 +329,8 @@
     if (!result || !tokenInput || !usersInput) return;
     const token = tokenInput.value.trim();
     const users = usersInput.value.trim();
+    const topicsInput = document.getElementById('ch-tg-topics');
+    const topics = topicsInput ? topicsInput.checked : false;
     if (!token) {
       result.textContent = 'Bot token is required.';
       result.className = 'alert-error';
@@ -340,7 +342,7 @@
         'Content-Type': 'application/json',
         'Authorization': 'Bearer ' + (localStorage.getItem('admin_api_key') || '')
       },
-      body: JSON.stringify({bot_token: token, user_ids: users, enabled: true})
+      body: JSON.stringify({bot_token: token, user_ids: users, enabled: true, topics_enabled: topics})
     })
       .then(r => r.text())
       .then(html => {

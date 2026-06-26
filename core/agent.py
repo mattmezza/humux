@@ -469,16 +469,10 @@ class AgentCore:
     ) -> None:
         """Bind (or, with an empty name, unbind) a chat to a persona.
 
-        Drops the snapshotted session system prompt so the new identity takes
-        effect on the next turn without wiping the conversation (in injection
-        mode the prompt is rebuilt per turn, so this is a harmless no-op).
+        Thin pass-through to the history store, which also drops the snapshotted
+        session system prompt so the new identity takes effect on the next turn.
         """
-        name = (persona_name or "").strip()
-        if name:
-            await self.history.set_chat_persona(channel, user_id, name, chat_id)
-        else:
-            await self.history.clear_chat_persona(channel, user_id, chat_id)
-        await self.history.clear_session_system(channel, user_id, chat_id)
+        await self.history.bind_chat_persona(channel, user_id, chat_id, persona_name)
 
     async def bind_chat_persona_by_label(
         self, channel: str, user_id: str, chat_id: str, label: str

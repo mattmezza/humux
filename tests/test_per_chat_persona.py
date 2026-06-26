@@ -164,24 +164,32 @@ def _fold(topics_enabled: bool, chat, message):
 
 def test_fold_off_by_default() -> None:
     chat = types.SimpleNamespace(id=-100123)
-    msg = types.SimpleNamespace(message_thread_id=45)
+    msg = types.SimpleNamespace(message_thread_id=45, is_topic_message=True)
     assert _fold(False, chat, msg) == -100123  # no folding when disabled
 
 
 def test_fold_topic_message() -> None:
     chat = types.SimpleNamespace(id=-100123)
-    msg = types.SimpleNamespace(message_thread_id=45)
+    msg = types.SimpleNamespace(message_thread_id=45, is_topic_message=True)
     assert _fold(True, chat, msg) == "-100123:45"
+
+
+def test_fold_reply_chain_is_not_a_topic() -> None:
+    # Non-forum reply-chains / discussion comments carry message_thread_id too,
+    # but is_topic_message is False — they must NOT fold into a separate context.
+    chat = types.SimpleNamespace(id=-100555)
+    msg = types.SimpleNamespace(message_thread_id=789, is_topic_message=False)
+    assert _fold(True, chat, msg) == -100555
 
 
 def test_fold_general_topic_is_bare_chat() -> None:
     chat = types.SimpleNamespace(id=-100123)
-    msg = types.SimpleNamespace(message_thread_id=None)
+    msg = types.SimpleNamespace(message_thread_id=None, is_topic_message=False)
     assert _fold(True, chat, msg) == -100123
 
 
 def test_fold_no_chat_returns_none() -> None:
-    msg = types.SimpleNamespace(message_thread_id=None)
+    msg = types.SimpleNamespace(message_thread_id=None, is_topic_message=False)
     assert _fold(True, None, msg) is None
 
 

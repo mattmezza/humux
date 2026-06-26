@@ -16,6 +16,15 @@
          value="{{ user_ids|default('') }}">
   <div class="hint">Comma-separated IDs. Leave empty to allow any user.</div>
 
+  <label class="flex items-center gap-2 mt-3 text-sm">
+    <input type="checkbox" id="ch-tg-topics" {% if topics_enabled %}checked{% endif %}>
+    Separate persona per forum topic
+  </label>
+  <div class="hint">
+    Each topic in a group with Topics enabled becomes its own context. Name a
+    topic after a persona to auto-bind it; rebind any chat on the Chats tab.
+  </div>
+
   <div class="flex items-center gap-2 mt-3">
     <button class="btn btn-sm" type="button" onclick="testTelegram()">Test connection</button>
     <button class="btn-primary btn-sm" type="button" onclick="saveTelegram()">Save</button>

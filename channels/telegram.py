@@ -49,7 +49,7 @@ class TelegramChannel:
         self.app.add_handler(MessageHandler(filters.TEXT, self._on_text))
         self.app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, self._on_voice))
         self.app.add_handler(MessageHandler(filters.PHOTO | filters.Document.IMAGE, self._on_photo))
-        if getattr(config, "topics_enabled", False):
+        if config.topics_enabled:
             self.app.add_handler(
                 MessageHandler(
                     filters.StatusUpdate.FORUM_TOPIC_CREATED
@@ -72,10 +72,14 @@ class TelegramChannel:
         """
         if not chat:
             return None
-        if not getattr(self.config, "topics_enabled", False):
+        if not self.config.topics_enabled:
             return chat.id
+        # message_thread_id is also set on reply-chains in non-forum groups and on
+        # linked-discussion comments (there it is just the root message id), so it
+        # alone would fragment an ordinary chat. is_topic_message marks a genuine
+        # forum topic and is False for the General topic — gate on it.
         thread = getattr(message, "message_thread_id", None)
-        if thread:
+        if thread and getattr(message, "is_topic_message", False):
             return f"{chat.id}:{thread}"
         return chat.id
 
@@ -162,11 +166,8 @@ class TelegramChannel:
 
         chat_id = folded if folded is not None else user_id
         if not self.voice:
-            cid, kw = self._route(chat_id)
-            await self.app.bot.send_message(
-                cid,
-                "Voice messages are not supported (voice pipeline not configured).",
-                **kw,
+            await self.send(
+                chat_id, "Voice messages are not supported (voice pipeline not configured)."
             )
             return
 
@@ -274,8 +275,7 @@ class TelegramChannel:
         chat_id = f"{chat.id}:{thread}"
         bound = await self.agent.bind_chat_persona_by_label("telegram", str(user_id), chat_id, name)
         if bound:
-            cid, kw = self._route(chat_id)
-            await self.app.bot.send_message(cid, f"Bound this topic to {bound}.", **kw)
+            await self.send(chat_id, f"Bound this topic to {bound}.")
 
     # -- Outgoing ------------------------------------------------------------
 
@@ -449,8 +449,7 @@ class TelegramChannel:
             transcript = await voice.transcribe(bytes(audio_bytes))
 
             if not transcript.strip():
-                cid, kw = self._route(chat_id)
-                await self.app.bot.send_message(cid, "(could not transcribe voice)", **kw)
+                await self.send(chat_id, "(could not transcribe voice)")
                 return
 
             log.info("Transcript: %s", transcript[:200])
@@ -495,11 +494,8 @@ class TelegramChannel:
                 )
 
             if not attachments:
-                cid, kw = self._route(chat_id)
-                await self.app.bot.send_message(
-                    cid,
-                    "Sorry, I can only process image files (JPEG, PNG, GIF, WebP) for now.",
-                    **kw,
+                await self.send(
+                    chat_id, "Sorry, I can only process image files (JPEG, PNG, GIF, WebP) for now."
                 )
                 return
 
