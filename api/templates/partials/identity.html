@@ -148,6 +148,7 @@
         <input type="text" class="input-sm" style="max-width:260px" x-model="ttsVoice" placeholder="en-US-AvaNeural">
         <p class="text-muted text-xs mt-1">Use Edge TTS voice names. Example: en-US-AvaNeural.</p>
       </div>
+      {% include "partials/restart_note.html" %}
     </div>
 
     <div class="flex justify-end mt-3">
@@ -170,6 +171,7 @@
                 .then(d => {
                   voiceResult = voiceOk ? 'Voice settings saved' : (d.detail || 'Error');
                   if (voiceOk && window.showToast) { window.showToast('Voice settings saved'); }
+                  if (voiceOk && d.restart_required && window.notifyRestartRequired) { notifyRestartRequired(); }
                 })
                 .catch(e => { voiceOk = false; voiceResult = e.message; })
               ">

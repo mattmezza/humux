@@ -21,7 +21,16 @@ Authentication uses a Bearer token (the `ADMIN_API_KEY` from your config).
 
 ### Dashboard
 
-Overview of agent status, active channels, and quick stats.
+Overview of agent status, active channels, and quick stats. The status badge (top-left)
+shows `RUNNING`/`STOPPED`/etc. and is clickable — it opens Agent Control to start, stop, or
+restart the agent.
+
+Most settings apply live. A few are read only when the agent starts — **channels** (Telegram/
+WhatsApp, including forum-topic mode), **voice** (STT/TTS), and **history → max turns** — so
+saving them shows a **"Restart required"** banner with a **Restart now** button (which also
+updates the status badge). Those sections also carry an inline ⟳ note. Everything else (LLM,
+vision, memory, compaction, search, personae, permissions, jobs, calendars/contacts/email,
+identity) takes effect immediately.
 
 ### Configuration
 

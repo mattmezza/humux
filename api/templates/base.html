@@ -42,6 +42,46 @@
     }
     window.showToast = showToast;
 
+    // Restart-required affordance. Some settings (channels, voice, history length)
+    // are read once when the agent starts, so a save only takes effect after a
+    // restart. notifyRestartRequired() surfaces the banner; restartAgentNow()
+    // restarts and refreshes the top-left status badge via the refresh-status event.
+    function notifyRestartRequired() {
+      const b = document.getElementById('restart-banner');
+      if (b) b.style.display = 'block';
+    }
+    window.notifyRestartRequired = notifyRestartRequired;
+
+    function dismissRestartBanner() {
+      const b = document.getElementById('restart-banner');
+      if (b) b.style.display = 'none';
+    }
+    window.dismissRestartBanner = dismissRestartBanner;
+
+    function restartAgentNow(btn) {
+      const key = localStorage.getItem('admin_api_key') || '';
+      const original = btn ? btn.textContent : '';
+      if (btn) { btn.disabled = true; btn.textContent = 'Restarting…'; }
+      // Flip the badge to RESTARTING immediately, then settle on the final state.
+      document.body.dispatchEvent(new CustomEvent('refresh-status'));
+      fetch('/agent/restart', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + key }
+      })
+        .then(r => r.json().catch(() => ({})))
+        .then(data => {
+          const ok = data.status === 'restarted';
+          if (window.showToast) showToast(ok ? 'Agent restarted' : (data.error || 'Restart failed'), ok);
+          if (ok) dismissRestartBanner();
+        })
+        .catch(() => { if (window.showToast) showToast('Restart failed', false); })
+        .finally(() => {
+          document.body.dispatchEvent(new CustomEvent('refresh-status'));
+          if (btn) { btn.disabled = false; btn.textContent = original || 'Restart now'; }
+        });
+    }
+    window.restartAgentNow = restartAgentNow;
+
     function llmTab(provider, apiKey, model, openaiKey, openaiBaseUrl, googleKey, googleBaseUrl, grokKey, grokBaseUrl, deepseekKey, deepseekBaseUrl, extractionProvider, extractionModel, consolidationProvider, consolidationModel, gdEnabled, gdProvider, gdModel, trEnabled, trProvider, trModel, promptToolUsageOverride, promptHistoryOverride, defaultToolUsage, defaultHistoryHandling, promptCaptureEnabled, compactionProvider, compactionModel, thinkingLevel, extractionThinkingLevel, consolidationThinkingLevel, gdThinkingLevel, trThinkingLevel, compactionThinkingLevel, visionEnabled, visionProvider, visionModel) {
       const currentProvider = provider || 'anthropic';
       return {

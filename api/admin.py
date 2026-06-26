@@ -1525,7 +1525,10 @@ def create_admin_app(
                     agent.search_client = None
             except Exception:
                 log.exception("Failed to apply updated config to running agent")
-        return {"updated": list(body.values.keys())}
+        return {
+            "updated": list(body.values.keys()),
+            "restart_required": _config_requires_restart(body.values),
+        }
 
     @app.post("/debug/system-prompt/preview", dependencies=[Depends(auth)])
     async def system_prompt_preview(body: PromptPreviewIn) -> dict:
@@ -3130,6 +3133,17 @@ async def _history_from_config(config_store: ConfigStore):
 
     db_path = await config_store.get("history.db_path") or "data/history.db"
     return ConversationHistory(db_path=db_path)
+
+
+# Config keys the running agent only reads at startup, so a change to them via
+# PATCH /config takes effect only after an agent restart. Everything else is
+# hot-applied in patch_config (agent.config swap + llm/memory/search rebuild).
+# Channels are saved through their own routes (always restart-bound) and handled
+# client-side, so they are not listed here.
+def _config_requires_restart(values: dict) -> bool:
+    """True if any saved key is consumed only at agent startup (voice pipeline,
+    history window) and so needs a restart to take effect."""
+    return any(key == "history.max_turns" or key.startswith("voice.") for key in values)
 
 
 # Function-tools that a persona may scope. ``load_skill`` is intentionally

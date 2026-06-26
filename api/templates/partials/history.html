@@ -41,6 +41,7 @@
         <input type="number" class="input-sm" style="max-width:120px"
                x-model="maxTurns" min="1" max="50">
         <p class="text-muted text-xs mt-1">Number of recent user-assistant pairs included as context. Lower values reduce noise from old conversations; higher values give more continuity.</p>
+        {% include "partials/restart_note.html" %}
       </div>
     </div>
 
@@ -63,6 +64,7 @@
                 .then(d => {
                   result = resultOk ? 'History settings saved' : (d.detail || 'Error');
                   if (resultOk && window.showToast) { window.showToast('History settings saved'); }
+                  if (resultOk && d.restart_required && window.notifyRestartRequired) { notifyRestartRequired(); }
                 })
                 .catch(e => { resultOk = false; result = e.message; })
               ">

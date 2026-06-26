@@ -15,6 +15,18 @@
     <span class="text-muted text-xs">Loading...</span>
   </div>
 
+  {# Restart-required banner — shown after saving a setting the agent only reads at
+     startup. Sibling of #tab-content so it survives tab swaps. #}
+  <div id="restart-banner" class="card mb-4" style="display:none;" role="status">
+    <div class="flex items-center justify-between gap-3 flex-wrap">
+      <span class="text-xs">⟳ A saved change needs an agent restart to take effect.</span>
+      <span class="flex items-center gap-2">
+        <button class="btn-primary btn-sm" type="button" onclick="restartAgentNow(this)">Restart now</button>
+        <button class="btn btn-sm" type="button" onclick="dismissRestartBanner()">Dismiss</button>
+      </span>
+    </div>
+  </div>
+
   <div id="agent-modal" class="fixed" style="inset: 0; background: rgba(0,0,0,0.65); display: none; align-items: center; justify-content: center; z-index: 50;">
     <div class="card" style="max-width: 520px; width: 100%;"
          x-data="agentControl()" x-init="init()">
@@ -349,6 +361,7 @@
         document.getElementById('tab-content').innerHTML = html;
         closeChannelWizard();
         if (window.showToast) { window.showToast('Telegram channel saved'); }
+        if (window.notifyRestartRequired) { notifyRestartRequired(); }
       })
       .catch(e => {
         result.textContent = e.message;
@@ -377,6 +390,7 @@
         document.getElementById('tab-content').innerHTML = html;
         closeChannelWizard();
         if (window.showToast) { window.showToast('WhatsApp channel saved'); }
+        if (window.notifyRestartRequired) { notifyRestartRequired(); }
       })
       .catch(e => {
         result.textContent = e.message;

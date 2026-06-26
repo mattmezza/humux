@@ -123,7 +123,20 @@ def test_topics_checkbox_reflects_stored_value(tmp_path) -> None:
     # the stored value, else re-saving the channel silently disables topic mode.
     on = _wizard(tmp_path, **{"channels.telegram.topics_enabled": "true"})
     assert 'id="ch-tg-topics" checked' in on
+    assert "after an agent restart" in on  # restart note shown on the channel editor
 
     off = _wizard(tmp_path)  # key absent → unchecked
     assert 'id="ch-tg-topics" checked' not in off
     assert "ch-tg-topics" in off  # the checkbox itself is present
+
+
+def test_config_requires_restart_flags_startup_only_keys() -> None:
+    from api.admin import _config_requires_restart
+
+    # Read once at startup → restart required.
+    assert _config_requires_restart({"voice.tts_enabled": "true"}) is True
+    assert _config_requires_restart({"history.max_turns": "20"}) is True
+    # Hot-applied by patch_config (agent.config swap + llm/memory rebuild) → no restart.
+    assert _config_requires_restart({"memory.long_term_limit": "50"}) is False
+    assert _config_requires_restart({"agent.model": "x", "agent.thinking_level": "high"}) is False
+    assert _config_requires_restart({}) is False
