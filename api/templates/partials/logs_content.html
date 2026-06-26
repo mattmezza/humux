@@ -1,6 +1,6 @@
 {# Log content — swapped into #log-content by HTMX.
    Reasoning/CoT lines (logger core.llm.reasoning) render in a distinct style
    so the model's thinking trace stands apart from regular log lines. #}
-{% for line in lines %}{% if 'core.llm.reasoning' in line %}<span class="log-thinking">💭 {{ line }}</span>
+{% for line in lines %}{% if 'core.llm.reasoning — ' in line %}<span class="log-thinking">💭 {{ line }}</span>
 {% else %}{{ line }}
 {% endif %}{% endfor %}
