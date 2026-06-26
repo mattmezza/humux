@@ -21,6 +21,7 @@ dispatch — never in message/email tool bodies. See ``core/agent.py``.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -30,6 +31,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import aiosqlite
+from cryptography.fernet import InvalidToken
 
 from core.vault import InfraVault, PersonaVault, VaultLocked, load_machine_key
 
@@ -146,6 +148,11 @@ class SecretStore:
         self.persona = persona_vault if persona_vault is not None else PersonaVault()
         self._ready = False
         self._infra_cache: dict[str, str] = {}
+        # Serializes secret resolution so single-use ("once") secrets cannot be
+        # consumed twice by concurrent run_command calls (TOCTOU).
+        # ponytail: global lock; fine for a single-user agent — revisit if
+        # secret resolution ever becomes a throughput bottleneck.
+        self._resolve_lock = asyncio.Lock()
 
     async def _ensure_schema(self) -> None:
         if self._ready:
@@ -168,7 +175,11 @@ class SecretStore:
             row = await cur.fetchone()
             if row and row[0] and row[1]:
                 # Already initialised — just unseal in memory.
-                self.persona.unseal(password, row[0], row[1])
+                if not self.persona.unseal(password, row[0], row[1]):
+                    log.warning(
+                        "Persona vault already initialised but could not be unsealed with "
+                        "this password (password may differ from the one that wrapped the DEK)"
+                    )
                 return False
             wrapped, salt = PersonaVault.create_wrapped_dek(password)
             await db.execute(
@@ -200,16 +211,10 @@ class SecretStore:
             cur = await db.execute("SELECT wrapped_dek, salt FROM vault_meta WHERE id = 1")
             row = await cur.fetchone()
             if row and row[0] and row[1]:
-                from cryptography.fernet import InvalidToken
-
-                try:
-                    wrapped, salt = PersonaVault.rewrap(old_password, new_password, row[0], row[1])
-                except InvalidToken, ValueError, TypeError:
-                    # Old password wrong (or meta corrupt): cannot preserve the DEK.
-                    # Leave existing secrets intact under the old wrapping rather than
-                    # silently orphaning them.
-                    log.warning("Vault rewrap skipped: could not unwrap DEK with old password")
-                    return
+                # Raises InvalidToken if old_password can't unwrap the DEK — the
+                # caller (change_admin_password) must abort the password change so
+                # we never advance the auth hash while orphaning the vault.
+                wrapped, salt = PersonaVault.rewrap(old_password, new_password, row[0], row[1])
             else:
                 wrapped, salt = PersonaVault.create_wrapped_dek(new_password)
             await db.execute(
@@ -338,52 +343,63 @@ class SecretStore:
         Returns ``(resolved_command, error)``. On any error the original command
         is returned unchanged and ``error`` is a message for the model. Single-use
         and audit accounting is applied only after every placeholder resolves.
+        Resolution is serialized (a lock) so a single-use secret cannot be
+        consumed twice by concurrent calls.
         """
-        matches = list(_PLACEHOLDER_RE.finditer(command))
-        if not matches:
+        if "{{secret:" not in command:
             return command, None
 
-        if not self.persona.unsealed:
-            return command, (
-                "Secrets vault is locked. Ask the owner to open the admin UI to unlock it."
-            )
-
-        acl = None if allowed is None else (set(allowed) | await self.shared_names())
-
-        # Validate + decrypt every referenced secret before substituting any.
-        resolved_values: dict[tuple[str, str | None], str] = {}
-        used_names: set[str] = set()
-        for m in matches:
-            name, field = m.group(1), m.group(2)
-            if acl is not None and name not in acl:
+        async with self._resolve_lock:
+            if not self.persona.unsealed:
                 return command, (
-                    f"Secret '{name}' is not in this persona's scope. "
-                    "Request access or use a permitted secret."
+                    "Secrets vault is locked. Ask the owner to open the admin UI to unlock it."
                 )
-            value, err = await self._materialize(name)
-            if err:
-                return command, err
-            if field is not None:
-                if not isinstance(value, dict):
-                    return command, f"Secret '{name}' is not structured; '.{field}' is invalid."
-                if field not in value:
-                    return command, f"Secret '{name}' has no field '{field}'."
-                resolved_values[(name, field)] = str(value[field])
-            else:
-                if isinstance(value, dict):
+
+            acl = None if allowed is None else (set(allowed) | await self.shared_names())
+
+            # Validate + decrypt every referenced secret before substituting any.
+            matches = list(_PLACEHOLDER_RE.finditer(command))
+            resolved_values: dict[tuple[str, str | None], str] = {}
+            used_names: set[str] = set()
+            for m in matches:
+                name, field = m.group(1), m.group(2)
+                if acl is not None and name not in acl:
                     return command, (
-                        f"Secret '{name}' is structured; reference a field as "
-                        f"{{{{secret:{name}.<field>}}}}."
+                        f"Secret '{name}' is not in this persona's scope. "
+                        "Request access or use a permitted secret."
                     )
-                resolved_values[(name, field)] = str(value)
-            used_names.add(name)
+                value, err = await self._materialize(name)
+                if err:
+                    return command, err
+                if field is not None:
+                    if not isinstance(value, dict):
+                        return command, f"Secret '{name}' is not structured; '.{field}' is invalid."
+                    if field not in value:
+                        return command, f"Secret '{name}' has no field '{field}'."
+                    resolved_values[(name, field)] = str(value[field])
+                else:
+                    if isinstance(value, dict):
+                        return command, (
+                            f"Secret '{name}' is structured; reference a field as "
+                            f"{{{{secret:{name}.<field>}}}}."
+                        )
+                    resolved_values[(name, field)] = str(value)
+                used_names.add(name)
 
-        def _sub(m: re.Match) -> str:
-            return resolved_values[(m.group(1), m.group(2))]
+            def _sub(m: re.Match) -> str:
+                return resolved_values[(m.group(1), m.group(2))]
 
-        resolved = _PLACEHOLDER_RE.sub(_sub, command)
-        await self._record_use(used_names)
-        return resolved, None
+            resolved = _PLACEHOLDER_RE.sub(_sub, command)
+            # A leftover ``{{secret:`` means a malformed reference (e.g. multi-dot
+            # or empty name) that matched nothing. Refuse rather than execute a
+            # command with an unresolved placeholder.
+            if "{{secret:" in resolved:
+                return command, (
+                    "Malformed secret reference — use {{secret:NAME}} or {{secret:NAME.field}} "
+                    "(names allow letters, digits, _ - : and at most one .field)."
+                )
+            await self._record_use(used_names)
+            return resolved, None
 
     async def _materialize(self, name: str) -> tuple[str | dict | None, str | None]:
         """Fetch + decrypt a secret, honouring expiry. Returns (value, error)."""
@@ -403,6 +419,11 @@ class SecretStore:
             plaintext = self.persona.decrypt(row[0])
         except VaultLocked:
             return None, "Secrets vault is locked."
+        except InvalidToken:
+            # Ciphertext was written under a different DEK (e.g. a restored DB or
+            # a vault re-init). Surface a model-safe error instead of crashing.
+            log.warning("Secret %r could not be decrypted (DEK mismatch)", name)
+            return None, f"Secret '{name}' could not be decrypted (vault key mismatch)."
         value = json.loads(plaintext) if row[1] else plaintext
         return value, None
 

@@ -10,6 +10,10 @@ MPA uses a dual-layer configuration system:
 1. **File-based** (`config.yml` + `.env`) — seed config loaded on first boot, supports `${ENV_VAR}` interpolation
 2. **SQLite config store** (`data/config.db`) — becomes the source of truth after setup, managed through the admin UI
 
+Config values may also reference the encrypted infra vault with `${vault:NAME}`, which
+resolves at load time and falls back to the environment variable of the same name. See the
+[secrets vault](/docs/secrets).
+
 ## Environment variables (`.env`)
 
 Secrets and API keys live in `.env`. Copy the example to get started:
@@ -33,10 +37,13 @@ Key variables:
 | `TAVILY_API_KEY` | Tavily web search API key |
 | `GOOGLE_EMAIL` | Google account for calendar |
 | `GOOGLE_APP_PASSWORD` | Google app-specific password |
+| `MPA_MASTER_KEY` | Infra [secrets vault](/docs/secrets) machine key (optional; a `data/master.key` keyfile is used if unset) |
+| `MPA_BASE_URL` | Base URL for secure "provide a secret" links (defaults to `http://localhost:<admin port>`) |
 
 ## Agent config (`config.yml`)
 
-The main configuration file. Supports `${ENV_VAR}` interpolation for secrets.
+The main configuration file. Supports `${ENV_VAR}` interpolation for secrets, and
+`${vault:NAME}` references to the encrypted [secrets vault](/docs/secrets) (with `.env` fallback).
 
 ### Full example
 

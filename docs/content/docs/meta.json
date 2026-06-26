@@ -12,6 +12,7 @@
     "personae",
     "memory",
     "permissions",
+    "secrets",
     "scheduler",
     "voice",
     "admin-ui",

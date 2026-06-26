@@ -16,7 +16,7 @@ A persona is exactly these things:
 - a **skill allowlist** — which skills it may load (empty = all);
 - a **tool scope** — which function-tools are advertised (empty = all; `load_skill` is always available);
 - a **voice** — a TTS voice override (empty = the configured default);
-- a **secret scope** — vault namespaces it may use (stored now; enforced once the [secrets vault](https://github.com/mattmezza/mpa/issues/19) lands).
+- a **secret scope** — which [vault](/docs/secrets) secrets it may use, enforced as a reference-only ACL (a persona may use a secret only if it is shared or named in this scope).
 
 When **no** persona is active, the agent uses the configured `character` / `personalia` from
 the **Assistant** tab — so first-run behaviour is unchanged. The default identity *is* the
@@ -111,5 +111,7 @@ Persona resolution is deliberately funnelled through one seam,
 - **Per-chat personae** ([#14](https://github.com/mattmezza/mpa/issues/14)) — bind a persona
   per Telegram forum topic (history is already keyed by `chat_id`), so several personae run
   concurrently, each with its own isolated context, identity, scope, and voice.
-- **Secrets vault** ([#19](https://github.com/mattmezza/mpa/issues/19)) — turns the stored
-  secret scope into an enforced, reference-only ACL.
+
+The **secret scope** facet is now enforced by the [secrets vault](/docs/secrets) — a persona
+uses a secret by reference (`{{secret:NAME}}`) only if it is shared or in scope, and values
+never enter the model's context.

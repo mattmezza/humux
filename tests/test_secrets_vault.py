@@ -126,6 +126,38 @@ async def test_unknown_secret_suggests_request(store: SecretStore) -> None:
     assert err and "request_secret" in err
 
 
+async def test_malformed_placeholder_errors_not_silent(store: SecretStore) -> None:
+    # Multi-dot and empty references match nothing — must error, never pass the
+    # literal placeholder through to execution.
+    await store.set_secret("DB", {"host": "h"})
+    _, err = await store.resolve_command_secrets("{{secret:DB.host.port}}", allowed={"DB"})
+    assert err and "Malformed" in err
+    _, err = await store.resolve_command_secrets("echo {{secret:}}", allowed=set())
+    assert err and "Malformed" in err
+
+
+async def test_decrypt_mismatch_returns_error_not_crash(tmp_path) -> None:
+    db = str(tmp_path / "c.db")
+    s = SecretStore(db_path=db)
+    await s.ensure_wrapped_dek("pw")
+    await s.set_secret("K", "v", shared=True)
+    # Swap in a *different* unsealed DEK so the stored ciphertext can't decrypt.
+    other = PersonaVault()
+    w, salt = PersonaVault.create_wrapped_dek("pw")
+    other.unseal("pw", w, salt)
+    s.persona = other
+    _, err = await s.resolve_command_secrets("{{secret:K}}", allowed=set())
+    assert err and "key mismatch" in err
+
+
+async def test_rotate_password_preserves_secrets_and_rejects_wrong_old(store: SecretStore) -> None:
+    await store.set_secret("K", "v", shared=True)
+    await store.rotate_password("admin-pw", "new-pw")
+    assert await store.get_secret("K") == "v"  # DEK preserved, vault re-unsealed
+    with pytest.raises(InvalidToken):
+        await store.rotate_password("wrong-old", "x")
+
+
 async def test_requests_are_one_time(store: SecretStore) -> None:
     tok = await store.create_request("NEW", persona="finance", reason="r")
     req = await store.get_request(tok)
@@ -356,6 +388,24 @@ async def test_bitwarden_import_parse_and_commit(admin_client) -> None:
     )
     assert commit.status_code == 200
     assert await s.get_secret("Site") == {"username": "u", "password": "pw"}
+
+
+async def test_change_password_rotates_and_keeps_secrets(admin_client) -> None:
+    client, s, _cs = admin_client
+    await s.set_secret("K", "v", shared=True)
+    resp = client.post(
+        "/admin/password",
+        json={"current_password": "testpw", "new_password": "newpw"},
+        headers=_auth("testpw"),
+    )
+    assert resp.json()["ok"] is True
+    assert await s.get_secret("K") == "v"  # secret survives the rotation
+
+
+async def test_wizard_secrets_blocked_after_setup(admin_client) -> None:
+    client, _s, _cs = admin_client  # fixture marks setup complete
+    r = client.post("/setup/step/secrets", data={"action": "generate"})
+    assert r.status_code == 403
 
 
 async def test_wizard_secrets_step_generates_key_and_imports(tmp_path, monkeypatch) -> None:

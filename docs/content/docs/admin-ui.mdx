@@ -85,6 +85,14 @@ Configure conversation history and browse stored turns:
 - **Mode** — `injection` (replay the last N user/assistant pairs each request) or `session` (sticky per-chat session, full context, cache-friendly). Reset a conversation any time by sending `/new` (or its alias `/clear`).
 - **Context compaction** (session mode) — when the conversation nears the model's context window, the oldest turns are summarized by a small model while recent turns are kept verbatim, and the user gets a system message saying it happened. Set the trigger threshold here as either a **percent of the context window** or an **absolute token count** (e.g. 200k), plus how many recent turns to keep. The compaction model is configured in the **LLM** tab (under *History Compaction*). Has no effect in injection mode (which is already windowed).
 
+### Secrets
+
+Manage the [secrets vault](/docs/secrets). Lists secret **names** + descriptions + recent-use
+audit only — values are write-only and never shown. Includes a **persona × secret access
+matrix** (tick to grant a persona use of a secret), add/rotate/revoke, **Bitwarden JSON
+import**, and the infra-secrets section. Responsive at phone width. Sensitive value entry is
+web-only; over Telegram you can see names and access but never values.
+
 ### Logs
 
 Real-time log viewer for debugging and monitoring agent behavior.
@@ -102,7 +110,8 @@ On first boot, the admin UI presents a step-by-step setup wizard:
 7. **Calendar** — set up CalDAV providers
 8. **Search** — configure web search
 9. **Admin** — set admin API key
-10. **Done** — save and start
+10. **Secrets** — generate the vault machine key and migrate existing `.env` secrets into the vault (optional)
+11. **Done** — save and start
 
 The wizard writes to the SQLite config store, which becomes the source of truth after setup.
 

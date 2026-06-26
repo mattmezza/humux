@@ -94,9 +94,14 @@ def generate_and_save_machine_key(keyfile: str = DEFAULT_KEYFILE) -> str:
         return path.read_text().strip()
     path.parent.mkdir(parents=True, exist_ok=True)
     key = Fernet.generate_key().decode()
-    path.write_text(key)
+    # Create with 0600 atomically (no world-readable window between write + chmod).
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     try:
-        path.chmod(0o600)
+        os.write(fd, key.encode())
+    finally:
+        os.close(fd)
+    try:
+        path.chmod(0o600)  # tighten if the file pre-existed with looser perms
     except OSError:
         pass  # best-effort on filesystems without POSIX perms
     return key

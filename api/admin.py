@@ -1643,13 +1643,19 @@ def create_admin_app(
             return {"ok": False, "error": "Both current and new passwords are required."}
         if not await config_store.verify_admin_password(current):
             return {"ok": False, "error": "Current password is incorrect."}
-        await config_store.set_admin_password(new_password)
-        # Re-wrap the persona vault DEK under the new password (preserves secrets).
+        # Re-wrap the persona vault DEK FIRST; only advance the admin password if
+        # it succeeds, so a rewrap failure can never orphan the vault (new auth
+        # password but DEK still wrapped under the old one).
         if secret_store is not None:
             try:
                 await secret_store.rotate_password(current, new_password)
             except Exception:
-                log.exception("Failed to rotate persona vault password")
+                log.exception("Vault rewrap failed; aborting password change")
+                return {
+                    "ok": False,
+                    "error": "Could not re-encrypt the secrets vault; password unchanged.",
+                }
+        await config_store.set_admin_password(new_password)
         return {"ok": True, "token": new_password}
 
     @app.post("/config/delete", dependencies=[Depends(auth)])
@@ -3032,6 +3038,11 @@ def create_admin_app(
     async def setup_save_secrets(request: Request) -> HTMLResponse:
         from core.config_store import SETUP_STEPS
         from core.vault import generate_and_save_machine_key
+
+        # Wizard-only endpoint: refuse once setup is complete so it can't be used
+        # post-setup to (re)generate a machine key or migrate config.
+        if await config_store.is_setup_complete():
+            raise HTTPException(403, "Setup already complete")
 
         form = await request.form()
         action = str(form.get("action", ""))
