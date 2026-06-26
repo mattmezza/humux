@@ -50,6 +50,15 @@ CREATE TABLE IF NOT EXISTS session_system (
     created_at DATETIME DEFAULT (datetime('now')),
     PRIMARY KEY (channel, user_id, chat_id)
 );
+CREATE TABLE IF NOT EXISTS chat_persona (
+    channel TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    chat_id TEXT NOT NULL DEFAULT '',
+    persona TEXT NOT NULL,
+    created_at DATETIME DEFAULT (datetime('now')),
+    updated_at DATETIME DEFAULT (datetime('now')),
+    PRIMARY KEY (channel, user_id, chat_id)
+);
 """
 
 # Migrations applied after initial schema creation.
@@ -329,3 +338,96 @@ class ConversationHistory:
                 (channel, user_id, chat_id, system),
             )
             await db.commit()
+
+    async def clear_session_system(self, channel: str, user_id: str, chat_id: str = "") -> None:
+        """Drop just the snapshotted system prompt for a session (keep messages).
+
+        Used when the bound persona changes mid-session so the next turn rebuilds
+        the static prompt with the new identity without wiping the conversation.
+        """
+        await self._ensure_schema()
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                "DELETE FROM session_system WHERE channel = ? AND user_id = ? AND chat_id = ?",
+                (channel, user_id, chat_id),
+            )
+            await db.commit()
+        self._session_system.pop((channel, user_id, chat_id), None)
+
+    # -------------------------------------------------------------------
+    # Per-chat persona binding — (channel, user_id, chat_id) -> persona name
+    # -------------------------------------------------------------------
+
+    async def get_chat_persona(self, channel: str, user_id: str, chat_id: str = "") -> str | None:
+        """Return the persona name bound to this triple, or None if unbound.
+
+        Not cached: a primary-key lookup per turn is cheap, and skipping the
+        cache avoids staleness when the binding is changed from the admin UI on
+        a different store instance.
+        """
+        await self._ensure_schema()
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                "SELECT persona FROM chat_persona "
+                "WHERE channel = ? AND user_id = ? AND chat_id = ?",
+                (channel, user_id, chat_id),
+            )
+            row = await cursor.fetchone()
+        return row[0] if row else None
+
+    async def set_chat_persona(
+        self, channel: str, user_id: str, persona: str, chat_id: str = ""
+    ) -> None:
+        """Bind a (channel, user_id, chat_id) triple to a persona name (upsert)."""
+        await self._ensure_schema()
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                "INSERT INTO chat_persona (channel, user_id, chat_id, persona) "
+                "VALUES (?, ?, ?, ?) "
+                "ON CONFLICT(channel, user_id, chat_id) DO UPDATE SET "
+                "persona = excluded.persona, updated_at = datetime('now')",
+                (channel, user_id, chat_id, persona),
+            )
+            await db.commit()
+
+    async def clear_chat_persona(self, channel: str, user_id: str, chat_id: str = "") -> None:
+        """Remove a per-chat persona binding (revert to global/default identity)."""
+        await self._ensure_schema()
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                "DELETE FROM chat_persona WHERE channel = ? AND user_id = ? AND chat_id = ?",
+                (channel, user_id, chat_id),
+            )
+            await db.commit()
+
+    async def list_chats(self) -> list[dict[str, str]]:
+        """List every known (channel, user_id, chat_id) with its bound persona.
+
+        Drives the admin Chats page. Unions the turn/session/binding tables so a
+        chat appears whichever history mode produced it (and even when it is only
+        bound, e.g. a topic auto-bound before its first message). LEFT JOIN
+        surfaces the binding; ``persona`` is "" when unbound.
+        """
+        await self._ensure_schema()
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                """
+                SELECT c.channel, c.user_id, c.chat_id, p.persona
+                FROM (
+                    SELECT DISTINCT channel, user_id, chat_id FROM conversation_turns
+                    UNION
+                    SELECT DISTINCT channel, user_id, chat_id FROM session_messages
+                    UNION
+                    SELECT DISTINCT channel, user_id, chat_id FROM chat_persona
+                ) AS c
+                LEFT JOIN chat_persona AS p
+                  ON p.channel = c.channel AND p.user_id = c.user_id
+                  AND p.chat_id = c.chat_id
+                ORDER BY c.channel, c.user_id, c.chat_id
+                """
+            )
+            rows = await cursor.fetchall()
+        return [
+            {"channel": ch, "user_id": uid, "chat_id": cid, "persona": persona or ""}
+            for ch, uid, cid, persona in rows
+        ]
