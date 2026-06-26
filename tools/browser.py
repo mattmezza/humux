@@ -50,10 +50,16 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 NAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
-_DESKTOP_UA = (
+_DEFAULT_UA = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
 )
+
+
+def _user_agent() -> str:
+    # BROWSER_USER_AGENT (from config.tools.browser.user_agent) overrides the
+    # built-in default, so the UA is choosable without code changes.
+    return os.environ.get("BROWSER_USER_AGENT", "").strip() or _DEFAULT_UA
 
 
 def _data_dir() -> Path:
@@ -214,12 +220,16 @@ class _Session:
 
         self._pw = sync_playwright().start()
         self.is_cdp = bool(os.environ.get("BROWSER_CDP_URL", "").strip())
+        ua = _user_agent()
         if self.is_cdp:
             # ponytail: CDP profile lives on the sidecar; --profile is advisory here.
             cdp = os.environ["BROWSER_CDP_URL"].strip()
             self._browser = self._pw.chromium.connect_over_cdp(cdp)
+            # A reused sidecar context keeps its own UA; only a fresh one can take ours.
             self._ctx = (
-                self._browser.contexts[0] if self._browser.contexts else self._browser.new_context()
+                self._browser.contexts[0]
+                if self._browser.contexts
+                else self._browser.new_context(user_agent=ua)
             )
         else:
             user_data_dir = _profile_dir(self.profile) / "udd"
@@ -227,7 +237,7 @@ class _Session:
             self._ctx = self._pw.chromium.launch_persistent_context(
                 str(user_data_dir),
                 headless=self.headless,
-                user_agent=_DESKTOP_UA,
+                user_agent=ua,
                 viewport={"width": 1280, "height": 800},
             )
             self._restore_session()

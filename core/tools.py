@@ -123,6 +123,8 @@ def _browser_env(config: Config) -> dict[str, str]:
     env = {"BROWSER_HEADLESS": "1" if browser.headless else "0"}
     if browser.cdp_url:
         env["BROWSER_CDP_URL"] = browser.cdp_url
+    if browser.user_agent:
+        env["BROWSER_USER_AGENT"] = browser.user_agent
     return env
 
 

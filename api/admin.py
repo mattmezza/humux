@@ -974,6 +974,7 @@ def create_admin_app(
         browser_headless = await config_store.get("tools.browser.headless")
         browser_headless = browser_headless if browser_headless is not None else "true"
         browser_cdp = await config_store.get("tools.browser.cdp_url") or ""
+        browser_ua = await config_store.get("tools.browser.user_agent") or ""
         try:
             from tools.browser import cmd_profiles
 
@@ -989,6 +990,7 @@ def create_admin_app(
             browser_enabled=browser_enabled,
             browser_headless=browser_headless,
             browser_cdp=browser_cdp,
+            browser_ua=browser_ua,
             browser_profiles=browser_profiles,
             browser_rules=_browser_rules(),
         )

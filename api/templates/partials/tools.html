@@ -105,6 +105,7 @@
     {{ browser_enabled|default('false', true)|tojson|forceescape }},
     {{ browser_headless|default('true', true)|tojson|forceescape }},
     {{ browser_cdp|default('', true)|tojson|forceescape }},
+    {{ browser_ua|default('', true)|tojson|forceescape }},
     {{ browser_profiles|default([], true)|tojson|forceescape }},
     {{ browser_rules|default([], true)|tojson|forceescape }}
   )">
@@ -140,6 +141,15 @@
         <p class="text-muted text-xs mt-1">
           Empty launches Chromium locally (works in the REPL). Set to connect to a
           sidecar Chromium and keep the main image lean.
+        </p>
+      </div>
+      <div class="sm:col-span-2">
+        <label class="label">User-Agent <span class="text-muted">(optional)</span></label>
+        <input type="text" class="input-sm" style="max-width:100%" x-model="userAgent"
+               placeholder="empty = built-in desktop Chrome UA">
+        <p class="text-muted text-xs mt-1">
+          Override the browser's User-Agent string. Leave empty for the default
+          desktop Chrome UA. Ignored when reusing an existing sidecar session.
         </p>
       </div>
     </div>
@@ -262,12 +272,13 @@
     };
   }
 
-  function browserTab(enabled, headless, cdp, profiles, rules) {
+  function browserTab(enabled, headless, cdp, userAgent, profiles, rules) {
     const truthy = (v) => v === true || v === 'true';
     return {
       enabled: truthy(enabled),
       headless: truthy(headless),
       cdp: cdp || '',
+      userAgent: userAgent || '',
       profiles: profiles || [],
       rules: rules || [],
       result: '', resultOk: false,
@@ -284,7 +295,8 @@
         const vals = {
           'tools.browser.enabled': String(this.enabled),
           'tools.browser.headless': String(this.headless),
-          'tools.browser.cdp_url': this.cdp
+          'tools.browser.cdp_url': this.cdp,
+          'tools.browser.user_agent': this.userAgent
         };
         fetch('/config', { method: 'PATCH', headers: this._hdr(), body: JSON.stringify({values: vals}) })
           .then(r => { this.resultOk = r.ok; return r.json(); })
