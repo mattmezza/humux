@@ -31,7 +31,7 @@ from fastapi.staticfiles import StaticFiles
 from jinja2 import Environment, FileSystemLoader
 from pydantic import BaseModel
 
-from core.artifacts import ARTIFACT_CSP, NOT_FOUND_HTML, store_from_config
+from core.artifacts import ARTIFACT_CSP, NOT_FOUND_HTML, store_from_config, valid_id
 from core.config_store import ConfigStore
 from core.goal_decomposition import classify_complexity, decompose_goal
 from core.llm import LLMClient
@@ -613,6 +613,9 @@ def create_admin_app(
     async def artifact_root(artifact_id: str) -> Response:
         # Redirect to the trailing-slash form so relative links inside the
         # artifact (href="style.css", "img/logo.png") resolve under /artifacts/<id>/.
+        # Validate first so a malformed id never reaches the Location header.
+        if not valid_id(artifact_id):
+            return HTMLResponse(NOT_FOUND_HTML, status_code=404)
         return RedirectResponse(f"/artifacts/{artifact_id}/", status_code=307)
 
     @app.get("/artifacts/{artifact_id}/{file_path:path}", response_model=None)

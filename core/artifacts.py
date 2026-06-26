@@ -78,6 +78,11 @@ def _safe_rel(name: str) -> str | None:
     return "/".join(parts)
 
 
+def valid_id(art_id: str) -> bool:
+    """True if ``art_id`` is a well-formed artifact id (no traversal/control chars)."""
+    return bool(_ID_RE.match(art_id))
+
+
 def _dir_size(base: Path) -> int:
     return sum(f.stat().st_size for f in base.rglob("*") if f.is_file() and not f.is_symlink())
 

@@ -190,6 +190,8 @@ def test_no_slash_redirects_to_slash(tmp_path) -> None:
     assert r.status_code == 307
     assert r.headers["location"] == f"/artifacts/{art_id}/"
     assert client.get(f"/artifacts/{art_id}", follow_redirects=True).status_code == 200
+    # A malformed id is 404'd, not echoed into the Location header.
+    assert client.get("/artifacts/bad!id", follow_redirects=False).status_code == 404
 
 
 def test_meta_and_traversal_not_served(tmp_path) -> None:
