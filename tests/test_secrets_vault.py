@@ -435,3 +435,135 @@ async def test_wizard_secrets_step_generates_key_and_imports(tmp_path, monkeypat
     assert r.status_code == 200
     assert await cs.get("agent.anthropic_api_key") == "${vault:ANTHROPIC_API_KEY}"
     assert await s.get_infra_secret("ANTHROPIC_API_KEY") == "sk-plaintext"
+
+
+# ── Post-setup migration (issue #35) ───────────────────────────────────────
+
+
+async def _migrate_app(tmp_path, *, machine_key="mk"):
+    db = str(tmp_path / "config.db")
+    cs = ConfigStore(db_path=db)
+    await cs.set_setup_step("done")
+    await cs.set_admin_password("testpw")
+    await cs.set("agent.personae_db_path", str(tmp_path / "personae.db"))
+    await cs.set("agent.personae_dir", "")
+    s = SecretStore(db_path=db, infra_vault=InfraVault(machine_key))
+    await s.ensure_wrapped_dek("testpw")
+    app, _ = create_admin_app(AgentState(), cs, secret_store=s)
+    return TestClient(app), s, cs
+
+
+async def test_post_setup_migrate_endpoint(tmp_path) -> None:
+    client, s, cs = await _migrate_app(tmp_path)
+    await cs.set("agent.anthropic_api_key", "sk-plaintext")
+    await cs.set("search.api_key", "tvly-plaintext")
+    await cs.set("agent.openai_api_key", "${vault:OPENAI_API_KEY}")  # already a ref → skip
+    resp = client.post("/admin/secrets/migrate", headers=_auth())
+    assert resp.status_code == 200 and "Migrated 2 credential(s)" in resp.text
+    # Plaintext values never echoed back into the rendered partial.
+    assert "sk-plaintext" not in resp.text and "tvly-plaintext" not in resp.text
+    assert await cs.get("agent.anthropic_api_key") == "${vault:ANTHROPIC_API_KEY}"
+    assert await cs.get("search.api_key") == "${vault:TAVILY_API_KEY}"
+    assert await s.get_infra_secret("ANTHROPIC_API_KEY") == "sk-plaintext"
+    assert await s.get_infra_secret("TAVILY_API_KEY") == "tvly-plaintext"
+    # Idempotent: a second run finds nothing left to move.
+    resp2 = client.post("/admin/secrets/migrate", headers=_auth())
+    assert "Nothing to migrate" in resp2.text
+
+
+async def test_migrate_endpoint_requires_machine_key(tmp_path) -> None:
+    client, _s, cs = await _migrate_app(tmp_path, machine_key=None)
+    await cs.set("agent.anthropic_api_key", "sk-plaintext")
+    resp = client.post("/admin/secrets/migrate", headers=_auth())
+    assert resp.status_code == 200 and "No machine key configured" in resp.text
+    # Untouched — no half-migration without a key.
+    assert await cs.get("agent.anthropic_api_key") == "sk-plaintext"
+
+
+async def test_patch_config_preserves_vault_ref(tmp_path) -> None:
+    # A collapsed (vault-managed) field submits empty; the ref must survive.
+    client, s, cs = await _migrate_app(tmp_path)
+    await s.set_infra_secret("ANTHROPIC_API_KEY", "sk-real")
+    await cs.set("agent.anthropic_api_key", "${vault:ANTHROPIC_API_KEY}")
+    resp = client.patch(
+        "/config",
+        json={"values": {"agent.anthropic_api_key": "", "agent.model": "claude-x"}},
+        headers=_auth(),
+    )
+    assert resp.status_code == 200
+    assert "agent.anthropic_api_key" not in resp.json()["updated"]  # dropped, not written
+    assert await cs.get("agent.anthropic_api_key") == "${vault:ANTHROPIC_API_KEY}"
+    assert await cs.get("agent.model") == "claude-x"  # non-secret still saved
+    # Re-entering a real key still works (guard only drops blank/echoed writes).
+    client.patch(
+        "/config",
+        json={"values": {"agent.anthropic_api_key": "sk-new-plaintext"}},
+        headers=_auth(),
+    )
+    assert await cs.get("agent.anthropic_api_key") == "sk-new-plaintext"
+
+
+# ── Safe UI collapse (issue #35) ───────────────────────────────────────────
+
+
+async def test_llm_tab_collapses_vaulted_key(admin_client) -> None:
+    client, _s, cs = admin_client
+    await cs.set("agent.anthropic_api_key", "${vault:ANTHROPIC_API_KEY}")
+    body = client.get("/partials/llm", headers=_auth()).text
+    assert "Stored in the" in body  # read-only vault note shown
+    assert "${vault:ANTHROPIC_API_KEY}" not in body  # ref never shipped to the browser
+    assert 'x-model="openaiKey"' in body  # other providers still editable
+
+
+async def test_tools_and_search_collapse_vaulted(admin_client) -> None:
+    client, _s, cs = admin_client
+    await cs.set("tools.gh.token", "${vault:GH_TOKEN}")
+    await cs.set("search.api_key", "${vault:TAVILY_API_KEY}")
+    tools = client.get("/partials/tools", headers=_auth()).text
+    assert "Stored in the" in tools and "${vault:GH_TOKEN}" not in tools
+    assert 'x-model="ghToken"' not in tools  # input replaced by the note
+    search = client.get("/partials/search", headers=_auth()).text
+    assert "Stored in the" in search and "${vault:TAVILY_API_KEY}" not in search
+
+
+async def test_wizard_context_skips_vault_refs(tmp_path) -> None:
+    # The wizard must not pre-fill a form field with a ${vault:} reference.
+    from api.admin import _wizard_step_context
+
+    cs = ConfigStore(db_path=str(tmp_path / "config.db"))
+    await cs.set("agent.anthropic_api_key", "${vault:ANTHROPIC_API_KEY}")
+    await cs.set("agent.openai_api_key", "sk-plain")
+    await cs.set("channels.telegram.bot_token", "${vault:TELEGRAM_BOT_TOKEN}")
+    await cs.set("search.api_key", "${vault:TAVILY_API_KEY}")
+    llm = await _wizard_step_context("llm", cs)
+    assert "anthropic_api_key" not in llm  # vault ref filtered out
+    assert llm.get("openai_api_key") == "sk-plain"  # plaintext still pre-filled
+    assert "bot_token" not in await _wizard_step_context("telegram", cs)
+    assert "tavily_key" not in await _wizard_step_context("search", cs)
+
+
+async def test_telegram_editor_and_save_preserve_vaulted_token(admin_client) -> None:
+    client, _s, cs = admin_client
+    await cs.set("channels.telegram.bot_token", "${vault:TELEGRAM_BOT_TOKEN}")
+    editor = client.get("/channels/wizard?channel=telegram", headers=_auth()).text
+    assert "Secrets" in editor and "${vault:TELEGRAM_BOT_TOKEN}" not in editor
+    # Saving with an empty token field must NOT 400 and must keep the ref.
+    resp = client.post(
+        "/channels/telegram",
+        json={"bot_token": "", "user_ids": "42", "enabled": "true"},
+        headers=_auth(),
+    )
+    assert resp.status_code == 200
+    assert await cs.get("channels.telegram.bot_token") == "${vault:TELEGRAM_BOT_TOKEN}"
+    assert await cs.get("channels.telegram.allowed_user_ids") == "42"
+
+
+async def test_delete_channel_preserves_vaulted_token(admin_client) -> None:
+    # Disabling a channel must not orphan its vault-managed token.
+    client, _s, cs = admin_client
+    await cs.set("channels.telegram.bot_token", "${vault:TELEGRAM_BOT_TOKEN}")
+    await cs.set("channels.telegram.enabled", "true")
+    resp = client.delete("/channels/telegram", headers=_auth())
+    assert resp.status_code == 200
+    assert await cs.get("channels.telegram.bot_token") == "${vault:TELEGRAM_BOT_TOKEN}"
+    assert await cs.get("channels.telegram.enabled") == "false"  # still disabled

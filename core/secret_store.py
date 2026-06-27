@@ -80,6 +80,20 @@ CREATE TABLE IF NOT EXISTS vault_meta (
 _NAME_RE = re.compile(r"^[A-Za-z0-9_:-]+$")
 _PLACEHOLDER_RE = re.compile(r"\{\{secret:([A-Za-z0-9_:-]+)(?:\.([A-Za-z0-9_-]+))?\}\}")
 
+# Config keys that hold a single infra secret, mapped to their canonical vault
+# name. Drives migrating scattered plaintext credentials onto the infra vault
+# (issue #35) — used by both the setup wizard and the post-setup Secrets tab.
+INFRA_VAULT_KEYS: dict[str, str] = {
+    "agent.anthropic_api_key": "ANTHROPIC_API_KEY",
+    "agent.openai_api_key": "OPENAI_API_KEY",
+    "agent.google_api_key": "GOOGLE_API_KEY",
+    "agent.grok_api_key": "GROK_API_KEY",
+    "agent.deepseek_api_key": "DEEPSEEK_API_KEY",
+    "channels.telegram.bot_token": "TELEGRAM_BOT_TOKEN",
+    "search.api_key": "TAVILY_API_KEY",
+    "tools.gh.token": "GH_TOKEN",
+}
+
 
 def _now() -> datetime:
     return datetime.now(UTC)
@@ -523,7 +537,9 @@ class SecretStore:
                 (name, token, description),
             )
             await db.commit()
-        self._infra_cache[name] = value
+            # Update the cache only after a successful commit so a failed write
+            # can't leave the in-memory value ahead of the database.
+            self._infra_cache[name] = value
 
     async def get_infra_secret(self, name: str) -> str | None:
         await self._ensure_schema()
@@ -583,6 +599,34 @@ class SecretStore:
         if name in self._infra_cache:
             return self._infra_cache[name]
         return os.environ.get(name)
+
+
+async def migrate_config_to_infra_vault(config_store, secret_store: SecretStore) -> list[str]:
+    """Move plaintext credentials from the config store onto the infra vault.
+
+    For every key in :data:`INFRA_VAULT_KEYS` whose stored config value is a real
+    plaintext secret — non-empty and not already a ``${...}`` reference — encrypt
+    it into the infra vault under its canonical name and replace the config value
+    with a ``${vault:NAME}`` reference (``.env`` stays a fallback). Idempotent:
+    keys already referencing the vault, or empty (env-only), are left untouched.
+
+    Returns the config keys migrated. A no-op (``[]``) when no machine key is
+    configured, so the caller can surface "configure a key first".
+    """
+    migrated: list[str] = []
+    if secret_store is None or not secret_store.infra.available:
+        return migrated
+    for cfg_key, vname in INFRA_VAULT_KEYS.items():
+        val = await config_store.get(cfg_key)
+        if val and not val.startswith("${"):
+            # Fail-safe order: write the encrypted secret FIRST, then repoint the
+            # config at it. If the second write fails, the config still holds the
+            # working plaintext (no data loss) and the only residue is a harmless
+            # encrypted entry; re-running heals it (the upsert is idempotent).
+            await secret_store.set_infra_secret(vname, val, f"migrated from {cfg_key}")
+            await config_store.set(cfg_key, f"${{vault:{vname}}}")
+            migrated.append(cfg_key)
+    return migrated
 
 
 if __name__ == "__main__":
@@ -689,6 +733,40 @@ if __name__ == "__main__":
             assert store2.infra_resolve("ANTHROPIC_API_KEY") == "sk-ant-xyz"
             assert store2.infra_resolve("MISSING") is None
 
+    async def _check_migrate() -> None:
+        # migrate_config_to_infra_vault: plaintext → vault ref, idempotent, env-safe.
+        class _FakeCS:
+            def __init__(self) -> None:
+                self.d: dict[str, str] = {}
+
+            async def get(self, k: str) -> str | None:
+                return self.d.get(k)
+
+            async def set(self, k: str, v: str) -> None:
+                self.d[k] = v
+
+        with tempfile.TemporaryDirectory() as d:
+            store = SecretStore(db_path=str(Path(d) / "c.db"), infra_vault=InfraVault("mk"))
+            cs = _FakeCS()
+            await cs.set("agent.anthropic_api_key", "sk-plain")
+            await cs.set("search.api_key", "${vault:TAVILY_API_KEY}")  # already a ref → skip
+            await cs.set("tools.gh.token", "")  # empty (env-only) → skip
+            migrated = await migrate_config_to_infra_vault(cs, store)
+            assert migrated == ["agent.anthropic_api_key"], migrated
+            assert await cs.get("agent.anthropic_api_key") == "${vault:ANTHROPIC_API_KEY}"
+            await store.load_infra_cache()
+            assert store.infra_resolve("ANTHROPIC_API_KEY") == "sk-plain"
+            assert await migrate_config_to_infra_vault(cs, store) == []  # idempotent
+            # No machine key → no-op (never raises, never half-migrates).
+            assert (
+                await migrate_config_to_infra_vault(
+                    _FakeCS(),
+                    SecretStore(db_path=str(Path(d) / "c2.db"), infra_vault=InfraVault(None)),
+                )
+                == []
+            )
+
     _check_bitwarden()
     asyncio.run(_check_store())
+    asyncio.run(_check_migrate())
     print("secret_store.py self-check OK")

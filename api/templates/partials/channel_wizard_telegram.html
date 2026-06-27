@@ -8,8 +8,14 @@
   </ol>
 
   <label class="label" for="ch-tg-token">Bot Token</label>
+  {% if bot_token_vaulted %}
+  <input type="text" class="input" id="ch-tg-token" value="" readonly
+         placeholder="🔒 stored in the Secrets vault">
+  <div class="hint">Managed in the <strong>Secrets</strong> vault — edit it there. Save leaves it untouched.</div>
+  {% else %}
   <input type="password" class="input" id="ch-tg-token" placeholder="123456:ABC-DEF..."
          value="{{ bot_token|default('') }}">
+  {% endif %}
 
   <label class="label mt-3" for="ch-tg-users">Allowed user IDs</label>
   <input type="text" class="input" id="ch-tg-users" placeholder="123456789"

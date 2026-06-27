@@ -32,6 +32,12 @@
     <div class="space-y-3">
       <div>
         <label class="label">Personal Access Token</label>
+        {% if gh_token_vaulted %}
+        <div class="text-xs text-muted py-1" style="max-width:500px">
+          🔒 Stored in the <strong>Secrets</strong> vault — manage it there.
+          Injected as <code>GH_TOKEN</code> so <code>gh</code> stays authenticated.
+        </div>
+        {% else %}
         <input type="text" class="input-sm" style="max-width:500px; display:none"
                autocomplete="username" aria-hidden="true" tabindex="-1">
         <input type="password" class="input-sm" style="max-width:500px"
@@ -44,6 +50,7 @@
           non-interactively. Grant only the scopes you want the agent to have
           (e.g. <code>repo</code>, <code>read:org</code>).
         </p>
+        {% endif %}
       </div>
     </div>
 

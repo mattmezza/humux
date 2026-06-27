@@ -25,11 +25,15 @@
 
       <div>
         <label class="label">API Key</label>
+        {% if api_key_vaulted %}
+        <div class="text-xs text-muted py-1" style="max-width:500px">🔒 Stored in the <strong>Secrets</strong> vault — manage it there.</div>
+        {% else %}
         <input type="text" class="input-sm" style="max-width:500px; display:none"
                autocomplete="username" aria-hidden="true" tabindex="-1">
         <input type="password" class="input-sm" style="max-width:500px"
                autocomplete="new-password"
                x-model="apiKey" placeholder="tvly-...">
+        {% endif %}
       </div>
 
       <div>

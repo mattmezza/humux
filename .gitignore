@@ -41,3 +41,6 @@ node_modules
 
 # Local embedding models (fastembed cache)
 models/
+
+# stray test DB from local pytest runs
+test.db

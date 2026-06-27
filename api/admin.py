@@ -96,6 +96,15 @@ def _render_partial(template_name: str, **ctx: object) -> HTMLResponse:
     return HTMLResponse(tmpl.render(**ctx))
 
 
+def _is_vault_ref(value: str | None) -> bool:
+    """True if a stored config value points at the infra vault (issue #35).
+
+    Vault-managed credentials must never be echoed back into a form field — the
+    tab/wizard shows a read-only note instead — so callers filter these out.
+    """
+    return bool(value) and str(value).startswith("${vault:")
+
+
 async def _wizard_step_context(step: str, config_store: ConfigStore) -> dict[str, str]:
     """Fetch previously-saved config values relevant to a wizard step.
 
@@ -118,7 +127,8 @@ async def _wizard_step_context(step: str, config_store: ConfigStore) -> dict[str
             ("agent.model", "model"),
         ):
             val = await config_store.get(key)
-            if val:
+            # Don't pre-fill a form field with a ${vault:} reference (issue #35).
+            if val and not _is_vault_ref(val):
                 ctx[var] = val
     elif step == "identity":
         for key, var in (
@@ -160,7 +170,7 @@ async def _wizard_step_context(step: str, config_store: ConfigStore) -> dict[str
             ("channels.telegram.allowed_user_ids", "user_ids"),
         ):
             val = await config_store.get(key)
-            if val:
+            if val and not _is_vault_ref(val):
                 ctx[var] = val
     elif step == "whatsapp":
         for key, var in (("channels.whatsapp.allowed_numbers", "allowed_numbers"),):
@@ -186,7 +196,7 @@ async def _wizard_step_context(step: str, config_store: ConfigStore) -> dict[str
                 pass
     elif step == "search":
         val = await config_store.get("search.api_key")
-        if val:
+        if val and not _is_vault_ref(val):
             ctx["tavily_key"] = val
     elif step == "admin":
         val = await config_store.get("admin.password_hash")
@@ -195,6 +205,7 @@ async def _wizard_step_context(step: str, config_store: ConfigStore) -> dict[str
     elif step == "secrets":
         import os as _os
 
+        from core.secret_store import INFRA_VAULT_KEYS
         from core.vault import load_machine_key
 
         ctx["machine_key_present"] = bool(load_machine_key())  # type: ignore[assignment]
@@ -202,16 +213,7 @@ async def _wizard_step_context(step: str, config_store: ConfigStore) -> dict[str
             _os.environ.get("ADMIN_PASSWORD") or _os.environ.get("ADMIN_API_KEY")
         )
         detected = []
-        for cfg_key in (
-            "agent.anthropic_api_key",
-            "agent.openai_api_key",
-            "agent.google_api_key",
-            "agent.grok_api_key",
-            "agent.deepseek_api_key",
-            "channels.telegram.bot_token",
-            "search.api_key",
-            "tools.gh.token",
-        ):
+        for cfg_key in INFRA_VAULT_KEYS:
             val = await config_store.get(cfg_key)
             if val and not val.startswith("${"):
                 detected.append(cfg_key)
@@ -294,7 +296,11 @@ async def _channel_wizard_context(
     if channel == "telegram":
         bot_token = await config_store.get("channels.telegram.bot_token")
         user_ids = await config_store.get("channels.telegram.allowed_user_ids")
-        if bot_token:
+        # Vault-managed token (issue #35): mark it so the editor shows a read-only
+        # note instead of the input, and never ship the ref to the browser.
+        bot_token_vaulted = _is_vault_ref(bot_token)
+        ctx["bot_token_vaulted"] = bot_token_vaulted  # type: ignore[assignment]
+        if bot_token and not bot_token_vaulted:
             ctx["bot_token"] = bot_token
         if user_ids:
             ctx["user_ids"] = user_ids
@@ -602,6 +608,41 @@ def create_admin_app(
         app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
     auth = _make_auth_dependency(config_store, secret_store)
+
+    async def _resolved_config():
+        """Export the Config with ``${vault:NAME}`` references resolved.
+
+        The infra vault owns migrated credentials (issue #35), so any code that
+        reconstructs a live Config from the store — rebuilding the LLM/search
+        clients, testing embeddings — must resolve vault refs or it would hand a
+        literal ``${vault:…}`` string to a client. ``secret_store`` is absent in
+        some unit tests; fall back to the unresolved export there.
+        """
+        if secret_store is not None:
+            return await config_store.export_to_config(vault_resolve=secret_store.infra_resolve)
+        return await config_store.export_to_config()
+
+    async def _preserve_vault_refs(values: dict) -> dict:
+        """Drop blank/echoed writes to vault-managed secret keys.
+
+        Once a credential is migrated its tab shows a read-only "managed in
+        vault" field that submits empty (or echoes the ref). Without this guard
+        that save would overwrite the ``${vault:NAME}`` reference and orphan the
+        secret. A real, freshly-typed value (non-empty, not a ``${…}`` ref) is
+        always allowed through, so re-entering a key still works.
+        """
+        from core.secret_store import INFRA_VAULT_KEYS
+
+        out = dict(values)
+        for key in INFRA_VAULT_KEYS:
+            if key not in out:
+                continue
+            incoming = str(out[key])
+            if incoming and not incoming.startswith("${"):
+                continue
+            if _is_vault_ref(await config_store.get(key)):
+                del out[key]
+        return out
 
     # Keys managed by dedicated tabs — excluded from the generic Config tab.
     _IDENTITY_KEYS = {
@@ -928,6 +969,13 @@ def create_admin_app(
         grok_base_url = await config_store.get("agent.grok_base_url") or ""
         deepseek_api_key = await config_store.get("agent.deepseek_api_key") or ""
         deepseek_base_url = await config_store.get("agent.deepseek_base_url") or ""
+        # Vault-managed keys (issue #35): show a read-only "in vault" note instead
+        # of the input, and don't ship the ref to the browser.
+        anthropic_vaulted = _is_vault_ref(anthropic_api_key)
+        openai_vaulted = _is_vault_ref(openai_api_key)
+        google_vaulted = _is_vault_ref(google_api_key)
+        grok_vaulted = _is_vault_ref(grok_api_key)
+        deepseek_vaulted = _is_vault_ref(deepseek_api_key)
         model = await config_store.get("agent.model") or "claude-4-6-sonnet"
         thinking_level = await config_store.get("agent.thinking_level") or ""
         extraction_provider = await config_store.get("memory.extraction_provider") or "anthropic"
@@ -968,14 +1016,19 @@ def create_admin_app(
         return _render_partial(
             "partials/llm.html",
             provider=provider,
-            anthropic_api_key=anthropic_api_key,
-            openai_api_key=openai_api_key,
+            anthropic_api_key="" if anthropic_vaulted else anthropic_api_key,
+            anthropic_vaulted=anthropic_vaulted,
+            openai_api_key="" if openai_vaulted else openai_api_key,
+            openai_vaulted=openai_vaulted,
             openai_base_url=openai_base_url,
-            google_api_key=google_api_key,
+            google_api_key="" if google_vaulted else google_api_key,
+            google_vaulted=google_vaulted,
             google_base_url=google_base_url,
-            grok_api_key=grok_api_key,
+            grok_api_key="" if grok_vaulted else grok_api_key,
+            grok_vaulted=grok_vaulted,
             grok_base_url=grok_base_url,
-            deepseek_api_key=deepseek_api_key,
+            deepseek_api_key="" if deepseek_vaulted else deepseek_api_key,
+            deepseek_vaulted=deepseek_vaulted,
             deepseek_base_url=deepseek_base_url,
             model=model,
             thinking_level=thinking_level,
@@ -1028,6 +1081,7 @@ def create_admin_app(
         gh_enabled = await config_store.get("tools.gh.enabled")
         gh_enabled = gh_enabled if gh_enabled is not None else "false"
         gh_token = await config_store.get("tools.gh.token") or ""
+        gh_token_vaulted = _is_vault_ref(gh_token)
 
         browser_enabled = await config_store.get("tools.browser.enabled")
         browser_enabled = browser_enabled if browser_enabled is not None else "false"
@@ -1046,7 +1100,8 @@ def create_admin_app(
             "partials/tools.html",
             tools=tool_registry(),
             gh_enabled=gh_enabled,
-            gh_token=gh_token,
+            gh_token="" if gh_token_vaulted else gh_token,
+            gh_token_vaulted=gh_token_vaulted,
             browser_enabled=browser_enabled,
             browser_headless=browser_headless,
             browser_cdp=browser_cdp,
@@ -1153,12 +1208,14 @@ def create_admin_app(
         enabled = await config_store.get("search.enabled") or "false"
         provider = await config_store.get("search.provider") or "tavily"
         api_key = await config_store.get("search.api_key") or ""
+        api_key_vaulted = _is_vault_ref(api_key)
         max_results = await config_store.get("search.max_results") or "5"
         return _render_partial(
             "partials/search.html",
             enabled=enabled,
             provider=provider,
-            api_key=api_key,
+            api_key="" if api_key_vaulted else api_key,
+            api_key_vaulted=api_key_vaulted,
             max_results=max_results,
         )
 
@@ -1517,12 +1574,13 @@ def create_admin_app(
         # Which keys actually changed — so restart_required only fires when a
         # restart-bound value really moved. A form may re-send unchanged keys
         # (e.g. History saves both mode (hot-applied) and max_turns every time).
-        changed = {k: v for k, v in body.values.items() if str(await config_store.get(k)) != str(v)}
-        await config_store.set_many(body.values)
+        values = await _preserve_vault_refs(body.values)
+        changed = {k: v for k, v in values.items() if str(await config_store.get(k)) != str(v)}
+        await config_store.set_many(values)
         agent = agent_state.agent
         if agent:
             try:
-                new_config = await config_store.export_to_config()
+                new_config = await _resolved_config()
                 agent.config = new_config
                 agent.llm = LLMClient.from_agent_config(new_config.agent)
                 agent.executor.tool_env = tool_env(new_config)
@@ -1549,14 +1607,14 @@ def create_admin_app(
             except Exception:
                 log.exception("Failed to apply updated config to running agent")
         return {
-            "updated": list(body.values.keys()),
+            "updated": list(values.keys()),
             "restart_required": _config_requires_restart(changed),
         }
 
     @app.post("/debug/system-prompt/preview", dependencies=[Depends(auth)])
     async def system_prompt_preview(body: PromptPreviewIn) -> dict:
         message = body.message.strip()
-        config = await config_store.export_to_config()
+        config = await _resolved_config()
 
         skills_store = await _skills_store_from_config(config_store)
         await skills_store.ensure_seeded()
@@ -2024,14 +2082,18 @@ def create_admin_app(
         user_ids = str(body.get("user_ids", "")).strip()
         enabled = str(body.get("enabled", "true")).lower() == "true"
         topics_enabled = bool(body.get("topics_enabled", False))
-        if not bot_token:
+        # When the token lives in the vault the editor submits an empty field —
+        # treat the existing ${vault:} ref as "present" and leave it untouched.
+        token_is_vaulted = _is_vault_ref(await config_store.get("channels.telegram.bot_token"))
+        if not bot_token and not token_is_vaulted:
             raise HTTPException(400, "Bot token is required")
         values = {
             "channels.telegram.enabled": str(enabled).lower(),
-            "channels.telegram.bot_token": bot_token,
             "channels.telegram.allowed_user_ids": user_ids,
             "channels.telegram.topics_enabled": str(topics_enabled).lower(),
         }
+        if bot_token:  # only overwrite when a real new token was typed
+            values["channels.telegram.bot_token"] = bot_token
         await config_store.set_many(values)
         channel_data = await _channel_list_context(config_store, wacli)
         return _render_partial("partials/channels.html", **channel_data)
@@ -2160,7 +2222,10 @@ def create_admin_app(
         else:
             raise HTTPException(400, f"Unknown channel: {channel}")
 
-        await config_store.set_many(values)
+        # Disabling the channel must not blank a vault-managed token — that would
+        # orphan the secret (issue #35). Lifecycle of vaulted secrets lives on the
+        # Secrets tab; here we just disable + clear the non-secret fields.
+        await config_store.set_many(await _preserve_vault_refs(values))
         channel_data = await _channel_list_context(config_store, wacli)
         return _render_partial("partials/channels.html", **channel_data)
 
@@ -2426,7 +2491,7 @@ def create_admin_app(
         """Report embedding config + whether a local model is already on disk."""
         from core.embeddings import LOCAL_PROVIDERS
 
-        config = await config_store.export_to_config()
+        config = await _resolved_config()
         emb = config.memory.embedding
         is_local = emb.provider in LOCAL_PROVIDERS
         model_ready: bool | None = None
@@ -2447,7 +2512,7 @@ def create_admin_app(
         """Download the local embedding model now (also done at Docker build)."""
         from core.embeddings import LOCAL_PROVIDERS, prefetch_local_model
 
-        config = await config_store.export_to_config()
+        config = await _resolved_config()
         emb = config.memory.embedding
         if emb.provider not in LOCAL_PROVIDERS:
             raise HTTPException(400, "Prefetch only applies to the local embedding provider")
@@ -2468,7 +2533,7 @@ def create_admin_app(
             cosine_similarity,
         )
 
-        config = await config_store.export_to_config()
+        config = await _resolved_config()
         emb = config.memory.embedding
         try:
             if emb.provider in LOCAL_PROVIDERS:
@@ -2586,6 +2651,9 @@ def create_admin_app(
             values = body.get("values", {})
 
         if values:
+            # Same guard as the tabs: a wizard step re-submitted after migration
+            # carries empty secret fields — don't let them clobber a ${vault:} ref.
+            values = await _preserve_vault_refs(values)
             await config_store.set_many(values)
             log.info("Setup step %r: saved %d values", step, len(values))
             # Initialise the persona vault DEK from the admin password set in the
@@ -2842,19 +2910,11 @@ def create_admin_app(
             "enter the effort value manually for this provider.",
         }
 
-    # ── Secrets vault (issue #19) ──────────────────────────────────────
-    # Config keys that hold a single infra secret, with their vault names. Used
-    # by the wizard's "import from .env" step (provider blobs are not auto-moved).
-    _INFRA_MIGRATE = {
-        "agent.anthropic_api_key": "ANTHROPIC_API_KEY",
-        "agent.openai_api_key": "OPENAI_API_KEY",
-        "agent.google_api_key": "GOOGLE_API_KEY",
-        "agent.grok_api_key": "GROK_API_KEY",
-        "agent.deepseek_api_key": "DEEPSEEK_API_KEY",
-        "channels.telegram.bot_token": "TELEGRAM_BOT_TOKEN",
-        "search.api_key": "TAVILY_API_KEY",
-        "tools.gh.token": "GH_TOKEN",
-    }
+    # ── Secrets vault (issue #19, #35) ─────────────────────────────────
+    # INFRA_VAULT_KEYS (core.secret_store) maps the single-value credential keys
+    # to their vault names; migrate_config_to_infra_vault moves the plaintext.
+    # Used by the wizard "import" step and the post-setup Secrets tab button
+    # (provider blobs — email/calendar/contacts — are not auto-moved here).
 
     def _duration_fields(duration: str, until: str) -> tuple[str | None, int | None]:
         """Map a UI duration choice to (expires_at, max_uses)."""
@@ -2879,6 +2939,8 @@ def create_admin_app(
             await persona_store.upsert(p)
 
     async def _secrets_ctx() -> dict:
+        from core.secret_store import INFRA_VAULT_KEYS
+
         persona_store = await _persona_store_from_config(config_store)
         personae = await persona_store.list_personae()
         meta = await secret_store.list_secret_meta()
@@ -2886,6 +2948,12 @@ def create_admin_app(
             holders = [p.name for p in personae if m["name"] in p.secrets]
             m["holders"] = holders
             m["personae"] = "all" if m["shared"] else (", ".join(holders) if holders else "—")
+        # Credential keys still holding a plaintext value (migratable to the vault).
+        migratable = []
+        for cfg_key in INFRA_VAULT_KEYS:
+            val = await config_store.get(cfg_key)
+            if val and not val.startswith("${"):
+                migratable.append(cfg_key)
         return {
             "configured": True,
             "unsealed": secret_store.persona_unsealed(),
@@ -2893,6 +2961,7 @@ def create_admin_app(
             "secrets": meta,
             "infra": await secret_store.list_infra_names(),
             "personae": [p.name for p in personae],
+            "migratable": migratable,
         }
 
     def _no_vault_partial() -> HTMLResponse:
@@ -2903,6 +2972,31 @@ def create_admin_app(
         if secret_store is None:
             return _no_vault_partial()
         return _render_partial("partials/secrets.html", **(await _secrets_ctx()))
+
+    @app.post("/admin/secrets/migrate", response_class=HTMLResponse, dependencies=[Depends(auth)])
+    async def migrate_secrets() -> HTMLResponse:
+        """Move any still-plaintext credentials onto the infra vault (issue #35).
+
+        The non-destructive, post-setup counterpart of the wizard's import step:
+        existing installs can collapse their scattered LLM/Telegram/Tavily/gh
+        credentials into the vault without re-running setup. Idempotent.
+        """
+        if secret_store is None:
+            return _no_vault_partial()
+        from core.secret_store import migrate_config_to_infra_vault
+
+        ctx = await _secrets_ctx()
+        if not secret_store.infra.available:
+            ctx["error"] = "No machine key configured (set MPA_MASTER_KEY or generate one)."
+            return _render_partial("partials/secrets.html", **ctx)
+        migrated = await migrate_config_to_infra_vault(config_store, secret_store)
+        ctx = await _secrets_ctx()
+        ctx["flash"] = (
+            f"Migrated {len(migrated)} credential(s) into the vault."
+            if migrated
+            else "Nothing to migrate — all credentials already reference the vault."
+        )
+        return _render_partial("partials/secrets.html", **ctx)
 
     @app.post("/admin/secrets", response_class=HTMLResponse, dependencies=[Depends(auth)])
     async def add_secret(request: Request) -> HTMLResponse:
@@ -3123,12 +3217,10 @@ def create_admin_app(
         if action == "generate" and secret_store is not None:
             key = generate_and_save_machine_key()
             secret_store.infra = type(secret_store.infra)(key)  # reload infra vault
-        elif action == "import" and secret_store is not None and secret_store.infra.available:
-            for cfg_key, vname in _INFRA_MIGRATE.items():
-                val = await config_store.get(cfg_key)
-                if val and not val.startswith("${"):
-                    await secret_store.set_infra_secret(vname, val, f"migrated from {cfg_key}")
-                    await config_store.set(cfg_key, f"${{vault:{vname}}}")
+        elif action == "import" and secret_store is not None:
+            from core.secret_store import migrate_config_to_infra_vault
+
+            await migrate_config_to_infra_vault(config_store, secret_store)
         ctx = await _wizard_step_context("secrets", config_store)
         return _render_wizard_step("secrets", SETUP_STEPS, ctx)
 
