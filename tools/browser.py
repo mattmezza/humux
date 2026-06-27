@@ -551,14 +551,27 @@ def _apply_action(frame_map: dict, action: dict, timeout_ms: int, page=None) -> 
 
 
 def _load_agent_config():
-    """Pull the agent's LLM config from the same store the app uses."""
+    """Pull the agent's LLM config from the same store the app uses.
+
+    Resolves ``${vault:NAME}`` references so a migrated LLM key (issue #35)
+    reaches the explore loop's own LLM calls. This subprocess inherits the
+    machine key (``MPA_MASTER_KEY`` / ``data/master.key``) and ``.env``, so the
+    infra vault unseals headlessly with a plain env fallback.
+    """
     import asyncio
 
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     from core.config_store import ConfigStore
+    from core.secret_store import SecretStore
 
-    store = ConfigStore(str(_data_dir() / "config.db"))
-    return asyncio.run(store.export_to_config()).agent
+    db = str(_data_dir() / "config.db")
+
+    async def _load():
+        secret_store = SecretStore(db_path=db)
+        await secret_store.load_infra_cache()
+        return await ConfigStore(db).export_to_config(vault_resolve=secret_store.infra_resolve)
+
+    return asyncio.run(_load()).agent
 
 
 class _Aio:
