@@ -128,6 +128,9 @@ DEFAULT_RULES: dict[str, str] = {
     "run_command:himalaya*move*": "ASK",
     "schedule_task": "ASK",
     "manage_jobs": "ASK",
+    # Delegating to a subagent is approved once per spawn; the subagent then runs
+    # autonomously within its narrowed scope (system semantics), like a job.
+    "spawn_subagent": "ASK",
     # Publishing inline content the agent authored is low-risk and reversible
     # (TTL cleanup) — no prompt, like web_search / load_skill. But copying an
     # on-disk file to a public URL can expose data the agent didn't author, so
@@ -233,6 +236,7 @@ class PermissionEngine:
             "create_calendar_event",
             "schedule_task",
             "manage_jobs",
+            "spawn_subagent",
         }:
             return True
 

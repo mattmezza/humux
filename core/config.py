@@ -145,6 +145,7 @@ class SchedulerJob(BaseModel):
     task: str
     channel: str = "telegram"
     type: str = "agent"
+    persona: str = ""  # for type="subagent": the persona the run adopts
 
 
 class SchedulerConfig(BaseModel):
@@ -302,6 +303,21 @@ class ArtifactsConfig(BaseModel):
     ttl_hours: int = 168  # 7 days; 0 = keep forever (no auto-cleanup)
 
 
+class SubagentsConfig(BaseModel):
+    """Subagents — scoped sub-loops the agent can delegate to (see core/subagents.py).
+
+    Defaults are deliberately conservative so spawning works out of the box
+    without runaway recursion or cost: a top-level spawn is depth 1, a subagent
+    spawning a subagent is depth 2, and so on up to ``recursion_depth``.
+    """
+
+    enabled: bool = True
+    recursion_depth: int = 3  # max nesting; spawns are refused beyond this
+    max_steps: int = 12  # max tool-call rounds per run (hard stop)
+    token_budget: int = 100_000  # approx token ceiling per run (best-effort)
+    max_concurrent: int = 3  # max background runs at once
+
+
 class Config(BaseModel):
     agent: AgentConfig = AgentConfig()
     channels: ChannelsConfig = ChannelsConfig()
@@ -320,6 +336,7 @@ class Config(BaseModel):
     prompt: PromptConfig = PromptConfig()
     tools: ToolsConfig = ToolsConfig()
     artifacts: ArtifactsConfig = ArtifactsConfig()
+    subagents: SubagentsConfig = SubagentsConfig()
 
 
 def load_config(path: str | Path = "config.yml") -> Config:

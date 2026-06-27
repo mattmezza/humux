@@ -3337,6 +3337,7 @@ GATEABLE_TOOLS = [
     "web_search",
     "manage_jobs",
     "write_artifact",
+    "spawn_subagent",
 ]
 
 
