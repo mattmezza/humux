@@ -150,7 +150,7 @@ SHORT_TERM — situational context that expires:
 
 When in doubt between LONG_TERM and SHORT_TERM, choose SHORT_TERM. Only use
 LONG_TERM for facts you are highly confident will still be true months from now.
-
+{scope_block}
 Return a JSON array (max 3 items). Each element must be one of:
   {{"tier": "LONG_TERM", "category": "<category>", \
 "subject": "<who/what>", "content": "<the fact>"}}
@@ -359,6 +359,50 @@ def _normalize_subject(subject: str) -> str:
     return (subject or "").strip().lower()
 
 
+def _extraction_scope_block(persona_scope: str) -> str:
+    """Scope instruction injected into the extraction prompt (#42).
+
+    Empty when no persona is active (everything is shared). When a persona is
+    active, lets the model mark domain-specific facts private to it; the default
+    stays shared so owner-level facts reach every persona.
+    """
+    if not persona_scope:
+        return ""
+    return (
+        f'\nYou are extracting for the "{persona_scope}" persona. Add '
+        f'`"scope": "private"` to a fact ONLY if it is specific to this persona\'s '
+        f"domain and should NOT be shared with the owner's other assistants. "
+        f"General facts about the owner (preferences, relationships, biography) are "
+        f'shared — omit scope or use `"scope": "shared"`. When unsure, leave it shared.\n'
+    )
+
+
+def _resolve_extracted_scope(mem: dict, persona_scope: str) -> str:
+    """Map an extracted item's scope hint to a stored scope key (#42).
+
+    Private only when a persona is active AND the model tagged it private;
+    everything else is shared (``''``).
+    """
+    if persona_scope and str(mem.get("scope", "")).strip().lower() == "private":
+        return persona_scope
+    return ""
+
+
+def _scope_filter(scope: str | None) -> tuple[str, tuple]:
+    """Build a SQL ``AND`` fragment + params restricting rows by scope (#42).
+
+    - ``None`` → no filter (every scope; for admin listing / owner-level jobs).
+    - ``""``   → shared only (``scope = ''``); the default identity's view.
+    - ``"x"``  → shared + persona ``x`` (``scope IN ('', 'x')``); never another
+      persona's private memory.
+    """
+    if scope is None:
+        return "", ()
+    if scope == "":
+        return " AND scope = ''", ()
+    return " AND scope IN ('', ?)", (scope,)
+
+
 def _tokens(text: str) -> set[str]:
     """Lowercase content words, dropping stopwords and single characters."""
     return {t for t in _TOKEN_RE.findall(text.lower()) if len(t) > 1 and t not in _STOPWORDS}
@@ -479,6 +523,7 @@ class MemoryStore:
         async with aiosqlite.connect(self.db_path) as db:
             await db.executescript(schema)
             await self._migrate_long_term(db)
+            await self._migrate_short_term(db)
         self._ready = True
 
     # Columns added after the original two-tier schema shipped. Each is applied
@@ -491,7 +536,11 @@ class MemoryStore:
         ("last_accessed", "last_accessed DATETIME"),
         ("access_count", "access_count INTEGER NOT NULL DEFAULT 0"),
         ("archived", "archived INTEGER NOT NULL DEFAULT 0"),
+        # #42: scope column — existing rows become '' (shared), the right default.
+        ("scope", "scope TEXT NOT NULL DEFAULT ''"),
     )
+
+    _SHORT_TERM_MIGRATIONS = (("scope", "scope TEXT NOT NULL DEFAULT ''"),)
 
     async def _migrate_long_term(self, db: aiosqlite.Connection) -> None:
         cursor = await db.execute("PRAGMA table_info(long_term)")
@@ -502,45 +551,63 @@ class MemoryStore:
         # Safe to create now: the archived column is guaranteed to exist (fresh
         # DBs declare it; legacy DBs just had it added above).
         await db.execute("CREATE INDEX IF NOT EXISTS idx_lt_archived ON long_term(archived)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_lt_scope ON long_term(scope)")
         await db.commit()
 
-    async def get_long_term(self) -> list[dict]:
-        """Retrieve recent (non-archived) long-term memories for injection."""
+    async def _migrate_short_term(self, db: aiosqlite.Connection) -> None:
+        cursor = await db.execute("PRAGMA table_info(short_term)")
+        existing = {row[1] for row in await cursor.fetchall()}
+        for name, ddl in self._SHORT_TERM_MIGRATIONS:
+            if name not in existing:
+                await db.execute(f"ALTER TABLE short_term ADD COLUMN {ddl}")  # noqa: S608
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_st_scope ON short_term(scope)")
+        await db.commit()
+
+    async def get_long_term(self, scope: str | None = None) -> list[dict]:
+        """Retrieve recent (non-archived) long-term memories for injection.
+
+        ``scope`` filters per #42 (see :func:`_scope_filter`); ``None`` = all.
+        """
         await self._ensure_schema()
+        clause, params = _scope_filter(scope)
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
             cursor = await db.execute(
                 "SELECT category, subject, content FROM long_term "
-                "WHERE archived = 0 ORDER BY updated_at DESC LIMIT ?",
-                (self.long_term_limit,),
+                f"WHERE archived = 0{clause} ORDER BY updated_at DESC LIMIT ?",  # noqa: S608
+                (*params, self.long_term_limit),
             )
             return [dict(row) for row in await cursor.fetchall()]
 
-    async def get_relevant_long_term(self, query: str) -> list[dict]:
+    async def get_relevant_long_term(self, query: str, scope: str | None = None) -> list[dict]:
         """Return long-term memories most relevant to *query*, relevance-ranked.
 
         Uses a Generative-Agents-style score (recency + importance + relevance)
         over embedding cosine similarity, and reinforces the chosen memories
         (bumps ``access_count`` / ``last_accessed``). Falls back to recency
         order when embeddings are unavailable or the query can't be embedded.
+
+        ``scope`` filters per #42 (see :func:`_scope_filter`); ``None`` = all.
         """
         if not self.embedder or not query.strip():
-            return await self.get_long_term()
+            return await self.get_long_term(scope)
 
         try:
             query_vec = await self.embedder.embed_one(query)
         except Exception:
             log.exception("Query embedding failed; falling back to recency order")
-            return await self.get_long_term()
+            return await self.get_long_term(scope)
         if not query_vec:
-            return await self.get_long_term()
+            return await self.get_long_term(scope)
 
         await self._ensure_schema()
+        clause, params = _scope_filter(scope)
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
             cursor = await db.execute(
                 "SELECT id, category, subject, content, importance, embedding, "
-                "updated_at, last_accessed FROM long_term WHERE archived = 0"
+                f"updated_at, last_accessed FROM long_term WHERE archived = 0{clause}",  # noqa: S608
+                params,
             )
             rows = [dict(r) for r in await cursor.fetchall()]
 
@@ -574,36 +641,45 @@ class MemoryStore:
             )
             await db.commit()
 
-    async def get_short_term(self) -> list[dict]:
-        """Retrieve active (non-expired) short-term memories."""
+    async def get_short_term(self, scope: str | None = None) -> list[dict]:
+        """Retrieve active (non-expired) short-term memories.
+
+        ``scope`` filters per #42 (see :func:`_scope_filter`); ``None`` = all.
+        """
         await self._ensure_schema()
+        clause, params = _scope_filter(scope)
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
             cursor = await db.execute(
                 "SELECT content, context FROM short_term "
-                "WHERE expires_at > datetime('now') "
+                f"WHERE expires_at > datetime('now'){clause} "  # noqa: S608
                 "ORDER BY created_at DESC",
+                params,
             )
             return [dict(row) for row in await cursor.fetchall()]
 
-    async def format_for_prompt(self, query: str | None = None) -> str:
+    async def format_for_prompt(self, query: str | None = None, scope: str | None = None) -> str:
         """Format both tiers into a block for the system prompt.
 
         When *query* is given and embeddings are enabled, only the long-term
         memories most relevant to the query are injected (relevance-ranked),
         instead of dumping the most recent ``long_term_limit`` rows (issue #5).
+
+        ``scope`` restricts to the active persona's view per #42: ``""`` =
+        shared only (default identity), ``"<persona>"`` = shared + that
+        persona's private memory, ``None`` = every scope.
         """
         sections: list[str] = []
 
         if query:
-            long_term = await self.get_relevant_long_term(query)
+            long_term = await self.get_relevant_long_term(query, scope)
         else:
-            long_term = await self.get_long_term()
+            long_term = await self.get_long_term(scope)
         if long_term:
             lines = [f"- [{m['category']}] {m['subject']}: {m['content']}" for m in long_term]
             sections.append("## Long-term memories\n" + "\n".join(lines))
 
-        short_term = await self.get_short_term()
+        short_term = await self.get_short_term(scope)
         if short_term:
             lines = []
             for m in short_term:
@@ -643,6 +719,7 @@ class MemoryStore:
         user_msg: str,
         agent_msg: str,
         cooldown_seconds: int = 120,
+        persona_scope: str = "",
     ) -> int:
         """Extract facts from a conversation turn and store them.
 
@@ -651,6 +728,11 @@ class MemoryStore:
 
         If fewer than *cooldown_seconds* have elapsed since the last
         extraction call, the call is skipped entirely (returns 0).
+
+        ``persona_scope`` is the active persona's key (#42). When set, the
+        extraction LLM may tag a fact ``"scope": "private"`` to keep it inside
+        that persona; everything else is stored shared (``''``). With no active
+        persona it is ``""`` and every fact is shared.
 
         Returns the number of memories stored.
         """
@@ -676,14 +758,16 @@ class MemoryStore:
         recent_turns_block = self._format_pending_turns()
         self._pending_turns = []
 
-        # Build existing-memories block so the LLM can avoid duplicates.
-        existing_block = await self._existing_memories_block()
+        # Build existing-memories block so the LLM can avoid duplicates — scoped
+        # to what this persona may see (shared + its own private).
+        existing_block = await self._existing_memories_block(persona_scope)
 
         prompt = _EXTRACTION_PROMPT.format(
             user_msg=user_msg,
             agent_msg=agent_msg,
             recent_turns_block=recent_turns_block,
             existing_memories_block=existing_block,
+            scope_block=_extraction_scope_block(persona_scope),
         )
 
         try:
@@ -700,13 +784,14 @@ class MemoryStore:
         stored = 0
         for mem in memories[: self._MAX_PER_TURN]:
             try:
+                scope = _resolve_extracted_scope(mem, persona_scope)
                 tier = mem.get("tier", "").upper()
                 if tier == "LONG_TERM":
-                    op = await self.update_memory(llm, model, mem)
+                    op = await self.update_memory(llm, model, mem, scope=scope)
                     if op in ("ADD", "UPDATE"):
                         stored += 1
                 elif tier == "SHORT_TERM":
-                    stored += await self._store_short_term(mem)
+                    stored += await self._store_short_term(mem, scope=scope)
                 else:
                     log.warning("Unknown memory tier: %s", tier)
             except Exception:
@@ -719,10 +804,10 @@ class MemoryStore:
             log.info("Extracted and stored %d memories", stored)
         return stored
 
-    async def _existing_memories_block(self) -> str:
+    async def _existing_memories_block(self, scope: str | None = None) -> str:
         """Build a summary of existing memories for the extraction prompt."""
-        long_term = await self.get_long_term()
-        short_term = await self.get_short_term()
+        long_term = await self.get_long_term(scope)
+        short_term = await self.get_short_term(scope)
 
         if not long_term and not short_term:
             return ""
@@ -737,7 +822,9 @@ class MemoryStore:
         parts.append("")  # trailing newline
         return "\n".join(parts) + "\n"
 
-    async def update_memory(self, llm: LLMClient, model: str, candidate: dict) -> str:
+    async def update_memory(
+        self, llm: LLMClient, model: str, candidate: dict, scope: str = ""
+    ) -> str:
         """Apply a candidate fact to long-term memory via a unified pipeline.
 
         Retrieves the most lexically similar existing long-term memories, then
@@ -745,6 +832,10 @@ class MemoryStore:
         semantic duplicates, refinements, and contradictions (issues #1–#4, #8).
         When nothing similar exists the candidate is added directly without an
         LLM call. Malformed model output is a safe no-op.
+
+        ``scope`` (#42) tags an ADD and bounds the dedup/UPDATE/DELETE candidate
+        set to shared + that scope, so a private fact never merges into or
+        deletes another persona's private memory.
 
         Returns the operation applied: ``"ADD"``, ``"UPDATE"``, ``"DELETE"``,
         or ``"NOOP"``.
@@ -755,9 +846,11 @@ class MemoryStore:
         if not content:
             return "NOOP"
 
-        similar = await self._retrieve_similar_long_term(subject, content)
+        # Candidates restricted to shared + own scope: a private fact must not
+        # see — and therefore cannot UPDATE/DELETE — another persona's memory.
+        similar = await self._retrieve_similar_long_term(subject, content, scope or "")
         if not similar:
-            await self._insert_long_term(category, subject, content)
+            await self._insert_long_term(category, subject, content, scope=scope)
             log.debug("ADD long-term (no similar): [%s] %s: %s", category, subject, content[:80])
             return "ADD"
 
@@ -790,7 +883,7 @@ class MemoryStore:
         valid_ids = {row["id"] for row in similar}
 
         if operation == "ADD":
-            await self._insert_long_term(category, subject, content)
+            await self._insert_long_term(category, subject, content, scope=scope)
             log.debug("ADD long-term: [%s] %s: %s", category, subject, content[:80])
             return "ADD"
 
@@ -838,20 +931,27 @@ class MemoryStore:
 
         return "NOOP"
 
-    async def _retrieve_similar_long_term(self, subject: str, content: str) -> list[dict]:
+    async def _retrieve_similar_long_term(
+        self, subject: str, content: str, scope: str | None = None
+    ) -> list[dict]:
         """Return the top-k existing (non-archived) long-term memories similar to
         a candidate (subject + content).
 
         Uses embedding cosine similarity when an embedder is configured (with a
         per-row lexical fallback for memories that have no stored vector yet),
         otherwise pure token overlap. A matching subject adds a fixed boost.
-        Cheap and dependency-free at <1k rows."""
+        Cheap and dependency-free at <1k rows.
+
+        ``scope`` (#42) bounds the candidate set: ``""`` = shared only, a persona
+        key = shared + that persona, ``None`` = every scope."""
         await self._ensure_schema()
+        clause, params = _scope_filter(scope)
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
             cursor = await db.execute(
                 "SELECT id, category, subject, content, created_at, updated_at, embedding "
-                "FROM long_term WHERE archived = 0"
+                f"FROM long_term WHERE archived = 0{clause}",  # noqa: S608
+                params,
             )
             rows = [dict(r) for r in await cursor.fetchall()]
 
@@ -894,7 +994,12 @@ class MemoryStore:
         return pack_vector(vec) if vec else None
 
     async def _insert_long_term(
-        self, category: str, subject: str, content: str, importance: float | None = None
+        self,
+        category: str,
+        subject: str,
+        content: str,
+        importance: float | None = None,
+        scope: str = "",
     ) -> None:
         """Insert a new long-term memory row (with embedding + importance)."""
         await self._ensure_schema()
@@ -903,17 +1008,18 @@ class MemoryStore:
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute(
                 "INSERT INTO long_term "
-                "(category, subject, content, source, confidence, embedding, importance) "
-                "VALUES (?, ?, ?, 'conversation', 'stated', ?, ?)",
-                (category, subject, content, blob, imp),
+                "(category, subject, content, source, confidence, embedding, importance, scope) "
+                "VALUES (?, ?, ?, 'conversation', 'stated', ?, ?, ?)",
+                (category, subject, content, blob, imp, scope),
             )
             await db.commit()
 
-    async def _store_short_term(self, mem: dict) -> int:
+    async def _store_short_term(self, mem: dict, scope: str = "") -> int:
         """Store a short-term memory with a LLM-determined TTL.
 
         Skips insertion if an active (non-expired) short-term memory
-        already exists with overlapping content.
+        already exists with overlapping content. ``scope`` (#42) tags the row
+        and bounds the duplicate check to shared + that scope.
         """
         content = mem.get("content", "")
         context = mem.get("context", "")
@@ -929,10 +1035,12 @@ class MemoryStore:
         expires_str = expires_at.strftime("%Y-%m-%d %H:%M:%S")
 
         await self._ensure_schema()
+        clause, params = _scope_filter(scope or "")
         async with aiosqlite.connect(self.db_path) as db:
-            # Check for duplicate active short-term memories
+            # Check for duplicate active short-term memories within this scope.
             cursor = await db.execute(
-                "SELECT id, content FROM short_term WHERE expires_at > datetime('now')",
+                f"SELECT id, content FROM short_term WHERE expires_at > datetime('now'){clause}",  # noqa: S608
+                params,
             )
             existing = await cursor.fetchall()
             content_lower = content.lower()
@@ -942,8 +1050,8 @@ class MemoryStore:
                     return 0
 
             await db.execute(
-                "INSERT INTO short_term (content, context, expires_at) VALUES (?, ?, ?)",
-                (content, context, expires_str),
+                "INSERT INTO short_term (content, context, expires_at, scope) VALUES (?, ?, ?, ?)",
+                (content, context, expires_str, scope),
             )
             await db.commit()
             log.debug("Stored short-term memory (TTL %dh): %s", ttl_hours, content[:80])
@@ -967,15 +1075,22 @@ class MemoryStore:
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
             cursor = await db.execute(
-                "SELECT id, content, context, created_at, expires_at FROM short_term "
+                "SELECT id, content, context, created_at, expires_at, scope FROM short_term "
                 "WHERE expires_at > datetime('now') "
                 "ORDER BY created_at ASC",
             )
             active_short_term = [dict(row) for row in await cursor.fetchall()]
 
+        # Promote per scope (#42): each scope's short-term is reviewed and
+        # promoted into long-term of the same scope, never mixing two personas'
+        # private memory in one consolidation call.
         promoted = 0
         if active_short_term:
-            promoted = await self._run_consolidation_llm(llm, model, active_short_term)
+            by_scope: dict[str, list[dict]] = {}
+            for row in active_short_term:
+                by_scope.setdefault(row.get("scope") or "", []).append(row)
+            for scope, rows in by_scope.items():
+                promoted += await self._run_consolidation_llm(llm, model, rows, scope=scope)
 
         # Delete all expired short-term memories
         expired_count = await self._delete_expired_short_term()
@@ -1042,7 +1157,7 @@ class MemoryStore:
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
             cursor = await db.execute(
-                "SELECT id, category, subject, content, created_at, updated_at, embedding "
+                "SELECT id, category, subject, content, created_at, updated_at, embedding, scope "
                 "FROM long_term WHERE archived = 0"
             )
             rows = [dict(r) for r in await cursor.fetchall()]
@@ -1050,7 +1165,15 @@ class MemoryStore:
         if len(rows) < 2:
             return 0
 
-        clusters = self._cluster_long_term(rows)[: self._HYGIENE_MAX_CLUSTERS]
+        # Cluster within a scope only (#42): merging must never collapse one
+        # persona's private memory into another's (or into shared).
+        by_scope: dict[str, list[dict]] = {}
+        for row in rows:
+            by_scope.setdefault(row.get("scope") or "", []).append(row)
+        clusters: list[list[dict]] = []
+        for scope_rows in by_scope.values():
+            clusters.extend(self._cluster_long_term(scope_rows))
+        clusters = clusters[: self._HYGIENE_MAX_CLUSTERS]
         removed = 0
         for cluster in clusters:
             try:
@@ -1145,9 +1268,13 @@ class MemoryStore:
         return removed
 
     async def _run_consolidation_llm(
-        self, llm: LLMClient, model: str, short_term_rows: list[dict]
+        self, llm: LLMClient, model: str, short_term_rows: list[dict], scope: str = ""
     ) -> int:
-        """Ask the LLM which short-term memories to promote to long-term."""
+        """Ask the LLM which short-term memories to promote to long-term.
+
+        All rows are assumed to share ``scope`` (#42); promotions are stored in
+        that scope and deduplicated only against shared + that scope.
+        """
         # Build the short-term entries block
         st_lines = []
         for row in short_term_rows:
@@ -1157,8 +1284,8 @@ class MemoryStore:
             st_lines.append(entry)
         st_block = "\n".join(st_lines)
 
-        # Build existing long-term summary for deduplication
-        long_term = await self.get_long_term()
+        # Build existing long-term summary for deduplication (same scope view).
+        long_term = await self.get_long_term(scope or "")
         if long_term:
             lt_lines = [f"- [{m['category']}] {m['subject']}: {m['content']}" for m in long_term]
             lt_block = "\n".join(lt_lines)
@@ -1192,6 +1319,7 @@ class MemoryStore:
                         "subject": mem.get("subject", ""),
                         "content": mem.get("content", ""),
                     },
+                    scope=scope,
                 )
                 if op in ("ADD", "UPDATE"):
                     stored += 1

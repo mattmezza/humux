@@ -355,6 +355,15 @@ TOOLS = [
 ]
 
 
+def _persona_scope(persona: Persona | None) -> str:
+    """The memory scope key for an active persona (#42).
+
+    A persona's own name is its private scope; no persona (default identity) =
+    ``""`` = shared only.
+    """
+    return persona.name if persona else ""
+
+
 def scoped_tools(persona: Persona | None) -> list[dict]:
     """Filter the function-tool schemas by the active persona's tool scope.
 
@@ -484,9 +493,6 @@ class AgentCore:
         if self.config.goal_decomposition.enabled and channel != "system":
             decomposed_goal = await self._maybe_decompose(message)
 
-        # Per-turn preamble: live date/time + fresh memory/reflections + plan.
-        preamble = await self._turn_preamble(decomposed_goal, query=message)
-
         # Resolve the active persona (its identity, skills + tool scope) — a
         # per-chat binding wins over the globally selected persona (#14). An
         # explicit override (scheduler) skips the ladder (#29).
@@ -494,6 +500,13 @@ class AgentCore:
             persona = await self._load_persona(persona_name)
         else:
             persona = await self._resolve_persona(channel, user_id, chat_id)
+
+        # Per-turn preamble: live date/time + fresh memory/reflections + plan.
+        # Memory is scoped to the active persona (#42): shared + its private.
+        preamble = await self._turn_preamble(
+            decomposed_goal, query=message, scope=_persona_scope(persona)
+        )
+
         tools = apply_feature_gates(
             scoped_tools(persona),
             secrets_available=self.secret_store is not None,
@@ -603,7 +616,10 @@ class AgentCore:
         return None
 
     async def _turn_preamble(
-        self, decomposed_goal: DecomposedGoal | None, query: str | None = None
+        self,
+        decomposed_goal: DecomposedGoal | None,
+        query: str | None = None,
+        scope: str = "",
     ) -> str:
         """Build the per-turn preamble prepended to the current user message.
 
@@ -616,6 +632,9 @@ class AgentCore:
         mid-session extraction out of view until ``/new`` (#41). The preamble is
         rebuilt every turn and rides on the new (uncached) user message, so it
         costs only the block's own tokens and is also relevance-ranked per turn.
+
+        ``scope`` is the active persona's memory scope (#42): ``""`` = shared
+        only, ``"<persona>"`` = shared + that persona's private memory.
         """
         now = datetime.now(ZoneInfo(self.config.agent.timezone))
         stamp = now.strftime("%A, %B %d, %Y %H:%M %Z")
@@ -627,7 +646,7 @@ class AgentCore:
         # personal store. If the store grows huge, gate behind the recall_memory
         # tool (issue #41 phase 2) instead of always-injecting top-k.
         try:
-            memories = await self.memory.format_for_prompt(query=query)
+            memories = await self.memory.format_for_prompt(query=query, scope=scope)
             if memories:
                 preamble += f"\n\n<memories>\n{memories}\n</memories>"
         except Exception:
@@ -895,7 +914,7 @@ class AgentCore:
         # Automatic memory extraction
         if channel != "system":
             asyncio.create_task(
-                self._extract_memories(message, final_text),
+                self._extract_memories(message, final_text, persona),
                 name=f"memory-extract-{user_id}",
             )
 
@@ -1013,7 +1032,7 @@ class AgentCore:
         # Automatic memory extraction
         if channel != "system":
             asyncio.create_task(
-                self._extract_memories(message, final_text),
+                self._extract_memories(message, final_text, persona),
                 name=f"memory-extract-{user_id}",
             )
 
@@ -1746,13 +1765,18 @@ class AgentCore:
             self.permissions._pending.pop(request_id, None)
             return "skipped"
 
-    async def _extract_memories(self, user_msg: str, agent_msg: str) -> None:
+    async def _extract_memories(
+        self, user_msg: str, agent_msg: str, persona: Persona | None = None
+    ) -> None:
         """Run automatic memory extraction in the background.
 
         Uses a cheap/fast model to identify facts worth remembering
         from the conversation turn, then stores them in the memory DB.
         Exceptions are logged and swallowed — this must never crash the
         main agent loop.
+
+        ``persona`` scopes what is written (#42): facts the extractor marks
+        private land in that persona's scope, everything else stays shared.
         """
         try:
             llm = self._memory_llm(
@@ -1765,6 +1789,7 @@ class AgentCore:
                 user_msg=user_msg,
                 agent_msg=agent_msg,
                 cooldown_seconds=self.config.memory.extraction_cooldown_seconds,
+                persona_scope=_persona_scope(persona),
             )
             if stored:
                 log.info("Background memory extraction stored %d memories", stored)
