@@ -2651,6 +2651,9 @@ def create_admin_app(
             values = body.get("values", {})
 
         if values:
+            # Same guard as the tabs: a wizard step re-submitted after migration
+            # carries empty secret fields — don't let them clobber a ${vault:} ref.
+            values = await _preserve_vault_refs(values)
             await config_store.set_many(values)
             log.info("Setup step %r: saved %d values", step, len(values))
             # Initialise the persona vault DEK from the admin password set in the
