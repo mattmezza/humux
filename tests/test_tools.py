@@ -275,6 +275,99 @@ async def test_skills_index_resent_only_when_changed(agent) -> None:
 
 
 # ---------------------------------------------------------------------------
+# On-demand skills index (#50): pointer instead of index + discovery tools
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_on_demand_preamble_swaps_index_for_pointer(agent) -> None:
+    await agent.skills.store.upsert_skill("weather", "fetch the forecast")
+
+    # Default (inject) mode lists the skill in full.
+    inject = await agent._turn_preamble(None, query="hi")
+    assert "- weather: fetch the forecast" in inject
+
+    # On-demand mode replaces the listing with the discovery pointer.
+    agent.config.agent.skills_index_mode = "on_demand"
+    on_demand = await agent._turn_preamble(None, query="hi")
+    assert "<available_skills>" in on_demand
+    assert "search_skills" in on_demand and "list_skills" in on_demand
+    assert "- weather: fetch the forecast" not in on_demand  # full index omitted
+
+
+@pytest.mark.asyncio
+async def test_on_demand_pointer_resent_only_when_missing(agent) -> None:
+    """The static pointer is deduped by the same history gate as the index."""
+    agent.config.agent.skills_index_mode = "on_demand"
+    ch, uid, cid = "telegram", "u1", ""
+    key = (ch, uid, cid)
+
+    first = await agent._turn_preamble(None, query="hi", session_key=key)
+    assert "<available_skills>" in first and "search_skills" in first
+    await agent.history.append_session_message(ch, uid, {"role": "user", "content": first}, cid)
+
+    second = await agent._turn_preamble(None, query="again", session_key=key)
+    assert "<available_skills>" not in second  # already in history → not re-sent
+
+
+def test_feature_gate_offers_discovery_tools_only_on_demand() -> None:
+    from core.agent import TOOLS, apply_feature_gates
+
+    def names(on_demand):
+        return {
+            t["name"]
+            for t in apply_feature_gates(
+                TOOLS,
+                secrets_available=True,
+                artifacts_enabled=True,
+                skills_on_demand=on_demand,
+            )
+        }
+
+    inject = names(False)
+    assert "search_skills" not in inject and "list_skills" not in inject
+    on_demand = names(True)
+    assert "search_skills" in on_demand and "list_skills" in on_demand
+
+
+@pytest.mark.asyncio
+async def test_search_and_list_skills_dispatch_scoped(agent) -> None:
+    from core.llm import LLMToolCall
+    from core.personae import Persona
+
+    await agent.skills.store.upsert_skill("email", "# email\nsend and read email")
+    await agent.skills.store.upsert_skill("weather", "# weather\nfetch the forecast")
+
+    # A persona allowlisted to email only must not discover weather (#50 scoping).
+    rs = agent._new_request_state(Persona(name="p", skills=["email"]))
+
+    search = await agent._execute_tool(
+        LLMToolCall(id="1", name="search_skills", arguments={"query": "weather"}),
+        "system",
+        "u",
+        rs,
+    )
+    assert search["skills"] == []  # weather is out of scope
+
+    listed = await agent._execute_tool(
+        LLMToolCall(id="2", name="list_skills", arguments={}),
+        "system",
+        "u",
+        rs,
+    )
+    assert {s["name"] for s in listed["skills"]} == {"email"}
+
+    # load_skill still reaches an in-scope skill end-to-end.
+    loaded = await agent._execute_tool(
+        LLMToolCall(id="3", name="load_skill", arguments={"name": "email"}),
+        "system",
+        "u",
+        rs,
+    )
+    assert "send and read email" in loaded["content"]
+
+
+# ---------------------------------------------------------------------------
 # Per-action write state — one write's outcome must not block a different one
 # ---------------------------------------------------------------------------
 
