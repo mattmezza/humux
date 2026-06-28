@@ -30,7 +30,10 @@ The agent decides to delegate and calls the tool. Two modes:
   in the same turn.
 - **Background** (`background: true`): the tool returns a run id immediately and
   the subagent runs off-turn. When it finishes, the result is **posted back to
-  the chat it was started from**.
+  the chat it was started from** *and* folded into that conversation's history —
+  so the spawning agent both shows it to you now and remembers it on later turns.
+  While a background run is in flight, its status is shown to the agent each turn
+  so it never mistakes a pending run for a finished one.
 
 ```jsonc
 // spawn_subagent tool input

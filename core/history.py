@@ -281,6 +281,72 @@ class ConversationHistory:
             )
             await db.commit()
 
+    async def append_to_last_turn(
+        self, channel: str, user_id: str, role: str, suffix: str, chat_id: str = ""
+    ) -> bool:
+        """Append ``suffix`` to the most recent turn iff it has ``role`` and text
+        content. Returns False when there is no such turn (caller adds a fresh one).
+
+        Used to fold an out-of-band assistant message (a background subagent's
+        result) into the trailing assistant turn so the replayed history keeps
+        strict user/assistant alternation. (injection mode)
+        """
+        await self._ensure_schema()
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                "SELECT id, role, content FROM conversation_turns "
+                "WHERE channel = ? AND user_id = ? AND chat_id = ? ORDER BY id DESC LIMIT 1",
+                (channel, user_id, chat_id),
+            )
+            row = await cursor.fetchone()
+            if not row or row["role"] != role:
+                return False
+            content = json.loads(row["content"])
+            if not isinstance(content, str):
+                return False
+            await db.execute(
+                "UPDATE conversation_turns SET content = ? WHERE id = ?",
+                (json.dumps(content + suffix), row["id"]),
+            )
+            await db.commit()
+        return True
+
+    async def append_to_last_session_message(
+        self, channel: str, user_id: str, suffix: str, chat_id: str = "", role: str = "assistant"
+    ) -> bool:
+        """Session-mode counterpart of :meth:`append_to_last_turn`: fold ``suffix``
+        into the last session message iff it has ``role``. Returns False otherwise."""
+        await self._ensure_schema()
+        key = (channel, user_id, chat_id)
+        if key not in self._sessions:
+            await self.get_session(channel, user_id, chat_id)
+        session = self._sessions[key]
+        if not session or session[-1].get("role") != role:
+            return False
+        msg = session[-1]
+        content = msg.get("content")
+        if isinstance(content, str):
+            msg["content"] = content + suffix
+        elif isinstance(content, list):
+            content.append({"type": "text", "text": suffix})
+        else:
+            return False
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                "SELECT id FROM session_messages "
+                "WHERE channel = ? AND user_id = ? AND chat_id = ? ORDER BY id DESC LIMIT 1",
+                (channel, user_id, chat_id),
+            )
+            row = await cursor.fetchone()
+            if row:
+                await db.execute(
+                    "UPDATE session_messages SET message = ? WHERE id = ?",
+                    (json.dumps(msg), row[0]),
+                )
+                await db.commit()
+        return True
+
     async def clear_session(self, channel: str, user_id: str, chat_id: str = "") -> None:
         """Clear just the sticky session for a (channel, user_id, chat_id) triple."""
         await self._ensure_schema()

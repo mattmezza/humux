@@ -60,9 +60,6 @@ class SubagentRun:
     origin_channel: str = ""
     origin_user_id: str = ""
     origin_chat_id: str = ""
-    # True once a *finished* run has been surfaced to the spawning agent's
-    # context, so a completion is reported to it exactly once (see updates_for).
-    notified: bool = False
     _task: asyncio.Task | None = field(default=None, repr=False, compare=False)
 
     @property
@@ -102,22 +99,18 @@ class SubagentRegistry:
         runs = [r for r in self._runs.values() if not active_only or r.status == "running"]
         return sorted(runs, key=lambda r: r.started_at, reverse=True)
 
-    def updates_for(self, channel: str, chat_id: str) -> list[SubagentRun]:
-        """Runs for one chat the spawning agent should be reminded of: every run
-        still in flight, plus any that finished since it was last reminded.
+    def running_for(self, channel: str, chat_id: str) -> list[SubagentRun]:
+        """Still-running background runs spawned from one chat, oldest first.
 
-        A finished run is returned once and then marked ``notified`` so the agent
-        is told of its completion exactly once; running runs are returned every
-        turn so the agent never claims a still-pending run is done."""
-        out = []
-        for r in self._runs.values():
-            if r.origin_channel != channel or r.origin_chat_id != chat_id:
-                continue
-            if r.status == "running":
-                out.append(r)
-            elif not r.notified:
-                r.notified = True
-                out.append(r)
+        Surfaced in the spawning agent's turn preamble so it always knows what is
+        pending. (Finished runs are folded into the chat history instead, so the
+        agent remembers their results natively rather than as ephemeral status.)
+        """
+        out = [
+            r
+            for r in self._runs.values()
+            if r.status == "running" and r.origin_channel == channel and r.origin_chat_id == chat_id
+        ]
         return sorted(out, key=lambda r: r.started_at)
 
     def finish(self, run_id: str, status: str, *, result: str = "", error: str = "") -> bool:

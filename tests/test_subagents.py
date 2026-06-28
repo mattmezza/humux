@@ -85,7 +85,7 @@ def test_short_summary_first_nonempty_line_capped() -> None:
     assert len(short_summary("x" * 400)) == 281  # 280 + ellipsis
 
 
-def test_updates_for_filters_by_chat_and_reports_finish_once() -> None:
+def test_running_for_filters_by_chat_and_drops_finished() -> None:
     reg = SubagentRegistry()
     here = SubagentRun(run_id="a", persona="", task="t", origin_channel="tg", origin_chat_id="1")
     other = SubagentRun(run_id="b", persona="", task="t", origin_channel="tg", origin_chat_id="2")
@@ -93,13 +93,12 @@ def test_updates_for_filters_by_chat_and_reports_finish_once() -> None:
     reg.register(other)
 
     # Running runs appear every turn; the other chat's run is never included.
-    assert [r.run_id for r in reg.updates_for("tg", "1")] == ["a"]
-    assert [r.run_id for r in reg.updates_for("tg", "1")] == ["a"]
+    assert [r.run_id for r in reg.running_for("tg", "1")] == ["a"]
+    assert [r.run_id for r in reg.running_for("tg", "1")] == ["a"]
 
-    # After it finishes it appears exactly once more, then never again.
+    # Once finished it drops out of the running list (its result goes to history).
     reg.finish("a", "done", result="answer")
-    assert [r.run_id for r in reg.updates_for("tg", "1")] == ["a"]
-    assert reg.updates_for("tg", "1") == []
+    assert reg.running_for("tg", "1") == []
 
 
 # ---------------------------------------------------------------------------
@@ -204,9 +203,14 @@ async def test_run_subagent_background_reports_to_origin(agent) -> None:
     agent.channels["telegram"] = channel
     agent.llm = _ScriptedLLM([LLMResponse(text="bg result", tool_calls=[])])
 
+    # The spawning turn already left a user+assistant pair in history.
+    await agent.history.add_turn("telegram", "u1", "user", "do it async", "555")
+    await agent.history.add_turn("telegram", "u1", "assistant", "started in the background", "555")
+
     result = await agent.run_subagent(
         task="async work",
         origin_channel="telegram",
+        origin_user_id="u1",
         origin_chat_id="555",
         background=True,
     )
@@ -217,10 +221,16 @@ async def test_run_subagent_background_reports_to_origin(agent) -> None:
     await run._task  # let the background loop finish
 
     assert run.status == "done"
+    # Delivered to the chat...
     channel.send.assert_awaited_once()
     sent_chat, sent_text = channel.send.await_args.args
     assert sent_chat == "555"
     assert "bg result" in sent_text
+    # ...and folded into the trailing assistant turn (history stays alternating).
+    turns = await agent.history.get_messages("telegram", "u1", "555")
+    assert [t["role"] for t in turns] == ["user", "assistant"]
+    assert "started in the background" in str(turns[-1]["content"])
+    assert "bg result" in str(turns[-1]["content"])
 
 
 @pytest.mark.asyncio
@@ -271,7 +281,7 @@ def test_narrow_persona_intersects_scopes(agent) -> None:
     assert child.secrets == []  # 'y' not in parent's ['x']
 
 
-def test_subagent_status_note_reports_this_chats_runs(agent) -> None:
+def test_subagent_status_note_lists_only_running_runs(agent) -> None:
     agent.subagents.register(
         SubagentRun(
             run_id="r1",
@@ -282,14 +292,34 @@ def test_subagent_status_note_reports_this_chats_runs(agent) -> None:
             progress="step 2",
         )
     )
-    agent.subagents.finish("r1", "done", result="the iPhone 17e is CHF 599")
-
     note = agent._subagent_status_note("repl", "repl")
-    assert "r1" in note and "done" in note and "CHF 599" in note
+    assert "r1" in note and "running" in note and "step 2" in note
     # Scoped to the chat: a different chat sees nothing.
     assert agent._subagent_status_note("repl", "other-chat") == ""
-    # Reported once: the next turn no longer repeats the finished run.
+
+    # Once finished it leaves the preamble (its result is in history instead).
+    agent.subagents.finish("r1", "done", result="the iPhone 17e is CHF 599")
     assert agent._subagent_status_note("repl", "repl") == ""
+
+
+@pytest.mark.asyncio
+async def test_record_subagent_in_history_merges_into_assistant_turn(agent) -> None:
+    run = SubagentRun(
+        run_id="r9",
+        persona="coding-helper",
+        task="t",
+        origin_channel="repl",
+        origin_user_id="repl",
+        origin_chat_id="repl",
+    )
+    # No prior assistant turn → a fresh assistant turn is added.
+    await agent.history.add_turn("repl", "repl", "user", "hello", "repl")
+    await agent.history.add_turn("repl", "repl", "assistant", "on it", "repl")
+    await agent._record_subagent_in_history(run, "🤖 done: CHF 599")
+
+    turns = await agent.history.get_messages("repl", "repl", "repl")
+    assert [t["role"] for t in turns] == ["user", "assistant"]  # merged, not appended
+    assert "CHF 599" in str(turns[-1]["content"])
 
 
 # ---------------------------------------------------------------------------

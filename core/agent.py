@@ -824,31 +824,26 @@ class AgentCore:
         return False
 
     def _subagent_status_note(self, channel: str, chat_id: str) -> str:
-        """Status of background subagents spawned from this chat, for the preamble.
-
-        Running runs appear every turn; a finished run appears once (the turn
-        after it completes) so the agent learns the outcome without re-announcing
-        it forever. Their results are also delivered to the chat directly. (#15)
+        """List background subagents from this chat that are *still running*, for
+        the turn preamble — so the agent knows what is pending. A run's result is
+        folded into the chat history when it finishes, so completed runs are part
+        of the conversation itself and need no mention here. (#15)
         """
-        runs = self.subagents.updates_for(channel, chat_id)
+        runs = self.subagents.running_for(channel, chat_id)
         if not runs:
             return ""
         lines = []
         for r in runs:
-            who = f"- [{r.run_id}] {r.persona or 'default'} — {r.status} ({r.elapsed_str})"
-            if r.status == "running":
-                lines.append(f"{who}; {r.progress}" if r.progress else who)
-            else:
-                lines.append(f"{who}: {short_summary(r.result or r.error or '', 200)}")
+            who = f"- [{r.run_id}] {r.persona or 'default'} — running ({r.elapsed_str})"
+            lines.append(f"{who}; {r.progress}" if r.progress else who)
         body = "\n".join(lines)
         return (
             "<background_subagents>\n"
-            "Background subagents you spawned from this chat. Their results are "
-            "posted to this chat directly as they finish, so you do not need to "
-            "relay them.\n"
+            "Background subagents you spawned from this chat are still running. "
+            "Their results are posted to this chat (and added to this conversation) "
+            "automatically when each finishes, so you needn't relay them.\n"
             f"{body}\n"
-            "Trust this status: never say a subagent is still running if it shows "
-            "done, cancelled, or error here.\n"
+            "Don't claim one of these is finished until its result appears above.\n"
             "</background_subagents>"
         )
 
@@ -2070,21 +2065,51 @@ class AgentCore:
             await self._deliver_subagent_result(run, text)
 
     async def _deliver_subagent_result(self, run: SubagentRun, text: str) -> None:
-        """Post a background subagent's result to the chat that started it."""
+        """Post a background subagent's result to the chat that started it AND fold
+        it into that chat's history, so the spawning agent both shows it to the
+        user now and remembers it natively on later turns (#15)."""
+        label = run.persona or "default"
+        framed = f"🤖 Subagent ({label}) finished:\n\n{text}"
         ch = self.channels.get(run.origin_channel)
-        if not ch or not run.origin_chat_id:
+        if ch and run.origin_chat_id:
+            try:
+                await ch.send(run.origin_chat_id, framed)
+            except Exception:
+                log.exception("Failed to deliver subagent %s result", run.run_id)
+        else:
             log.warning(
                 "Subagent %s result not delivered (channel=%r, chat=%r)",
                 run.run_id,
                 run.origin_channel,
                 run.origin_chat_id,
             )
+        await self._record_subagent_in_history(run, framed)
+
+    async def _record_subagent_in_history(self, run: SubagentRun, framed: str) -> None:
+        """Record a background subagent's result as an assistant turn in the
+        originating chat — merged into the trailing assistant turn so replayed
+        history stays strictly alternating for providers that require it."""
+        channel, user_id, chat_id = run.origin_channel, run.origin_user_id, run.origin_chat_id
+        # Only real user chats have a history; skip system/scheduler-origin runs.
+        if not chat_id or channel == "system":
             return
-        label = run.persona or "default"
         try:
-            await ch.send(run.origin_chat_id, f"🤖 Subagent ({label}) finished:\n\n{text}")
+            if self.history_mode == "session":
+                merged = await self.history.append_to_last_session_message(
+                    channel, user_id, f"\n\n{framed}", chat_id
+                )
+                if not merged:
+                    await self.history.append_session_message(
+                        channel, user_id, {"role": "assistant", "content": framed}, chat_id
+                    )
+            else:
+                merged = await self.history.append_to_last_turn(
+                    channel, user_id, "assistant", f"\n\n{framed}", chat_id
+                )
+                if not merged:
+                    await self.history.add_turn(channel, user_id, "assistant", framed, chat_id)
         except Exception:
-            log.exception("Failed to deliver subagent %s result", run.run_id)
+            log.exception("Failed to record subagent %s result in history", run.run_id)
 
     @staticmethod
     def _usage_total(usage: dict | None) -> int:
