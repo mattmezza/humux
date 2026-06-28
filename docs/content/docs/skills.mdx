@@ -10,7 +10,7 @@ Skills are the central design idea of MPA. Instead of hardcoding how each integr
 ## How it works
 
 1. Skill files are markdown documents stored in SQLite (seeded from `skills/` at startup)
-2. The skills index is injected at the start of the user message (not the snapshotted system prompt), so skills added mid-session are visible immediately. In session mode it is re-sent only when the registry changed since the previous turn (between changes the model still sees the prior copy in history)
+2. The skills index is injected at the start of the user message (not the snapshotted system prompt), so skills added mid-session are visible immediately. In session mode it is skipped when that exact block is still present in the replayed history, and re-sent once a `/new`/compaction drops it or a skill change alters it
 3. The LLM reads the skill documentation and constructs the correct CLI commands
 4. Commands are executed via the tool executor with permission checks
 
