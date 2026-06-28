@@ -10,7 +10,7 @@ Skills are the central design idea of MPA. Instead of hardcoding how each integr
 ## How it works
 
 1. Skill files are markdown documents stored in SQLite (seeded from `skills/` at startup)
-2. On each conversation turn, relevant skills are injected into the LLM's system prompt
+2. On each conversation turn, the skills index is injected at the start of the user message (not the snapshotted system prompt), so skills added mid-session are visible immediately
 3. The LLM reads the skill documentation and constructs the correct CLI commands
 4. Commands are executed via the tool executor with permission checks
 
@@ -127,9 +127,10 @@ class SkillsEngine:
 
 Skills are advertised in the `<available_skills>` block, which is rebuilt fresh each turn and injected at the start of the user message (alongside the live date/time and memories), not baked into the snapshotted static prompt. So a skill created mid-session — e.g. via the skill-creator skill — is visible to the model on the very next turn without a `/new`. The LLM uses the index to pick a skill, then `load_skill` pulls its full content to construct correct CLI commands.
 
-## System prompt integration
+## How skills reach the model
 
-The system prompt combines skills with identity and memory:
+The **static** system prompt carries only identity and tools (snapshotted once per
+session for cache stability):
 
 ```
 You are {agent_name}, a personal AI assistant for {owner_name}.
@@ -141,18 +142,24 @@ You are {agent_name}, a personal AI assistant for {owner_name}.
 <character>
 {character.md content}
 </character>
+```
 
-<memories>
-{formatted memory context}
-</memories>
+The `<available_skills>` index — and `<memories>` — are assembled fresh **per turn**
+in the preamble at the head of the current user message, not in the static prompt
+(see [Architecture](/docs/architecture)). That is what lets a skill added mid-session
+show up on the next turn without a `/new`:
+
+```
+[Current date & time: ...]
 
 <available_skills>
-<skill name="himalaya-email">
-{skill content}
-</skill>
+- himalaya-email: send and read email over IMAP/SMTP
 ...
 </available_skills>
 ```
+
+The model picks a skill from the index, then calls `load_skill` to pull its full
+content.
 
 ## Tips for writing good skills
 

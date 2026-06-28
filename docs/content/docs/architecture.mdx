@@ -124,7 +124,8 @@ Channel handler (telegram.py / whatsapp.py)
     ▼
 Agent Core (agent.py)
     ├── Load history from SQLite
-    ├── Build system prompt (skills + character + personalia + memories)
+    ├── Build static system prompt (character + personalia + tools)
+    ├── Build per-turn preamble (date/time + skills index + memories + reflections)
     ├── Call LLM with tools
     │     │
     │     ▼
