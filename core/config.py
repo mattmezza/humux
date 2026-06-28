@@ -181,6 +181,7 @@ class EmbeddingConfig(BaseModel):
     base_url: str = ""  # API providers only; falls back to the agent provider base URL when empty
     dimensions: int = 0  # 0 = provider default (API providers only)
     injection_top_k: int = 12  # relevance-ranked memories injected per turn
+    recall_top_k: int = 10  # max memories returned by the recall_memory tool (full-store lookup)
 
 
 class MemoryConfig(BaseModel):

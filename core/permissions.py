@@ -117,6 +117,7 @@ DEFAULT_RULES: dict[str, str] = {
     "run_command:git*push*": "ASK",
     "run_command:git*commit*": "ASK",
     "web_search": "ALWAYS",
+    "recall_memory": "ALWAYS",
     # Write operations — ask first
     "send_email": "ASK",
     "reply_email": "ASK",

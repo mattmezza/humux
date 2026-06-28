@@ -181,7 +181,9 @@ def build_prompt_sections(
     memory_instruction = (
         "You can store and recall memories using the sqlite3 CLI (see the memory skill).\n"
         "Proactively remember important facts about the user and their contacts.\n"
-        "Before inserting a new long-term memory, check if it already exists to avoid duplicates."
+        "Before inserting a new long-term memory, check if it already exists to avoid duplicates.\n"
+        "Only your most relevant memories are shown each turn; when you suspect a stored fact "
+        "isn't among them, call the recall_memory tool to search your full memory by meaning."
     )
 
     history_handling = ""

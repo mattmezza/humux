@@ -492,6 +492,7 @@ class MemoryStore:
         *,
         embedder: EmbeddingClient | None = None,
         injection_top_k: int = 12,
+        recall_top_k: int = 10,
         default_importance: float = 5.0,
         archive_after_days: int = 90,
         archive_max_importance: float = 4.0,
@@ -503,6 +504,7 @@ class MemoryStore:
         self.long_term_limit = long_term_limit
         self.embedder = embedder
         self.injection_top_k = injection_top_k
+        self.recall_top_k = recall_top_k
         self.default_importance = default_importance
         self.archive_after_days = archive_after_days
         self.archive_max_importance = archive_max_importance
@@ -628,15 +630,90 @@ class MemoryStore:
             for r in top
         ]
 
-    async def _reinforce(self, ids: list[int]) -> None:
-        """Strengthen recalled memories: bump access_count and last_accessed."""
+    # Upper bound on how many memories one recall_memory call may return, and the
+    # minimum relevance a row needs to be worth returning at all.
+    _RECALL_MAX_LIMIT = 25
+    # ponytail: relevance floor — raise to cut noise, lower to surface more long tail.
+    _RECALL_MIN_RELEVANCE = 0.1
+
+    async def recall(
+        self, query: str, limit: int | None = None, scope: str | None = None
+    ) -> list[dict]:
+        """Deliberate semantic search over the FULL long-term store (issue #47).
+
+        This is the agent's on-demand recall tool — the complement to the
+        always-injected top-k (:meth:`get_relevant_long_term`). Where injection
+        ranks only *non-archived* rows by a recency+importance+relevance blend
+        and is capped to a small per-turn budget, recall searches *every*
+        long-term memory (archived included), ranks purely by semantic relevance
+        to *query*, and returns the best matches above a small relevance floor.
+
+        Recalling reinforces the returned rows and un-archives any that had been
+        archived (the agent looked them up and they matched, so they are warm
+        again). Falls back to lexical token overlap when embeddings are
+        unavailable or the query can't be embedded, so recall always works.
+
+        ``scope`` filters per #42 (see :func:`_scope_filter`) exactly like the
+        injection readers, so a persona only recalls shared + its own private
+        memories, never another persona's; ``None`` = every scope.
+        """
+        query = (query or "").strip()
+        if not query:
+            return []
+        limit = self.recall_top_k if not limit or limit < 1 else limit
+        limit = min(limit, self._RECALL_MAX_LIMIT)
+
+        await self._ensure_schema()
+        clause, params = _scope_filter(scope)
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                "SELECT id, category, subject, content, embedding, archived "  # noqa: S608
+                f"FROM long_term WHERE 1=1{clause}",
+                params,
+            )
+            rows = [dict(r) for r in await cursor.fetchall()]
+        if not rows:
+            return []
+
+        # Embedding cosine for rows with a matching-dim vector; lexical for the rest.
+        query_vec = await self._safe_embed(query)
+        rel_map = _batch_relevance(query_vec, rows)
+        query_tokens = _tokens(query)
+
+        scored: list[tuple[float, dict]] = []
+        for i, row in enumerate(rows):
+            if i in rel_map:
+                relevance = rel_map[i]
+            else:
+                relevance = _similarity(query_tokens, _tokens(f"{row['subject']} {row['content']}"))
+            if relevance >= self._RECALL_MIN_RELEVANCE:
+                scored.append((relevance, row))
+
+        scored.sort(key=lambda pair: pair[0], reverse=True)
+        top = [row for _, row in scored[:limit]]
+        # Recall revives matches: reinforce + un-archive. The returned rows are
+        # therefore all non-archived now, so no archived flag is surfaced.
+        await self._reinforce([row["id"] for row in top], unarchive=True)
+        return [
+            {"category": r["category"], "subject": r["subject"], "content": r["content"]}
+            for r in top
+        ]
+
+    async def _reinforce(self, ids: list[int], *, unarchive: bool = False) -> None:
+        """Strengthen recalled memories: bump access_count and last_accessed.
+
+        With *unarchive*, also clear the archived flag — a memory the agent
+        deliberately recalled and used is demonstrably warm again (issue #47).
+        """
         if not ids:
             return
         await self._ensure_schema()
+        archived_clause = ", archived = 0" if unarchive else ""
         async with aiosqlite.connect(self.db_path) as db:
             await db.executemany(
-                "UPDATE long_term SET access_count = access_count + 1, "
-                "last_accessed = datetime('now') WHERE id = ?",
+                "UPDATE long_term SET access_count = access_count + 1, "  # noqa: S608
+                f"last_accessed = datetime('now'){archived_clause} WHERE id = ?",
                 [(i,) for i in ids],
             )
             await db.commit()

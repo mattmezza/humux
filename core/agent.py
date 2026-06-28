@@ -187,6 +187,31 @@ TOOLS = [
         },
     },
     {
+        "name": "recall_memory",
+        "description": (
+            "Search your FULL long-term memory by meaning for facts about the user that "
+            "aren't already shown to you. Only the few most-relevant memories are injected "
+            "into each turn; call this when you suspect a relevant stored fact exists beyond "
+            "them — it searches the whole store, including older archived memories, and ranks "
+            "matches by relevance. Pass a natural-language query describing the fact you're "
+            "after (e.g. 'dietary restrictions and food allergies'), not just keywords."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Natural-language description of the fact(s) to recall",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max memories to return (default 10).",
+                },
+            },
+            "required": ["query"],
+        },
+    },
+    {
         "name": "manage_jobs",
         "description": (
             "Create, list, or cancel scheduled jobs. "
@@ -374,7 +399,9 @@ def scoped_tools(persona: Persona | None) -> list[dict]:
         return TOOLS
     # ``load_skill`` and the vault discovery/request tools are always retained:
     # they are the mechanics personae rely on to read skills and obtain secrets.
-    _always = {"load_skill", "list_secrets", "request_secret"}
+    # ``recall_memory`` too — memory is injected for every persona (scope-filtered),
+    # so its on-demand counterpart exposes nothing extra and stays available (#47).
+    _always = {"load_skill", "recall_memory", "list_secrets", "request_secret"}
     return [t for t in TOOLS if persona.allows_tool(t["name"]) or t["name"] in _always]
 
 
@@ -419,6 +446,7 @@ class AgentCore:
             long_term_limit=mem_cfg.long_term_limit,
             embedder=self._build_embedder(),
             injection_top_k=mem_cfg.embedding.injection_top_k,
+            recall_top_k=mem_cfg.embedding.recall_top_k,
             default_importance=mem_cfg.default_importance,
             archive_after_days=mem_cfg.archive_after_days,
             archive_max_importance=mem_cfg.archive_max_importance,
@@ -1206,6 +1234,9 @@ class AgentCore:
                 return {"error": f"Skill not found: {skill_name}"}
             return {"name": skill_name, "content": content}
 
+        if name == "recall_memory":
+            return await self._tool_recall_memory(params, request_state)
+
         if name == "manage_jobs":
             log.info("Tool call: manage_jobs — %s", params.get("action", ""))
             result = await self._tool_manage_jobs(params)
@@ -1601,6 +1632,28 @@ class AgentCore:
                 return {"error": "Must specify 'cron' for recurring or 'run_at' for one-time jobs."}
 
         return {"error": f"Unknown action: {action!r}. Use 'create', 'list', or 'cancel'."}
+
+    async def _tool_recall_memory(self, params: dict, request_state: dict | None = None) -> dict:
+        """Deliberate semantic search over the full long-term memory store (#47).
+
+        Scoped to the active persona (#42): ``persona_name`` on the per-turn
+        request state is the persona's private memory scope (``""`` = the default
+        identity's shared-only view), so recall never crosses into another
+        persona's private memories — same boundary the injection readers enforce.
+        """
+        query = str(params.get("query", "")).strip()
+        if not query:
+            return {"error": "Missing 'query'."}
+        limit = params.get("limit")
+        limit = limit if isinstance(limit, int) and not isinstance(limit, bool) else None
+        scope = (request_state or {}).get("persona_name") or ""
+        try:
+            memories = await self.memory.recall(query, limit, scope=scope)
+        except Exception:
+            log.exception("recall_memory failed for query: %s", query)
+            return {"error": "Memory recall failed."}
+        log.info("Tool call: recall_memory — %r (%d hits)", query, len(memories))
+        return {"query": query, "count": len(memories), "memories": memories}
 
     async def _tool_web_search(self, params: dict) -> dict:
         """Search the web via Tavily API."""
