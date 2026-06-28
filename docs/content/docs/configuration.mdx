@@ -126,6 +126,13 @@ memory:
   db_path: "data/memory.db"
   long_term_limit: 50
   extraction_model: "claude-haiku-4-5"
+
+reply_decision:
+  enabled: false
+  model: "claude-haiku-4-5"
+  group_only: true
+  max_replies_per_window: 6
+  window_seconds: 120
 ```
 
 ### Config sections
@@ -178,6 +185,10 @@ Memory system settings. `extraction_model` is the cheap/fast model used for post
 #### `artifacts`
 
 Agent-crafted [web artifacts](/docs/artifacts) — pages, multi-file sites, or documents served at `/artifacts/<id>/`. `directory` is where they live; `ttl_hours` is the **default** lifetime before the background sweep deletes them (`0` = keep forever), which the agent may override per artifact. Set `MPA_BASE_URL` so the shared links are reachable from your devices. Enabled by default, and managed from the admin **Tools** tab; `enabled: false` hides the tool everywhere and 404s all links.
+
+#### `reply_decision`
+
+In a shared/group chat with several bots and people, decide per message whether to reply at all — staying quiet for messages aimed at another bot, caught in a bot-to-bot reaction loop, or that the agent can't usefully add to. A cheap one-shot LLM call (`model`) makes the call; it **fails open** (replies) on any error, so a classifier hiccup never drops a real message. Off by default — 1:1 chats always reply and it costs one extra call. `group_only` (default `true`) gates only group chats (detected when the chat id differs from the user id). `max_replies_per_window`/`window_seconds` are a hard per-chat rate cap that backstops the LLM gate, so a runaway loop terminates even if the gate keeps voting "reply". Scheduler/system turns are never gated.
 
 ## Character and identity files
 

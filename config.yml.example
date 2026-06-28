@@ -150,3 +150,16 @@ subagent_summary:
   provider: "deepseek"
   model: "deepseek-v4-flash"   # fast + cheap is ideal for this distillation
   thinking_level: ""           # "" (off) | "low" | "medium" | "high"
+
+# Reply decision — in shared/group chats with several bots and people, decide
+# per message whether to reply at all. Stays quiet for messages aimed at another
+# bot, caught in a bot-to-bot reaction loop, or that the agent can't usefully add
+# to. Off by default (1:1 chats always reply, and it costs one extra LLM call).
+# Enable it for group chats that mix multiple bots.
+reply_decision:
+  enabled: false
+  provider: "anthropic"
+  model: "claude-haiku-4-5"   # cheap model for the yes/no reply decision
+  group_only: true            # only gate group chats; DMs always get a reply
+  max_replies_per_window: 6   # hard backstop: cap auto-replies per chat per window
+  window_seconds: 120         # rolling window for the cap — guarantees loops end
