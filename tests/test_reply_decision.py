@@ -174,6 +174,29 @@ async def test_process_skips_gate_in_dm(agent, monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_concurrent_burst_is_bounded_by_cap(agent, monkeypatch) -> None:
+    # The whole point of the backstop: a bursty bot-to-bot loop (many messages
+    # arriving as concurrent tasks for one chat) must not sail past the cap.
+    # With reserve-before-await, exactly `max_replies_per_window` get through.
+    import asyncio
+
+    cfg = agent.config.reply_decision
+    cfg.max_replies_per_window = 6
+    cfg.window_seconds = 120
+    monkeypatch.setattr(agent, "_background_llm", lambda *a, **k: _LLMStub("REPLY"))
+    _stub_dispatch(agent, monkeypatch, text="r")
+
+    resps = await asyncio.gather(
+        *(
+            agent.process(message=f"loop {i}", channel="telegram", user_id="111", chat_id="-999")
+            for i in range(50)
+        )
+    )
+    replied = sum(1 for r in resps if r.text)
+    assert replied == 6  # not 50 — the cap held under concurrency
+
+
+@pytest.mark.asyncio
 async def test_process_suppresses_when_rate_capped(agent, monkeypatch) -> None:
     import time
 
