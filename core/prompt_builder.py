@@ -64,6 +64,7 @@ class PromptSections:
     tool_usage: str
     tools: str
     secrets: str
+    voice: str
     memory_instruction: str
     history_handling: str
     memories: str
@@ -84,6 +85,8 @@ class PromptSections:
             parts.append(self.tools)
         if self.secrets:
             parts.append(self.secrets)
+        if self.voice:
+            parts.append(self.voice)
         parts.append(self.memory_instruction)
         if self.history_handling:
             parts.append(self.history_handling)
@@ -106,6 +109,7 @@ class PromptSections:
             "tool_usage": self.tool_usage,
             "tools": self.tools,
             "secrets": self.secrets,
+            "voice": self.voice,
             "memory_instruction": self.memory_instruction,
             "history_handling": self.history_handling,
             "memories": self.memories,
@@ -191,6 +195,24 @@ def build_prompt_sections(
             "output — substitution happens only inside `run_command`.\n"
             "</secrets>"
         )
+    # Voice is a base capability, not a skill or a function-tool: when TTS is on
+    # (same flag that brings up the pipeline in main.py) every agent — default or
+    # persona, 1:1 or group room — is told it can speak. Without this the only
+    # documentation of the [respond_with_voice] marker lived inside the `voice`
+    # skill, so a model that hadn't loaded it would deny having any voice tool.
+    voice_section = ""
+    if config.voice.tts_enabled:
+        voice_section = (
+            "<voice>\n"
+            "You can reply with a voice message instead of text: end your response with "
+            "the marker [respond_with_voice] and the whole reply is synthesized to speech "
+            "(it is NOT a tool call — just append the marker). Use it when the user sent a "
+            "voice message (mirror the medium), explicitly asks for voice, or the reply is "
+            "short and conversational. Do NOT use it for code, links, or long/structured "
+            "answers. A voice reply must be plain, speakable text end to end. For the full "
+            "guidance, load the `voice` skill.\n"
+            "</voice>"
+        )
     memory_instruction = (
         "You can store and recall memories using the sqlite3 CLI (see the memory skill).\n"
         "Proactively remember important facts about the user and their contacts.\n"
@@ -236,6 +258,7 @@ def build_prompt_sections(
         tool_usage=tool_usage,
         tools=tools_section,
         secrets=secrets_section,
+        voice=voice_section,
         memory_instruction=memory_instruction,
         history_handling=history_handling,
         memories=memory_section,

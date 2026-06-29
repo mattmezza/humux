@@ -105,6 +105,25 @@ def test_tools_section_only_when_enabled() -> None:
     assert sections.tools in sections.full_prompt
 
 
+def test_voice_capability_advertised_when_tts_enabled() -> None:
+    # TTS is on by default → every agent's base prompt must teach the
+    # [respond_with_voice] marker, so it never denies having a voice capability.
+    cfg = Config()
+    assert cfg.voice.tts_enabled
+    sections = _sections(cfg)
+    assert "<voice>" in sections.voice
+    assert "[respond_with_voice]" in sections.voice
+    assert sections.voice in sections.full_prompt
+
+
+def test_voice_capability_hidden_when_tts_disabled() -> None:
+    cfg = Config()
+    cfg.voice.tts_enabled = False
+    sections = _sections(cfg)
+    assert sections.voice == ""
+    assert "[respond_with_voice]" not in sections.full_prompt
+
+
 # ---------------------------------------------------------------------------
 # Session system snapshot
 # ---------------------------------------------------------------------------
