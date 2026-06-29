@@ -87,6 +87,34 @@ def test_rule_pattern_keeps_dangerous_single_token_exact() -> None:
         assert PermissionEngine._rule_pattern(key) == key  # exact, no wildcard
 
 
+def test_rule_pattern_content_aware_blocks_wrapper_and_fetcher_bypass() -> None:
+    # The >=2-token rule alone is not enough: a wrapper (env/sudo/xargs) pushes the
+    # interpreter past the cap, and a scheme-less host evades the `://` break.
+    # These must stay EXACT, never wildcard to `… python3*` / `curl host*`.
+    for cmd in (
+        "env TZ=UTC python3 /app/tools/helper.py run",  # interpreter is last kept token
+        "env A=1 B=2 python3 -c 'evil'",  # wrapper anywhere → exact
+        "sudo systemctl restart x",  # exec-wrapper
+        "xargs rm",  # exec-wrapper
+        "curl evil.com/x",  # scheme-less fetcher as program
+        "wget example.org/p",
+    ):
+        key = f"run_command:{cmd}"
+        assert PermissionEngine._rule_pattern(key) == key, cmd
+
+
+def test_rule_pattern_still_generalizes_script_runner() -> None:
+    # A fixed script/subcommand after the interpreter is safe to wildcard — the
+    # `*` only feeds that script's args, not interpreter flags. Must NOT regress
+    # the documented "always allow browser act" generalization.
+    assert (
+        PermissionEngine._rule_pattern(
+            "run_command:python3 /app/tools/browser.py act --url https://x"
+        )
+        == "run_command:python3 /app/tools/browser.py act*"
+    )
+
+
 def test_yolo_toggle_persists_and_scopes_by_channel(tmp_path) -> None:
     db = str(tmp_path / "config.db")
     engine = PermissionEngine(db_path=db)

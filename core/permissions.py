@@ -24,6 +24,62 @@ class PermissionLevel:
     NEVER = "NEVER"  # Block entirely
 
 
+# Programs that make a generalized "<prefix>*" rule unsafe — see _rule_pattern.
+# Interpreters/shells: a trailing `*` becomes `-c <code>` = arbitrary execution.
+_INTERPRETERS = {
+    "python",
+    "python2",
+    "python3",
+    "pypy",
+    "pypy3",
+    "perl",
+    "ruby",
+    "node",
+    "deno",
+    "bun",
+    "bash",
+    "sh",
+    "zsh",
+    "fish",
+    "dash",
+    "ksh",
+    "php",
+    "lua",
+    "luajit",
+    "rscript",
+    "osascript",
+    "awk",
+    "gawk",
+    "tclsh",
+    "ed",
+    "eval",
+}
+# Exec wrappers: run whatever follows, and their filler args can push an
+# interpreter past _rule_pattern's token cap (`env A=1 python3 -c …`).
+_EXEC_WRAPPERS = {
+    "env",
+    "sudo",
+    "doas",
+    "su",
+    "xargs",
+    "nohup",
+    "nice",
+    "ionice",
+    "time",
+    "timeout",
+    "watch",
+    "setsid",
+    "stdbuf",
+    "unbuffer",
+    "flock",
+    "chroot",
+    "script",
+}
+# Net fetchers: a trailing `*` is any path/host (scheme-less, so the `://` break
+# in _rule_pattern doesn't catch them).
+_NET_FETCHERS = {"curl", "wget"}
+
+
 # Default rules — read operations are ALWAYS, write operations ASK, destructive NEVER.
 DEFAULT_RULES: dict[str, str] = {
     # Read operations — safe by default
@@ -233,12 +289,13 @@ class PermissionEngine:
         Keeps the leading program/script/subcommand tokens (e.g.
         `python3 /app/tools/browser.py explore`) and wildcards the arguments, so
         approving once covers every later call of the same command shape. Stops at
-        the first flag/URL/quoted/redirect token and caps at 3 tokens. Requires at
-        least 2 kept tokens (program + subcommand) to wildcard at all — a single
-        token (`python3 -c …`, `curl https://…`) would generalize to `python3*` /
-        `curl*`, a blanket arbitrary-code/any-URL bypass of the engine, so those
-        keep their exact command and re-ask on the next distinct call. Non
-        run_command keys are returned unchanged.
+        the first flag/URL/quoted/redirect token and caps at 3 tokens. Two guards
+        keep the wildcard from re-opening an arbitrary-code/target hole: at least 2
+        kept tokens are required, and none of the kept tokens may be an interpreter
+        (as the last token), an exec-wrapper (anywhere), or a net fetcher (as the
+        program) — see the inline note. Such commands keep their exact form and
+        re-ask on the next distinct call. Non run_command keys are returned
+        unchanged.
         """
         prefix = "run_command:"
         if not match_key.startswith(prefix):
@@ -257,6 +314,21 @@ class PermissionEngine:
         # any URL — turning one "always" click into a blanket bypass of the engine.
         # Keep the exact command instead; the next distinct invocation re-asks.
         if len(kept) < 2:
+            return match_key
+        # Content check, not just token count: wildcarding is unsafe whenever the
+        # trailing `*` could still expand into arbitrary code or an arbitrary
+        # target. That happens when the LAST kept token is an interpreter/shell
+        # (its `*` becomes `-c <code>`); when ANY kept token is an exec-wrapper
+        # (env/sudo/xargs/… hide the real program AND their filler args can push an
+        # interpreter past the 3-token cap, e.g. `env A=1 python3 …`); or when the
+        # program itself fetches the network (`curl host*` = any path on that host,
+        # scheme-less so the `://` break above never fired). Keep those exact.
+        bases = [tok.rsplit("/", 1)[-1] for tok in kept]
+        if (
+            bases[-1] in _INTERPRETERS
+            or any(b in _EXEC_WRAPPERS for b in bases)
+            or bases[0] in _NET_FETCHERS
+        ):
             return match_key
         return prefix + " ".join(kept) + "*"
 
