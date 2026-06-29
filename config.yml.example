@@ -59,6 +59,14 @@ scheduler:
       cron: "0 */8 * * *"
       task: "sqlite3 /app/data/memory.db \"DELETE FROM short_term WHERE expires_at < datetime('now');\""
       type: "system"
+    # A scheduled subagent: runs `task` under a chosen persona (#15). Its scope
+    # is that persona's tools/skills/secrets; the result is posted to `channel`.
+    # - id: "weekly_review"
+    #   cron: "0 18 * * 5"
+    #   type: "subagent"
+    #   persona: "writing-editor"
+    #   task: "Draft a short weekly review from this week's notes and email it to me"
+    #   channel: "telegram"
 
 admin:
   enabled: true
@@ -87,8 +95,8 @@ history:
 memory:
   db_path: "data/memory.db"
   long_term_limit: 50
-  extraction_model: "claude-haiku-4-5"  # cheap model for post-turn memory extraction
-  consolidation_model: "claude-haiku-4-5"  # model for scheduled consolidation + hygiene
+  extraction_model: "deepseek-v4-flash"  # fast + cheap model for post-turn memory extraction
+  consolidation_model: "deepseek-v4-flash"  # model for scheduled consolidation + hygiene
 
   # Tier 2 — semantic similarity + relevance-ranked injection.
   # Default: a local on-device model (fastembed, private, no API key, free).
@@ -122,3 +130,23 @@ artifacts:
   enabled: true
   directory: "data/artifacts"  # where artifacts live
   ttl_hours: 168               # default lifetime; agent may pick its own (0 = forever)
+
+# Subagents — the agent can delegate a scoped subtask to a sub-loop running
+# under a chosen persona, on demand (spawn_subagent tool) or on a schedule
+# (a "subagent" job above). A child's tools/skills/secrets are a subset of the
+# caller's — never wider. Defaults work out of the box; tune the guardrails:
+subagents:
+  enabled: true
+  recursion_depth: 3   # max nesting (a top-level spawn is depth 1)
+  max_steps: 12        # max tool-call rounds per run (hard stop)
+  token_budget: 100000 # approx token ceiling per run (best-effort)
+  max_concurrent: 3    # max background runs at once
+
+# When a background subagent batch finishes, distil it into a one-line chat
+# notification + a concise context digest (instead of dumping the raw output).
+# Off → a crude first-line truncation with no LLM call.
+subagent_summary:
+  enabled: true
+  provider: "deepseek"
+  model: "deepseek-v4-flash"   # fast + cheap is ideal for this distillation
+  thinking_level: ""           # "" (off) | "low" | "medium" | "high"

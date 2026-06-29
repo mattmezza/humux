@@ -13,7 +13,13 @@ from typing import TYPE_CHECKING
 from telegram import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ChatAction
 from telegram.error import BadRequest
-from telegram.ext import Application, CallbackQueryHandler, MessageHandler, filters
+from telegram.ext import (
+    Application,
+    CallbackQueryHandler,
+    CommandHandler,
+    MessageHandler,
+    filters,
+)
 
 from channels.markdown_tg import to_telegram_html
 
@@ -29,6 +35,8 @@ log = logging.getLogger(__name__)
 _APPROVE_PREFIX = "perm_approve:"
 _DENY_PREFIX = "perm_deny:"
 _ALWAYS_PREFIX = "perm_always:"
+# Callback data prefix for subagent-run cancel buttons (issue #15)
+_SUB_CANCEL_PREFIX = "sub_cancel:"
 _HTML_TAG_RE = re.compile(
     r"</?(b|strong|i|em|u|ins|s|strike|del|code|pre|a|tg-spoiler)(\s+[^>]*)?>",
     re.IGNORECASE,
@@ -54,6 +62,10 @@ class TelegramChannel:
         # folded "<chat>:<thread>" string when the message came from a topic.
         self._last_chat_for_user: dict[int, int | str] = {}
         self.app = Application.builder().token(config.bot_token).concurrent_updates(8).build()
+        # Commands are checked before the text handler so "/jobs" doesn't reach the
+        # agent as an ordinary message. (Plain text — incl. /new, /clear — still
+        # falls through to _on_text, which handles those.)
+        self.app.add_handler(CommandHandler("jobs", self._on_jobs_command))
         self.app.add_handler(MessageHandler(filters.TEXT, self._on_text))
         self.app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, self._on_voice))
         self.app.add_handler(MessageHandler(filters.PHOTO | filters.Document.IMAGE, self._on_photo))
@@ -228,6 +240,29 @@ class TelegramChannel:
             name=f"tg-photo-{user_id}",
         )
 
+    async def _on_jobs_command(self, update: Update, context) -> None:
+        """/jobs — list active subagent runs with inline cancel buttons (issue #15)."""
+        user = update.effective_user
+        message = update.message
+        if not user or not message:
+            return
+        if not self._is_allowed(user.id):
+            return
+        runs = self.agent.subagents.list_runs(active_only=True)
+        if not runs:
+            await message.reply_text("No active subagent runs.")
+            return
+        for r in runs:
+            text = (
+                f"🤖 <b>{r.persona or 'default'}</b> · {r.status} · {r.elapsed_str}\n"
+                f"{(r.progress or '—')}\n"
+                f"<i>{r.task[:160]}</i>"
+            )
+            keyboard = InlineKeyboardMarkup(
+                [[InlineKeyboardButton("Cancel", callback_data=f"{_SUB_CANCEL_PREFIX}{r.run_id}")]]
+            )
+            await message.reply_text(text, parse_mode="HTML", reply_markup=keyboard)
+
     async def _on_approval_callback(self, update: Update, context) -> None:
         """Handle inline keyboard button presses for permission approvals."""
         query = update.callback_query
@@ -260,6 +295,12 @@ class TelegramChannel:
             request_id = data[len(_ALWAYS_PREFIX) :]
             resolved = self.agent.permissions.resolve_approval(request_id, True, always_allow=True)
             await self._finalize_approval_response(query, resolved, "Always allowed")
+
+        elif data.startswith(_SUB_CANCEL_PREFIX):
+            run_id = data[len(_SUB_CANCEL_PREFIX) :]
+            ok = self.agent.subagents.cancel(run_id)
+            label = "Cancelled" if ok else "Already finished / not found"
+            await self._finalize_approval_response(query, True, label)
 
     async def _on_forum_topic(self, update: Update, context) -> None:
         """Auto-bind a freshly created/renamed forum topic to a matching persona.

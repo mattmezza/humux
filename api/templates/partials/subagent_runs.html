@@ -1,0 +1,35 @@
+{# Subagent runs — responsive card grid, polled live by the Jobs tab (#15) #}
+{% if runs %}
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+  {% for r in runs %}
+  <div class="card">
+    <div class="flex items-center justify-between gap-2">
+      <span class="font-medium text-xs break-all">{{ r.persona or 'default' }}</span>
+      <span class="{% if r.status in ('running', 'done') %}badge-ok{% elif r.status == 'error' %}badge-warn{% else %}badge-off{% endif %}">
+        {{ r.status }}
+      </span>
+    </div>
+    <div class="text-muted text-[0.7rem] mt-1 break-words">{{ r.task[:140] }}{{ '…' if r.task|length > 140 else '' }}</div>
+    <div class="flex items-center justify-between text-muted text-[0.65rem] mt-2 gap-2">
+      <span title="elapsed">⏱ {{ r.elapsed_str }}</span>
+      <span class="truncate" title="{{ r.progress }}">{{ r.progress or '—' }}</span>
+    </div>
+    {% if r.depth and r.depth > 1 %}
+    <div class="text-muted text-[0.6rem] mt-1">depth {{ r.depth }}</div>
+    {% endif %}
+    {% if r.status == 'running' %}
+    <button class="btn-danger btn-sm mt-2 w-full"
+            hx-post="/subagents/cancel" hx-target="#subagent-runs" hx-swap="innerHTML"
+            hx-vals='{"run_id": {{ r.run_id|tojson }} }'
+            hx-confirm="Cancel subagent {{ r.run_id }}?">
+      Cancel
+    </button>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<p class="text-muted text-xs">
+  {% if agent_running %}No subagent runs yet.{% else %}Agent stopped — no subagent runs.{% endif %}
+</p>
+{% endif %}

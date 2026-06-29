@@ -11,6 +11,7 @@ A self-hosted personal AI agent that runs in a single Docker container. MPA acts
 - **Personae** — Swappable agent identities (own character, skill/tool scope, voice). Bind one per chat — and, on Telegram, per forum topic — so several run concurrently, each with its own isolated context. Give a persona its own bot token and it becomes a separate Telegram contact (bot-per-persona)
 - **Memory** — Two-tier system: permanent long-term facts and expiring short-term context, both extracted automatically from conversations
 - **Scheduled tasks** — Cron-based jobs for morning briefings, email checks, contact sync, and custom tasks
+- **Subagents** — Delegate a scoped subtask to a sub-loop under a chosen persona, on demand or scheduled. Runs sync (result returned in-turn) or in the background; a finished background batch is distilled by a summary inference into a one-line chat notification + a concise context digest (raw output never reaches the user or the agent's context). The agent sizes each run (steps / token budget / thinking effort) and defaults the persona to its own; scope is a subset of the caller's (inherit-never-widen). Monitor and cancel from Telegram (`/jobs`) or the admin UI
 - **Voice** — Speech-to-text (faster-whisper) and text-to-speech (edge-tts)
 - **Web search** — Tavily integration for real-time information
 - **Browser automation** — Optional headless browser (Playwright) to read JS-heavy pages and act on sites, with persistent logged-in profiles and per-domain approval (off by default)

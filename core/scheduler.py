@@ -4,11 +4,12 @@ The JobStore (``data/jobs.db``) is the single source of truth.
 APScheduler runs in-memory only (no SQLAlchemy jobstore) and is
 re-synced from the JobStore whenever jobs change.
 
-Three job types:
+Job types:
   - "agent" / "agent_silent": natural-language task -> agent.process() -> send result to channel
   - "system": raw CLI command -> executor.run_command_trusted()
   - "memory_consolidation": review short-term memories, promote worthy ones
     to long-term, delete expired entries (uses a lightweight LLM call)
+  - "subagent": run agent.run_subagent() under a persona -> send result to channel (issue #15)
 """
 
 from __future__ import annotations
@@ -94,6 +95,48 @@ async def run_agent_task(
             log.warning("Scheduler: channel %r not registered, response dropped", channel)
     except Exception:
         log.exception("Scheduler agent task failed: %s", task[:100])
+
+    # Mark one-shot jobs as done
+    if job_id and agent.job_store:
+        job = await agent.job_store.get_job(job_id)
+        if job and job.get("schedule") == "once" and job.get("status") == "active":
+            await agent.job_store.update_status(job_id, "done")
+            log.info("One-shot job %r marked as done", job_id)
+
+
+async def run_subagent_task(
+    persona: str,
+    task: str,
+    channel: str = "telegram",
+    job_id: str | None = None,
+) -> None:
+    """Fire a scheduled subagent run and deliver its result to the channel."""
+    agent = _get_agent_context()
+    if agent is None:
+        log.error("Scheduler subagent task dropped; agent not initialized")
+        return
+
+    owner = _get_owner_chat_id(agent, channel)
+    log.info("Scheduler running subagent (persona=%s): %s", persona or "default", task[:100])
+    try:
+        result = await agent.run_subagent(
+            task=task,
+            persona_name=persona or "",
+            origin_channel=channel,
+            origin_user_id=str(owner or "scheduler"),
+            origin_chat_id=str(owner or ""),
+            background=False,
+        )
+        text = result.get("result") or result.get("error") or ""
+        ch = agent.channels.get(channel)
+        if ch and text and owner:
+            await ch.send(owner, text)
+        elif not ch:
+            log.warning("Scheduler: channel %r not registered, subagent result dropped", channel)
+        elif not owner:
+            log.warning("Scheduler: no owner chat for channel %r, subagent result dropped", channel)
+    except Exception:
+        log.exception("Scheduler subagent task failed: %s", task[:100])
 
     # Mark one-shot jobs as done
     if job_id and agent.job_store:
@@ -212,6 +255,7 @@ class AgentScheduler:
         schedule = job.get("schedule", "cron")
         task = job.get("task", "")
         channel = job.get("channel", "telegram")
+        persona = job.get("persona", "")
         silent = job_type == "agent_silent"
 
         try:
@@ -253,6 +297,20 @@ class AgentScheduler:
                         run_date=run_at,
                         replace_existing=True,
                     )
+                elif job_type == "subagent":
+                    self.scheduler.add_job(
+                        run_subagent_task,
+                        "date",
+                        id=job_id,
+                        run_date=run_at,
+                        kwargs={
+                            "persona": persona,
+                            "task": task,
+                            "channel": channel,
+                            "job_id": job_id,
+                        },
+                        replace_existing=True,
+                    )
                 else:
                     self.scheduler.add_job(
                         run_agent_task,
@@ -289,6 +347,20 @@ class AgentScheduler:
                         run_memory_consolidation,
                         "cron",
                         id=job_id,
+                        replace_existing=True,
+                        **cron_kwargs,
+                    )
+                elif job_type == "subagent":
+                    self.scheduler.add_job(
+                        run_subagent_task,
+                        "cron",
+                        id=job_id,
+                        kwargs={
+                            "persona": persona,
+                            "task": task,
+                            "channel": channel,
+                            "job_id": job_id,
+                        },
                         replace_existing=True,
                         **cron_kwargs,
                     )

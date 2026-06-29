@@ -835,7 +835,12 @@ def create_admin_app(
         store = await _skills_store_from_config(config_store)
         all_skills = [s["name"] for s in await store.list_skills()]
         artifacts = await store_from_config(config_store)
-        return {"all_skills": all_skills, "all_tools": gateable_tools_for(artifacts.enabled)}
+        sub_enabled = await config_store.get("subagents.enabled")
+        sub_on = sub_enabled is None or sub_enabled == "true"
+        return {
+            "all_skills": all_skills,
+            "all_tools": gateable_tools_for(artifacts.enabled, subagents_enabled=sub_on),
+        }
 
     @app.get("/admin/personae/new", response_model=None)
     async def admin_persona_new() -> Response:
@@ -1031,13 +1036,13 @@ def create_admin_app(
         deepseek_vaulted = _is_vault_ref(deepseek_api_key)
         model = await config_store.get("agent.model") or "claude-4-6-sonnet"
         thinking_level = await config_store.get("agent.thinking_level") or ""
-        extraction_provider = await config_store.get("memory.extraction_provider") or "anthropic"
-        extraction_model = await config_store.get("memory.extraction_model") or "claude-haiku-4-5"
+        extraction_provider = await config_store.get("memory.extraction_provider") or "deepseek"
+        extraction_model = await config_store.get("memory.extraction_model") or "deepseek-v4-flash"
         consolidation_provider = (
-            await config_store.get("memory.consolidation_provider") or "anthropic"
+            await config_store.get("memory.consolidation_provider") or "deepseek"
         )
         consolidation_model = (
-            await config_store.get("memory.consolidation_model") or "claude-haiku-4-5"
+            await config_store.get("memory.consolidation_model") or "deepseek-v4-flash"
         )
         extraction_thinking_level = await config_store.get("memory.extraction_thinking_level") or ""
         consolidation_thinking_level = (
@@ -1045,16 +1050,16 @@ def create_admin_app(
         )
         gd_enabled = await config_store.get("goal_decomposition.enabled")
         gd_enabled = gd_enabled if gd_enabled is not None else "true"
-        gd_provider = await config_store.get("goal_decomposition.provider") or "anthropic"
-        gd_model = await config_store.get("goal_decomposition.model") or "claude-haiku-4-5"
+        gd_provider = await config_store.get("goal_decomposition.provider") or "deepseek"
+        gd_model = await config_store.get("goal_decomposition.model") or "deepseek-v4-flash"
         tr_enabled = await config_store.get("task_reflection.enabled")
         tr_enabled = tr_enabled if tr_enabled is not None else "true"
-        tr_provider = await config_store.get("task_reflection.provider") or "anthropic"
-        tr_model = await config_store.get("task_reflection.model") or "claude-haiku-4-5"
+        tr_provider = await config_store.get("task_reflection.provider") or "deepseek"
+        tr_model = await config_store.get("task_reflection.model") or "deepseek-v4-flash"
         gd_thinking_level = await config_store.get("goal_decomposition.thinking_level") or ""
         tr_thinking_level = await config_store.get("task_reflection.thinking_level") or ""
-        compaction_provider = await config_store.get("compaction.provider") or "anthropic"
-        compaction_model = await config_store.get("compaction.model") or "claude-haiku-4-5"
+        compaction_provider = await config_store.get("compaction.provider") or "deepseek"
+        compaction_model = await config_store.get("compaction.model") or "deepseek-v4-flash"
         compaction_thinking_level = await config_store.get("compaction.thinking_level") or ""
         vision_enabled = await config_store.get("vision.enabled")
         vision_enabled = vision_enabled if vision_enabled is not None else "false"
@@ -1151,6 +1156,22 @@ def create_admin_app(
 
         artifacts = await store_from_config(config_store)
 
+        # Subagents (issue #15) — keys may be absent on a store seeded before the
+        # feature existed, so fall back to the SubagentsConfig defaults.
+        sub_enabled = await config_store.get("subagents.enabled")
+        sub_enabled = sub_enabled if sub_enabled is not None else "true"
+        sub_recursion = await config_store.get("subagents.recursion_depth") or "3"
+        sub_steps = await config_store.get("subagents.max_steps") or "12"
+        sub_tokens = await config_store.get("subagents.token_budget") or "100000"
+        sub_concurrent = await config_store.get("subagents.max_concurrent") or "3"
+        # Result-summary inference (notification + context digest) for finished
+        # background batches — fast/cheap model by default.
+        ss_enabled = await config_store.get("subagent_summary.enabled")
+        ss_enabled = ss_enabled if ss_enabled is not None else "true"
+        ss_provider = await config_store.get("subagent_summary.provider") or "deepseek"
+        ss_model = await config_store.get("subagent_summary.model") or "deepseek-v4-flash"
+        ss_thinking = await config_store.get("subagent_summary.thinking_level") or ""
+
         return _render_partial(
             "partials/tools.html",
             tools=tool_registry(),
@@ -1166,6 +1187,15 @@ def create_admin_app(
             artifacts_enabled="true" if artifacts.enabled else "false",
             artifacts_directory=str(artifacts.dir),
             artifacts_ttl_hours=str(artifacts.ttl_hours),
+            subagents_enabled=sub_enabled,
+            subagents_recursion_depth=sub_recursion,
+            subagents_max_steps=sub_steps,
+            subagents_token_budget=sub_tokens,
+            subagents_max_concurrent=sub_concurrent,
+            summary_enabled=ss_enabled,
+            summary_provider=ss_provider,
+            summary_model=ss_model,
+            summary_thinking_level=ss_thinking,
         )
 
     @app.post("/tools/gh/test", dependencies=[Depends(auth)])
@@ -1423,6 +1453,7 @@ def create_admin_app(
                     "run_at": j.get("run_at", ""),
                     "description": j.get("description", ""),
                     "created_by": j.get("created_by", ""),
+                    "persona": j.get("persona", ""),
                 }
             )
         return jobs
@@ -1451,6 +1482,7 @@ def create_admin_app(
         task = str(body.get("task", "")).strip()
         channel = str(body.get("channel", "telegram")).strip()
         description = str(body.get("description", "")).strip()
+        persona = str(body.get("persona", "")).strip()
 
         if not job_id:
             raise HTTPException(400, "Job ID is required")
@@ -1462,10 +1494,13 @@ def create_admin_app(
         else:
             if not run_at:
                 raise HTTPException(400, "Run-at datetime is required for one-time jobs")
-        if job_type not in ("agent", "agent_silent", "system", "memory_consolidation"):
+        if job_type not in ("agent", "agent_silent", "system", "memory_consolidation", "subagent"):
             raise HTTPException(400, f"Invalid job type: {job_type}")
         if job_type != "memory_consolidation" and not task:
-            raise HTTPException(400, "Task is required for agent/system jobs")
+            raise HTTPException(400, "Task is required for agent/system/subagent jobs")
+        # Persona only applies to subagent jobs — don't persist a stray value on others.
+        if job_type != "subagent":
+            persona = ""
 
         if schedule == "cron":
             from core.scheduler import _parse_cron
@@ -1494,6 +1529,7 @@ def create_admin_app(
             status="active",
             created_by="admin",
             description=description,
+            persona=persona,
         )
 
         # Sync with APScheduler if the agent is running
@@ -1564,7 +1600,12 @@ def create_admin_app(
 
         import asyncio
 
-        from core.scheduler import run_agent_task, run_memory_consolidation, run_system_command
+        from core.scheduler import (
+            run_agent_task,
+            run_memory_consolidation,
+            run_subagent_task,
+            run_system_command,
+        )
 
         job_type = job.get("type", "agent")
         task = job.get("task", "")
@@ -1579,6 +1620,15 @@ def create_admin_app(
             asyncio.create_task(run_system_command(command=task))
         elif job_type == "memory_consolidation":
             asyncio.create_task(run_memory_consolidation())
+        elif job_type == "subagent":
+            asyncio.create_task(
+                run_subagent_task(
+                    persona=job.get("persona", ""),
+                    task=task,
+                    channel=channel_name,
+                    job_id=job_id,
+                )
+            )
         else:
             return HTMLResponse('<span class="alert-error">Unknown job type</span>')
 
@@ -1586,6 +1636,44 @@ def create_admin_app(
         return HTMLResponse(
             f'<span class="alert-success">Job &quot;{job_id}&quot; triggered — check logs '
             "for output</span>"
+        )
+
+    # ── Subagent runs (issue #15) ──────────────────────────────────────
+
+    def _subagent_runs() -> list:
+        """Live subagent runs from the running agent (newest first)."""
+        agent = agent_state.agent
+        if not agent:
+            return []
+        return agent.subagents.list_runs()
+
+    @app.get("/partials/subagent-runs", dependencies=[Depends(auth)])
+    async def partial_subagent_runs() -> HTMLResponse:
+        """Subagent runs card grid — polled by the Jobs tab for live status."""
+        return _render_partial(
+            "partials/subagent_runs.html",
+            runs=_subagent_runs(),
+            agent_running=agent_state.agent is not None,
+        )
+
+    @app.post("/subagents/cancel", dependencies=[Depends(auth)])
+    async def cancel_subagent(request: Request) -> HTMLResponse:
+        """Cancel a running subagent. Returns the refreshed runs partial."""
+        agent = agent_state.agent
+        if not agent:
+            raise HTTPException(503, "Agent not running")
+        content_type = request.headers.get("content-type", "")
+        if "application/x-www-form-urlencoded" in content_type:
+            body = await request.form()
+        else:
+            body = await request.json()
+        run_id = str(body.get("run_id", "")).strip()
+        if not run_id:
+            raise HTTPException(400, "Missing 'run_id' in request body")
+        agent.subagents.cancel(run_id)
+        log.info("Subagent %r cancelled via admin", run_id)
+        return _render_partial(
+            "partials/subagent_runs.html", runs=_subagent_runs(), agent_running=True
         )
 
     # ── Config API ─────────────────────────────────────────────────────
@@ -3337,14 +3425,18 @@ GATEABLE_TOOLS = [
     "web_search",
     "manage_jobs",
     "write_artifact",
+    "spawn_subagent",
 ]
 
 
-def gateable_tools_for(artifacts_enabled: bool) -> list[str]:
+def gateable_tools_for(artifacts_enabled: bool, subagents_enabled: bool = True) -> list[str]:
     """GATEABLE_TOOLS minus tools whose feature is globally disabled."""
-    if artifacts_enabled:
-        return list(GATEABLE_TOOLS)
-    return [t for t in GATEABLE_TOOLS if t != "write_artifact"]
+    out = list(GATEABLE_TOOLS)
+    if not artifacts_enabled:
+        out = [t for t in out if t != "write_artifact"]
+    if not subagents_enabled:
+        out = [t for t in out if t != "spawn_subagent"]
+    return out
 
 
 # ---------------------------------------------------------------------------

@@ -76,6 +76,120 @@
     </template>
   </div>
 
+  {# Subagents (built-in tool, issue #15) #}
+  <div class="card" x-data="{
+    enabled: {{ subagents_enabled|default('true', true)|tojson|forceescape }},
+    recursion: {{ subagents_recursion_depth|default('3', true)|tojson|forceescape }},
+    steps: {{ subagents_max_steps|default('12', true)|tojson|forceescape }},
+    tokens: {{ subagents_token_budget|default('100000', true)|tojson|forceescape }},
+    concurrent: {{ subagents_max_concurrent|default('3', true)|tojson|forceescape }},
+    summaryEnabled: {{ summary_enabled|default('true', true)|tojson|forceescape }},
+    summaryProvider: {{ summary_provider|default('deepseek', true)|tojson|forceescape }},
+    summaryModel: {{ summary_model|default('deepseek-v4-flash', true)|tojson|forceescape }},
+    summaryThinking: {{ summary_thinking_level|default('', true)|tojson|forceescape }},
+    result: '', resultOk: false,
+    save() {
+      const vals = {
+        'subagents.enabled': String(this.enabled === true || this.enabled === 'true'),
+        'subagents.recursion_depth': String(parseInt(this.recursion) || 1),
+        'subagents.max_steps': String(parseInt(this.steps) || 1),
+        'subagents.token_budget': String(parseInt(this.tokens) || 1),
+        'subagents.max_concurrent': String(parseInt(this.concurrent) || 1),
+        'subagent_summary.enabled': String(this.summaryEnabled === true || this.summaryEnabled === 'true'),
+        'subagent_summary.provider': String(this.summaryProvider || 'deepseek').trim(),
+        'subagent_summary.model': String(this.summaryModel || 'deepseek-v4-flash').trim(),
+        'subagent_summary.thinking_level': String(this.summaryThinking || '').trim()
+      };
+      fetch('/config', {
+        method: 'PATCH',
+        headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('admin_api_key') || '')},
+        body: JSON.stringify({values: vals})
+      })
+      .then(r => { this.resultOk = r.ok; return r.json(); })
+      .then(d => {
+        this.result = this.resultOk ? 'Subagent settings saved' : (d.detail || 'Error');
+        if (this.resultOk && window.showToast) { window.showToast('Subagent settings saved'); }
+      })
+      .catch(e => { this.resultOk = false; this.result = e.message; });
+    }
+  }">
+    <div class="flex items-center justify-between gap-3 mb-1">
+      <h3 class="text-sm text-accent">Subagents</h3>
+      <div class="flex items-center gap-2">
+        <label class="label mb-0">Enabled</label>
+        <input type="checkbox" x-model="enabled" :checked="enabled === 'true' || enabled === true">
+      </div>
+    </div>
+    <p class="text-muted text-xs mb-4">
+      Let the assistant delegate a scoped subtask to a sub-loop (the
+      <code>spawn_subagent</code> tool) under a chosen persona, on demand or
+      scheduled. A child's tools/skills/secrets are a subset of the caller's —
+      never wider. When disabled, the tool is hidden from the assistant (and from
+      the Personae tool scope). Assign it per persona in the
+      <strong>Personae</strong> editor; monitor and cancel runs in the
+      <strong>Jobs</strong> tab.
+    </p>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" x-show="enabled === 'true' || enabled === true">
+      <div>
+        <label class="label">Recursion depth</label>
+        <input type="number" min="1" class="input-sm" style="max-width:200px" x-model="recursion">
+        <p class="text-muted text-xs mt-1">Max nesting; a top-level spawn is depth 1.</p>
+      </div>
+      <div>
+        <label class="label">Max steps</label>
+        <input type="number" min="1" class="input-sm" style="max-width:200px" x-model="steps">
+        <p class="text-muted text-xs mt-1">Tool-call rounds per run — a hard stop.</p>
+      </div>
+      <div>
+        <label class="label">Token budget</label>
+        <input type="number" min="1" class="input-sm" style="max-width:200px" x-model="tokens">
+        <p class="text-muted text-xs mt-1">Approx token ceiling per run (best-effort).</p>
+      </div>
+      <div>
+        <label class="label">Max concurrent</label>
+        <input type="number" min="1" class="input-sm" style="max-width:200px" x-model="concurrent">
+        <p class="text-muted text-xs mt-1">Background runs allowed at once.</p>
+      </div>
+    </div>
+    <div class="border-t border-border mt-4 pt-4" x-show="enabled === 'true' || enabled === true">
+      <div class="flex items-center justify-between gap-3 mb-1">
+        <h4 class="text-xs text-accent">Result summary</h4>
+        <div class="flex items-center gap-2">
+          <label class="label mb-0">Enabled</label>
+          <input type="checkbox" x-model="summaryEnabled"
+                 :checked="summaryEnabled === 'true' || summaryEnabled === true">
+        </div>
+      </div>
+      <p class="text-muted text-xs mb-3">
+        When a batch of background runs finishes, a small inference distils it into a
+        one-line chat notification plus a concise context digest (instead of dumping
+        raw output). Off falls back to a crude first-line truncation.
+      </p>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3"
+           x-show="summaryEnabled === 'true' || summaryEnabled === true">
+        <div>
+          <label class="label">Provider</label>
+          <input type="text" class="input-sm" x-model="summaryProvider" placeholder="deepseek">
+        </div>
+        <div>
+          <label class="label">Model</label>
+          <input type="text" class="input-sm" x-model="summaryModel" placeholder="deepseek-v4-flash">
+        </div>
+        <div>
+          <label class="label">Thinking level</label>
+          <input type="text" class="input-sm" x-model="summaryThinking" placeholder="off">
+          <p class="text-muted text-xs mt-1">Blank = off. low / medium / high for reasoning models.</p>
+        </div>
+      </div>
+    </div>
+    <div class="flex items-center gap-2 mt-4">
+      <button class="btn-primary btn-sm" @click="save()">Save</button>
+    </div>
+    <template x-if="result">
+      <div :class="resultOk ? 'alert-success' : 'alert-error'" class="mt-2" x-text="result"></div>
+    </template>
+  </div>
+
   {# GitHub CLI (gh) #}
   <div class="card">
     <div class="flex items-center justify-between gap-3 mb-1">

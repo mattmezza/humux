@@ -32,6 +32,18 @@ from core.prompt_builder import build_prompt_sections
 from core.scheduler import AgentScheduler
 from core.secret_store import SecretStore
 from core.skills import SkillsEngine
+from core.subagents import (
+    FILE_HANDOFF_INSTRUCTION,
+    RESULT_FOR_AGENT_INSTRUCTION,
+    SubagentRegistry,
+    SubagentRun,
+    fallback_summary,
+    narrow_scope,
+    normalize_effort,
+    resolve_cap,
+    short_summary,
+    summarize_batch,
+)
 from core.task_reflection import ReflectionStore
 from core.tools import tool_env
 from voice.pipeline import VoicePipeline
@@ -270,6 +282,88 @@ TOOLS = [
             "required": ["action"],
         },
     },
+    # Subagents (issue #15) — delegate a scoped subtask to a sub-loop.
+    {
+        "name": "spawn_subagent",
+        "description": (
+            "Delegate a self-contained subtask to a subagent. The subagent runs "
+            "the full agent loop under a persona, with a tool/skill/secret scope "
+            "that is never wider than yours, and returns a structured result. It "
+            "has NO memory of this conversation — put everything it needs in "
+            "'task'.\n"
+            "Persona: by DEFAULT omit 'persona' — the subagent runs as YOU (your "
+            "identity, tools, scope). This is almost always what you want. Set "
+            "'persona' ONLY when the user explicitly asked for a named specialist, "
+            "or the subtask plainly belongs to a different one. Never pick a "
+            "persona just because the roster lists some.\n"
+            "Sizing: by default the subagent runs at the configured ceilings. Size "
+            "it to the job with 'max_steps', 'token_budget', and 'thinking_effort' "
+            "— smaller for a quick lookup, larger / 'high' effort for hard "
+            "multi-step work. Requested values are capped at the configured maxima.\n"
+            "Files: you share a filesystem with the subagent, so it reports the "
+            "absolute paths of any files it creates in its result — you can then "
+            "read or send them.\n"
+            "Use background=true for long-running work: you get a run id "
+            "immediately and the result is posted to this chat when done (monitor "
+            "or cancel it with /jobs or the admin Jobs page). Use background=false "
+            "(default) to block and get the result back in this turn.\n"
+            "Subagents are depth-limited, so prefer one focused delegation over "
+            "deep nesting."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "task": {
+                    "type": "string",
+                    "description": (
+                        "The complete instruction for the subagent. Be specific and "
+                        "self-contained — it cannot see this conversation."
+                    ),
+                },
+                "persona": {
+                    "type": "string",
+                    "description": (
+                        "Persona name to run as. OMIT THIS by default — the subagent "
+                        "then runs as you (same identity, tools, scope), which is "
+                        "almost always correct. Only set it when the user explicitly "
+                        "named a specialist or the subtask clearly belongs to one."
+                    ),
+                },
+                "max_steps": {
+                    "type": "integer",
+                    "description": (
+                        "Tool-call rounds the subagent may run before a hard stop. "
+                        "Omit for the configured default; capped at the maximum. "
+                        "Lower it for quick tasks, raise it for thorough ones."
+                    ),
+                },
+                "token_budget": {
+                    "type": "integer",
+                    "description": (
+                        "Approximate token ceiling for the whole run (minimum 1000). "
+                        "Omit for the configured default; capped at the maximum."
+                    ),
+                },
+                "thinking_effort": {
+                    "type": "string",
+                    "enum": ["off", "low", "medium", "high"],
+                    "description": (
+                        "How hard the subagent reasons each step. Omit to inherit "
+                        "your own level. Use 'high' for tricky reasoning, 'off'/'low' "
+                        "for simple mechanical work."
+                    ),
+                },
+                "background": {
+                    "type": "boolean",
+                    "description": (
+                        "Run asynchronously (default false). True returns a run id "
+                        "now and posts the result back to this chat when done."
+                    ),
+                },
+            },
+            "required": ["task"],
+        },
+    },
     # Secrets vault (issue #19) — discover + request secrets by NAME only.
     {
         "name": "list_secrets",
@@ -406,7 +500,11 @@ def scoped_tools(persona: Persona | None) -> list[dict]:
 
 
 def apply_feature_gates(
-    tools: list[dict], *, secrets_available: bool, artifacts_enabled: bool
+    tools: list[dict],
+    *,
+    secrets_available: bool,
+    artifacts_enabled: bool,
+    subagents_enabled: bool = True,
 ) -> list[dict]:
     """Drop tools whose backing feature is unavailable/disabled, so the model is
     never offered a capability it can't use (defence in depth — the tool handlers
@@ -416,6 +514,8 @@ def apply_feature_gates(
         out = [t for t in out if t["name"] not in ("list_secrets", "request_secret")]
     if not artifacts_enabled:
         out = [t for t in out if t["name"] != "write_artifact"]
+    if not subagents_enabled:
+        out = [t for t in out if t["name"] != "spawn_subagent"]
     return out
 
 
@@ -462,6 +562,8 @@ class AgentCore:
         self.voice: VoicePipeline | None = None
         self.job_store = JobStore(db_path="data/jobs.db")
         self.scheduler = AgentScheduler(self, self.job_store)
+        # Live registry of subagent runs (issue #15) — list/status/cancel.
+        self.subagents = SubagentRegistry()
         config_db = "data/config.db"
         self.permissions = PermissionEngine(db_path=config_db)
         self.prompt_capture: deque[dict[str, str]] = deque(maxlen=20)
@@ -539,12 +641,21 @@ class AgentCore:
             scope=_persona_scope(persona),
             persona=persona,
             session_key=session_key,
+            offer_personae=True,
         )
+        # Append the status of still-running background subagents from this chat,
+        # so the agent always knows what is pending (their results are folded into
+        # the conversation history when they finish). (#15)
+        if channel != "system":
+            note = self._subagent_status_note(channel, chat_id)
+            if note:
+                preamble = f"{preamble}\n\n{note}"
 
         tools = apply_feature_gates(
             scoped_tools(persona),
             secrets_available=self.secret_store is not None,
             artifacts_enabled=self.config.artifacts.enabled,
+            subagents_enabled=self.config.subagents.enabled,
         )
 
         # Static system prompt. In session mode it is snapshotted once at the
@@ -656,6 +767,7 @@ class AgentCore:
         scope: str = "",
         persona: Persona | None = None,
         session_key: tuple[str, str, str] | None = None,
+        offer_personae: bool = False,
     ) -> str:
         """Build the per-turn preamble prepended to the current user message.
 
@@ -717,6 +829,14 @@ class AgentCore:
         except Exception:
             log.exception("Failed to load memories for turn preamble")
 
+        # Roster of personae the agent can delegate to via spawn_subagent, so its
+        # choice is informed rather than guessed (#15). Only on the main turn —
+        # selection stays user-led (omit persona = run as yourself / the bound one).
+        if offer_personae:
+            roster = await self._personae_roster_block(persona)
+            if roster:
+                preamble += f"\n\n{roster}"
+
         if self.config.task_reflection.enabled:
             try:
                 reflections = await self.reflections.format_for_prompt()
@@ -735,6 +855,42 @@ class AgentCore:
                 "</execution_plan>"
             )
         return preamble
+
+    async def _personae_roster_block(self, persona: Persona | None) -> str:
+        """Compact `name — role` roster of personae the agent can delegate to (#15).
+
+        Makes specialist delegation an informed choice instead of a guess, while
+        leaving selection user-led: omitting ``persona`` runs the subagent as the
+        caller itself. Returns "" (nothing injected) when subagents are disabled,
+        the active persona can't spawn, or there is no one to delegate to.
+        """
+        if not self.config.subagents.enabled:
+            return ""
+        if persona is not None and not persona.allows_tool("spawn_subagent"):
+            return ""
+        try:
+            personae = await self.personae.list_personae()
+        except Exception:
+            log.exception("Failed to list personae for the subagent roster")
+            return ""
+        current = persona.name if persona else ""
+        lines = []
+        for p in personae:
+            role = p.role.strip().splitlines()[0].strip() if (p.role or "").strip() else ""
+            tag = " (you)" if p.name == current else ""
+            lines.append(f"- {p.name}{tag}" + (f" — {role}" if role else ""))
+        if not lines:
+            return ""
+        body = "\n".join(lines)
+        return (
+            "<personae>\n"
+            "These personae exist ONLY so you can honour an explicit request for a "
+            "specialist. By default, spawn_subagent with NO 'persona' so the "
+            "subagent runs as you — do not assign one of these unless the user "
+            "asked for it or the subtask plainly belongs to it.\n"
+            f"{body}\n"
+            "</personae>"
+        )
 
     async def _skills_block_in_history(self, session_key: tuple[str, str, str], block: str) -> bool:
         """True if the exact ``<available_skills>`` block is already present in the
@@ -761,6 +917,30 @@ class AgentCore:
                     if isinstance(part, dict) and block in str(part.get("text", "")):
                         return True
         return False
+
+    def _subagent_status_note(self, channel: str, chat_id: str) -> str:
+        """List background subagents from this chat that are *still running*, for
+        the turn preamble — so the agent knows what is pending. When the whole
+        batch finishes you'll be prompted to answer the user with their results,
+        so finished runs need no mention here. (#15)
+        """
+        runs = self.subagents.running_for(channel, chat_id)
+        if not runs:
+            return ""
+        lines = []
+        for r in runs:
+            who = f"- [{r.run_id}] {r.persona or 'default'} — running ({r.elapsed_str})"
+            lines.append(f"{who}; {r.progress}" if r.progress else who)
+        body = "\n".join(lines)
+        return (
+            "<background_subagents>\n"
+            "Background helpers you spawned from this chat are still running. When "
+            "they finish you'll be prompted to fold their results into a reply, so "
+            "don't pre-empt or invent their results now, and don't claim one is "
+            "finished while it shows here.\n"
+            f"{body}\n"
+            "</background_subagents>"
+        )
 
     async def _session_system_prompt(
         self,
@@ -961,7 +1141,9 @@ class AgentCore:
         )
 
         # Agentic loop — keep going while the LLM wants to call tools
-        request_state = self._new_request_state(persona)
+        request_state = self._new_request_state(
+            persona, origin={"channel": channel, "user_id": user_id, "chat_id": chat_id}
+        )
         tool_log: list[dict] = []
         while response.tool_calls:
             await self._batch_approve_writes(response.tool_calls, channel, user_id, request_state)
@@ -1064,7 +1246,9 @@ class AgentCore:
 
         # Agentic loop — keep going while the LLM wants to call tools
         new_messages: list[dict] = []
-        request_state = self._new_request_state(persona)
+        request_state = self._new_request_state(
+            persona, origin={"channel": channel, "user_id": user_id, "chat_id": chat_id}
+        )
         tool_log: list[dict] = []
         while response.tool_calls:
             await self._batch_approve_writes(response.tool_calls, channel, user_id, request_state)
@@ -1181,8 +1365,14 @@ class AgentCore:
         # ``manage_jobs`` is exempt: job creation is idempotent and guarded on
         # job id + status inside the tool, so an earlier write in the same turn
         # must never block a (re)create — that was the "already fulfilled" bug
-        # against brand-new job ids (issue #11).
-        if is_write_action and name != "manage_jobs" and write_sig in executed_writes:
+        # against brand-new job ids (issue #11). ``spawn_subagent`` is likewise
+        # exempt: each spawn is a distinct run (its own run id), so the agent may
+        # legitimately fan out the same task more than once in a turn (#15).
+        if (
+            is_write_action
+            and name not in ("manage_jobs", "spawn_subagent")
+            and write_sig in executed_writes
+        ):
             return {
                 "error": (
                     "This exact action was already completed in this request; not repeating it."
@@ -1326,6 +1516,12 @@ class AgentCore:
                 ]
             }
 
+        if name == "spawn_subagent":
+            result = await self._tool_spawn_subagent(params, channel, user_id, request_state)
+            if is_write_action and self._is_tool_success(result):
+                executed_writes.add(write_sig)
+            return result
+
         if name == "request_secret":
             return await self._tool_request_secret(params, channel, user_id, request_state)
 
@@ -1338,12 +1534,20 @@ class AgentCore:
         return {"error": f"Unknown tool: {name}"}
 
     @staticmethod
-    def _new_request_state(persona: Persona | None = None) -> dict:
+    def _new_request_state(
+        persona: Persona | None = None,
+        *,
+        depth: int = 0,
+        origin: dict | None = None,
+        run_id: str | None = None,
+    ) -> dict:
         """Fresh per-turn state tracking write actions and approval decisions.
 
         ``allowed_skills`` carries the active persona's skill allowlist so
         ``load_skill`` can refuse skills outside scope (defence in depth — the
-        index already hides them).
+        index already hides them). ``depth``/``origin``/``persona_obj`` carry the
+        context a ``spawn_subagent`` call needs to narrow scope, cap recursion,
+        and post a background result back to the originating chat (issue #15).
         """
         return {
             "executed_writes": set(),
@@ -1353,6 +1557,11 @@ class AgentCore:
             # Secret scope for {{secret:}} ACL in run_command (issue #19).
             "persona_secrets": list(persona.secrets) if persona else [],
             "persona_name": persona.name if persona else "",
+            # Subagent plumbing (issue #15).
+            "persona_obj": persona,
+            "depth": depth,
+            "origin": origin or {},
+            "run_id": run_id,
         }
 
     @staticmethod
@@ -1717,6 +1926,390 @@ class AgentCore:
             return {"error": "Memory recall failed."}
         log.info("Tool call: recall_memory — %r (%d hits)", query, len(memories))
         return {"query": query, "count": len(memories), "memories": memories}
+
+    # -- Subagents (issue #15) ------------------------------------------------
+
+    async def _tool_spawn_subagent(
+        self, params: dict, channel: str, user_id: str, request_state: dict
+    ) -> dict:
+        """``spawn_subagent`` tool: delegate a scoped subtask to a sub-loop."""
+        task = str(params.get("task", "")).strip()
+        if not task:
+            return {"error": "Missing 'task' for spawn_subagent."}
+        origin = request_state.get("origin") or {}
+        return await self.run_subagent(
+            task=task,
+            persona_name=str(params.get("persona", "")).strip(),
+            origin_channel=origin.get("channel", channel),
+            origin_user_id=str(origin.get("user_id", user_id)),
+            origin_chat_id=str(origin.get("chat_id", "")),
+            parent_state=request_state,
+            background=bool(params.get("background", False)),
+            max_steps=params.get("max_steps"),
+            token_budget=params.get("token_budget"),
+            thinking_effort=params.get("thinking_effort"),
+        )
+
+    async def run_subagent(
+        self,
+        *,
+        task: str,
+        persona_name: str = "",
+        origin_channel: str = "",
+        origin_user_id: str = "",
+        origin_chat_id: str = "",
+        parent_state: dict | None = None,
+        background: bool = False,
+        max_steps: object = None,
+        token_budget: object = None,
+        thinking_effort: str | None = None,
+    ) -> dict:
+        """Run a subagent — the one primitive behind both the tool and scheduled
+        ``subagent`` jobs. Scope is narrowed from the caller (inherit-never-widen);
+        recursion depth and per-run budgets are enforced.
+
+        ``max_steps`` / ``token_budget`` / ``thinking_effort`` let the caller size
+        the run; each defaults to the configured value and is clamped to it as a
+        ceiling (``thinking_effort`` defaults to inheriting the caller's level).
+        """
+        cfg = self.config.subagents
+        if not cfg.enabled:
+            return {"error": "Subagents are disabled."}
+        parent_state = parent_state or {}
+        parent_depth = int(parent_state.get("depth", 0) or 0)
+        if parent_depth >= cfg.recursion_depth:
+            return {
+                "error": (
+                    f"Max subagent recursion depth ({cfg.recursion_depth}) reached; "
+                    "do this work directly instead of spawning another subagent."
+                )
+            }
+
+        # Resolve + narrow the persona. A name must exist; with no name the child
+        # inherits the caller's identity and scope.
+        if persona_name:
+            requested = await self._load_persona(persona_name)
+            if requested is None:
+                try:
+                    names = [p.name for p in await self.personae.list_personae()]
+                except Exception:
+                    names = []
+                hint = f" Available: {', '.join(names)}." if names else ""
+                return {
+                    "error": (
+                        f"Persona not found: {persona_name}.{hint} "
+                        "Omit 'persona' to run as yourself."
+                    )
+                }
+        else:
+            requested = parent_state.get("persona_obj")
+        child_persona = self._narrow_persona(requested, parent_state) if requested else None
+
+        run_id = f"sub_{uuid.uuid4().hex[:8]}"
+        child_state = self._new_request_state(
+            child_persona,
+            depth=parent_depth + 1,
+            origin={
+                "channel": origin_channel,
+                "user_id": origin_user_id,
+                "chat_id": origin_chat_id,
+            },
+            run_id=run_id,
+        )
+        run = SubagentRun(
+            run_id=run_id,
+            persona=child_persona.name if child_persona else "",
+            task=task,
+            depth=parent_depth + 1,
+            background=background,
+            max_steps=resolve_cap(max_steps, cfg.max_steps),
+            token_budget=resolve_cap(token_budget, cfg.token_budget, floor=1000),
+            effort=normalize_effort(thinking_effort),
+            origin_channel=origin_channel,
+            origin_user_id=origin_user_id,
+            origin_chat_id=origin_chat_id,
+        )
+
+        if background:
+            if self.subagents.active_count() >= cfg.max_concurrent:
+                return {
+                    "error": (
+                        f"Too many subagents running (max {cfg.max_concurrent}). "
+                        "Wait for one to finish or cancel it via /jobs."
+                    )
+                }
+            self.subagents.register(run)
+            bg = asyncio.create_task(
+                self._run_subagent_background(run, child_persona, child_state),
+                name=f"subagent-{run_id}",
+            )
+            self.subagents.attach_task(run_id, bg)
+            log.info(
+                "Spawned background subagent %s (persona=%s)", run_id, run.persona or "default"
+            )
+            return {
+                "ok": True,
+                "run_id": run_id,
+                "background": True,
+                "status": "running",
+                "persona": run.persona,
+                "note": (
+                    "Running in the background; its result is posted to this chat "
+                    "automatically when done — you don't relay it. Each later turn "
+                    "shows this run's status until it finishes."
+                ),
+            }
+
+        # Synchronous: run to completion and return the result to the caller.
+        self.subagents.register(run)
+        log.info("Running subagent %s (persona=%s)", run_id, run.persona or "default")
+        try:
+            text = await self._run_subagent_loop(task, child_persona, child_state, run)
+        except Exception as exc:
+            log.exception("Subagent %s failed", run_id)
+            self.subagents.finish(run_id, "error", error=str(exc))
+            return {"error": f"Subagent failed: {exc}", "run_id": run_id}
+        self.subagents.finish(run_id, "done", result=text)
+        return {
+            "ok": True,
+            "run_id": run_id,
+            "persona": run.persona,
+            "summary": short_summary(text),
+            "result": text,
+        }
+
+    def _narrow_persona(self, requested: Persona, parent_state: dict) -> Persona:
+        """Build a child persona whose scopes are a subset of the caller's."""
+        parent: Persona | None = parent_state.get("persona_obj")
+        p_skills = parent.skills if parent else []
+        p_tools = parent.tools if parent else []
+        p_secrets = parent.secrets if parent else []
+        return Persona(
+            name=requested.name,
+            agent_name=requested.agent_name,
+            role=requested.role,
+            emoji=requested.emoji,
+            voice=requested.voice,
+            personalia=requested.personalia,
+            character=requested.character,
+            skills=narrow_scope(p_skills, requested.skills),
+            tools=narrow_scope(p_tools, requested.tools),
+            secrets=narrow_scope(p_secrets, requested.secrets),
+        )
+
+    async def _run_subagent_loop(
+        self, task: str, child_persona: Persona | None, child_state: dict, run: SubagentRun
+    ) -> str:
+        """The subagent's agentic loop — system semantics, budgeted and depth-capped.
+
+        Mirrors the main injection loop but runs from a clean slate (no history),
+        skips approval/decomposition/memory/reflection (channel='system'), and
+        stops at this run's step/token budget (sized by the spawning agent).
+        """
+        cfg = self.config.subagents
+        tools = apply_feature_gates(
+            scoped_tools(child_persona),
+            secrets_available=self.secret_store is not None,
+            artifacts_enabled=self.config.artifacts.enabled,
+            subagents_enabled=cfg.enabled,
+        )
+        # At the depth ceiling a subagent may not spawn further — don't even offer it.
+        if child_state["depth"] >= cfg.recursion_depth:
+            tools = [t for t in tools if t["name"] != "spawn_subagent"]
+
+        system = await self._build_system_prompt(persona=child_persona)
+        system = f"{system}\n\n{RESULT_FOR_AGENT_INSTRUCTION}\n\n{FILE_HANDOFF_INSTRUCTION}"
+        # Memory/reflections inject per-turn via the preamble (#41), scoped to the
+        # child persona (#42); query=task keeps the injection relevant.
+        preamble = await self._turn_preamble(None, query=task, scope=_persona_scope(child_persona))
+        messages: list[dict] = [await self._build_user_message(task, None, preamble)]
+
+        # effort None = inherit the main client's level; otherwise an effort-scoped
+        # clone (same provider/connection, overridden thinking level).
+        llm = self.llm
+        if run.effort is not None:
+            llm = self._background_llm(self.llm.provider, run.effort)
+        response = await llm.generate(
+            model=self.config.agent.model,
+            max_tokens=4096,
+            system=system,
+            messages=messages,
+            tools=cast(Any, tools),
+        )
+        steps = 0
+        tokens = self._usage_total(response.usage)
+        while response.tool_calls and steps < run.max_steps and tokens < run.token_budget:
+            steps += 1
+            run.progress = f"step {steps}: {', '.join(c.name for c in response.tool_calls)}"[:120]
+            tool_results = []
+            for call in response.tool_calls:
+                result = await self._execute_tool(
+                    call, "system", run.origin_user_id or "subagent", child_state
+                )
+                tool_results.append(
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": call.id,
+                        "content": json.dumps(result),
+                    }
+                )
+            messages.append(llm.assistant_message(response))
+            messages.extend(llm.tool_result_messages(tool_results))
+            response = await llm.generate(
+                model=self.config.agent.model,
+                max_tokens=4096,
+                system=system,
+                messages=messages,
+                tools=cast(Any, tools),
+            )
+            tokens += self._usage_total(response.usage)
+
+        text = response.text or ""
+        if response.tool_calls:
+            text = (text + "\n\n[subagent stopped: reached its step/token budget]").strip()
+        run.progress = "done"
+        return text
+
+    async def _run_subagent_background(
+        self, run: SubagentRun, child_persona: Persona | None, child_state: dict
+    ) -> None:
+        """Run a subagent off-turn. When the chat's whole batch of background runs
+        has finished, the spawning agent ingests their results and writes one reply
+        — the user never sees raw subagent output; it works for the agent (#15)."""
+        try:
+            text = await self._run_subagent_loop(run.task, child_persona, child_state, run)
+        except asyncio.CancelledError:
+            # User-initiated stop (registry.cancel already flipped the status, so
+            # finish() is a no-op here). Mark it synthesised so a sibling's batch
+            # doesn't report on a run the user deliberately cancelled.
+            self.subagents.finish(run.run_id, "cancelled")
+            run.synthesized = True
+            # This may have been the last running sibling: a done/error run that
+            # deferred earlier would otherwise be orphaned (its reply lost), since
+            # cancellation is the one terminal path that never re-checks the
+            # barrier. Release it before unwinding. (Safe to await here: the
+            # cancellation was already delivered once and won't re-fire.)
+            await self._maybe_deliver_subagent_batch(run)
+            raise
+        except Exception as exc:
+            log.exception("Background subagent %s failed", run.run_id)
+            if self.subagents.finish(run.run_id, "error", error=str(exc)):
+                await self._maybe_deliver_subagent_batch(run)
+            return
+        # finish() returns False if a late cancellation already finalised the run,
+        # in which case this completion must not also trigger a reply.
+        if self.subagents.finish(run.run_id, "done", result=text):
+            await self._maybe_deliver_subagent_batch(run)
+
+    async def _maybe_deliver_subagent_batch(self, run: SubagentRun) -> None:
+        """Once every background run for this chat is done, distil the batch into a
+        chat notification + a context digest and deliver them. The barrier collapses
+        a fan-out of parallel spawns into a single delivery (#15)."""
+        channel, user_id, chat_id = run.origin_channel, run.origin_user_id, run.origin_chat_id
+        if not chat_id or channel == "system":
+            return  # scheduler / system-origin runs have no user chat to answer
+        # Barrier — race-free because there is no await between this check and
+        # marking the batch below: while another background run for the chat is
+        # still running, defer; the last finisher delivers. (Sync runs are ignored:
+        # they return inline and never reach this path.)
+        runs = self.subagents.list_runs()
+        if any(
+            r.background
+            and r.status == "running"
+            and r.origin_channel == channel
+            and r.origin_chat_id == chat_id
+            for r in runs
+        ):
+            return
+        batch = [
+            r
+            for r in runs
+            if r.background
+            and not r.synthesized
+            and r.origin_channel == channel
+            and r.origin_chat_id == chat_id
+            and r.status in ("done", "error")
+        ]
+        if not batch:
+            return
+        for r in batch:
+            r.synthesized = True
+        await self._summarize_and_deliver(channel, user_id, chat_id, batch)
+
+    async def _summarize_and_deliver(
+        self, channel: str, user_id: str, chat_id: str, batch: list[SubagentRun]
+    ) -> None:
+        """Distil a finished batch into a one-line chat notification + a concise
+        context digest, then deliver: notification → the user, digest → the agent's
+        context. The raw subagent output reaches neither the user nor the context.
+        """
+        notification, digest = await self._summarize_subagent_batch(batch)
+        # The user only ever saw the notification; the agent's context keeps the
+        # concise digest (so it can answer follow-ups) — never the raw output.
+        framed = notification
+        if digest and digest.strip() and digest.strip() != notification.strip():
+            framed = f"{notification}\n\n<subagent_digest>\n{digest}\n</subagent_digest>"
+        await self._record_subagent_context(channel, user_id, chat_id, framed)
+        ch = self.channels.get(channel)
+        if ch and chat_id and notification:
+            try:
+                await ch.send(chat_id, notification)
+            except Exception:
+                log.exception("Failed to deliver subagent notification (chat=%s)", chat_id)
+
+    async def _summarize_subagent_batch(self, batch: list[SubagentRun]) -> tuple[str, str]:
+        """(notification, digest) for a finished batch via the summary inference,
+        falling back to truncation when it is disabled or the inference fails."""
+        items = [
+            (
+                r.task,
+                r.result if r.status == "done" else f"[failed: {r.error or 'unknown error'}]",
+                r.persona or "",
+                r.status,
+            )
+            for r in batch
+        ]
+        cfg = self.config.subagent_summary
+        if cfg.enabled:
+            try:
+                llm = self._background_llm(cfg.provider, cfg.thinking_level)
+                return await summarize_batch(llm, cfg.model, items)
+            except Exception:
+                log.exception("Subagent summary inference failed; using truncation fallback")
+        return fallback_summary(items)
+
+    async def _record_subagent_context(
+        self, channel: str, user_id: str, chat_id: str, framed: str
+    ) -> None:
+        """Record a background batch's notification + digest as an assistant turn —
+        merged into the trailing assistant turn so replayed history stays strictly
+        alternating for providers that require it (#15)."""
+        if not chat_id or channel == "system":
+            return
+        try:
+            if self.history_mode == "session":
+                merged = await self.history.append_to_last_session_message(
+                    channel, user_id, f"\n\n{framed}", chat_id
+                )
+                if not merged:
+                    await self.history.append_session_message(
+                        channel, user_id, {"role": "assistant", "content": framed}, chat_id
+                    )
+            else:
+                merged = await self.history.append_to_last_turn(
+                    channel, user_id, "assistant", f"\n\n{framed}", chat_id
+                )
+                if not merged:
+                    await self.history.add_turn(channel, user_id, "assistant", framed, chat_id)
+        except Exception:
+            log.exception("Failed to record subagent context (chat=%s)", chat_id)
+
+    @staticmethod
+    def _usage_total(usage: dict | None) -> int:
+        """Best-effort token count for budgeting (0 when the provider omits usage)."""
+        if not usage:
+            return 0
+        return int(usage.get("input_tokens", 0) or 0) + int(usage.get("output_tokens", 0) or 0)
 
     async def _tool_web_search(self, params: dict) -> dict:
         """Search the web via Tavily API."""

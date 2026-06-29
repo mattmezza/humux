@@ -10,6 +10,15 @@
     {% endif %}
   </div>
 
+  {# Subagent runs (issue #15) — live status, polled every 3s #}
+  <div class="mb-5">
+    <h3 class="text-xs text-muted uppercase tracking-wider mb-2">Subagent runs</h3>
+    <div id="subagent-runs"
+         hx-get="/partials/subagent-runs" hx-trigger="load, every 3s" hx-swap="innerHTML">
+      <p class="text-muted text-xs">Loading…</p>
+    </div>
+  </div>
+
   {# Jobs table #}
   <div class="overflow-x-auto">
     <table class="table">
@@ -119,8 +128,15 @@
           <option value="agent">agent — natural language task</option>
           <option value="agent_silent">agent_silent — quiet when nothing new</option>
           <option value="system">system — CLI command</option>
+          <option value="subagent">subagent — run task under a persona</option>
           <option value="memory_consolidation">memory_consolidation</option>
         </select>
+      </div>
+      <div x-show="form.type === 'subagent'">
+        <label class="label">Persona</label>
+        <input type="text" class="input-sm" name="persona" x-model="form.persona"
+               placeholder="coding-helper">
+        <span class="hint">Persona the subagent adopts (blank = default identity)</span>
       </div>
       <div>
         <label class="label">Channel</label>
@@ -139,6 +155,7 @@
         <span class="hint" x-show="form.type === 'agent'">Natural language instruction for the agent</span>
         <span class="hint" x-show="form.type === 'agent_silent'">Only sends when there are updates; otherwise stays quiet</span>
         <span class="hint" x-show="form.type === 'system'">Shell command to execute</span>
+        <span class="hint" x-show="form.type === 'subagent'">Task for the subagent to run under the chosen persona</span>
         <span class="hint" x-show="form.type === 'memory_consolidation'">No task needed — runs memory consolidation automatically</span>
       </div>
     </div>
@@ -181,7 +198,8 @@ function jobsTab() {
       type: 'agent',
       task: '',
       channel: 'telegram',
-      description: ''
+      description: '',
+      persona: ''
     },
     editJob(job) {
       this.editing = true;
@@ -193,6 +211,7 @@ function jobsTab() {
       this.form.task = job.task || '';
       this.form.channel = job.channel || 'telegram';
       this.form.description = job.description || '';
+      this.form.persona = job.persona || '';
       // scroll to form
       this.$nextTick(() => {
         document.querySelector('form[hx-post="/jobs"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -200,7 +219,7 @@ function jobsTab() {
     },
     cancelEdit() {
       this.editing = false;
-      this.form = { id: '', schedule: 'cron', cron: '', run_at: '', type: 'agent', task: '', channel: 'telegram', description: '' };
+      this.form = { id: '', schedule: 'cron', cron: '', run_at: '', type: 'agent', task: '', channel: 'telegram', description: '', persona: '' };
     }
   };
 }

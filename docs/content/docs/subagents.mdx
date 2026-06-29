@@ -1,0 +1,159 @@
+---
+title: Subagents
+description: Delegate scoped subtasks to sub-loops — on demand or scheduled — with lifecycle control.
+---
+
+# Subagents
+
+A **subagent** is a scoped run of the agent loop that the main agent can delegate
+work to. It runs under a chosen [persona](/docs/personae), returns a structured
+result, and — like a [scheduled job](/docs/scheduler) — appears in a registry you
+can list, monitor, and cancel.
+
+There is **one execution primitive** reached by two trigger paths:
+
+- **On demand** — the agent calls the `spawn_subagent` tool mid-conversation.
+- **Scheduled** — a `subagent` job fired by the [scheduler](/docs/scheduler).
+
+A subagent runs with **system semantics**: no goal decomposition, no memory
+extraction, no reflection, and no per-action approval prompts — the same path
+scheduled jobs already use. You approve the delegation once (the `spawn_subagent`
+call is an [ASK action](/docs/permissions)); the subagent then runs autonomously
+within its scope.
+
+## On demand
+
+The agent decides to delegate and calls the tool. Two modes:
+
+- **Synchronous** (default): the tool blocks, the subagent runs to completion,
+  and `{ summary, result }` comes back as the tool result — the agent continues
+  in the same turn.
+- **Background** (`background: true`): the tool returns a run id immediately and
+  the subagent runs off-turn. A subagent works **for the agent, not the user** —
+  its raw output is never shown to you. When the whole batch of background runs
+  for the chat has finished, a small [summary inference](#result-summary)
+  distils it into **two** things: a one-line *notification* sent to the chat, and
+  a concise *digest* kept in the agent's context so it can answer follow-ups
+  without the raw output polluting the conversation. While a run is in flight,
+  its status is shown to the agent each turn so it never mistakes a pending run
+  for a finished one.
+
+```jsonc
+// spawn_subagent tool input
+{
+  "task": "Research the top 3 Python HTTP clients and summarise trade-offs",
+  "persona": "coding-helper",   // optional — omit to run as yourself (same identity & scope)
+  "max_steps": 6,                // optional — caller-chosen, capped at the configured max
+  "token_budget": 40000,         // optional — caller-chosen, min 1000, capped at the configured max
+  "thinking_effort": "high",     // optional — off | low | medium | high; omit to inherit yours
+  "background": false            // true → run async, report back when done
+}
+```
+
+The `task` is self-contained: a subagent has **no memory** of the conversation
+that spawned it, so everything it needs goes in `task`.
+
+The agent **sizes each run to the job**: `max_steps`, `token_budget`, and
+`thinking_effort` let it spend less on a quick lookup and more on hard,
+multi-step work. Each is optional — omit `max_steps`/`token_budget` for the
+configured ceiling, `thinking_effort` to inherit the caller's level — and the
+numeric caps are clamped to the [Guardrails](#guardrails) maxima, which the
+agent can dial *down* but never past. Omitting `persona` runs the subagent as
+the caller itself, with the same identity and scope.
+
+**Files hand back automatically.** The subagent shares the agent's filesystem,
+so any file it writes is already on disk where the caller can reach it — it just
+reports the absolute paths in its result, which the spawning agent then reads,
+sends, or attaches.
+
+## Scheduled
+
+Run a subagent on a cron or one-shot schedule by giving a job `type: "subagent"`
+and a `persona`. The result is delivered to the job's `channel`.
+
+```yaml
+scheduler:
+  jobs:
+    - id: "weekly_review"
+      cron: "0 18 * * 5"        # Fridays at 18:00
+      type: "subagent"
+      persona: "writing-editor"
+      task: "Draft a short weekly review from this week's notes and email it to me"
+      channel: "telegram"
+```
+
+You can also create subagent jobs from the **Jobs** tab of the [admin UI](/docs/admin-ui).
+
+## Scope: inherit, never widen
+
+A subagent's [persona](/docs/personae) scope — the tools it may call, skills it
+may load, and [secrets](/docs/secrets) it may use — is the **intersection** of
+the caller's scope and the requested persona's. A child can never gain a
+capability the caller lacked. The allowlist convention applies: an empty list
+means "all", so an unrestricted caller delegating to a scoped persona *narrows*,
+and a scoped caller delegating to an open persona keeps its own limits.
+
+[Permission rules](/docs/permissions) (`NEVER` in particular) still apply inside
+the subagent, so a blocked action stays blocked at any depth.
+
+## Choosing a persona
+
+Selection stays **user-led**: omitting `persona` runs the subagent as the caller
+itself (the chat's bound persona), so a subtask stays in the identity the user
+already chose. To make the *specialist* case an informed choice rather than a
+guess, each turn the agent sees a compact roster of available personae
+(`name — role`) and only names one when the subtask clearly fits it. A wrong
+name is rejected with the list of valid names, so the agent can self-correct.
+
+## Guardrails
+
+Sensible defaults keep delegation safe and bounded. Edit them in the admin
+**Tools** tab (the <strong>Subagents</strong> card — the master switch and every
+limit, applied live without a restart), or under `subagents` in `config.yml`:
+
+| Setting | Default | What it does |
+|---------|---------|--------------|
+| `enabled` | `true` | Master switch; off hides the `spawn_subagent` tool everywhere |
+| `recursion_depth` | `3` | Max nesting (a top-level spawn is depth 1) |
+| `max_steps` | `12` | Ceiling on tool-call rounds per run — a hard stop; the agent may request fewer per spawn, never more |
+| `token_budget` | `100000` | Ceiling on tokens per run (best-effort); the agent may request fewer per spawn, never more |
+| `max_concurrent` | `3` | Max background runs at once |
+
+When disabled, the tool is hidden from the assistant and from the Personae tool
+scope. Assign it per persona in the **Personae** editor. A run that hits its step
+or token budget stops and returns what it has, with a note that the budget was
+reached.
+
+## Result summary
+
+A finished **background** batch isn't dumped on you raw. A small, fast inference
+(its own provider/model, like memory or compaction) distils the batch into a
+one-line chat **notification** and a concise **digest** that stays in the agent's
+context for follow-ups. Configure it in the **Tools** tab (the *Result summary*
+section of the Subagents card) or under `subagent_summary` in `config.yml`:
+
+| Setting | Default | What it does |
+|---------|---------|--------------|
+| `enabled` | `true` | Off falls back to a crude first-line truncation (no LLM call) |
+| `provider` | `deepseek` | Inference provider for the summary |
+| `model` | `deepseek-v4-flash` | Fast + cheap is ideal for this distillation |
+| `thinking_level` | `""` | `""` (off) / `low` / `medium` / `high` for reasoning models |
+
+Synchronous spawns are unaffected — the agent gets the full result inline as the
+tool result and weaves it into its own reply.
+
+## Monitoring & cancelling
+
+Background subagents are first-class runs you can watch and stop:
+
+- **Telegram** — send `/jobs` to list active runs, each with an inline **Cancel**
+  button. Monitoring and cancelling a long task from your phone needs no web UI.
+- **Admin UI** — the **Jobs** tab shows a live card per run (persona, status,
+  elapsed time, current step) with a cancel button; the layout collapses to a
+  single column at phone width.
+
+Cancelling stops the run; if it was a background run, a cancellation notice is
+posted back to the originating chat.
+
+> Runs live in memory, so a restart clears the registry (and stops any in-flight
+> background runs) — there is nothing to resume after a reboot.

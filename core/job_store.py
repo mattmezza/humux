@@ -30,13 +30,20 @@ CREATE TABLE IF NOT EXISTS jobs (
     status      TEXT NOT NULL DEFAULT 'active',
     created_by  TEXT NOT NULL DEFAULT 'admin',
     description TEXT NOT NULL DEFAULT '',
+    persona     TEXT NOT NULL DEFAULT '',
     created_at  TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 """
 
-# Valid values
-VALID_TYPES = ("agent", "agent_silent", "system", "memory_consolidation")
+# Additive migrations for DBs created before a column existed. Each is a column
+# name → ALTER statement; applied only when the column is missing.
+_MIGRATIONS = {
+    "persona": "ALTER TABLE jobs ADD COLUMN persona TEXT NOT NULL DEFAULT ''",
+}
+
+# Valid values. "subagent" runs the spawn_subagent primitive under ``persona``.
+VALID_TYPES = ("agent", "agent_silent", "system", "memory_consolidation", "subagent")
 VALID_SCHEDULES = ("cron", "once")
 VALID_STATUSES = ("active", "paused", "done", "cancelled")
 
@@ -59,6 +66,12 @@ class JobStore:
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         async with aiosqlite.connect(self.db_path) as db:
             await db.executescript(_SCHEMA)
+            cursor = await db.execute("PRAGMA table_info(jobs)")
+            cols = {row[1] for row in await cursor.fetchall()}
+            for col, stmt in _MIGRATIONS.items():
+                if col not in cols:
+                    await db.execute(stmt)
+            await db.commit()
         self._ready = True
 
     # -- Sync helpers (for use from non-async contexts like CLI) --
@@ -69,6 +82,11 @@ class JobStore:
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         with sqlite3.connect(self.db_path) as db:
             db.executescript(_SCHEMA)
+            cols = {row[1] for row in db.execute("PRAGMA table_info(jobs)").fetchall()}
+            for col, stmt in _MIGRATIONS.items():
+                if col not in cols:
+                    db.execute(stmt)
+            db.commit()
         self._ready = True
 
     def list_jobs_sync(self, status: str | None = None, include_done: bool = False) -> list[dict]:
@@ -111,6 +129,7 @@ class JobStore:
         status: str = "active",
         created_by: str = "admin",
         description: str = "",
+        persona: str = "",
     ) -> dict:
         """Synchronous upsert for CLI/admin use."""
         self._ensure_schema_sync()
@@ -118,8 +137,8 @@ class JobStore:
             db.row_factory = sqlite3.Row
             db.execute(
                 """INSERT INTO jobs (id, type, schedule, cron, run_at, task, channel,
-                                     status, created_by, description, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                                     status, created_by, description, persona, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
                    ON CONFLICT(id) DO UPDATE SET
                        type = excluded.type,
                        schedule = excluded.schedule,
@@ -129,6 +148,7 @@ class JobStore:
                        channel = excluded.channel,
                        status = excluded.status,
                        description = excluded.description,
+                       persona = excluded.persona,
                        updated_at = datetime('now')
                 """,
                 (
@@ -142,6 +162,7 @@ class JobStore:
                     status,
                     created_by,
                     description,
+                    persona,
                 ),
             )
             db.commit()
@@ -200,6 +221,7 @@ class JobStore:
         status: str = "active",
         created_by: str = "admin",
         description: str = "",
+        persona: str = "",
     ) -> dict:
         """Insert or update a job. Returns the job dict."""
         await self._ensure_schema()
@@ -207,8 +229,8 @@ class JobStore:
             db.row_factory = aiosqlite.Row
             await db.execute(
                 """INSERT INTO jobs (id, type, schedule, cron, run_at, task, channel,
-                                     status, created_by, description, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                                     status, created_by, description, persona, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
                    ON CONFLICT(id) DO UPDATE SET
                        type = excluded.type,
                        schedule = excluded.schedule,
@@ -218,6 +240,7 @@ class JobStore:
                        channel = excluded.channel,
                        status = excluded.status,
                        description = excluded.description,
+                       persona = excluded.persona,
                        updated_at = datetime('now')
                 """,
                 (
@@ -231,6 +254,7 @@ class JobStore:
                     status,
                     created_by,
                     description,
+                    persona,
                 ),
             )
             await db.commit()
@@ -271,8 +295,8 @@ class JobStore:
                     continue
                 await db.execute(
                     """INSERT INTO jobs (id, type, schedule, cron, task, channel,
-                                         status, created_by, description)
-                       VALUES (?, ?, 'cron', ?, ?, ?, 'active', 'config', '')
+                                         status, created_by, description, persona)
+                       VALUES (?, ?, 'cron', ?, ?, ?, 'active', 'config', '', ?)
                     """,
                     (
                         job["id"],
@@ -280,6 +304,7 @@ class JobStore:
                         job["cron"],
                         job.get("task", ""),
                         job.get("channel", "telegram"),
+                        job.get("persona", ""),
                     ),
                 )
                 inserted += 1
