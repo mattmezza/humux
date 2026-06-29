@@ -93,11 +93,13 @@ A few details worth knowing:
 
 - **Clearing context** — in a group, clear a specific bot with `/new@botname` (a bare
   `/new` is not addressed to any one bot, so it's recorded as context, not a clear).
-- **YOLO mode** — `/yolo-on` lets a bot act without asking for approval (ASK actions are
-  auto-approved); `/yolo-off` restores prompting. Hard-blocked (`NEVER`) actions still
-  never run. It's scoped per bot: in a group address a specific one with
-  `/yolo-on@botname` (a bare `/yolo-on` isn't addressed to any bot, so nothing toggles).
-  The setting persists across restarts until you turn it off.
+- **YOLO mode** — `/yolo-on` lets a bot act without asking for approval; `/yolo-off`
+  restores prompting. Only the short hard-blocked (`NEVER`) list is still refused (e.g.
+  direct DB drops/alters) — **everything else, including filesystem and network commands,
+  runs unprompted**, so enable it deliberately. It's scoped per bot **and per chat**:
+  address a specific bot with `/yolo-on@botname`, and the grant applies only in that chat
+  (a bare `/yolo-on`, addressed to no bot, toggles nothing). The setting persists across
+  restarts until you turn it off.
 - **Forum topics** — if you also use `topics_enabled`, genuine forum-topic messages keep
   their per-topic 1:1 behaviour (the bound persona replies without an @mention); group
   turn-taking applies to the rest of the group.

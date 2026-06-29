@@ -20,6 +20,7 @@ from core.agent import AgentCore, _strip_command_suffix
 from core.config import GroupChatConfig, TelegramConfig
 from core.history import ConversationHistory
 from core.llm import _coalesce_user_messages
+from core.permissions import PermissionEngine
 
 # ---------------------------------------------------------------------------
 # _coalesce_user_messages — the alternation safety net
@@ -191,6 +192,33 @@ async def test_addressed_new_with_bot_suffix_clears(tmp_path) -> None:
     resp = await agent.process("/new@coachbot", channel="telegram", user_id="g1", chat_id="g1")
     assert resp.text == "Conversation cleared."
     assert await agent.history.get_messages("telegram", "g1", "g1") == []
+
+
+@pytest.mark.asyncio
+async def test_yolo_toggle_requires_addressing_and_scopes_per_chat(tmp_path) -> None:
+    """`/yolo-on` only toggles the addressed bot, and only for the chat it ran in."""
+    agent = _bare_agent(tmp_path, "injection")
+    agent.permissions = PermissionEngine(db_path=str(tmp_path / "config.db"))
+    scope = agent._yolo_scope("telegram", "g1")
+
+    # Unaddressed (a bare "/yolo-on" reaching a gate-off bot): must NOT toggle, so
+    # one bare command can't flip every bot in a multi-agent room.
+    resp = await agent.process(
+        "/yolo-on", channel="telegram", user_id="g1", chat_id="g1", addressed=False
+    )
+    assert resp.text == ""
+    assert agent.permissions.is_yolo(scope) is False
+
+    # Addressed "/yolo-on@coachbot": this agent+chat enters YOLO...
+    resp = await agent.process("/yolo-on@coachbot", channel="telegram", user_id="g1", chat_id="g1")
+    assert "YOLO mode ON" in resp.text
+    assert agent.permissions.is_yolo(scope) is True
+    # ...but only this chat — the same bot in another chat is unaffected.
+    assert agent.permissions.is_yolo(agent._yolo_scope("telegram", "g2")) is False
+
+    resp = await agent.process("/yolo-off@coachbot", channel="telegram", user_id="g1", chat_id="g1")
+    assert "YOLO mode OFF" in resp.text
+    assert agent.permissions.is_yolo(scope) is False
 
 
 # ---------------------------------------------------------------------------
@@ -369,7 +397,7 @@ def _route(ch, *, chat=GROUP, user=None, message=None):
 def test_routing_private_chat_is_untouched() -> None:
     ch = _channel()
     r = _route(ch, chat=PRIVATE, user=_user(uid=7))
-    assert r == {"user_id": "7", "speaker_tag": "", "respond": True}
+    assert r == {"user_id": "7", "speaker_tag": "", "respond": True, "addressed": True}
 
 
 def test_routing_group_unaddressed_human_records_silently() -> None:
@@ -385,6 +413,7 @@ def test_routing_group_addressed_human_replies() -> None:
     msg = _msg("@coachbot hi", entities=[_ent("mention", "@coachbot")])
     r = _route(ch, user=_user(name="Alice"), message=msg)
     assert r["respond"] is True
+    assert r["addressed"] is True
     assert r["speaker_tag"] == "[from Alice]\n"
 
 
@@ -400,6 +429,9 @@ def test_routing_reply_to_all_humans_when_gate_disabled() -> None:
     ch = _channel(GroupChatConfig(enabled=True, reply_when_addressed_only=False))
     r = _route(ch, user=_user(name="Bob"), message=_msg("anything"))
     assert r["respond"] is True
+    # ...but the message was NOT addressed to this bot. `addressed` must stay
+    # independent of `respond` so a bare "/yolo-on" here can't flip every bot.
+    assert r["addressed"] is False
     # bots still ignored even with the address-gate off
     r2 = _route(ch, user=_user(name="Chef", is_bot=True), message=_msg("loop?"))
     assert r2["respond"] is False
@@ -419,7 +451,7 @@ def test_routing_forum_topic_exempt_from_group_gate() -> None:
     msg = _msg("just chatting", is_topic_message=True)
     r = _route(ch, user=_user(uid=7, name="Bob"), message=msg)
     # No group gate: replies, no speaker tag, keyed by the sender (per-topic).
-    assert r == {"user_id": "7", "speaker_tag": "", "respond": True}
+    assert r == {"user_id": "7", "speaker_tag": "", "respond": True, "addressed": True}
     # A non-topic message in the same supergroup still gets group treatment.
     r2 = _route(ch, user=_user(name="Bob"), message=_msg("hi"))
     assert r2["respond"] is False
