@@ -1,0 +1,69 @@
+<div class="card" x-data="{
+  enabled: {{ 'true' if step_ctx.imagegen_enabled == 'true' else 'false' }},
+  provider: '{{ step_ctx.imagegen_provider or step_ctx.imagegen_reuse or 'openrouter' }}',
+  apiKey: '',
+  reuse: '{{ step_ctx.imagegen_reuse or '' }}',
+  next() {
+    const vals = {
+      step: 'admin',
+      'values[tools.imagegen.enabled]': this.enabled ? 'true' : 'false',
+      'values[tools.imagegen.provider]': this.provider
+    };
+    if (this.apiKey) { vals['values[tools.imagegen.api_key]'] = this.apiKey; }
+    htmx.ajax('POST', '/setup/step', { target: '#wizard-step', swap: 'innerHTML', values: vals });
+  }
+}">
+  <h2 class="text-base mb-3">Image generation <span class="text-muted font-normal text-xs">(optional)</span></h2>
+
+  <p class="hint mb-3">
+    Let the agent generate images on request and send them as native photos in chat.
+    Off by default — you can fine-tune the model and a budget cap later in
+    Settings → Tools.
+  </p>
+
+  <label class="flex items-center gap-2">
+    <input type="checkbox" x-model="enabled">
+    <span class="label mb-0">Enable image generation</span>
+  </label>
+
+  <div class="space-y-3 mt-4" x-show="enabled">
+    <div>
+      <label class="label">Provider</label>
+      <select class="select input-sm" style="max-width:100%" x-model="provider">
+        <option value="openrouter">OpenRouter (reuse LLM key)</option>
+        <option value="fal">fal.ai (cheapest)</option>
+        <option value="openai">OpenAI (reuse LLM key)</option>
+      </select>
+    </div>
+
+    <template x-if="reuse && (provider === reuse)">
+      <div class="alert-success text-xs">
+        Detected an <strong x-text="reuse"></strong> key already configured for the LLM —
+        image generation will reuse it. No key entry needed.
+      </div>
+    </template>
+
+    <div x-show="!(reuse && provider === reuse)">
+      <label class="label">API key</label>
+      <input type="password" class="input-sm" style="max-width:500px" autocomplete="new-password"
+             x-model="apiKey" placeholder="paste your provider API key">
+      <p class="hint mt-1">Stored in the vault. You can also add or change it later in Settings.</p>
+    </div>
+  </div>
+
+  <div class="flex justify-between mt-4">
+    <button class="btn"
+            hx-post="/setup/step" hx-target="#wizard-step" hx-swap="innerHTML"
+            hx-vals='{"step": "browser", "values": {}}'>
+      Back
+    </button>
+    <div class="flex gap-2">
+      <button class="btn"
+              hx-post="/setup/step" hx-target="#wizard-step" hx-swap="innerHTML"
+              hx-vals='{"step": "admin", "values": {}}'>
+        Skip
+      </button>
+      <button class="btn-primary" @click="next()">Next</button>
+    </div>
+  </div>
+</div>

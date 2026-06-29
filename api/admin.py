@@ -182,6 +182,18 @@ async def _wizard_step_context(step: str, config_store: ConfigStore) -> dict[str
         enabled = await config_store.get("tools.browser.enabled")
         if enabled is not None:
             ctx["browser_enabled"] = enabled
+    elif step == "imagegen":
+        enabled = await config_store.get("tools.imagegen.enabled")
+        if enabled is not None:
+            ctx["imagegen_enabled"] = enabled
+        provider = await config_store.get("tools.imagegen.provider")
+        if provider:
+            ctx["imagegen_provider"] = provider
+        # Auto-detect a reusable LLM key (OpenRouter/OpenAI) → zero-step setup (#55).
+        openai_key = await config_store.get("agent.openai_api_key")
+        openai_base = (await config_store.get("agent.openai_base_url") or "").lower()
+        if openai_key:
+            ctx["imagegen_reuse"] = "openrouter" if "openrouter" in openai_base else "openai"
     elif step == "calendar":
         raw = await config_store.get("calendar.providers")
         if raw:
@@ -1188,6 +1200,16 @@ def create_admin_app(
         ss_model = await config_store.get("subagent_summary.model") or "deepseek-v4-flash"
         ss_thinking = await config_store.get("subagent_summary.thinking_level") or ""
 
+        # Image generation (issue #55).
+        ig_enabled = await config_store.get("tools.imagegen.enabled")
+        ig_enabled = ig_enabled if ig_enabled is not None else "false"
+        ig_provider = await config_store.get("tools.imagegen.provider") or "openrouter"
+        ig_model = await config_store.get("tools.imagegen.model") or ""
+        ig_key = await config_store.get("tools.imagegen.api_key") or ""
+        ig_key_vaulted = _is_vault_ref(ig_key)
+        ig_daily = await config_store.get("tools.imagegen.daily_budget") or "0"
+        ig_monthly = await config_store.get("tools.imagegen.monthly_budget") or "0"
+
         return _render_partial(
             "partials/tools.html",
             tools=tool_registry(),
@@ -1212,6 +1234,13 @@ def create_admin_app(
             summary_provider=ss_provider,
             summary_model=ss_model,
             summary_thinking_level=ss_thinking,
+            imagegen_enabled=ig_enabled,
+            imagegen_provider=ig_provider,
+            imagegen_model=ig_model,
+            imagegen_api_key="" if ig_key_vaulted else ig_key,
+            imagegen_key_vaulted=ig_key_vaulted,
+            imagegen_daily_budget=ig_daily,
+            imagegen_monthly_budget=ig_monthly,
         )
 
     @app.post("/tools/gh/test", dependencies=[Depends(auth)])
@@ -1243,6 +1272,36 @@ def create_admin_app(
                 "error": "Token rejected by GitHub (invalid or insufficient scope).",
             }
         return {"ok": False, "error": f"GitHub returned HTTP {resp.status_code}."}
+
+    @app.post("/tools/imagegen/test", dependencies=[Depends(auth)])
+    async def test_imagegen_tool(request: Request) -> dict:
+        """Generate a sample image so the user confirms the integration works (#55)."""
+        import base64 as _b64
+
+        from core import imagegen as _ig
+
+        body = await request.json()
+        provider = str(body.get("provider", "openrouter")).strip().lower()
+        model = str(body.get("model", "")).strip()
+        api_key = str(body.get("api_key", "")).strip()
+        if not api_key:
+            # Reuse a stored/vaulted image key or the matching LLM key.
+            cfg = await _resolved_config()
+            api_key = cfg.tools.imagegen.api_key or _ig.llm_fallback_key(cfg, provider)
+        if not api_key:
+            return {
+                "ok": False,
+                "error": "An API key is required (or configure an LLM key to reuse).",
+            }
+        prompt = (
+            str(body.get("prompt", "")).strip()
+            or "a friendly robot waving hello, simple flat vector illustration"
+        )
+        try:
+            data, mime = await _ig.generate_bytes(provider, model, api_key, prompt)
+        except Exception as exc:  # noqa: BLE001 — surface any error to the UI
+            return {"ok": False, "error": str(exc)}
+        return {"ok": True, "image_b64": _b64.b64encode(data).decode("ascii"), "mime": mime}
 
     @app.post("/tools/browser/test", dependencies=[Depends(auth)])
     async def test_browser_tool(request: Request) -> dict:

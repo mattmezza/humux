@@ -190,6 +190,105 @@
     </template>
   </div>
 
+  {# Image generation (issue #55) #}
+  <div class="card" x-data="imagegenTab(
+    {{ imagegen_enabled|default('false', true)|tojson|forceescape }},
+    {{ imagegen_provider|default('openrouter', true)|tojson|forceescape }},
+    {{ imagegen_model|default('', true)|tojson|forceescape }},
+    {{ imagegen_api_key|default('', true)|tojson|forceescape }},
+    {{ imagegen_key_vaulted|default(false, true)|tojson|forceescape }},
+    {{ imagegen_daily_budget|default('0', true)|tojson|forceescape }},
+    {{ imagegen_monthly_budget|default('0', true)|tojson|forceescape }}
+  )">
+    <div class="flex items-center justify-between gap-3 mb-1">
+      <h3 class="text-sm text-accent">Image generation</h3>
+      <div class="flex items-center gap-2">
+        <label class="label mb-0">Enabled</label>
+        <input type="checkbox" x-model="enabled">
+      </div>
+    </div>
+    <p class="text-muted text-xs mb-4">
+      Let the assistant generate images on request (the <code>generate_image</code>
+      tool) and send them as native photos in chat. Pick a provider and model, add
+      an API key (or reuse your LLM key for OpenRouter/OpenAI), and set an optional
+      budget cap. When disabled, the tool is hidden from the assistant. Assign it
+      per persona in the <strong>Personae</strong> editor.
+    </p>
+
+    <div class="space-y-3" x-show="enabled">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <label class="label">Provider</label>
+          <select class="select input-sm" style="max-width:100%" x-model="provider">
+            <option value="openrouter">OpenRouter (reuse LLM key)</option>
+            <option value="fal">fal.ai (cheapest)</option>
+            <option value="openai">OpenAI (reuse LLM key)</option>
+          </select>
+        </div>
+        <div>
+          <label class="label">Model <span class="text-muted">(blank = default)</span></label>
+          <input type="text" class="input-sm" style="max-width:100%" x-model="model"
+                 list="dl-imagegen-model" :placeholder="defaultModel()">
+          <datalist id="dl-imagegen-model">
+            <template x-for="m in modelHints()" :key="m">
+              <option :value="m"></option>
+            </template>
+          </datalist>
+        </div>
+      </div>
+
+      <div>
+        <label class="label">API key</label>
+        {% if imagegen_key_vaulted %}
+        <div class="text-xs text-muted py-1" style="max-width:500px">
+          🔒 Stored in the <strong>Secrets</strong> vault — manage it there.
+        </div>
+        {% else %}
+        <input type="text" class="input-sm" style="max-width:500px; display:none"
+               autocomplete="username" aria-hidden="true" tabindex="-1">
+        <input type="password" class="input-sm" style="max-width:500px"
+               autocomplete="new-password" x-model="apiKey"
+               placeholder="leave blank to reuse your OpenRouter/OpenAI LLM key">
+        <p class="text-muted text-xs mt-1">
+          Stored in the vault. For OpenRouter or OpenAI, leave blank to reuse the key
+          already configured for LLM inference.
+        </p>
+        {% endif %}
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <label class="label">Daily budget <span class="text-muted">(0 = unlimited)</span></label>
+          <input type="number" min="0" class="input-sm" style="max-width:200px" x-model="daily">
+          <p class="text-muted text-xs mt-1">Max images per UTC day.</p>
+        </div>
+        <div>
+          <label class="label">Monthly budget <span class="text-muted">(0 = unlimited)</span></label>
+          <input type="number" min="0" class="input-sm" style="max-width:200px" x-model="monthly">
+          <p class="text-muted text-xs mt-1">Max images per UTC month.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-2 mt-4">
+      <button class="btn-primary btn-sm" @click="save()">Save</button>
+      <button class="btn btn-sm" :disabled="testing" @click="test()">
+        <span x-show="!testing">Test (generate sample)</span>
+        <span x-show="testing">Generating…</span>
+      </button>
+    </div>
+
+    <template x-if="result">
+      <div :class="resultOk ? 'alert-success' : 'alert-error'" class="mt-2" x-text="result"></div>
+    </template>
+    <template x-if="testResult">
+      <div :class="testOk ? 'alert-success' : 'alert-error'" class="mt-2 text-xs" x-text="testResult"></div>
+    </template>
+    <template x-if="testImg">
+      <img :src="testImg" alt="sample" class="mt-2 rounded border border-border" style="max-width:256px">
+    </template>
+  </div>
+
   {# GitHub CLI (gh) #}
   <div class="card">
     <div class="flex items-center justify-between gap-3 mb-1">
@@ -453,6 +552,65 @@
       resultOk: false,
       testing: false,
       testResult: ''
+    };
+  }
+
+  function imagegenTab(enabled, provider, model, apiKey, keyVaulted, daily, monthly) {
+    const truthy = (v) => v === true || v === 'true';
+    const DEFAULTS = { openrouter: 'black-forest-labs/flux.2-klein', fal: 'fal-ai/flux/schnell', openai: 'gpt-image-1-mini' };
+    const HINTS = {
+      openrouter: ['black-forest-labs/flux.2-klein', 'google/gemini-2.5-flash-image', 'bytedance-seed/seedream-4.5'],
+      fal: ['fal-ai/flux/schnell', 'fal-ai/flux/dev', 'fal-ai/flux-pro'],
+      openai: ['gpt-image-1-mini', 'gpt-image-1']
+    };
+    return {
+      enabled: truthy(enabled),
+      provider: provider || 'openrouter',
+      model: model || '',
+      apiKey: apiKey || '',
+      keyVaulted: truthy(keyVaulted),
+      daily: daily || '0',
+      monthly: monthly || '0',
+      result: '', resultOk: false,
+      testing: false, testResult: '', testOk: false, testImg: '',
+      _hdr() {
+        return {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + (localStorage.getItem('admin_api_key') || '')
+        };
+      },
+      defaultModel() { return DEFAULTS[this.provider] || ''; },
+      modelHints() { return HINTS[this.provider] || []; },
+      save() {
+        const vals = {
+          'tools.imagegen.enabled': String(this.enabled),
+          'tools.imagegen.provider': this.provider,
+          'tools.imagegen.model': this.model.trim(),
+          'tools.imagegen.daily_budget': String(parseInt(this.daily) || 0),
+          'tools.imagegen.monthly_budget': String(parseInt(this.monthly) || 0)
+        };
+        if (!this.keyVaulted) { vals['tools.imagegen.api_key'] = this.apiKey; }
+        fetch('/config', { method: 'PATCH', headers: this._hdr(), body: JSON.stringify({values: vals}) })
+          .then(r => { this.resultOk = r.ok; return r.json(); })
+          .then(d => {
+            this.result = this.resultOk ? 'Image generation settings saved' : (d.detail || 'Error');
+            if (this.resultOk && window.showToast) { window.showToast('Image generation settings saved'); }
+          })
+          .catch(e => { this.resultOk = false; this.result = e.message; });
+      },
+      test() {
+        this.testing = true; this.testResult = ''; this.testImg = '';
+        fetch('/tools/imagegen/test', { method: 'POST', headers: this._hdr(),
+          body: JSON.stringify({ provider: this.provider, model: this.model.trim(), api_key: this.apiKey }) })
+          .then(r => r.json())
+          .then(d => {
+            this.testOk = !!d.ok;
+            if (d.ok) { this.testResult = 'Generated a sample image.'; this.testImg = 'data:' + (d.mime || 'image/png') + ';base64,' + d.image_b64; }
+            else { this.testResult = 'Failed: ' + (d.error || 'unknown'); }
+          })
+          .catch(e => { this.testOk = false; this.testResult = 'Error: ' + e.message; })
+          .finally(() => { this.testing = false; });
+      }
     };
   }
 

@@ -83,6 +83,7 @@ SETUP_STEPS = [
     "calendar",
     "search",
     "browser",
+    "imagegen",
     "admin",
     "secrets",
     "done",
