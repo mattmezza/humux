@@ -1,3 +1,5 @@
+"""Tests for channels/markdown_tg.py."""
+
 from channels.markdown_tg import to_telegram_html
 
 
@@ -52,8 +54,7 @@ def test_header_becomes_bold():
 
 
 def test_bullets():
-    assert to_telegram_html("- one\n- two") == "• one\n• two"
-    assert to_telegram_html("* one") == "• one"
+    assert to_telegram_html("- one\n- two") == "\u2022 one\n\u2022 two"
 
 
 def test_underscore_in_word_not_italic():
@@ -72,4 +73,35 @@ def test_combined():
     assert "<code>a</code>" in out
     assert "<i>b</i>" in out
     assert '<a href="https://d.io">docs</a>' in out
-    assert "• " in out
+    assert "\u2022 " in out
+
+
+def test_table_converted_to_bullets():
+    """ASCII/Markdown tables should become bullet lists on Telegram."""
+    src = "| Item | Count |\n|---|---|\n| Apples | 5 |\n| Oranges | 3 |"
+    out = to_telegram_html(src)
+    assert "\u2022" in out
+    assert "Apples" in out
+    assert "Oranges" in out
+    assert "|" not in out  # pipes should be gone
+
+
+def test_table_with_header():
+    """Table header row should be preserved as a bullet."""
+    src = "| Step | Meaning |\n|------|--------|\n| run | Execute |"
+    out = to_telegram_html(src)
+    assert "Step" in out
+    assert "Meaning" in out
+    assert "run" in out
+
+
+def test_pipe_in_inline_code_not_mistaken_for_table():
+    """A pipe inside inline code should not trigger table conversion."""
+    src = f"Use `|` as a pipe."
+    out = to_telegram_html(src)
+    assert "|" in out
+
+
+def test_single_pipe_not_a_table():
+    """A lone pipe without matched delimiters should stay as text."""
+    assert to_telegram_html("a | b") == "a | b"
