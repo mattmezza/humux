@@ -389,10 +389,17 @@ class TelegramChannel:
 
     @asynccontextmanager
     async def _typing(self, chat_id: int | str):
-        """Send 'typing' chat action continuously until the wrapped block completes.
+        """Keep a 'working' signal visible for the whole turn, on every client.
 
-        Telegram's typing indicator expires after ~5 seconds, so we resend it
-        every 4 seconds to keep it visible for the duration of agent processing.
+        Two mechanisms run together because Telegram Web (K) does not reliably
+        render the ``sendChatAction`` typing indicator that mobile and desktop
+        show (#57):
+
+        * the chat action, resent every 4s (it expires after ~5s) — the native
+          typing dots on clients that honour it;
+        * a real placeholder message ("🤔 Thinking…"), which every client renders
+          reliably and which doubles as a "the agent is thinking" (CoT) signal.
+          It is deleted right before the answer is sent.
         """
         cid, kw = self._route(chat_id)
 
@@ -405,7 +412,17 @@ class TelegramChannel:
                 pass
 
         task = asyncio.create_task(_send_typing(), name=f"tg-typing-{chat_id}")
+        status_id: int | None = None
         try:
+            # ponytail: static "Thinking…" — it signals the agent is working on
+            # every client. Streaming the real per-step CoT here would need a
+            # progress callback threaded through agent.process(); add that if the
+            # generic signal proves not enough.
+            try:
+                msg = await self.app.bot.send_message(cid, "🤔 Thinking…", **kw)
+                status_id = msg.message_id
+            except Exception:
+                log.debug("Could not post typing placeholder", exc_info=True)
             yield
         finally:
             task.cancel()
@@ -413,6 +430,11 @@ class TelegramChannel:
                 await task
             except asyncio.CancelledError:
                 pass
+            if status_id is not None:
+                try:
+                    await self.app.bot.delete_message(cid, status_id)
+                except Exception:
+                    pass
 
     @asynccontextmanager
     async def _progress(self, chat_id: int | str):
