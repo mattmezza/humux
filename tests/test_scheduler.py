@@ -2,18 +2,31 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
+from zoneinfo import ZoneInfo
 
 import pytest
 
 from core.scheduler import (
+    AgentScheduler,
     _parse_cron,
     run_agent_task,
     run_memory_consolidation,
     run_system_command,
     set_agent_context,
 )
+
+
+def _make_scheduler(job_store) -> AgentScheduler:
+    """Build an AgentScheduler with a stub agent (UTC tz) and the given job store."""
+    agent = SimpleNamespace(config=SimpleNamespace(agent=SimpleNamespace(timezone="UTC")))
+    return AgentScheduler(agent, job_store)
+
+
+def _iso(offset_minutes: int) -> str:
+    return (datetime.now(ZoneInfo("UTC")) + timedelta(minutes=offset_minutes)).isoformat()
 
 
 def test_parse_cron_valid_expression() -> None:
@@ -179,3 +192,85 @@ async def test_run_agent_task_no_channel() -> None:
     # Should not raise
     await run_agent_task("do thing", channel="telegram")
     agent.process.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_retire_if_past_marks_done() -> None:
+    """An active one-shot whose run_at has elapsed is retired to 'done'."""
+    job_store = AsyncMock()
+    sched = _make_scheduler(job_store)
+    retired = await sched._retire_if_past(
+        {"id": "old", "schedule": "once", "status": "active", "run_at": _iso(-60)}
+    )
+    assert retired is True
+    job_store.update_status.assert_awaited_once_with("old", "done")
+
+
+@pytest.mark.asyncio
+async def test_retire_if_past_keeps_future_oneshot() -> None:
+    """A future one-shot is left alone."""
+    job_store = AsyncMock()
+    sched = _make_scheduler(job_store)
+    retired = await sched._retire_if_past(
+        {"id": "soon", "schedule": "once", "status": "active", "run_at": _iso(60)}
+    )
+    assert retired is False
+    job_store.update_status.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_retire_if_past_ignores_cron() -> None:
+    """Cron jobs are never retired regardless of timing."""
+    job_store = AsyncMock()
+    sched = _make_scheduler(job_store)
+    retired = await sched._retire_if_past(
+        {"id": "daily", "schedule": "cron", "status": "active", "cron": "0 7 * * *"}
+    )
+    assert retired is False
+    job_store.update_status.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_load_jobs_retires_past_oneshot_and_skips_registration() -> None:
+    """load_jobs marks a past one-shot done and does not register it in APScheduler."""
+    job_store = AsyncMock()
+    job_store.list_jobs = AsyncMock(
+        return_value=[
+            {
+                "id": "stale",
+                "type": "agent",
+                "schedule": "once",
+                "status": "active",
+                "run_at": _iso(-120),
+                "task": "x",
+                "channel": "telegram",
+            }
+        ]
+    )
+    sched = _make_scheduler(job_store)
+    await sched.load_jobs()
+    job_store.update_status.assert_awaited_once_with("stale", "done")
+    assert sched.scheduler.get_job("stale") is None
+
+
+@pytest.mark.asyncio
+async def test_load_jobs_registers_future_oneshot() -> None:
+    """A future one-shot is registered, not retired."""
+    job_store = AsyncMock()
+    job_store.list_jobs = AsyncMock(
+        return_value=[
+            {
+                "id": "future",
+                "type": "agent",
+                "schedule": "once",
+                "status": "active",
+                "run_at": _iso(120),
+                "task": "x",
+                "channel": "telegram",
+            }
+        ]
+    )
+    sched = _make_scheduler(job_store)
+    await sched.load_jobs()
+    job_store.update_status.assert_not_awaited()
+    assert sched.scheduler.get_job("future") is not None
