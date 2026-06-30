@@ -3,7 +3,7 @@
    auto-refresh poll) sends its values so the view stays filtered. The stream box
    is a regex with a datalist of live stream names (rendered into #log-content by
    the content partial); level is a minimum severity. #}
-<div x-data="{ autoRefresh: false, interval: null,
+<div x-data="{ autoRefresh: false, interval: null, intervalSec: 3,
               poll() {
                 const f = document.getElementById('log-filters');
                 // The form is gone once the user leaves the Logs tab — self-clear
@@ -12,11 +12,15 @@
                 const values = Object.fromEntries(new FormData(f).entries());
                 htmx.ajax('GET', '/partials/logs-content',
                           {target: '#log-content', swap: 'innerHTML', values});
+              },
+              restart() {
+                clearInterval(this.interval);
+                if (this.autoRefresh) {
+                  const ms = Math.max(1, Number(this.intervalSec) || 3) * 1000;
+                  this.interval = setInterval(() => this.poll(), ms);
+                }
               } }"
-     x-init="$watch('autoRefresh', val => {
-       clearInterval(interval);
-       if (val) interval = setInterval(() => poll(), 3000);
-     })">
+     x-init="$watch('autoRefresh', () => restart()); $watch('intervalSec', () => restart())">
 
   <form id="log-filters"
         hx-get="/partials/logs-content" hx-target="#log-content" hx-swap="innerHTML"
@@ -48,7 +52,10 @@
     <label class="inline-flex items-center gap-1.5 text-xs text-muted cursor-pointer">
       <input type="checkbox" x-model="autoRefresh"
              class="rounded border-border bg-surface text-accent focus:ring-accent">
-      Auto-refresh
+      Auto-refresh every
+      <input type="number" min="1" x-model.number="intervalSec"
+             class="w-14 rounded border-border bg-surface text-xs px-1 py-0.5">
+      s
     </label>
   </form>
 
