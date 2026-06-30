@@ -67,6 +67,10 @@ the active one. From there you can:
 - **Use** a persona (activates it; applies live to new turns) or revert to **Default**;
 - **edit** a persona in the editor — a **guided form** (identity, voice, skill + tool
   checkboxes, secret scope) with a **raw markdown** toggle for power users;
+- **rename** a persona's slug in the editor — the new slug is cascaded to everything that
+  references it (per-chat bindings, private memories, scheduled jobs, the active selection,
+  and the `telegram:<slug>` bot channel), so no association is lost. A persona with its own
+  bot needs an agent restart afterwards so the bot re-registers under the new slug;
 - **create** or **delete** personae.
 
 The page is responsive and touch-friendly: cards reflow to a single column at phone width.
