@@ -45,8 +45,18 @@ async def run_agent_task(
     channel: str = "telegram",
     job_id: str | None = None,
     silent: bool = False,
+    persona: str = "",
+    origin_user_id: str = "",
+    origin_chat_id: str = "",
 ) -> None:
-    """Execute a natural-language task through the agent and deliver the result."""
+    """Execute a natural-language task through the agent and deliver the result.
+
+    ``persona`` / ``origin_chat_id`` carry the originating context (issue #71):
+    the job runs as the persona that scheduled it and is delivered back to the
+    chat it was scheduled in. Both fall back to the legacy behaviour (persona
+    derived from a ``telegram:<persona>`` channel suffix; delivery to the owner
+    DM) when empty, so jobs created before #71 are unaffected.
+    """
     agent = _get_agent_context()
     if agent is None:
         log.error("Scheduler agent task dropped; agent not initialized")
@@ -75,7 +85,7 @@ async def run_agent_task(
             channel="system",
             user_id="scheduler",
             chat_id="scheduler",
-            persona_name=gen_persona,
+            persona_name=persona or gen_persona,
         )
 
         # Deliver the response to the target channel
@@ -85,8 +95,10 @@ async def run_agent_task(
             if silent_mode and not text:
                 log.info("Scheduler silent task produced no updates; skipping send")
                 return
-            # For Telegram, send to the first allowed user (the owner)
-            chat_id = _get_owner_chat_id(agent, channel)
+            # Deliver to the chat the job was scheduled in (#71); fall back to
+            # the owner's chat for jobs with no captured origin (pre-#71, CLI,
+            # config-seeded).
+            chat_id = origin_chat_id or _get_owner_chat_id(agent, channel)
             if chat_id:
                 await ch.send(chat_id, text or response.text)
             else:
@@ -109,31 +121,38 @@ async def run_subagent_task(
     task: str,
     channel: str = "telegram",
     job_id: str | None = None,
+    origin_user_id: str = "",
+    origin_chat_id: str = "",
 ) -> None:
-    """Fire a scheduled subagent run and deliver its result to the channel."""
+    """Fire a scheduled subagent run and deliver its result to the channel.
+
+    Delivers to the chat the job was scheduled in (#71), falling back to the
+    owner's chat when no origin was captured (pre-#71, CLI, config-seeded).
+    """
     agent = _get_agent_context()
     if agent is None:
         log.error("Scheduler subagent task dropped; agent not initialized")
         return
 
     owner = _get_owner_chat_id(agent, channel)
+    target = origin_chat_id or owner
     log.info("Scheduler running subagent (persona=%s): %s", persona or "default", task[:100])
     try:
         result = await agent.run_subagent(
             task=task,
             persona_name=persona or "",
             origin_channel=channel,
-            origin_user_id=str(owner or "scheduler"),
-            origin_chat_id=str(owner or ""),
+            origin_user_id=str(origin_user_id or owner or "scheduler"),
+            origin_chat_id=str(target or ""),
             background=False,
         )
         text = result.get("result") or result.get("error") or ""
         ch = agent.channels.get(channel)
-        if ch and text and owner:
-            await ch.send(owner, text)
+        if ch and text and target:
+            await ch.send(target, text)
         elif not ch:
             log.warning("Scheduler: channel %r not registered, subagent result dropped", channel)
-        elif not owner:
+        elif not target:
             log.warning("Scheduler: no owner chat for channel %r, subagent result dropped", channel)
     except Exception:
         log.exception("Scheduler subagent task failed: %s", task[:100])
@@ -256,6 +275,8 @@ class AgentScheduler:
         task = job.get("task", "")
         channel = job.get("channel", "telegram")
         persona = job.get("persona", "")
+        origin_user_id = job.get("origin_user_id", "")
+        origin_chat_id = job.get("origin_chat_id", "")
         silent = job_type == "agent_silent"
 
         try:
@@ -308,6 +329,8 @@ class AgentScheduler:
                             "task": task,
                             "channel": channel,
                             "job_id": job_id,
+                            "origin_user_id": origin_user_id,
+                            "origin_chat_id": origin_chat_id,
                         },
                         replace_existing=True,
                     )
@@ -322,6 +345,9 @@ class AgentScheduler:
                             "channel": channel,
                             "job_id": job_id,
                             "silent": silent,
+                            "persona": persona,
+                            "origin_user_id": origin_user_id,
+                            "origin_chat_id": origin_chat_id,
                         },
                         replace_existing=True,
                     )
@@ -360,6 +386,8 @@ class AgentScheduler:
                             "task": task,
                             "channel": channel,
                             "job_id": job_id,
+                            "origin_user_id": origin_user_id,
+                            "origin_chat_id": origin_chat_id,
                         },
                         replace_existing=True,
                         **cron_kwargs,
@@ -374,6 +402,9 @@ class AgentScheduler:
                             "channel": channel,
                             "job_id": job_id,
                             "silent": silent,
+                            "persona": persona,
+                            "origin_user_id": origin_user_id,
+                            "origin_chat_id": origin_chat_id,
                         },
                         replace_existing=True,
                         **cron_kwargs,

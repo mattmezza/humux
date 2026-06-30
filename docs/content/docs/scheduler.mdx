@@ -143,3 +143,12 @@ Ask the agent to schedule tasks:
 You: "Check my work email every hour and notify me about anything from Alice"
 Agent: I'll set up an hourly email check for messages from Alice.
 ```
+
+### Originating context
+
+A job scheduled through chat remembers **who** scheduled it and **where**. When the
+job fires it runs as the persona that created it and is delivered back to the same
+chat — so a reminder set by a persona in a group chat is posted by that persona in
+that group, not by the default agent in your 1:1 DM. Jobs created from `config.yml`,
+the CLI, or the admin UI have no chat origin and are delivered to the owner's chat as
+before.

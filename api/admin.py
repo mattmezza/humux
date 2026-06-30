@@ -1701,10 +1701,24 @@ def create_admin_app(
         task = job.get("task", "")
         channel_name = job.get("channel", "telegram")
 
+        # Restore the originating persona + chat (issue #71) so a manual run
+        # behaves exactly like the scheduled one (empty for pre-#71/admin jobs).
+        persona = job.get("persona", "")
+        origin_user_id = job.get("origin_user_id", "")
+        origin_chat_id = job.get("origin_chat_id", "")
+
         if job_type in ("agent", "agent_silent"):
             silent = job_type == "agent_silent"
             asyncio.create_task(
-                run_agent_task(task=task, channel=channel_name, job_id=job_id, silent=silent)
+                run_agent_task(
+                    task=task,
+                    channel=channel_name,
+                    job_id=job_id,
+                    silent=silent,
+                    persona=persona,
+                    origin_user_id=origin_user_id,
+                    origin_chat_id=origin_chat_id,
+                )
             )
         elif job_type == "system":
             asyncio.create_task(run_system_command(command=task))
@@ -1713,10 +1727,12 @@ def create_admin_app(
         elif job_type == "subagent":
             asyncio.create_task(
                 run_subagent_task(
-                    persona=job.get("persona", ""),
+                    persona=persona,
                     task=task,
                     channel=channel_name,
                     job_id=job_id,
+                    origin_user_id=origin_user_id,
+                    origin_chat_id=origin_chat_id,
                 )
             )
         else:

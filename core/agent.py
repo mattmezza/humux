@@ -1773,7 +1773,7 @@ class AgentCore:
 
         if name == "manage_jobs":
             log.info("Tool call: manage_jobs — %s", params.get("action", ""))
-            result = await self._tool_manage_jobs(params)
+            result = await self._tool_manage_jobs(params, request_state)
             if is_write_action and self._is_tool_success(result):
                 executed_writes.add(write_sig)
             return result
@@ -2066,8 +2066,14 @@ class AgentCore:
 
         return await self.executor.run_command(" ".join(cmd_parts))
 
-    async def _tool_manage_jobs(self, params: dict) -> dict:
-        """Create, list, or cancel scheduled jobs via the JobStore."""
+    async def _tool_manage_jobs(self, params: dict, request_state: dict | None = None) -> dict:
+        """Create, list, or cancel scheduled jobs via the JobStore.
+
+        A created job captures its origin (the persona that scheduled it and the
+        chat it was scheduled in) from ``request_state`` so the scheduler later
+        runs it as that persona and delivers it back to the same chat — not the
+        default identity in the owner's 1:1 DM (issue #71).
+        """
         action = params.get("action", "")
 
         if action == "list":
@@ -2128,6 +2134,20 @@ class AgentCore:
             cron_expr = params.get("cron")
             run_at_str = params.get("run_at")
 
+            # Capture the originating context (issue #71): the persona that
+            # scheduled this and the chat it was scheduled in, so the scheduler
+            # runs it as that persona and delivers back to the same chat. Deliver
+            # from the same bot that received the request (a persona bot answers
+            # as itself); non-telegram origins (e.g. the scheduler itself) keep
+            # the explicit/default delivery channel.
+            origin = (request_state or {}).get("origin") or {}
+            origin_persona = (request_state or {}).get("persona_name") or ""
+            origin_channel = origin.get("channel") or ""
+            if origin_channel == "telegram" or origin_channel.startswith("telegram:"):
+                channel = origin_channel
+            origin_user_id = str(origin.get("user_id") or "")
+            origin_chat_id = str(origin.get("chat_id") or "")
+
             if cron_expr:
                 # Recurring cron job
                 from core.scheduler import _parse_cron
@@ -2145,8 +2165,11 @@ class AgentCore:
                     task=task,
                     channel=channel,
                     status="active",
-                    created_by="agent",
+                    created_by=origin_persona or "agent",
                     description=description,
+                    persona=origin_persona,
+                    origin_user_id=origin_user_id,
+                    origin_chat_id=origin_chat_id,
                 )
                 await self.scheduler.sync_job(job_id)
                 return {
@@ -2178,8 +2201,11 @@ class AgentCore:
                     task=task,
                     channel=channel,
                     status="active",
-                    created_by="agent",
+                    created_by=origin_persona or "agent",
                     description=description,
+                    persona=origin_persona,
+                    origin_user_id=origin_user_id,
+                    origin_chat_id=origin_chat_id,
                 )
                 await self.scheduler.sync_job(job_id)
                 return {

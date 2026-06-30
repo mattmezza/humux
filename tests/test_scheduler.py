@@ -119,6 +119,30 @@ async def test_run_agent_task_persona_job_generates_as_persona() -> None:
 
 
 @pytest.mark.asyncio
+async def test_run_agent_task_runs_as_origin_persona_and_chat() -> None:
+    # Issue #71: a job carrying an origin persona + chat runs AS that persona and
+    # is delivered back to that chat — not the default identity in the owner DM.
+    channel = AsyncMock()
+    agent = SimpleNamespace(
+        channels={"telegram": channel},
+        process=AsyncMock(return_value=SimpleNamespace(text="done")),
+        config=SimpleNamespace(
+            channels=SimpleNamespace(telegram=SimpleNamespace(allowed_user_ids=[123]))
+        ),
+        job_store=None,
+    )
+    set_agent_context(agent)
+
+    await run_agent_task(
+        "do thing", channel="telegram", persona="coach", origin_chat_id="-100200:7"
+    )
+
+    _, kwargs = agent.process.call_args
+    assert kwargs["persona_name"] == "coach"  # not the default identity
+    channel.send.assert_awaited_once_with("-100200:7", "done")  # origin chat, not owner 123
+
+
+@pytest.mark.asyncio
 async def test_run_agent_task_marks_oneshot_done() -> None:
     """One-shot jobs should be marked 'done' after execution."""
     channel = AsyncMock()
