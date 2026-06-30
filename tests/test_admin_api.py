@@ -211,7 +211,7 @@ def test_install_log_buffer_routes_reasoning_to_buffer_not_console() -> None:
         reasoning_logger.info("secret chain of thought")
         agent_logger.info("ordinary log line")
 
-        buffered = "\n".join(_LOG_BUFFER)
+        buffered = "\n".join(e["message"] for e in _LOG_BUFFER)
         assert "secret chain of thought" in buffered  # CoT surfaced in admin UI
         assert "ordinary log line" in buffered
         assert _REASONING_LOGGER not in console_seen  # but kept off the console

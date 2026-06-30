@@ -36,6 +36,7 @@ from core.artifacts import ARTIFACT_CSP, NOT_FOUND_HTML, store_from_config, vali
 from core.config_store import ConfigStore
 from core.goal_decomposition import classify_complexity, decompose_goal
 from core.llm import LLMClient
+from core.log_streams import current_stream, current_subagent
 from core.prompt_builder import (
     DEFAULT_HISTORY_HANDLING_BLOCK,
     DEFAULT_TOOL_USAGE_BLOCK,
@@ -437,7 +438,9 @@ class AgentState:
 # In-memory ring buffer for recent log lines
 # ---------------------------------------------------------------------------
 
-_LOG_BUFFER: collections.deque[str] = collections.deque(maxlen=500)
+# Structured entries (not formatted strings) so the Logs tab can filter by
+# stream / level / time / text server-side (#75).
+_LOG_BUFFER: collections.deque[dict] = collections.deque(maxlen=500)
 
 _LOG_INCLUDE_PREFIXES = ("core.", "channels.", "voice.", "tools.")
 _LOG_INCLUDE_NAMES = {"core", "channels", "voice", "tools"}
@@ -445,6 +448,9 @@ _LOG_INCLUDE_NAMES = {"core", "channels", "voice", "tools"}
 # Model chain-of-thought logger (see core/llm.py). The admin log viewer styles
 # lines from this logger distinctly; the template detects them by this name.
 _REASONING_LOGGER = "core.llm.reasoning"
+
+# Severity levels offered in the Logs tab filter, low → high.
+_LOG_LEVELS = ["DEBUG", "INFO", "WARNING", "ERROR"]
 
 
 def _should_capture_log_record(record: logging.LogRecord) -> bool:
@@ -455,16 +461,86 @@ def _should_capture_log_record(record: logging.LogRecord) -> bool:
     return name.startswith(_LOG_INCLUDE_PREFIXES)
 
 
+def _stream_hue(stream: str) -> int:
+    """A stable hue (0-359) for a stream name, so each agent's lines read in a
+    consistent colour. Deterministic across restarts (no salted hash())."""
+    return (sum(stream.encode()) * 47) % 360
+
+
 class _BufferHandler(logging.Handler):
-    """Logging handler that appends formatted records to an in-memory deque."""
+    """Logging handler that appends structured records to an in-memory deque."""
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
             if not _should_capture_log_record(record):
                 return
-            _LOG_BUFFER.append(self.format(record))
+            stream = current_stream()
+            sub = current_subagent()
+            message = record.getMessage()
+            if sub:
+                message = f"[subagent:{sub}] {message}"
+            _LOG_BUFFER.append(
+                {
+                    "ts": record.created,
+                    "time": datetime.fromtimestamp(record.created).strftime("%H:%M:%S"),
+                    "level": record.levelname,
+                    "levelno": record.levelno,
+                    "name": record.name,
+                    "stream": stream,
+                    "hue": _stream_hue(stream),
+                    "message": message,
+                    "is_reasoning": record.name == _REASONING_LOGGER,
+                }
+            )
         except Exception:
             pass
+
+
+def _filter_log_entries(
+    entries: list[dict],
+    *,
+    stream: str = "",
+    level: str = "",
+    q: str = "",
+    since: str = "",
+    until: str = "",
+) -> list[dict]:
+    """Apply the Logs tab filters. ``stream`` is a regex over the stream name;
+    ``level`` is a minimum severity; ``q`` is a case-insensitive substring over
+    the message; ``since``/``until`` are ``datetime-local`` bounds. Each empty
+    filter is a no-op, so the unfiltered case returns everything."""
+    try:
+        rx = re.compile(stream, re.IGNORECASE) if stream else None
+    except re.error:
+        rx = None  # a half-typed regex shouldn't blank the viewer
+    minlevel = logging.getLevelName(level) if level in _LOG_LEVELS else 0
+    ql = q.strip().lower()
+    lo = _parse_local_dt(since)
+    hi = _parse_local_dt(until)
+    out = []
+    for e in entries:
+        if rx and not rx.search(e["stream"]):
+            continue
+        if minlevel and e["levelno"] < minlevel:
+            continue
+        if ql and ql not in e["message"].lower() and ql not in e["name"].lower():
+            continue
+        if lo is not None and e["ts"] < lo:
+            continue
+        if hi is not None and e["ts"] > hi:
+            continue
+        out.append(e)
+    return out
+
+
+def _parse_local_dt(value: str) -> float | None:
+    """A ``datetime-local`` field (``2026-06-30T14:30``) → epoch seconds, or None."""
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value).timestamp()
+    except ValueError:
+        return None
 
 
 def install_log_buffer() -> None:
@@ -485,7 +561,6 @@ def install_log_buffer() -> None:
         existing.addFilter(_drop_reasoning)
 
     handler = _BufferHandler()  # added after, so it keeps the reasoning records
-    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)-8s %(name)s — %(message)s"))
     root.addHandler(handler)
 
 
@@ -1495,14 +1570,26 @@ def create_admin_app(
 
     @app.get("/partials/logs", dependencies=[Depends(auth)])
     async def partial_logs() -> HTMLResponse:
-        """Logs tab partial (container with auto-refresh)."""
-        return _render_partial("partials/logs.html")
+        """Logs tab partial (filter controls + auto-refresh)."""
+        return _render_partial("partials/logs.html", levels=_LOG_LEVELS)
 
     @app.get("/partials/logs-content", dependencies=[Depends(auth)])
-    async def partial_logs_content() -> HTMLResponse:
-        """Log lines partial for HTMX swap."""
-        lines = list(_LOG_BUFFER)[-200:]
-        return _render_partial("partials/logs_content.html", lines=lines)
+    async def partial_logs_content(
+        stream: str = "",
+        level: str = "",
+        q: str = "",
+        since: str = "",
+        until: str = "",
+    ) -> HTMLResponse:
+        """Filtered log lines for HTMX swap (#75). Filters: stream (regex), level
+        (min severity), q (text), since/until (time range)."""
+        snapshot = list(_LOG_BUFFER)
+        entries = _filter_log_entries(
+            snapshot, stream=stream, level=level, q=q, since=since, until=until
+        )[-300:]
+        # All stream names ever seen (not just the filtered slice) for the picker.
+        streams = sorted({e["stream"] for e in snapshot})
+        return _render_partial("partials/logs_content.html", entries=entries, streams=streams)
 
     # ── Jobs partial + API ─────────────────────────────────────────────
 

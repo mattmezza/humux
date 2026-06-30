@@ -1,28 +1,56 @@
-{# Logs tab partial #}
-<div x-data="{ autoRefresh: false, interval: null }"
+{# Logs tab — per-agent streams with filters (#75).
+   #log-filters carries the filter state; every fetch (manual, on-change, and the
+   auto-refresh poll) sends its values so the view stays filtered. The stream box
+   is a regex with a datalist of live stream names (rendered into #log-content by
+   the content partial); level is a minimum severity. #}
+<div x-data="{ autoRefresh: false, interval: null,
+              poll() {
+                const f = document.getElementById('log-filters');
+                const values = Object.fromEntries(new FormData(f).entries());
+                htmx.ajax('GET', '/partials/logs-content',
+                          {target: '#log-content', swap: 'innerHTML', values});
+              } }"
      x-init="$watch('autoRefresh', val => {
-       if (val) {
-         interval = setInterval(() => htmx.ajax('GET', '/partials/logs-content', {target: '#log-content', swap: 'innerHTML'}), 3000);
-       } else {
-         clearInterval(interval);
-       }
+       clearInterval(interval);
+       if (val) interval = setInterval(() => poll(), 3000);
      })"
      x-effect="() => { return () => clearInterval(interval); }">
 
-  <div class="flex items-center gap-3 mb-4">
-    <button class="btn btn-sm" hx-get="/partials/logs-content" hx-target="#log-content" hx-swap="innerHTML">
-      Refresh
-    </button>
+  <form id="log-filters"
+        hx-get="/partials/logs-content" hx-target="#log-content" hx-swap="innerHTML"
+        hx-trigger="load, change, keyup delay:400ms from:input[name='q']"
+        class="flex flex-wrap items-end gap-3 mb-4">
+    <label class="label">Stream
+      <input type="text" name="stream" list="log-streams" placeholder="all (regex)"
+             class="block w-44 rounded border-border bg-surface text-sm px-2 py-1">
+    </label>
+    <label class="label">Level
+      <select name="level" class="block rounded border-border bg-surface text-sm px-2 py-1">
+        <option value="">all</option>
+        {% for lvl in levels %}<option value="{{ lvl }}">{{ lvl }}</option>{% endfor %}
+      </select>
+    </label>
+    <label class="label">Search
+      <input type="text" name="q" placeholder="text…"
+             class="block w-44 rounded border-border bg-surface text-sm px-2 py-1">
+    </label>
+    <label class="label">From
+      <input type="datetime-local" name="since"
+             class="block rounded border-border bg-surface text-sm px-2 py-1">
+    </label>
+    <label class="label">To
+      <input type="datetime-local" name="until"
+             class="block rounded border-border bg-surface text-sm px-2 py-1">
+    </label>
+    <button type="button" class="btn btn-sm" @click="poll()">Refresh</button>
     <label class="inline-flex items-center gap-1.5 text-xs text-muted cursor-pointer">
       <input type="checkbox" x-model="autoRefresh"
              class="rounded border-border bg-surface text-accent focus:ring-accent">
       Auto-refresh
     </label>
-  </div>
+  </form>
 
-  <div class="log-viewer" id="log-content"
-       hx-get="/partials/logs-content" hx-trigger="load" hx-swap="innerHTML">
-  </div>
+  <div class="log-viewer" id="log-content"></div>
 </div>
 
 <script>
@@ -30,7 +58,6 @@
   document.body.addEventListener('htmx:afterSettle', function(evt) {
     const viewer = document.getElementById('log-content');
     if (!viewer || evt.detail.target !== viewer) return;
-    // Check if auto-refresh is on via the Alpine component
     const alpineRoot = viewer.closest('[x-data]');
     const autoRefresh = alpineRoot && Alpine.$data(alpineRoot).autoRefresh;
     const atBottom = (viewer.scrollHeight - viewer.scrollTop - viewer.clientHeight) < 50;

@@ -1,6 +1,10 @@
-{# Log content — swapped into #log-content by HTMX.
-   Reasoning/CoT lines (logger core.llm.reasoning) render in a distinct style
-   so the model's thinking trace stands apart from regular log lines. #}
-{% for line in lines %}{% if 'core.llm.reasoning — ' in line %}<span class="log-thinking">💭 {{ line }}</span>
-{% else %}{{ line }}
-{% endif %}{% endfor %}
+{# Log lines — swapped into #log-content by HTMX (#75).
+   Each line carries its stream as a colour-coded badge so concurrent agents are
+   distinguishable; subagent lines arrive already prefixed "[subagent:<id>]".
+   Reasoning/CoT lines (logger core.llm.reasoning) keep their distinct style. #}
+<datalist id="log-streams">
+{% for s in streams %}<option value="{{ s }}"></option>{% endfor %}
+</datalist>
+{% if not entries %}<span class="text-muted">No log lines match the current filters.</span>
+{% endif %}{% for e in entries %}<div class="{% if e.is_reasoning %}log-thinking{% endif %}">{% if e.is_reasoning %}💭 {% endif %}<span class="text-muted">{{ e.time }}</span> <span class="text-muted">{{ "%-7s"|format(e.level) }}</span> <span style="color: hsl({{ e.hue }} 70% 65%)">[{{ e.stream }}]</span> {{ e.message }}</div>
+{% endfor %}
