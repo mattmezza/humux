@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import logging
 import re
+import subprocess
 import unicodedata
 import wave
 from functools import partial
@@ -38,15 +39,11 @@ def _lang_for_voice(voice: str) -> str:
 
 
 def _pcm_to_wav(samples, sample_rate: int) -> bytes:
-    """Encode float32 PCM samples (-1..1) from Kokoro into WAV bytes.
-
-    Stdlib ``wave`` keeps this dependency-free; Telegram ``send_voice`` and web
-    browsers both play WAV.  ponytail: WAV via stdlib; transcode to ogg/opus
-    with ffmpeg only if some client rejects it.
-    """
+    """Encode float32 PCM samples (-1..1) from Kokoro into 16-bit mono WAV bytes."""
     import numpy as np
 
-    pcm16 = (np.clip(np.asarray(samples), -1.0, 1.0) * 32767).astype("<i2")
+    # round (not truncate) before int16 cast — truncation biases samples toward 0
+    pcm16 = np.rint(np.clip(np.asarray(samples), -1.0, 1.0) * 32767).astype("<i2")
     buf = io.BytesIO()
     with wave.open(buf, "wb") as w:
         w.setnchannels(1)
@@ -54,6 +51,36 @@ def _pcm_to_wav(samples, sample_rate: int) -> bytes:
         w.setframerate(sample_rate)
         w.writeframes(pcm16.tobytes())
     return buf.getvalue()
+
+
+def _wav_to_ogg(wav: bytes) -> bytes:
+    """Transcode WAV → OGG/Opus, the format Telegram ``send_voice`` expects.
+
+    ffmpeg already ships in the image (it decodes incoming voice messages), so
+    no new dependency.  Raises if ffmpeg is missing or fails — the caller treats
+    that like any Kokoro failure and falls back to edge-tts.
+    """
+    proc = subprocess.run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-i",
+            "pipe:0",
+            "-c:a",
+            "libopus",
+            "-b:a",
+            "32k",
+            "-f",
+            "ogg",
+            "pipe:1",
+        ],
+        input=wav,
+        capture_output=True,
+        check=True,
+    )
+    return proc.stdout
 
 
 _CODE_BLOCK_RE = re.compile(r"```.*?```", re.DOTALL)  # fenced code
@@ -147,7 +174,7 @@ class VoicePipeline:
 
     async def synthesize(self, text: str, voice: str | None = None) -> bytes:
         """Convert text to speech.  Returns raw audio bytes (MP3 for edge-tts,
-        WAV for Kokoro).
+        OGG/Opus for Kokoro) — both formats Telegram ``send_voice`` accepts.
 
         ``voice`` overrides the configured default (e.g. an active persona's
         own voice); empty/None falls back to the backend default.  Kokoro runs
@@ -162,7 +189,10 @@ class VoicePipeline:
             try:
                 return await self._synthesize_kokoro(text, voice)
             except Exception:
+                # ``voice`` here is a Kokoro name edge-tts won't recognise — drop
+                # it (voice=None) so the fallback uses the configured edge voice.
                 log.exception("Kokoro synthesis failed, falling back to edge-tts")
+                return await self._synthesize_edge(text, None)
         return await self._synthesize_edge(text, voice)
 
     async def _synthesize_edge(self, text: str, voice: str | None) -> bytes:
@@ -188,6 +218,6 @@ class VoicePipeline:
         samples, sample_rate = self._kokoro.create(
             text, voice=voice, speed=1.0, lang=_lang_for_voice(voice)
         )
-        audio = _pcm_to_wav(samples, sample_rate)
+        audio = _wav_to_ogg(_pcm_to_wav(samples, sample_rate))
         log.info("Synthesized %d chars → %d bytes audio (kokoro/%s)", len(text), len(audio), voice)
         return audio
