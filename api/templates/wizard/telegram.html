@@ -44,7 +44,7 @@
               htmx.ajax('POST', '/setup/step', {
                 target: '#wizard-step', swap: 'innerHTML',
                 values: {
-                  step: 'whatsapp',
+                  step: 'email',
                   'values[channels.telegram.enabled]': 'true',
                   'values[channels.telegram.bot_token]': document.getElementById('w-tg-token').value,
                   'values[channels.telegram.allowed_user_ids]': document.getElementById('w-tg-users').value

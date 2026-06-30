@@ -29,12 +29,7 @@
               <span class="badge-off">Disabled</span>
             {% endif %}
           </td>
-          <td class="text-xs text-muted">
-            {{ channel.detail }}
-            {% if channel.key == 'whatsapp' and channel.auth_status %}
-              <span class="{{ channel.auth_class }} ml-0.5">{{ channel.auth_status }}</span>
-            {% endif %}
-          </td>
+          <td class="text-xs text-muted">{{ channel.detail }}</td>
           <td class="whitespace-nowrap">
             <button class="btn btn-sm" onclick="openChannelWizard('{{ channel.key }}')">Edit</button>
             <button class="btn-danger btn-sm ml-0.5" onclick="removeChannel('{{ channel.key }}')">Remove</button>
@@ -61,14 +56,12 @@
         <div class="text-muted text-xs">Select a channel to begin.</div>
         <div class="flex items-center gap-2 mt-3">
           <button class="btn btn-sm" onclick="loadChannelWizard('telegram')">Telegram</button>
-          <button class="btn btn-sm" onclick="loadChannelWizard('whatsapp')">WhatsApp</button>
         </div>
       </template>
       <div id="channel-wizard-body">
         <div class="text-muted text-xs">Select a channel to begin.</div>
         <div class="flex items-center gap-2 mt-3">
           <button class="btn btn-sm" onclick="loadChannelWizard('telegram')">Telegram</button>
-          <button class="btn btn-sm" onclick="loadChannelWizard('whatsapp')">WhatsApp</button>
         </div>
       </div>
     </div>

@@ -149,25 +149,8 @@ class TelegramConfig(BaseModel):
         return v
 
 
-class WhatsAppConfig(BaseModel):
-    enabled: bool = False
-    bridge_url: str = "local-wacli"
-    allowed_numbers: list[str] = Field(default_factory=list)
-
-    @field_validator("allowed_numbers", mode="before")
-    @classmethod
-    def parse_comma_separated_strings(cls, v):
-        if isinstance(v, (int, float)):
-            return [f"+{int(v)}"]
-        if isinstance(v, str):
-            v = v.strip()
-            return [x.strip() for x in v.split(",") if x.strip()] if v else []
-        return v
-
-
 class ChannelsConfig(BaseModel):
     telegram: TelegramConfig = TelegramConfig()
-    whatsapp: WhatsAppConfig = WhatsAppConfig()
 
 
 class CalendarProvider(BaseModel):
@@ -378,12 +361,27 @@ class ImageGenToolConfig(BaseModel):
     db_path: str = "data/imagegen.db"  # usage counter store
 
 
+class WhatsAppToolConfig(BaseModel):
+    """WhatsApp via the local `wacli` CLI (issue #97) — a tool, not a channel.
+
+    The agent reads and sends WhatsApp by running `wacli` through `run_command`.
+    Linking (QR scan), sync and logout are managed from the Tools tab.
+    """
+
+    enabled: bool = False
+    # WACLI_STORE override (which linked account). Blank = wacli default (~/.wacli).
+    # ponytail: one global store; per-persona accounts ride #93's tool_env override.
+    store: str = ""
+    device_label: str = ""  # WACLI_DEVICE_LABEL; blank = wacli default ("MPA")
+
+
 class ToolsConfig(BaseModel):
     """Optional external CLI tools the agent can use (see core/tools.py)."""
 
     gh: GhToolConfig = GhToolConfig()
     browser: BrowserToolConfig = BrowserToolConfig()
     imagegen: ImageGenToolConfig = ImageGenToolConfig()
+    whatsapp: WhatsAppToolConfig = WhatsAppToolConfig()
 
 
 class WorkspaceConfig(BaseModel):

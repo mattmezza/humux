@@ -386,42 +386,13 @@
       });
   }
 
-  function saveWhatsApp() {
-    const result = document.getElementById('channel-wizard-result');
-    const numbersInput = document.getElementById('ch-wa-numbers');
-    const enabledInput = document.getElementById('ch-wa-enabled');
-    if (!result || !numbersInput || !enabledInput) return;
-    const bridgeUrl = 'local-wacli';
-    const numbers = numbersInput.value.trim();
-    const enabled = enabledInput.checked;
-    fetch('/channels/whatsapp', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + (localStorage.getItem('admin_api_key') || '')
-      },
-      body: JSON.stringify({bridge_url: bridgeUrl, allowed_numbers: numbers, enabled: enabled})
-    })
-      .then(r => r.text())
-      .then(html => {
-        document.getElementById('tab-content').innerHTML = html;
-        closeChannelWizard();
-        if (window.showToast) { window.showToast('WhatsApp channel saved'); }
-        if (window.notifyRestartRequired) { notifyRestartRequired(); }
-      })
-      .catch(e => {
-        result.textContent = e.message;
-        result.className = 'alert-error';
-      });
-  }
-
   function testWhatsApp() {
     const result = document.getElementById('channel-wizard-result');
     if (!result) return;
     const bridgeUrl = 'local-wacli';
     result.textContent = 'Checking wacli...';
     result.className = 'alert-info';
-    fetch('/channels/whatsapp/test', {
+    fetch('/tools/whatsapp/test', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -441,46 +412,13 @@
       });
   }
 
-  function sendWhatsAppTestMessage() {
-    const result = document.getElementById('channel-wizard-result');
-    const numbersInput = document.getElementById('ch-wa-numbers');
-    if (!result || !numbersInput) return;
-    const numbersRaw = numbersInput.value.trim();
-    const firstNumber = numbersRaw.split(',').map((n) => n.trim()).filter(Boolean)[0];
-    if (!firstNumber) {
-      result.textContent = 'Add at least one allowed number to send a test message.';
-      result.className = 'alert-error';
-      return;
-    }
-    result.textContent = 'Sending test message...';
-    result.className = 'alert-info';
-    fetch('/channels/whatsapp/send', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + (localStorage.getItem('admin_api_key') || '')
-      },
-      body: JSON.stringify({ to: firstNumber, text: 'Test message from MPA' })
-    })
-      .then(r => r.json())
-      .then(d => {
-        const ok = d && d.ok === true;
-        result.textContent = ok ? 'Test message sent.' : (d.error || 'Failed to send test message.');
-        result.className = ok ? 'alert-success' : 'alert-error';
-      })
-      .catch(e => {
-        result.textContent = e.message || 'Failed to send test message.';
-        result.className = 'alert-error';
-      });
-  }
-
   async function startWhatsAppBridge() {
     const result = document.getElementById('channel-wizard-result');
     if (!result) return;
     result.textContent = 'Starting WhatsApp auth...';
     result.className = 'alert-info';
     try {
-      const r = await fetch('/channels/whatsapp/auth/start', {
+      const r = await fetch('/tools/whatsapp/auth/start', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -507,7 +445,7 @@
     result.textContent = 'Stopping WhatsApp auth...';
     result.className = 'alert-info';
     try {
-      const r = await fetch('/channels/whatsapp/auth/stop', {
+      const r = await fetch('/tools/whatsapp/auth/stop', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -535,7 +473,7 @@
     result.textContent = 'Logging out WhatsApp...';
     result.className = 'alert-info';
     try {
-      const r = await fetch('/channels/whatsapp/auth/logout', {
+      const r = await fetch('/tools/whatsapp/auth/logout', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -573,7 +511,7 @@
       }
       let qrDelay = 2000;
       try {
-        const r = await fetch('/channels/whatsapp/auth/status', {
+        const r = await fetch('/tools/whatsapp/auth/status', {
           headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('admin_api_key') || '') }
         });
         const status = await r.json();
@@ -593,7 +531,7 @@
           return;
         }
         panel.style.display = 'block';
-        const qrResp = await fetch('/channels/whatsapp/auth/qr?ts=' + Date.now(), {
+        const qrResp = await fetch('/tools/whatsapp/auth/qr?ts=' + Date.now(), {
           headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('admin_api_key') || '') }
         });
         if (qrResp.ok) {
@@ -636,7 +574,7 @@
     result.textContent = 'Syncing messages...';
     result.className = 'alert-info';
     try {
-      const r = await fetch('/channels/whatsapp/sync', {
+      const r = await fetch('/tools/whatsapp/sync', {
         method: 'POST',
         headers: {
           'Authorization': 'Bearer ' + (localStorage.getItem('admin_api_key') || '')
@@ -661,7 +599,7 @@
     const panel = document.getElementById('wa-auth-panel');
     const qrBox = document.getElementById('wa-auth-qr');
     try {
-      const r = await fetch('/channels/whatsapp/auth/status', {
+      const r = await fetch('/tools/whatsapp/auth/status', {
         headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('admin_api_key') || '') }
       });
       const status = await r.json();
@@ -673,7 +611,7 @@
       }
       if (status.running) {
         panel.style.display = 'block';
-        const qrResp = await fetch('/channels/whatsapp/auth/qr?ts=' + Date.now(), {
+        const qrResp = await fetch('/tools/whatsapp/auth/qr?ts=' + Date.now(), {
           headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('admin_api_key') || '') }
         });
         if (qrResp.ok) {

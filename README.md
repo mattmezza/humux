@@ -4,7 +4,7 @@ A self-hosted personal AI agent that runs in a single Docker container. MPA acts
 
 ## Features
 
-- **Messaging** — Telegram (and WhatsApp) with text and voice messages
+- **Messaging** — Telegram channel with text and voice messages; WhatsApp as an agent tool (read/send via wacli)
 - **Email** — Read, compose, and manage emails via [Himalaya](https://github.com/pimalaya/himalaya) CLI
 - **Calendar** — CalDAV integration (Google Calendar, iCloud, etc.)
 - **Contacts** — CardDAV providers via the built-in contacts CLI
@@ -175,8 +175,8 @@ Behavior and identity are configured in `character.md.example` and `personalia.m
 
 ## WhatsApp
 
-MPA uses [wacli](https://github.com/openclaw/wacli) to authenticate and sync WhatsApp locally. The admin UI starts auth, displays the QR code, and manages sync.
-The binary is installed from a pinned upstream tag (`WACLI_VERSION` in the `Dockerfile`; `make dev-wa` for local dev) — not vendored. See `docs/content/docs/channels.mdx` for upgrade/re-auth notes.
+WhatsApp is a **tool**, not a channel: the agent reads and sends WhatsApp on demand via the [wacli](https://github.com/openclaw/wacli) CLI (through `run_command`), enabled under **Tools > WhatsApp (wacli)**. The admin UI starts auth, displays the QR code, and manages sync.
+The binary is installed from a pinned upstream tag (`WACLI_VERSION` in the `Dockerfile`; `make dev-wa` for local dev) — not vendored. See `docs/content/docs/channels.mdx` for setup/upgrade/re-auth notes.
 
 ## Tech stack
 

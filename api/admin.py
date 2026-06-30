@@ -181,11 +181,6 @@ async def _wizard_step_context(step: str, config_store: ConfigStore) -> dict[str
             val = await config_store.get(key)
             if val and not _is_vault_ref(val):
                 ctx[var] = val
-    elif step == "whatsapp":
-        for key, var in (("channels.whatsapp.allowed_numbers", "allowed_numbers"),):
-            val = await config_store.get(key)
-            if val:
-                ctx[var] = val
     elif step == "browser":
         enabled = await config_store.get("tools.browser.enabled")
         if enabled is not None:
@@ -268,43 +263,8 @@ async def _channel_list_context(
             }
         )
 
-    wa_enabled_raw = await config_store.get("channels.whatsapp.enabled")
-    wa_enabled = str(wa_enabled_raw).lower() == "true"
-    wa_bridge = await config_store.get("channels.whatsapp.bridge_url")
-    wa_numbers = await config_store.get("channels.whatsapp.allowed_numbers")
-    wa_configured = bool(wa_bridge or wa_numbers or wa_enabled)
-    if wa_configured:
-        wa_detail = "Not configured"
-        wa_auth_status = ""
-        wa_auth_class = "badge-off"
-        if wa_bridge:
-            wa_detail = "Local wacli"
-            if wa_numbers:
-                wa_detail = f"Local wacli · Numbers: {wa_numbers}"
-            try:
-                status = await (wacli or WacliManager()).auth_status()
-                if status.get("authenticated") is True:
-                    wa_auth_status = "Auth ok"
-                    wa_auth_class = "badge-ok"
-                elif status.get("running") is False:
-                    wa_auth_status = "Auth stopped"
-                    wa_auth_class = "badge-off"
-                else:
-                    wa_auth_status = "Auth required"
-                    wa_auth_class = "badge-warn"
-            except Exception:
-                wa_auth_status = "Auth unknown"
-                wa_auth_class = "badge-off"
-        channels.append(
-            {
-                "key": "whatsapp",
-                "label": "WhatsApp",
-                "enabled": wa_enabled,
-                "detail": wa_detail,
-                "auth_status": wa_auth_status,
-                "auth_class": wa_auth_class,
-            }
-        )
+    # WhatsApp is a tool now (#97), not a channel — its enable toggle and wacli
+    # linking live on the Tools tab.
 
     return {"channels": channels}
 
@@ -340,16 +300,6 @@ async def _channel_wizard_context(
             g_addressed is None or str(g_addressed).lower() == "true"
         )
         ctx["group_ignore_bots"] = g_ignore is None or str(g_ignore).lower() == "true"
-    if channel == "whatsapp":
-        enabled_raw = await config_store.get("channels.whatsapp.enabled")
-        enabled = str(enabled_raw).lower() != "false"
-        ctx["enabled"] = "true" if enabled else "false"
-        bridge_url = await config_store.get("channels.whatsapp.bridge_url")
-        allowed_numbers = await config_store.get("channels.whatsapp.allowed_numbers")
-        if bridge_url:
-            ctx["bridge_url"] = bridge_url
-        if allowed_numbers:
-            ctx["allowed_numbers"] = allowed_numbers
     return ctx
 
 
@@ -1372,9 +1322,22 @@ def create_admin_app(
         ig_daily = await config_store.get("tools.imagegen.daily_budget") or "0"
         ig_monthly = await config_store.get("tools.imagegen.monthly_budget") or "0"
 
+        # WhatsApp tool (#97) — enable flag + wacli link status for the badge.
+        wa_enabled = await config_store.get("tools.whatsapp.enabled")
+        wa_enabled = wa_enabled if wa_enabled is not None else "false"
+        wa_device_label = await config_store.get("tools.whatsapp.device_label") or ""
+        try:
+            wa_status = await wacli.auth_status()
+        except Exception:
+            wa_status = {"available": False, "authenticated": False}
+
         return _render_partial(
             "partials/tools.html",
             tools=tool_registry(),
+            whatsapp_enabled=wa_enabled,
+            whatsapp_device_label=wa_device_label,
+            whatsapp_available=wa_status.get("available") is True,
+            whatsapp_authenticated=wa_status.get("authenticated") is True,
             gh_enabled=gh_enabled,
             gh_token="" if gh_token_vaulted else gh_token,
             gh_token_vaulted=gh_token_vaulted,
@@ -2540,9 +2503,6 @@ def create_admin_app(
         if key == "telegram":
             ctx = await _channel_wizard_context(config_store, "telegram")
             return _render_partial("partials/channel_wizard_telegram.html", **ctx)
-        if key == "whatsapp":
-            ctx = await _channel_wizard_context(config_store, "whatsapp")
-            return _render_partial("partials/channel_wizard_whatsapp.html", **ctx)
         raise HTTPException(400, f"Unknown channel: {channel}")
 
     @app.post("/channels/telegram", dependencies=[Depends(auth)])
@@ -2575,27 +2535,10 @@ def create_admin_app(
         channel_data = await _channel_list_context(config_store, wacli)
         return _render_partial("partials/channels.html", **channel_data)
 
-    @app.post("/channels/whatsapp", dependencies=[Depends(auth)])
-    async def save_channel_whatsapp(request: Request) -> HTMLResponse:
-        body = await request.json()
-        bridge_url = str(body.get("bridge_url", "")).strip() or "local-wacli"
-        allowed_numbers = str(body.get("allowed_numbers", "")).strip()
-        enabled = str(body.get("enabled", "true")).lower() == "true"
-        values = {
-            "channels.whatsapp.enabled": str(enabled).lower(),
-            "channels.whatsapp.bridge_url": bridge_url,
-            "channels.whatsapp.allowed_numbers": allowed_numbers,
-        }
-        await config_store.set_many(values)
-        if not enabled:
-            try:
-                await wacli.stop_auth()
-            except Exception as exc:
-                log.warning("Failed to stop WhatsApp auth: %s", exc)
-        channel_data = await _channel_list_context(config_store, wacli)
-        return _render_partial("partials/channels.html", **channel_data)
-
-    @app.post("/channels/whatsapp/test", dependencies=[Depends(auth)])
+    # WhatsApp wacli linking (#97): the tool's enable flag is `tools.whatsapp.enabled`
+    # (saved via /config like the other tools); the routes below drive device auth and
+    # sync from the Tools tab. WhatsApp is a tool now, not a channel.
+    @app.post("/tools/whatsapp/test", dependencies=[Depends(auth)])
     async def test_channel_whatsapp(body: WhatsAppTestIn) -> dict:
         status = await wacli.auth_status()
         available = status.get("available") is True
@@ -2607,12 +2550,12 @@ def create_admin_app(
             )
         return result
 
-    @app.get("/channels/whatsapp/auth/status", dependencies=[Depends(auth)])
+    @app.get("/tools/whatsapp/auth/status", dependencies=[Depends(auth)])
     async def whatsapp_auth_status() -> dict:
         status = await wacli.auth_status()
         return {"ok": True, **status}
 
-    @app.post("/channels/whatsapp/auth/start", dependencies=[Depends(auth)])
+    @app.post("/tools/whatsapp/auth/start", dependencies=[Depends(auth)])
     async def whatsapp_auth_start() -> dict:
         if not wacli.available():
             return {
@@ -2624,12 +2567,12 @@ def create_admin_app(
         await wacli.start_auth()
         return {"ok": True, "available": True}
 
-    @app.post("/channels/whatsapp/auth/stop", dependencies=[Depends(auth)])
+    @app.post("/tools/whatsapp/auth/stop", dependencies=[Depends(auth)])
     async def whatsapp_auth_stop() -> dict:
         await wacli.stop_auth()
         return {"ok": True}
 
-    @app.get("/channels/whatsapp/auth/qr", dependencies=[Depends(auth)])
+    @app.get("/tools/whatsapp/auth/qr", dependencies=[Depends(auth)])
     async def whatsapp_auth_qr() -> dict:
         if not wacli.latest_qr:
             await wacli.fetch_latest_qr()
@@ -2637,44 +2580,15 @@ def create_admin_app(
             raise HTTPException(404, "No QR available")
         return {"ok": True, "qr": wacli.latest_qr, "latest_qr_at": wacli.latest_qr_at}
 
-    @app.post("/channels/whatsapp/auth/logout", dependencies=[Depends(auth)])
+    @app.post("/tools/whatsapp/auth/logout", dependencies=[Depends(auth)])
     async def whatsapp_auth_logout() -> dict:
         await wacli.logout()
         return {"ok": True}
 
-    @app.post("/channels/whatsapp/sync", dependencies=[Depends(auth)])
+    @app.post("/tools/whatsapp/sync", dependencies=[Depends(auth)])
     async def whatsapp_sync() -> dict:
         res = await wacli.sync_once()
         return {"ok": res.get("success") is True, "response": res}
-
-    @app.post("/channels/whatsapp/send", dependencies=[Depends(auth)])
-    async def whatsapp_send(request: Request) -> dict:
-        body = await request.json()
-        to = str(body.get("to", "")).strip()
-        text = str(body.get("text", "")).strip()
-        if not to or not text:
-            raise HTTPException(400, "Missing 'to' or 'text'")
-        res = await wacli.send_text(to, text)
-        if res.get("success") is not True:
-            return {"ok": False, "error": res.get("error")}
-        return {"ok": True}
-
-    @app.post("/webhook/whatsapp")
-    async def whatsapp_webhook(request: Request) -> dict:
-        """Webhook for WhatsApp inbound messages."""
-        if agent_state.agent is None:
-            raise HTTPException(503, "Agent not running")
-
-        body = await request.json()
-        channel = agent_state.agent.channels.get("whatsapp")
-        if not channel:
-            raise HTTPException(404, "WhatsApp channel not enabled")
-
-        try:
-            return await channel.handle_webhook(body)
-        except Exception as exc:
-            log.exception("WhatsApp webhook failed")
-            raise HTTPException(500, f"Webhook error: {exc}")
 
     @app.delete("/channels/{channel}", dependencies=[Depends(auth)])
     async def delete_channel(channel: str) -> HTMLResponse:
@@ -2685,16 +2599,6 @@ def create_admin_app(
                 "channels.telegram.enabled": "false",
                 "channels.telegram.bot_token": "",
                 "channels.telegram.allowed_user_ids": "",
-            }
-        elif key == "whatsapp":
-            try:
-                await wacli.logout()
-            except Exception as exc:
-                log.warning("Failed to logout WhatsApp auth: %s", exc)
-            values = {
-                "channels.whatsapp.enabled": "false",
-                "channels.whatsapp.bridge_url": "",
-                "channels.whatsapp.allowed_numbers": "",
             }
         else:
             raise HTTPException(400, f"Unknown channel: {channel}")

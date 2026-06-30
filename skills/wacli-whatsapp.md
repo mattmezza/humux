@@ -23,9 +23,13 @@ non-write WhatsApp interaction.
    idle. It typically completes in under 10 seconds. **Do this every time** the
    user asks about new or recent messages.
 
-2. **Do NOT use `run_command` with `wacli send` to send WhatsApp messages.**
-   Use the `send_message` tool instead (channel="whatsapp"). It handles delivery
-   through the proper channel.
+2. **Send WhatsApp messages with `wacli send text` via `run_command`.** WhatsApp is
+   a tool, not a channel — there is no `send_message` route for it. Sending asks for
+   confirmation first (it is a write op):
+
+   ```bash
+   wacli --json send text --to 41772909259@s.whatsapp.net --message "Hello"
+   ```
 
 3. **NEVER read wacli's internal SQLite database directly.** Do not use
    `sqlite3` to query `~/.wacli/wacli.db` or `~/.wacli/session.db` or any
@@ -166,7 +170,7 @@ These require user confirmation before running:
 
 - `wacli groups refresh` / `rename` / `participants` / `invite` / `join` / `leave`
 - `wacli contacts refresh`
-- Sending messages (use `send_message` tool, not `wacli send`)
+- `wacli send text` / `send status` — sending messages
 
 ## Important notes
 
