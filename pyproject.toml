@@ -1,6 +1,6 @@
 [project]
 name = "mpa"
-version = "0.13.0"
+version = "0.14.0"
 description = "Personal AI agent — unified interface across messaging, email, and calendars"
 requires-python = ">=3.14"
 dependencies = [
