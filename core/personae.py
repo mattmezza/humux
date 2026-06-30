@@ -43,6 +43,13 @@ CREATE TABLE IF NOT EXISTS personae (
     created_at DATETIME DEFAULT (datetime('now')),
     updated_at DATETIME DEFAULT (datetime('now'))
 );
+-- Slugs deliberately removed (deleted, or renamed away from) so seeding does not
+-- resurrect them from their markdown file on the next list (#102). Re-creating a
+-- slug via upsert/rename clears its tombstone.
+CREATE TABLE IF NOT EXISTS persona_tombstones (
+    name TEXT PRIMARY KEY,
+    created_at DATETIME DEFAULT (datetime('now'))
+);
 """
 
 # Columns added after the table first shipped — applied to existing DBs on open.
@@ -227,9 +234,11 @@ class PersonaStore:
         async with aiosqlite.connect(self.db_path) as db:
             cursor = await db.execute("SELECT name FROM personae")
             existing = {row[0] for row in await cursor.fetchall()}
+            cursor = await db.execute("SELECT name FROM persona_tombstones")
+            tombstoned = {row[0] for row in await cursor.fetchall()}
             for f in sorted(self.seed_dir.glob("*.md")):
                 content = f.read_text().strip()
-                if not content or f.stem in existing:
+                if not content or f.stem in existing or f.stem in tombstoned:
                     continue
                 await self._upsert(db, parse_markdown(content, name=f.stem))
                 inserted += 1
@@ -305,12 +314,19 @@ class PersonaStore:
         await self._ensure_schema()
         async with aiosqlite.connect(self.db_path) as db:
             await self._upsert(db, p)
+            # Deliberately (re)creating a slug clears any tombstone on it (#102).
+            await db.execute("DELETE FROM persona_tombstones WHERE name = ?", (p.name,))
             await db.commit()
 
     async def delete(self, name: str) -> bool:
         await self._ensure_schema()
         async with aiosqlite.connect(self.db_path) as db:
             cursor = await db.execute("DELETE FROM personae WHERE name = ?", (name,))
+            if cursor.rowcount > 0:
+                # Tombstone so seeding doesn't resurrect a deleted seed persona (#102).
+                await db.execute(
+                    "INSERT OR IGNORE INTO persona_tombstones(name) VALUES (?)", (name,)
+                )
             await db.commit()
             return cursor.rowcount > 0
 
@@ -332,6 +348,13 @@ class PersonaStore:
                 "UPDATE personae SET name = ?, updated_at = datetime('now') WHERE name = ?",
                 (new, old),
             )
+            if cursor.rowcount > 0:
+                # Old slug must not resurrect from its seed file; new slug is now
+                # live, so clear any tombstone it carried (#102).
+                await db.execute(
+                    "INSERT OR IGNORE INTO persona_tombstones(name) VALUES (?)", (old,)
+                )
+                await db.execute("DELETE FROM persona_tombstones WHERE name = ?", (new,))
             await db.commit()
             return cursor.rowcount > 0
 
