@@ -214,6 +214,16 @@ def test_kokoro_skipped_for_unsupported_lang(monkeypatch):
     assert seen["voice"] == "de-DE-KatjaNeural"  # German edge voice
 
 
+def test_kokoro_unknown_lang_derives_from_voice(monkeypatch):
+    """An untagged/unknown reply language must NOT skip Kokoro (regression guard):
+    it falls back to deriving the lang from the voice prefix."""
+    monkeypatch.setattr("voice.pipeline._wav_to_ogg", lambda wav: b"OGG")
+    p = _bare_pipeline()
+    p._kokoro = _FakeKokoro()
+    asyncio.run(p.synthesize("hi", voice="if_sara", lang="xx"))  # unknown code
+    assert p._kokoro.calls == [("hi", "if_sara", "it")]  # used Kokoro, derived "it"
+
+
 def test_edge_swaps_voice_for_mismatched_lang(monkeypatch):
     """Edge backend: an English voice replying Italian swaps to an Italian voice,
     since edge voices are locale-locked — issue #95."""

@@ -287,10 +287,13 @@ class VoicePipeline:
             raise RuntimeError("TTS is disabled in config")
 
         text = clean_for_speech(text)
-        kokoro_lang = _TTS_LANG.get(lang, (None,))[0] if lang else None
-        # Use Kokoro unless an explicit reply language is one it can't phonemize
-        # (e.g. German) — then go straight to a matching edge-tts voice.
-        if self._kokoro is not None and (not lang or kokoro_lang is not None):
+        known = _TTS_LANG.get(lang) if lang else None
+        kokoro_lang = known[0] if known else None
+        # Skip Kokoro only when the reply language is one it KNOWS it can't
+        # phonemize (e.g. German) — then go straight to a matching edge-tts voice.
+        # An unknown/untagged language just lets Kokoro derive lang from the voice.
+        skip_kokoro = known is not None and known[0] is None
+        if self._kokoro is not None and not skip_kokoro:
             try:
                 return await self._synthesize_kokoro(text, voice, kokoro_lang)
             except Exception:
