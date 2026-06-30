@@ -1,10 +1,12 @@
 {# Log lines — swapped into #log-content by HTMX (#75).
    Each line carries its stream as a colour-coded badge so concurrent agents are
    distinguishable; subagent lines arrive already prefixed "[subagent:<id>]".
-   Reasoning/CoT lines (logger core.llm.reasoning) keep their distinct style. #}
-<datalist id="log-streams">
-{% for s in streams %}<option value="{{ s }}"></option>{% endfor %}
-</datalist>
-{% if not entries %}<span class="text-muted">No log lines match the current filters.</span>
-{% endif %}{% for e in entries %}<div class="{% if e.is_reasoning %}log-thinking{% endif %}">{% if e.is_reasoning %}💭 {% endif %}<span class="text-muted">{{ e.time }}</span> <span class="text-muted">{{ "%-7s"|format(e.level) }}</span> <span style="color: hsl({{ e.hue }} 70% 65%)">[{{ e.stream }}]</span> {{ e.message }}</div>
-{% endfor %}
+   Reasoning/CoT lines (logger core.llm.reasoning) keep their distinct style.
+   The viewer is white-space: pre-wrap (preserves the level column's padding), so
+   trim markers strip the inter-element newlines that would otherwise render as
+   blank lines between every log line. -#}
+<datalist id="log-streams">{% for s in streams %}<option value="{{ s }}"></option>{% endfor %}</datalist>
+{%- if not entries %}<span class="text-muted">No log lines match the current filters.</span>{% endif -%}
+{%- for e in entries -%}
+<div class="{% if e.is_reasoning %}log-thinking{% endif %}">{% if e.is_reasoning %}💭 {% endif %}<span class="text-muted">{{ e.time }}</span> <span class="text-muted">{{ "%-7s"|format(e.level) }}</span> <span style="color: hsl({{ e.hue }} 70% 65%)">[{{ e.stream }}]</span> {{ e.message }}</div>
+{%- endfor -%}

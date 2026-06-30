@@ -6,6 +6,9 @@
 <div x-data="{ autoRefresh: false, interval: null,
               poll() {
                 const f = document.getElementById('log-filters');
+                // The form is gone once the user leaves the Logs tab — self-clear
+                // the orphaned auto-refresh timer instead of throwing every tick.
+                if (!f) { clearInterval(this.interval); return; }
                 const values = Object.fromEntries(new FormData(f).entries());
                 htmx.ajax('GET', '/partials/logs-content',
                           {target: '#log-content', swap: 'innerHTML', values});
@@ -13,8 +16,7 @@
      x-init="$watch('autoRefresh', val => {
        clearInterval(interval);
        if (val) interval = setInterval(() => poll(), 3000);
-     })"
-     x-effect="() => { return () => clearInterval(interval); }">
+     })">
 
   <form id="log-filters"
         hx-get="/partials/logs-content" hx-target="#log-content" hx-swap="innerHTML"
