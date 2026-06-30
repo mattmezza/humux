@@ -236,6 +236,12 @@ def _persona_tool_note(key: str, setting: dict | None, persona: Persona | None) 
     if persona is None or setting is None:
         return ""
     if key == "gh":
+        if (setting.get("token_secret") or "").strip():
+            return (
+                f'Running as persona "{persona.name}": `gh` is authenticated with the '
+                "GitHub token configured for this persona. Every gh/git action appears "
+                "as that token's GitHub user."
+            )
         return (
             f'Running as persona "{persona.name}": `gh` is authenticated with this '
             "persona's OWN GitHub token (a distinct identity from the owner). Every "
@@ -281,7 +287,11 @@ def effective_tool_env(
         # Persona has an explicit gh policy → never inherit the owner's token.
         env.pop("GH_TOKEN", None)
         if gh.get("enabled") and config.tools.gh.enabled:
-            token = resolve_secret(gh_token_secret_name(persona.name))
+            # ``token_secret`` lets a persona reuse an existing infra-vault secret
+            # (e.g. the system GH_TOKEN, or a shared PAT) instead of storing its own
+            # copy; otherwise its own namespaced token is used (#93).
+            name = (gh.get("token_secret") or "").strip() or gh_token_secret_name(persona.name)
+            token = resolve_secret(name)
             if token:
                 env["GH_TOKEN"] = token
 
@@ -306,7 +316,7 @@ if __name__ == "__main__":
     assert gh_token_secret_name("coding-helper") == "GH_TOKEN_coding-helper"
     assert gh_token_secret_name("Hopper") != gh_token_secret_name("hopper")  # case-distinct
 
-    vault = {"GH_TOKEN_hopper": "hopper-token"}
+    vault = {"GH_TOKEN_hopper": "hopper-token", "SHARED_PAT": "shared-token"}
     resolve = vault.get  # Callable[[str], str | None]
 
     # No persona → system token, no profile.
@@ -329,6 +339,10 @@ if __name__ == "__main__":
     # gh enabled but no own token stored → no token (never borrows the owner's).
     atlas = Persona(name="atlas", tool_config={"gh": {"enabled": True}})
     assert "GH_TOKEN" not in effective_tool_env(cfg, atlas, resolve)
+
+    # token_secret reuses an existing vault secret instead of the namespaced one.
+    ref = Persona(name="atlas", tool_config={"gh": {"enabled": True, "token_secret": "SHARED_PAT"}})
+    assert effective_tool_env(cfg, ref, resolve)["GH_TOKEN"] == "shared-token"
 
     # gh explicitly disabled → GH_TOKEN removed.
     lingua = Persona(name="lingua", tool_config={"gh": {"enabled": False}})

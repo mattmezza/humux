@@ -96,6 +96,18 @@ async def test_persona_without_tool_config_inherits(agent: AgentCore, monkeypatc
     assert cap["tool_env"]["GH_TOKEN"] == "owner-token"
 
 
+async def test_persona_gh_token_secret_reference(agent: AgentCore, monkeypatch) -> None:
+    # token_secret reuses an existing infra-vault secret instead of a per-persona
+    # copy — e.g. a shared PAT the owner already stored.
+    await agent.secret_store.set_infra_secret("SHARED_PAT", "shared-token")
+    await agent.secret_store.load_infra_cache()
+    atlas = Persona(
+        name="atlas", tool_config={"gh": {"enabled": True, "token_secret": "SHARED_PAT"}}
+    )
+    cap = await _run(agent, atlas, monkeypatch)
+    assert cap["tool_env"]["GH_TOKEN"] == "shared-token"
+
+
 async def test_subagent_keeps_persona_tool_identity(agent: AgentCore) -> None:
     # A subagent spawned AS a persona must keep that persona's tool identity — else
     # it falls back to the owner's token (the bleed #93 prevents). _narrow_persona

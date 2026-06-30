@@ -165,7 +165,7 @@ Supported tools:
 
 | Tool | Per-persona identity |
 |------|----------------------|
-| `gh` (GitHub) | The persona's own **Personal Access Token**, injected as `GH_TOKEN` so every `gh`/`git` action runs as that GitHub user. Stored encrypted in the **infra vault** (machine-key, so it works headless and in [scheduled jobs](/docs/scheduler)), namespaced `GH_TOKEN_<SLUG>`. |
+| `gh` (GitHub) | The persona's own **Personal Access Token**, injected as `GH_TOKEN` so every `gh`/`git` action runs as that GitHub user. Either **type a new token** (stored encrypted in the **infra vault**, machine-key so it works headless and in [scheduled jobs](/docs/scheduler), namespaced `GH_TOKEN_<SLUG>`) **or pick an existing infra-vault secret to reuse** — raw frontmatter `gh: {enabled: true, token_secret: SOME_INFRA_SECRET}` — so no second copy is stored. |
 | `browser` | The persona's own **profile** — an isolated Chromium session dir, so its logged-in sessions don't leak to other personae. Used by default (the agent need not pass `--profile`). Blank = the persona slug. |
 
 How it flows into the agent: when a persona runs `run_command`, its tool environment is

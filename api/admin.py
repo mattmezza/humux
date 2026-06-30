@@ -982,6 +982,14 @@ def create_admin_app(
                 if (await config_store.get(f"tools.{s.key}.enabled")) == "true"
             ],
             "infra_available": bool(secret_store and secret_store.infra.available),
+            # Existing infra-vault secret names a persona can reuse as its gh token
+            # instead of storing its own copy (#93). Infra vault only (boot-unsealed,
+            # so it resolves headless like the per-persona token does).
+            "infra_names": (
+                [r["name"] for r in await secret_store.list_infra_names()]
+                if secret_store and secret_store.infra.available
+                else []
+            ),
         }
 
     async def _persona_gh_token_set(name: str) -> bool:

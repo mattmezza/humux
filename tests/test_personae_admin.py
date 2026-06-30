@@ -202,6 +202,29 @@ def test_persona_editor_renders_tool_identities(tmp_path) -> None:
     assert "Tool identities" in r.text
 
 
+def test_persona_editor_offers_vault_token_source(tmp_path) -> None:
+    # With gh enabled + an infra vault, the gh card offers reusing a vault secret
+    # as the persona's token (#93), seeded with existing infra secret names.
+    from core.secret_store import SecretStore
+    from core.vault import InfraVault
+
+    store = SecretStore(db_path=str(tmp_path / "config.db"), infra_vault=InfraVault("machine-key"))
+    asyncio_run = __import__("asyncio").run
+    asyncio_run(store.set_infra_secret("SHARED_PAT", "ghp_shared"))
+    backing = _Store(tmp_path)
+    backing._data["tools.gh.enabled"] = "true"
+    agent = _AgentStub()
+    app, _ = create_admin_app(
+        AgentState(agent=cast(Any, agent)), cast(ConfigStore, backing), secret_store=store
+    )
+    client = TestClient(app)
+    client.post("/personae", json={"name": "hopper"}, headers=AUTH)
+    r = client.get("/admin/personae/hopper", headers=AUTH)
+    assert r.status_code == 200
+    assert "Token source" in r.text
+    assert "SHARED_PAT" in r.text  # existing infra secret offered in the dropdown
+
+
 def test_activate_unknown_persona_404(tmp_path) -> None:
     client, _ = _client(tmp_path)
     assert (

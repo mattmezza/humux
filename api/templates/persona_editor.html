@@ -3,17 +3,15 @@
 
 {% block body %}
 <div x-data="personaEditor()">
+  <a class="text-xs text-muted hover:text-accent inline-flex items-center gap-1 mb-2" href="/admin?tab=personae">← Back to Personae</a>
   <div class="flex items-center justify-between gap-2 mb-4 flex-wrap">
     <div>
       <h1 class="text-xl text-accent">{% if is_new %}New Persona{% else %}Edit Persona{% endif %}</h1>
       <p class="text-muted text-xs mt-1">A persona is a swappable identity: its own character, the skills and tools it may use, and its voice.</p>
     </div>
-    <div class="flex items-center gap-2">
-      <div class="flex items-center gap-1 text-xs">
-        <button class="btn btn-sm" :class="mode === 'guided' && 'btn-primary'" @click="mode = 'guided'">Guided</button>
-        <button class="btn btn-sm" :class="mode === 'raw' && 'btn-primary'" @click="syncRaw(); mode = 'raw'">Raw markdown</button>
-      </div>
-      <a class="btn btn-sm" href="/admin?tab=personae">Back to Personae</a>
+    <div class="flex items-center gap-1 text-xs">
+      <button class="btn btn-sm" :class="mode === 'guided' && 'btn-primary'" @click="mode = 'guided'">Guided</button>
+      <button class="btn btn-sm" :class="mode === 'raw' && 'btn-primary'" @click="syncRaw(); mode = 'raw'">Raw markdown</button>
     </div>
   </div>
 
@@ -157,17 +155,34 @@
             </select>
           </div>
           {% if spec.key == "gh" %}
-          <div x-show="modes['gh'] === 'on'" class="mt-2">
+          <div x-show="modes['gh'] === 'on'" class="mt-2 space-y-2">
             <template x-if="!infraAvailable">
-              <p class="text-xs text-warn">Set a master key in the <strong>Secrets</strong> tab to store a per-persona token.</p>
+              <p class="text-xs text-warn">Set a master key in the <strong>Secrets</strong> tab to give this persona its own token.</p>
             </template>
             <template x-if="infraAvailable">
-              <div>
-                <input type="password" class="input-sm" autocomplete="new-password"
-                       x-model="ghToken" placeholder="ghp_… (leave blank to keep current)">
-                <p class="text-xs text-muted mt-1">
-                  <span x-show="ghTokenSet">🔒 A token is stored for this persona — type a new one to replace it.</span>
-                  <span x-show="!ghTokenSet">Stored encrypted in the infra vault; injected as this persona's <code>GH_TOKEN</code>.</span>
+              <div class="space-y-2">
+                <div>
+                  <label class="label">Token source</label>
+                  <select class="select input-sm" x-model="ghTokenSecret">
+                    <option value="">Type a new token…</option>
+                    <template x-for="n in infraNames" :key="n">
+                      <option :value="n" x-text="'Vault secret: ' + n"></option>
+                    </template>
+                  </select>
+                </div>
+                {# Type a new PAT (stored as this persona's own vault token). #}
+                <div x-show="!ghTokenSecret">
+                  <input type="password" class="input-sm" autocomplete="new-password"
+                         x-model="ghToken" placeholder="ghp_… (leave blank to keep current)">
+                  <p class="text-xs text-muted mt-1">
+                    <span x-show="ghTokenSet">🔒 A token is stored for this persona — type a new one to replace it.</span>
+                    <span x-show="!ghTokenSet">Stored encrypted in the infra vault; injected as this persona's <code>GH_TOKEN</code>.</span>
+                  </p>
+                </div>
+                {# Reuse an existing vault secret — no second copy stored. #}
+                <p class="text-xs text-muted" x-show="ghTokenSecret">
+                  Reuses the vault secret <code x-text="ghTokenSecret"></code> as this persona's
+                  <code>GH_TOKEN</code> — no separate copy is stored.
                 </p>
               </div>
             </template>
@@ -229,7 +244,9 @@
       toolKeys: {{ tool_specs|map(attribute='key')|list|tojson }},
       ghToken: '',
       ghTokenSet: {{ gh_token_set|tojson }},
+      ghTokenSecret: '',
       infraAvailable: {{ infra_available|tojson }},
+      infraNames: {{ infra_names|tojson }},
       modes: {},
       profiles: {},
 
@@ -239,6 +256,7 @@
           this.modes[k] = !e ? 'inherit' : (e.enabled ? 'on' : 'off');
           this.profiles[k] = (e && e.profile) || '';
         }
+        this.ghTokenSecret = (this.toolConfig.gh && this.toolConfig.gh.token_secret) || '';
       },
 
       // Only configured tools get an entry; 'inherit' leaves them out so the
@@ -250,6 +268,8 @@
           if (m === 'inherit') continue;
           const e = { enabled: m === 'on' };
           if (k === 'browser' && (this.profiles[k] || '').trim()) e.profile = this.profiles[k].trim();
+          // gh: a chosen vault secret is referenced instead of storing a copy.
+          if (k === 'gh' && this.ghTokenSecret) e.token_secret = this.ghTokenSecret;
           tc[k] = e;
         }
         return tc;
@@ -286,8 +306,10 @@
       },
 
       _upsert(name) {
+        // A referenced vault secret means no inline PAT to store.
+        const ghToken = this.ghTokenSecret ? '' : this.ghToken;
         const body = this.mode === 'raw'
-          ? { name: name, raw: this.raw, gh_token: this.ghToken }
+          ? { name: name, raw: this.raw, gh_token: ghToken }
           : {
               name: name, agent_name: this.agent_name, role: this.role,
               emoji: this.emoji, voice: this.voice,
@@ -295,7 +317,7 @@
               skills: this.skills, tools: this.tools,
               secrets: this.secretsText.split('\n').map(s => s.trim()).filter(Boolean),
               bot_token: this.bot_token, allowed_user_ids: this.allowedUserIds,
-              tool_config: this.buildToolConfig(), gh_token: this.ghToken,
+              tool_config: this.buildToolConfig(), gh_token: ghToken,
             };
         fetch('/personae', { method: 'POST', headers: this._headers(), body: JSON.stringify(body) })
           .then(r => { this.ok = r.ok; return r.text().then(t => ({ ok: r.ok, t })); })
