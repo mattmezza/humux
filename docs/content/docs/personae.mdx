@@ -81,6 +81,12 @@ Six ready-made personae ship seeded and ready to use or customise: fitness coach
 assistant, travel planner, coding helper, writing editor, and language tutor. They are normal
 rows — edit them in place, or activate one as-is.
 
+Seeding is by file stem: a gallery slug is (re)seeded whenever no row by that name exists. So
+**renaming or deleting a starter persona leaves its original slug to be re-seeded** — the
+renamed copy lives under the new slug, and the pristine starter reappears. Personae you create
+yourself have no seed file, so renaming them is clean. To retire a starter for good, also remove
+its `personae/<slug>.md` file.
+
 ## Setup wizard
 
 The setup wizard has a skippable **persona** step (after *identity*): pick a starter persona to
