@@ -1729,8 +1729,9 @@ def create_admin_app(
             raise HTTPException(400, f"Invalid job type: {job_type}")
         if job_type != "memory_consolidation" and not task:
             raise HTTPException(400, "Task is required for agent/system/subagent jobs")
-        # Persona only applies to subagent jobs — don't persist a stray value on others.
-        if job_type != "subagent":
+        # Persona scopes who an agent job runs as (#101); meaningless for a raw
+        # system command or memory consolidation, so don't persist a stray value.
+        if job_type in ("system", "memory_consolidation"):
             persona = ""
 
         if schedule == "cron":

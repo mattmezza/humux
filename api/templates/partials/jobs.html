@@ -1,4 +1,5 @@
 {# Jobs tab partial #}
+{% set job_personas = jobs | map(attribute='persona') | reject('equalto', '') | unique | sort %}
 <div x-data="jobsTab()">
   <div class="flex items-center gap-2 mb-4 flex-wrap">
     <button class="btn btn-sm" hx-get="/partials/jobs" hx-target="#tab-content" hx-swap="innerHTML"
@@ -6,6 +7,15 @@
       Refresh
     </button>
     <span class="text-muted text-xs">{{ jobs|length }} job{{ 's' if jobs|length != 1 else '' }}</span>
+    {% if job_personas %}
+    <select class="input-sm" style="max-width:200px" x-model="personaFilter"
+            title="Filter jobs by the persona they run as">
+      <option value="">All personae</option>
+      {% for p in job_personas %}
+      <option value="{{ p }}">{{ p }}</option>
+      {% endfor %}
+    </select>
+    {% endif %}
     {% if not agent_running %}
     <span class="badge-off text-[0.65rem]">agent stopped — jobs won't run</span>
     {% endif %}
@@ -34,6 +44,7 @@
           <th class="min-w-[120px]">ID</th>
           <th>Schedule</th>
           <th>Type</th>
+          <th>Persona</th>
           <th>Task / Command</th>
           <th class="w-16">Status</th>
           <th class="w-20">Channel</th>
@@ -43,7 +54,7 @@
       </thead>
       <tbody>
         {% for job in jobs %}
-        <tr>
+        <tr x-show="!personaFilter || personaFilter === {{ job.persona|tojson|forceescape }}">
           <td class="text-xs break-all font-medium">
             {{ job.id }}
             {% if job.description %}
@@ -58,6 +69,7 @@
               {{ job.type }}
             </span>
           </td>
+          <td class="text-xs">{{ job.persona or '—' }}</td>
           <td class="text-xs break-all" style="max-width: 320px;">
             <span class="block truncate" title="{{ job.task }}">{{ job.task }}</span>
           </td>
@@ -89,7 +101,7 @@
         </tr>
         {% endfor %}
         {% if not jobs %}
-        <tr><td colspan="8" class="text-muted text-xs text-center py-4">No jobs configured</td></tr>
+        <tr><td colspan="9" class="text-muted text-xs text-center py-4">No jobs configured</td></tr>
         {% endif %}
       </tbody>
     </table>
@@ -141,11 +153,11 @@
           <option value="memory_consolidation">memory_consolidation</option>
         </select>
       </div>
-      <div x-show="form.type === 'subagent'">
+      <div x-show="['agent', 'agent_silent', 'subagent'].includes(form.type)">
         <label class="label">Persona</label>
         <input type="text" class="input-sm" name="persona" x-model="form.persona"
                placeholder="coding-helper">
-        <span class="hint">Persona the subagent adopts (blank = default identity)</span>
+        <span class="hint">Persona this job runs as (blank = default identity)</span>
       </div>
       <div>
         <label class="label">Channel</label>
@@ -199,6 +211,7 @@
 function jobsTab() {
   return {
     editing: false,
+    personaFilter: '',
     form: {
       id: '',
       schedule: 'cron',

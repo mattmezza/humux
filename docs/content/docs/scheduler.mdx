@@ -137,6 +137,8 @@ Navigate to Jobs in the admin UI to view, create, edit, pause, and delete schedu
 
 By default the list shows only live jobs (`active` and `paused`). Completed and cancelled jobs — including one-time jobs whose time has already passed — are hidden to keep the view clean. Flip the **Show completed** switch to reveal them.
 
+Each row shows the **persona** the job runs as (or `—` for the default identity), and a dropdown narrows the list to a single persona. An `agent`, `agent_silent`, or `subagent` job can be scoped to a persona at create/edit time so it runs under that identity.
+
 ### Via chat
 
 Ask the agent to schedule tasks:
