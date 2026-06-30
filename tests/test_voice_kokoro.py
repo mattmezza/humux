@@ -13,7 +13,13 @@ import wave
 import numpy as np
 import pytest
 
-from voice.pipeline import VoicePipeline, _lang_for_voice, _pcm_to_wav, _wav_to_ogg
+from voice.pipeline import (
+    VoicePipeline,
+    _is_kokoro_voice,
+    _lang_for_voice,
+    _pcm_to_wav,
+    _wav_to_ogg,
+)
 
 
 def test_lang_for_voice_prefix():
@@ -23,6 +29,14 @@ def test_lang_for_voice_prefix():
     assert _lang_for_voice("ff_siwis") == "fr-fr"
     assert _lang_for_voice("if_sara") == "it"
     assert _lang_for_voice("xx_unknown") == "en-us"  # default
+
+
+def test_is_kokoro_voice():
+    assert _is_kokoro_voice("af_bella")
+    assert _is_kokoro_voice("jm_kuma")
+    assert not _is_kokoro_voice("en-US-GuyNeural")  # edge-tts name
+    assert not _is_kokoro_voice("")
+    assert not _is_kokoro_voice(None)
 
 
 def test_pcm_to_wav_roundtrip():
@@ -82,6 +96,21 @@ def test_synthesize_falls_back_to_edge_on_kokoro_error(monkeypatch):
     out = asyncio.run(p.synthesize("hello", voice="af_bella"))
     assert out == b"EDGE-AUDIO"  # kokoro raised → edge fallback
     assert seen["voice"] is None  # Kokoro voice name dropped so edge-tts accepts it (#84)
+
+
+def test_synthesize_fallback_keeps_edge_voice(monkeypatch):
+    """A persona's valid edge-tts voice must survive a Kokoro failure (#84)."""
+    p = _bare_pipeline()
+    p._kokoro = _FakeKokoro(raise_it=True)
+    seen = {}
+
+    async def fake_edge(text, voice):
+        seen["voice"] = voice
+        return b"EDGE-AUDIO"
+
+    monkeypatch.setattr(p, "_synthesize_edge", fake_edge)
+    asyncio.run(p.synthesize("hello", voice="en-US-GuyNeural"))
+    assert seen["voice"] == "en-US-GuyNeural"  # edge voice preserved, not dropped
 
 
 def test_synthesize_default_voice_when_none(monkeypatch):

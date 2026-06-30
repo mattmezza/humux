@@ -38,6 +38,13 @@ def _lang_for_voice(voice: str) -> str:
     return _KOKORO_LANG.get(voice[:1], "en-us")
 
 
+def _is_kokoro_voice(voice: str | None) -> bool:
+    """True for Kokoro-style names (``af_bella``, ``jm_kuma``) vs edge-tts
+    names (``en-US-GuyNeural``).  Lets the edge fallback keep a persona's
+    edge voice instead of dropping every voice on Kokoro failure."""
+    return bool(re.match(r"[a-z][fm]_", voice or ""))
+
+
 def _pcm_to_wav(samples, sample_rate: int) -> bytes:
     """Encode float32 PCM samples (-1..1) from Kokoro into 16-bit mono WAV bytes."""
     import numpy as np
@@ -79,6 +86,7 @@ def _wav_to_ogg(wav: bytes) -> bytes:
         input=wav,
         capture_output=True,
         check=True,
+        timeout=30,  # bound the blocking call so a stuck ffmpeg can't starve the pool
     )
     return proc.stdout
 
@@ -189,10 +197,12 @@ class VoicePipeline:
             try:
                 return await self._synthesize_kokoro(text, voice)
             except Exception:
-                # ``voice`` here is a Kokoro name edge-tts won't recognise — drop
-                # it (voice=None) so the fallback uses the configured edge voice.
+                # A Kokoro voice name means nothing to edge-tts — drop it so the
+                # fallback uses the configured edge voice; but keep a real edge
+                # voice (e.g. a persona's) so its preference survives.
                 log.exception("Kokoro synthesis failed, falling back to edge-tts")
-                return await self._synthesize_edge(text, None)
+                fallback = None if _is_kokoro_voice(voice) else voice
+                return await self._synthesize_edge(text, fallback)
         return await self._synthesize_edge(text, voice)
 
     async def _synthesize_edge(self, text: str, voice: str | None) -> bytes:
