@@ -523,7 +523,7 @@ Voice messages are automatically transcribed using Whisper before being passed t
 You see the transcript as regular text, with a `[voice]` prefix.
 
 ## Sending Voice Responses
-Add `[respond_with_voice]` at the end of your response to trigger TTS.
+Add `[respond_with_voice]` at the end of your response to trigger TTS. Tag the reply's language as an ISO-639-1 code after a colon (`[respond_with_voice:it]`) so the audio uses the right pronunciation; a bare marker falls back to the configured voice's language.
 
 Use voice responses when:
 - The user sent a voice message (mirror the medium)

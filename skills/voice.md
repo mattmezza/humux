@@ -9,6 +9,8 @@ You see the transcript as regular text, with a `[voice]` prefix.
 
 Add `[respond_with_voice]` at the end of your response to trigger TTS.
 
+Always tag the language you wrote the reply in as an ISO-639-1 code after a colon, e.g. `[respond_with_voice:it]` for an Italian reply, `[respond_with_voice:en]` for English, `[respond_with_voice:fr]` for French. This makes the audio use the right pronunciation — without it an Italian reply may be spoken with English phonemes and come out garbled. Supported codes: `en`, `it`, `fr`, `es`, `pt`, `de`, `hi`, `ja`, `zh`. A bare `[respond_with_voice]` still works and falls back to the configured voice's language.
+
 Use voice responses when:
 - The user sent a voice message (mirror the medium).
 - The user explicitly asks for a voice reply.

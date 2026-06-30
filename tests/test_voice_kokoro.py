@@ -173,3 +173,71 @@ def test_preview_edge_voice_ignores_lang(monkeypatch):
     monkeypatch.setattr(p, "_synthesize_edge", fake_edge)
     audio, mime = asyncio.run(p.preview("Hi", "en-US-AvaNeural", "it"))
     assert (audio, mime) == (b"MP3", "audio/mpeg")  # edge path, lang irrelevant
+
+
+# -- Issue #95: reply-language conditioning ---------------------------------
+
+
+def test_kokoro_keeps_voice_swaps_phoneme_lang(monkeypatch):
+    """An English Kokoro voice asked to read Italian keeps the voice but reads
+    with Italian phonemes (accent ok, but intelligible) — issue #95."""
+    monkeypatch.setattr("voice.pipeline._wav_to_ogg", lambda wav: b"OGG")
+    p = _bare_pipeline()
+    p._kokoro = _FakeKokoro()
+    asyncio.run(p.synthesize("Ciao mondo", voice="af_bella", lang="it"))
+    assert p._kokoro.calls == [("Ciao mondo", "af_bella", "it")]  # voice kept, lang=it
+
+
+def test_kokoro_lang_none_derives_from_voice(monkeypatch):
+    """No reply language → Kokoro derives it from the voice prefix (old behavior)."""
+    monkeypatch.setattr("voice.pipeline._wav_to_ogg", lambda wav: b"OGG")
+    p = _bare_pipeline()
+    p._kokoro = _FakeKokoro()
+    asyncio.run(p.synthesize("hi", voice="jf_alpha", lang=None))
+    assert p._kokoro.calls[0][2] == "ja"  # derived from voice, not overridden
+
+
+def test_kokoro_skipped_for_unsupported_lang(monkeypatch):
+    """A reply language Kokoro can't phonemize (German) skips Kokoro entirely and
+    goes to a German edge-tts voice — issue #95."""
+    p = _bare_pipeline()
+    p._kokoro = _FakeKokoro()  # would succeed, but must NOT be used for de
+    seen = {}
+
+    async def fake_edge(text, voice):
+        seen["voice"] = voice
+        return b"EDGE"
+
+    monkeypatch.setattr(p, "_synthesize_edge", fake_edge)
+    asyncio.run(p.synthesize("Hallo Welt", voice="af_bella", lang="de"))
+    assert p._kokoro.calls == []  # Kokoro skipped
+    assert seen["voice"] == "de-DE-KatjaNeural"  # German edge voice
+
+
+def test_edge_swaps_voice_for_mismatched_lang(monkeypatch):
+    """Edge backend: an English voice replying Italian swaps to an Italian voice,
+    since edge voices are locale-locked — issue #95."""
+    p = _bare_pipeline()  # _kokoro None → edge path
+    seen = {}
+
+    async def fake_edge(text, voice):
+        seen["voice"] = voice
+        return b"EDGE"
+
+    monkeypatch.setattr(p, "_synthesize_edge", fake_edge)
+    asyncio.run(p.synthesize("Ciao", voice="en-US-AvaNeural", lang="it"))
+    assert seen["voice"] == "it-IT-ElsaNeural"  # swapped to Italian voice
+
+
+def test_edge_keeps_voice_when_lang_matches(monkeypatch):
+    """No needless swap: an Italian voice replying Italian keeps its voice."""
+    p = _bare_pipeline()
+    seen = {}
+
+    async def fake_edge(text, voice):
+        seen["voice"] = voice
+        return b"EDGE"
+
+    monkeypatch.setattr(p, "_synthesize_edge", fake_edge)
+    asyncio.run(p.synthesize("Ciao", voice="it-IT-DiegoNeural", lang="it"))
+    assert seen["voice"] == "it-IT-DiegoNeural"  # already Italian, kept

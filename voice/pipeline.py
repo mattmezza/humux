@@ -45,6 +45,25 @@ def _is_kokoro_voice(voice: str | None) -> bool:
     return bool(re.match(r"[a-z][fm]_", voice or ""))
 
 
+# Reply language (ISO-639-1) the agent tags onto a voice request →
+# (Kokoro phoneme lang | None, default edge-tts voice).  Issue #95: an Italian
+# reply must not be spoken with English phonemes.  Kokoro reads any language
+# with any voice (accent is fine), so we only swap the phoneme lang; edge-tts
+# voices are locale-locked, so we must swap to a voice in that language.  A
+# ``None`` Kokoro lang means Kokoro can't speak it (e.g. German) → use edge.
+_TTS_LANG: dict[str, tuple[str | None, str]] = {
+    "en": ("en-us", "en-US-AvaNeural"),
+    "it": ("it", "it-IT-ElsaNeural"),
+    "fr": ("fr-fr", "fr-FR-DeniseNeural"),
+    "es": ("es", "es-ES-ElviraNeural"),
+    "pt": ("pt-br", "pt-BR-FranciscaNeural"),
+    "hi": ("hi", "hi-IN-SwaraNeural"),
+    "ja": ("ja", "ja-JP-NanamiNeural"),
+    "zh": ("cmn", "zh-CN-XiaoxiaoNeural"),
+    "de": (None, "de-DE-KatjaNeural"),
+}
+
+
 # Kokoro v1.0 voice names, grouped by language, for the admin voice picker.
 # Free-text fields still accept any name; this is the suggestion/selection list.
 KOKORO_VOICES: tuple[str, ...] = (
@@ -250,29 +269,51 @@ class VoicePipeline:
 
     # -- TTS ----------------------------------------------------------------
 
-    async def synthesize(self, text: str, voice: str | None = None) -> bytes:
+    async def synthesize(
+        self, text: str, voice: str | None = None, lang: str | None = None
+    ) -> bytes:
         """Convert text to speech.  Returns raw audio bytes (MP3 for edge-tts,
         OGG/Opus for Kokoro) — both formats Telegram ``send_voice`` accepts.
 
         ``voice`` overrides the configured default (e.g. an active persona's
-        own voice); empty/None falls back to the backend default.  Kokoro runs
-        on-device; if it fails for any reason we fall back to edge-tts so a
-        reply is never lost (issue #84).
+        own voice); empty/None falls back to the backend default.  ``lang`` is
+        the ISO-639-1 language the agent wrote the reply in (issue #95): Kokoro
+        keeps the voice and reads with that language's phonemes (accent ok),
+        while edge-tts swaps to a locale-matched voice since its voices are
+        locale-locked.  Kokoro runs on-device; if it fails for any reason we
+        fall back to edge-tts so a reply is never lost (issue #84).
         """
         if not self.tts_enabled:
             raise RuntimeError("TTS is disabled in config")
 
         text = clean_for_speech(text)
-        if self._kokoro is not None:
+        kokoro_lang = _TTS_LANG.get(lang, (None,))[0] if lang else None
+        # Use Kokoro unless an explicit reply language is one it can't phonemize
+        # (e.g. German) — then go straight to a matching edge-tts voice.
+        if self._kokoro is not None and (not lang or kokoro_lang is not None):
             try:
-                return await self._synthesize_kokoro(text, voice)
+                return await self._synthesize_kokoro(text, voice, kokoro_lang)
             except Exception:
                 log.exception("Kokoro synthesis failed, falling back to edge-tts")
         # edge-tts path — primary backend, or the Kokoro fallback. edge-tts can't
         # speak a Kokoro voice name (e.g. a persona configured with af_bella while
         # the backend is edge-tts), so drop it to the configured default; keep a
         # real edge voice so its preference survives.
-        return await self._synthesize_edge(text, None if _is_kokoro_voice(voice) else voice)
+        return await self._synthesize_edge(text, self._edge_voice(voice, lang))
+
+    def _edge_voice(self, voice: str | None, lang: str | None) -> str | None:
+        """Resolve the edge-tts voice.  A Kokoro voice name can't drive edge-tts,
+        so drop it to the configured default.  edge voices are locale-locked, so
+        if the reply language (``lang``) doesn't match the chosen voice's locale,
+        swap to a default voice for that language so the audio is intelligible
+        (issue #95)."""
+        base = None if _is_kokoro_voice(voice) else voice
+        if lang:
+            want = _TTS_LANG.get(lang, (None, None))[1]
+            current = base or self.tts_voice
+            if want and not current.lower().startswith(f"{lang}-"):
+                return want
+        return base
 
     async def _synthesize_edge(self, text: str, voice: str | None) -> bytes:
         communicate = edge_tts.Communicate(text, voice or self.tts_voice)

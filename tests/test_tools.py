@@ -132,6 +132,19 @@ def test_strip_voice_marker_removes_marker_unconditionally() -> None:
     assert strip_voice_marker("Hi there [respond_with_voice]") == "Hi there"
     assert strip_voice_marker("[respond_with_voice]") == ""
     assert strip_voice_marker("plain reply") == "plain reply"
+    # The :lang variant (issue #95) is stripped just as unconditionally.
+    assert strip_voice_marker("Ciao [respond_with_voice:it]") == "Ciao"
+    assert strip_voice_marker("[respond_with_voice:en-US]") == ""
+
+
+def test_voice_request_lang_parses_marker() -> None:
+    # The optional :lang suffix tells TTS the reply language (issue #95).
+    from core.agent import voice_request_lang
+
+    assert voice_request_lang("Ciao [respond_with_voice:it]") == "it"
+    assert voice_request_lang("Hi [respond_with_voice:EN-us]") == "en"  # normalized
+    assert voice_request_lang("Hi [respond_with_voice]") is None  # bare marker
+    assert voice_request_lang("no marker here") is None
 
 
 # ---------------------------------------------------------------------------
