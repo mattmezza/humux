@@ -7,11 +7,11 @@ description: Swappable agent identities — character, skills, tools, voice, and
 
 A **persona** is a first-class, swappable identity the agent can take on — a fitness
 coach, a finance assistant, a travel planner — without any bespoke code. It is the same
-idea as the base `character` / `personalia`, made selectable.
+idea as the base `character`, made selectable.
 
 A persona is exactly these things:
 
-- its own **identity** — `personalia` (who the agent is) and `character` (tone & behaviour);
+- its own **identity** — `character` (who the agent is + its tone & behaviour);
 - an optional **agent name** it goes by (e.g. *Forge*), overriding the global assistant name;
 - a **skill allowlist** — which skills it may load (empty = all);
 - a **tool scope** — which function-tools are advertised (empty = all; `load_skill` is always available);
@@ -19,7 +19,7 @@ A persona is exactly these things:
 - a **secret scope** — which [vault](/docs/secrets) secrets it may use, enforced as a reference-only ACL (a persona may use a secret only if it is shared or named in this scope);
 - **tool identities** — its own credentials and sessions for the external CLI tools (its own GitHub token, its own browser profile), so each persona acts as a distinct identity (see [Tool identities](#tool-identities)).
 
-When **no** persona is active, the agent uses the configured `character` / `personalia` from
+When **no** persona is active, the agent uses the configured `character` from
 the **Assistant** tab — so first-run behaviour is unchanged. The default identity *is* the
 Assistant tab; personae are alternatives that replace it when activated.
 
@@ -37,7 +37,8 @@ Personae mirror the [skills](/docs/skills) pipeline:
 ## Markdown format
 
 A persona is a markdown file with YAML frontmatter. Identity lives in the frontmatter as block
-scalars; any markdown body after the frontmatter is appended to `character`.
+scalars; any markdown body after the frontmatter is appended to `character` (which holds
+both who the agent is and its tone).
 
 ```markdown
 ---
@@ -51,13 +52,16 @@ secrets: []
 tool_config:
   gh: {enabled: true}            # uses this persona's own GitHub token
   browser: {enabled: true, profile: forge}
-personalia: |
-  You are a strength & conditioning coach…
 character: |
+  You are a strength & conditioning coach…
+
   ## Tone
   - Direct and motivating. Short, punchy messages.
 ---
 ```
+
+> A legacy `personalia:` key is still accepted — on load it is folded into
+> `character` (prepended), so older persona files keep working.
 
 The file stem is the persona's **slug** (its identifier, e.g. `fitness-coach`). `role` is the
 human label shown in the UI and injected into the prompt (*"acting as the Fitness coach
@@ -110,8 +114,8 @@ An unknown name fails loudly and lists the available personae.
 
 ## How activation affects the prompt
 
-When a persona is active, `_build_system_prompt` swaps in the persona's `personalia` and
-`character`, narrows the advertised skills index to the allowlist (and refuses `load_skill`
+When a persona is active, `_build_system_prompt` swaps in the persona's `character`,
+narrows the advertised skills index to the allowlist (and refuses `load_skill`
 for skills outside it), filters the function-tool set to the tool scope, and uses the
 persona's voice for TTS. Switching applies to **new** turns; an open session keeps its
 snapshotted identity until you send `/new`.

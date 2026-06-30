@@ -11,7 +11,7 @@ A lightweight, self-hosted personal AI agent that runs in a single Docker contai
 - **Skills over code** — instead of hardcoded integrations, the LLM learns to use CLI tools via markdown "skill" files, making the system easy to extend
 - **SQLite for storage** — no database server, just files on disk accessed via `sqlite3` CLI
 - **Two-tier memory** — long-term memories (permanent facts) and short-term context (sliding window with configurable TTL), both stored in SQLite and queried by the LLM via skill files
-- **Character + Personalia** — agent personality is defined in an editable `character.md`, while fixed identity attributes live in an append-only `personalia.md`
+- **Character** — agent identity and personality are defined in an editable `character.md` (this absorbed the former separate `personalia.md` identity file)
 - **Explicit permissions** — nothing happens without your approval (or a pre-approved rule)
 
 ---
@@ -147,7 +147,7 @@ class SkillsEngine:
 
 ### 4.2 System Prompt Integration
 
-Skills, character, personalia, and memories all get injected into the system prompt:
+Skills, character, and memories all get injected into the system prompt:
 
 ```python
 # core/agent.py (excerpt)
@@ -155,16 +155,11 @@ Skills, character, personalia, and memories all get injected into the system pro
 def _build_system_prompt(self, user_context: str) -> str:
     skills_block = self.skills.get_all_skills()
     character = self.config.agent.character
-    personalia = self.config.agent.personalia
     memories = self.memory.format_for_prompt()
 
     return f"""You are {self.config.agent.name}, a personal AI assistant for {self.config.agent.owner_name}.
 
 Today is {datetime.now().strftime('%A, %B %d, %Y')}. Timezone: {self.config.agent.timezone}.
-
-<personalia>
-{personalia}
-</personalia>
 
 <character>
 {character}
@@ -568,15 +563,13 @@ When running scheduled tasks (morning briefing, email checks), be:
 - Group related information together
 ```
 
-### 5.5.1 `personalia.md` — Agent Identity (Append-Only)
+### 5.5.1 Agent Identity (part of `character.md`)
 
-A top-level markdown file that specifies the agent's fixed identity attributes — name, owner, capabilities, strengths, and other facts that don't change. This file is **append-only**: you add to it over time as the agent's capabilities grow, but you never delete or rewrite existing entries. It is loaded into the system prompt alongside `character.md`.
+The agent's fixed identity attributes — name, owner, capabilities, strengths, and other facts that don't change — live in `character.md` under headings like `## Identity`. (These were once a separate, append-only `personalia.md`; that file was merged into `character.md` so identity and behaviour live in one place — a legacy `personalia` key is still folded in on load for backward compatibility.)
 
-The distinction: `character.md` is _how_ the agent behaves (editable, tunable), `personalia.md` is _what_ the agent is (stable, accumulative).
+`character.md` therefore covers both _what_ the agent is and _how_ it behaves. Example identity sections:
 
 ```markdown
-# personalia.md
-
 ## Identity
 - Name: Jarvis
 - Owner: Alex
@@ -608,14 +601,14 @@ The distinction: `character.md` is _how_ the agent behaves (editable, tunable), 
 - 2025-02-17: Initial deployment with email, calendar, contacts, messaging, and voice support
 ```
 
-### 5.5.2 How character.md and personalia.md Differ from Skills
+### 5.5.2 How character.md Differs from Skills
 
-| | Skills (`skills/*.md`) | `character.md` | `personalia.md` |
-|---|---|---|---|
-| **Purpose** | Teach the LLM how to use a specific CLI tool | Define personality and behavioral rules | Define fixed identity attributes |
-| **Mutability** | Replaced when tool changes | Freely editable at any time | Append-only |
-| **Loaded** | Into `<available_skills>` block | Into `<character>` block | Into `<personalia>` block |
-| **Example content** | "Run `himalaya -a personal envelope list`" | "Be concise in chat" | "Name: Jarvis" |
+| | Skills (`skills/*.md`) | `character.md` |
+|---|---|---|
+| **Purpose** | Teach the LLM how to use a specific CLI tool | Define identity, personality, and behavioral rules |
+| **Mutability** | Replaced when tool changes | Freely editable at any time |
+| **Loaded** | Into `<available_skills>` block | Into `<character>` block |
+| **Example content** | "Run `himalaya -a personal envelope list`" | "Name: Jarvis" / "Be concise in chat" |
 
 ### 5.6 `skills/memory.md`
 
@@ -915,7 +908,7 @@ class AgentCore:
         # 1. Load conversation history (stored in agent.db, separate from memories)
         conversation = await self._get_conversation(user_id, channel)
 
-        # 2. Build tools and system prompt (skills, character, personalia, memories injected here)
+        # 2. Build tools and system prompt (skills, character, memories injected here)
         tools = self._build_tool_definitions()
         system = self._build_system_prompt()
 
@@ -1293,8 +1286,7 @@ personal-agent/
 ├── Dockerfile
 ├── requirements.txt
 ├── config.yml                  # Agent config (channels, scheduler, etc.)
-├── character.md                # Agent personality & behavior (editable)
-├── personalia.md               # Agent identity & capabilities (append-only)
+├── character.md                # Agent identity, personality & behavior (editable)
 │
 ├── core/
 │   ├── agent.py                # AgentCore — the brain
@@ -1507,7 +1499,6 @@ services:
       - ./data:/app/data
       - ./config.yml:/app/config.yml:ro
       - ./character.md:/app/character.md
-      - ./personalia.md:/app/personalia.md
       - ./skills:/app/skills:ro
       - ./cli-configs/himalaya.toml:/root/.config/himalaya/config.toml:ro
     env_file: .env
@@ -1615,7 +1606,7 @@ import uvicorn
 async def main():
     config = load_config("config.yml")
 
-    # 1. Initialize core (loads skills, character, personalia, and memory schema automatically)
+    # 1. Initialize core (loads skills, character, and memory schema automatically)
     agent = AgentCore(config)
 
     # 2. Register channels
@@ -1647,7 +1638,7 @@ if __name__ == "__main__":
 | Phase | What | Time Estimate |
 |---|---|---|
 | **1. Foundation** | Agent core + skills engine + executor + Telegram + Claude tool-use loop | 2-3 days |
-| **2. Identity** | `character.md` + `personalia.md` + system prompt injection | 0.5 day |
+| **2. Identity** | `character.md` + system prompt injection | 0.5 day |
 | **3. Memory** | SQLite schema + `skills/memory.md` + sqlite3 integration + consolidation (LLM-based promotion + expired cleanup) | 1-2 days |
 | **4. Email** | Install himalaya, write config + `himalaya-email.md` skill | 1 day |
 | **5. Calendar** | CalDAV helper scripts + `caldav-calendar.md` skill | 1 day |

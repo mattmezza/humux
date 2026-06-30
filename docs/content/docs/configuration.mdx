@@ -198,22 +198,7 @@ In a shared/group chat with several bots and people, decide per message whether 
 
 ### `character.md`
 
-Defines the agent's personality, communication style, and behavioral rules. This file is **freely editable** — modify it anytime to tune the agent's behavior.
-
-```markdown
-## Personality
-- Be concise in chat. Messages should be short and direct.
-- Match the owner's communication style when acting on their behalf.
-- When unsure about an action, ask. When confident and pre-approved, just do it.
-
-## Language
-- Default to English
-- Switch languages when appropriate for the contact
-```
-
-### `personalia.md`
-
-Specifies fixed identity attributes — name, owner, capabilities, strengths. This file is **append-only**: add to it as the agent's capabilities grow, but don't rewrite existing entries.
+Defines the agent's identity, personality, communication style, and behavioral rules — both *who* the agent is and *how* it behaves. This file is **freely editable** — modify it anytime to tune the agent's behavior.
 
 ```markdown
 ## Identity
@@ -221,16 +206,29 @@ Specifies fixed identity attributes — name, owner, capabilities, strengths. Th
 - Owner: Matteo
 - Role: Personal AI assistant
 
+## Personality
+- Be concise in chat. Messages should be short and direct.
+- Match the owner's communication style when acting on their behalf.
+- When unsure about an action, ask. When confident and pre-approved, just do it.
+
 ## Capabilities
 - Can read, search, and send emails via Himalaya CLI
 - Can look up contacts via contacts CLI
 - Can read and create calendar events via CalDAV
+
+## Language
+- Default to English
+- Switch languages when appropriate for the contact
 ```
 
-### How they differ
+> A separate `personalia.md` / `personalia` field used to hold the fixed identity
+> attributes; it was merged into `character` — put that content under a heading
+> like `## Identity` in `character.md` instead.
 
-| | `character.md` | `personalia.md` | Skills |
-|---|---|---|---|
-| **Purpose** | Personality and behavior | Fixed identity attributes | Tool usage instructions |
-| **Mutability** | Freely editable | Append-only | Replaced when tool changes |
-| **Example** | "Be concise in chat" | "Name: Clio" | "Run `himalaya -a personal`..." |
+### How it differs from skills
+
+| | `character.md` | Skills |
+|---|---|---|
+| **Purpose** | Identity, personality, and behavior | Tool usage instructions |
+| **Mutability** | Freely editable | Replaced when tool changes |
+| **Example** | "Be concise in chat" | "Run `himalaya -a personal`..." |

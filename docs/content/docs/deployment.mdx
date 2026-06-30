@@ -30,7 +30,6 @@ cd mpa
 cp .env.example .env
 cp config.yml.example config.yml
 cp character.md.example character.md
-cp personalia.md.example personalia.md
 ```
 
 ### 2. Edit configuration
@@ -78,8 +77,7 @@ The Docker Compose file mounts these paths:
 |-----------|---------------|---------|
 | `./data` | `/app/data` | SQLite databases, Whisper models, sessions |
 | `./config.yml` | `/app/config.yml` | Agent configuration (read-only) |
-| `./character.md` | `/app/character.md` | Agent personality |
-| `./personalia.md` | `/app/personalia.md` | Agent identity |
+| `./character.md` | `/app/character.md` | Agent identity & personality |
 | `./skills` | `/app/skills` | Skill files (read-only) |
 
 The `data/` directory is the only stateful volume. Back it up regularly.

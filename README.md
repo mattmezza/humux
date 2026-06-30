@@ -58,7 +58,6 @@ cd mpa
 cp .env.example .env
 cp config.yml.example config.yml
 cp character.md.example character.md
-cp personalia.md.example personalia.md
 ```
 
 Edit `.env` with your API keys and secrets. Edit `config.yml` to customize the agent name, owner, channels, calendar providers, and scheduled jobs.
@@ -94,8 +93,7 @@ MPA uses a dual-layer config system:
 |------|---------|
 | `.env` | API keys and secrets |
 | `config.yml` | Agent settings, channels, calendar, scheduler jobs |
-| `character.md` | Agent personality and communication style (editable) |
-| `personalia.md` | Agent identity facts — name, owner, context (append-only) |
+| `character.md` | Agent identity, personality, and communication style (editable) |
 | `skills/*.md` | Skill documents that teach the agent how to use tools |
 | `personae/*.md` | Persona definitions — swappable agent identities (starter gallery) |
 
@@ -171,7 +169,7 @@ Create new skills by adding `.md` files to `skills/`, through the admin UI's ski
 python3 /app/tools/skills.py upsert --name my-skill --stdin
 ```
 
-Behavior and identity are configured in `character.md.example` and `personalia.md.example`.
+Behavior and identity are configured in `character.md.example`.
 
 ## WhatsApp
 

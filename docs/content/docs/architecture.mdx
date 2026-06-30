@@ -70,7 +70,7 @@ The agent becomes a **thin orchestrator**: it reads skill files, passes them to 
 The brain of MPA. Implements the LLM tool-use loop:
 
 1. Load conversation history
-2. Build the static system prompt (character, personalia, active tools). In session mode this is snapshotted once per conversation (rebuilt after `/new`) and reused every turn, so the cacheable prefix stays stable; on Anthropic it is sent with a `cache_control` breakpoint so the tools + system prefix is not reprocessed each turn
+2. Build the static system prompt (character, active tools). In session mode this is snapshotted once per conversation (rebuilt after `/new`) and reused every turn, so the cacheable prefix stays stable; on Anthropic it is sent with a `cache_control` breakpoint so the tools + system prefix is not reprocessed each turn
 3. Inject the live date/time, the skills index, the fresh relevance-ranked memories + task reflections, and any per-request execution plan at the start of the current user message — so the agent always knows "now" and sees skills/memories added mid-session, without mutating the cached prefix. (The skills index and memories live here, not in the snapshot, so a skill created mid-session — e.g. via skill-creator — or a fact extracted mid-session reaches the model on the very next turn instead of waiting for `/new`.) In session mode the skills index is skipped only when that exact block is already present in the replayed history (so the model still sees it); once a `/new` or compaction drops it, or a new/rebound skill changes it, it is re-sent — so unchanged turns with the block still in history cost nothing extra. When `agent.skills_index_mode` is `"on_demand"` the block carries only a short pointer instead of the full list, and the model fetches entries lazily via the `search_skills`/`list_skills` tools (see [Skills](/docs/skills#serving-the-index-on-demand)) — the same lazy pattern the secrets vault uses for `list_secrets`.
 4. Call the LLM
 5. Handle tool calls with permission checks
@@ -124,7 +124,7 @@ Channel handler (telegram.py / whatsapp.py)
     ▼
 Agent Core (agent.py)
     ├── Load history from SQLite
-    ├── Build static system prompt (character + personalia + tools)
+    ├── Build static system prompt (character + tools)
     ├── Build per-turn preamble (date/time + skills index + memories + reflections)
     ├── Call LLM with tools
     │     │
