@@ -46,8 +46,8 @@
 
   {# Character #}
   <div class="card" x-data="{ charResult: '', charOk: false }">
-    <h2 class="text-base mb-1">Character</h2>
-    <p class="text-muted text-xs mb-3">Defines <em>how</em> the agent behaves — tone, decision-making style, language rules. Markdown format.</p>
+    <h2 class="text-base mb-1">Character &amp; tone</h2>
+    <p class="text-muted text-xs mb-3">Defines <em>who</em> the agent is and <em>how</em> it behaves — identity, tone, decision-making style, language rules. Markdown format.</p>
     <textarea class="textarea" id="char-editor"
               style="min-height:300px; font-size:0.8rem; line-height:1.5; tab-size:2"
               @keydown.tab.prevent="
@@ -76,41 +76,6 @@
     </div>
     <template x-if="charResult">
       <div :class="charOk ? 'alert-success' : 'alert-error'" class="mt-2" x-text="charResult"></div>
-    </template>
-  </div>
-
-  {# Personalia #}
-  <div class="card" x-data="{ persResult: '', persOk: false }">
-    <h2 class="text-base mb-1">Personalia</h2>
-    <p class="text-muted text-xs mb-3">Defines <em>what</em> the agent is — identity, capabilities, limitations, history. Markdown format.</p>
-    <textarea class="textarea" id="pers-editor"
-              style="min-height:300px; font-size:0.8rem; line-height:1.5; tab-size:2"
-              @keydown.tab.prevent="
-                const start = $el.selectionStart;
-                const end = $el.selectionEnd;
-                $el.value = $el.value.substring(0, start) + '  ' + $el.value.substring(end);
-                $el.selectionStart = $el.selectionEnd = start + 2;
-              ">{{ personalia }}</textarea>
-    <div class="flex justify-end mt-3">
-      <button class="btn-primary btn-sm"
-              @click="
-                fetch('/config/personalia', {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': 'Bearer ' + (localStorage.getItem('admin_api_key') || '')
-                  },
-                  body: JSON.stringify({content: document.getElementById('pers-editor').value})
-                })
-                .then(r => { persOk = r.ok; return r.json(); })
-                .then(d => { persResult = persOk ? 'Personalia saved' : (d.detail || 'Error'); })
-                .catch(e => { persOk = false; persResult = e.message; })
-              ">
-        Save personalia
-      </button>
-    </div>
-    <template x-if="persResult">
-      <div :class="persOk ? 'alert-success' : 'alert-error'" class="mt-2" x-text="persResult"></div>
     </template>
   </div>
 

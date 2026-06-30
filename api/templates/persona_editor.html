@@ -87,15 +87,9 @@
       </div>
 
       <div class="card">
-        <label class="label">Personalia <span class="text-muted">— who the agent is in this persona</span></label>
-        <textarea class="textarea" x-model="personalia" style="min-height:160px; font-size:0.8rem; line-height:1.5"
-                  placeholder="You are a strength &amp; conditioning coach…"></textarea>
-      </div>
-
-      <div class="card">
-        <label class="label">Character <span class="text-muted">— tone & behaviour</span></label>
-        <textarea class="textarea" x-model="character" style="min-height:200px; font-size:0.8rem; line-height:1.5"
-                  placeholder="## Tone&#10;- Direct and motivating…"></textarea>
+        <label class="label">Character &amp; tone <span class="text-muted">— who the agent is + tone & behaviour</span></label>
+        <textarea class="textarea" x-model="character" style="min-height:260px; font-size:0.8rem; line-height:1.5"
+                  placeholder="You are a strength &amp; conditioning coach…&#10;&#10;## Tone&#10;- Direct and motivating…"></textarea>
       </div>
     </div>
 
@@ -206,7 +200,7 @@
   <div x-show="mode === 'raw'" class="card">
     <label class="label">Markdown (YAML frontmatter)</label>
     <textarea class="textarea" x-model="raw" style="min-height:460px; font-size:0.8rem; line-height:1.5; tab-size:2"></textarea>
-    <p class="hint">Saving in raw mode parses this document directly — frontmatter keys (role, emoji, voice, bot_token, allowed_user_ids, skills, tools, secrets, personalia, character).</p>
+    <p class="hint">Saving in raw mode parses this document directly — frontmatter keys (role, emoji, voice, bot_token, allowed_user_ids, skills, tools, secrets, character).</p>
   </div>
 
   <div class="flex items-center gap-2 mt-3">
@@ -230,7 +224,6 @@
       previewLang: '',
       bot_token: {{ persona.bot_token|tojson }},
       allowedUserIds: {{ (persona.allowed_user_ids|join(', '))|tojson }},
-      personalia: {{ persona.personalia|tojson }},
       character: {{ persona.character|tojson }},
       skills: {{ persona.skills|tojson }},
       tools: {{ persona.tools|tojson }},
@@ -293,7 +286,6 @@
           'tools: ' + list(this.tools) + '\n' +
           'secrets: ' + list(secrets) + '\n' +
           'tool_config: ' + JSON.stringify(this.buildToolConfig()) + '\n' +
-          'personalia: |\n  ' + esc(this.personalia) + '\n' +
           'character: |\n  ' + esc(this.character) + '\n' +
           '---\n';
       },
@@ -313,7 +305,7 @@
           : {
               name: name, agent_name: this.agent_name, role: this.role,
               emoji: this.emoji, voice: this.voice,
-              personalia: this.personalia, character: this.character,
+              character: this.character,
               skills: this.skills, tools: this.tools,
               secrets: this.secretsText.split('\n').map(s => s.trim()).filter(Boolean),
               bot_token: this.bot_token, allowed_user_ids: this.allowedUserIds,

@@ -561,7 +561,6 @@ class PersonaUpsertIn(BaseModel):
     role: str = ""
     emoji: str = ""
     voice: str = ""
-    personalia: str = ""
     character: str = ""
     skills: list[str] = []
     tools: list[str] = []
@@ -765,7 +764,6 @@ def create_admin_app(
     # Keys managed by dedicated tabs — excluded from the generic Config tab.
     _IDENTITY_KEYS = {
         "agent.character",
-        "agent.personalia",
         "agent.name",
         "agent.owner_name",
         "agent.timezone",
@@ -1028,7 +1026,6 @@ def create_admin_app(
         from voice.pipeline import KOKORO_LANGUAGES, KOKORO_VOICES
 
         character = await config_store.get("agent.character") or ""
-        personalia = await config_store.get("agent.personalia") or ""
         agent_name = await config_store.get("agent.name") or ""
         stt_model = await config_store.get("voice.stt_model") or "base"
         tts_voice = await config_store.get("voice.tts_voice") or "en-US-AvaNeural"
@@ -1038,7 +1035,6 @@ def create_admin_app(
         return _render_partial(
             "partials/identity.html",
             character=character,
-            personalia=personalia,
             agent_name=agent_name,
             stt_model=stt_model,
             tts_voice=tts_voice,
@@ -1954,18 +1950,6 @@ def create_admin_app(
         await config_store.set("agent.character", content)
         return {"updated": "agent.character"}
 
-    @app.get("/config/personalia", dependencies=[Depends(auth)])
-    async def get_personalia() -> dict:
-        value = await config_store.get("agent.personalia") or ""
-        return {"content": value}
-
-    @app.post("/config/personalia", dependencies=[Depends(auth)])
-    async def put_personalia(request: Request) -> dict:
-        body = await request.json()
-        content = body.get("content", "")
-        await config_store.set("agent.personalia", content)
-        return {"updated": "agent.personalia"}
-
     @app.get("/config/you-personalia", dependencies=[Depends(auth)])
     async def get_you_personalia() -> dict:
         value = await config_store.get("you.personalia") or ""
@@ -2686,7 +2670,6 @@ def create_admin_app(
                 role=body.role.strip(),
                 emoji=body.emoji.strip(),
                 voice=body.voice.strip(),
-                personalia=body.personalia,
                 character=body.character,
                 skills=[s.strip() for s in body.skills if s.strip()],
                 tools=[t.strip() for t in body.tools if t.strip()],
@@ -3117,7 +3100,7 @@ def create_admin_app(
 
     @app.post("/setup/step/identity")
     async def setup_save_identity(request: Request) -> HTMLResponse:
-        """Handle identity step form submission with character/personalia seeding."""
+        """Handle identity step form submission with default character seeding."""
         from core.config_store import SETUP_STEPS
 
         form_data = await request.form()
@@ -3131,7 +3114,8 @@ def create_admin_app(
             "agent.timezone": timezone,
         }
 
-        # Seed default character
+        # Seed default character — identity + tone (personalia merged in, #98)
+        today = datetime.now().strftime("%Y-%m-%d")
         values["agent.character"] = "\n".join(
             [
                 "# Character",
@@ -3169,14 +3153,6 @@ def create_admin_app(
                 "- Be brief and scannable.",
                 "- Only flag truly important items.",
                 "- Group related information together.",
-            ]
-        )
-
-        # Seed default personalia
-        today = datetime.now().strftime("%Y-%m-%d")
-        values["agent.personalia"] = "\n".join(
-            [
-                "# Personalia",
                 "",
                 "## Identity",
                 "",
