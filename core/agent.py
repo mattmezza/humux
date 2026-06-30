@@ -259,13 +259,14 @@ TOOLS = [
     },
     {
         "name": "send_message",
-        "description": "Send a message to a contact via Telegram or WhatsApp.",
+        "description": "Send a message to a contact via Telegram. "
+        "For WhatsApp, use the wacli CLI via run_command (`wacli send text`).",
         "input_schema": {
             "type": "object",
             "properties": {
                 "channel": {
                     "type": "string",
-                    "enum": ["telegram", "whatsapp"],
+                    "enum": ["telegram"],
                     "description": "Which messaging channel to use",
                 },
                 "to": {"type": "string", "description": "Recipient identifier (chat ID or phone)"},

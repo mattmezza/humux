@@ -43,7 +43,6 @@ install_log_buffer()
 async def _start_agent(config_store: ConfigStore):
     """Build and start the full agent (channels, scheduler, voice)."""
     from channels.telegram import TelegramChannel
-    from channels.whatsapp import WhatsAppChannel
     from core.agent import AgentCore
     from core.config import TelegramConfig
     from voice.pipeline import VoicePipeline
@@ -132,14 +131,9 @@ async def _start_agent(config_store: ConfigStore):
             )
             await _start_tg(pconf, f"telegram:{persona.name}", f"telegram:{persona.name}")
 
-        # -- WhatsApp --
-        if config.channels.whatsapp.enabled:
-            from core.wacli import WacliManager
-
-            wacli = WacliManager()
-            wa = WhatsAppChannel(config.channels.whatsapp, agent, wacli=wacli)
-            agent.channels["whatsapp"] = wa
-            log.info("WhatsApp channel enabled (wacli)")
+        # WhatsApp is a tool now (#97), not a channel: the agent reads/sends via
+        # the `wacli` CLI through run_command. Linking/sync live on the admin app's
+        # WacliManager (api/admin.py); no inbound channel to start here.
 
         # -- Scheduler --
         await agent.scheduler.load_jobs()

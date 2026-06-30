@@ -95,6 +95,23 @@ Some sites with strong bot-management may still block headless automation.
 </tool>"""
 
 
+# Advertisement injected into the system prompt when `whatsapp` is active (#97).
+_WHATSAPP_PROMPT = """<tool name="whatsapp">
+WhatsApp is available through the `wacli` CLI — run it with the `run_command` tool.
+Read operations (sync, messages, contacts, chats, groups) run without asking;
+sending a message asks for confirmation first.
+Send a message:
+  wacli --json send text --to <jid> --message "..."
+Read (sync first whenever checking for new/recent messages):
+  wacli --json sync --once --idle-exit 5s
+  wacli --json messages list --limit 20
+  wacli --json messages search "invoice" --chat <jid>
+  wacli --json contacts search "Marco"
+JIDs: users are `<phone>@s.whatsapp.net` (digits only, no `+`); groups `<id>@g.us`.
+Run `load_skill wacli-whatsapp` for the full command reference.
+</tool>"""
+
+
 @dataclass(frozen=True)
 class ToolSpec:
     """Describes an optional external tool the agent can use."""
@@ -114,6 +131,20 @@ def _gh_env(config: Config) -> dict[str, str]:
         # `gh` reads GH_TOKEN (preferred) / GITHUB_TOKEN for non-interactive auth.
         return {"GH_TOKEN": gh.token}
     return {}
+
+
+def _whatsapp_env(config: Config) -> dict[str, str]:
+    wa = config.tools.whatsapp
+    if not wa.enabled:
+        return {}
+    # Identity knobs for the wacli store. Per-persona overrides ride #93's
+    # per-persona tool_env on top of these defaults.
+    env: dict[str, str] = {}
+    if wa.store:
+        env["WACLI_STORE"] = wa.store
+    if wa.device_label:
+        env["WACLI_DEVICE_LABEL"] = wa.device_label
+    return env
 
 
 def _browser_env(config: Config) -> dict[str, str]:
@@ -142,6 +173,13 @@ _REGISTRY: tuple[ToolSpec, ...] = (
         summary="Let the agent read JS-heavy pages and act on sites via a headless browser.",
         env=_browser_env,
         prompt=lambda _cfg: _BROWSER_PROMPT,
+    ),
+    ToolSpec(
+        key="whatsapp",
+        label="WhatsApp (wacli)",
+        summary="Let the agent read and send WhatsApp messages via the local wacli CLI.",
+        env=_whatsapp_env,
+        prompt=lambda _cfg: _WHATSAPP_PROMPT,
     ),
 )
 

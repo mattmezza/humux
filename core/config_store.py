@@ -79,7 +79,6 @@ SETUP_STEPS = [
     "identity",
     "persona",
     "telegram",
-    "whatsapp",
     "email",
     "calendar",
     "search",
