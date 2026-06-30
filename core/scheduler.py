@@ -243,10 +243,45 @@ class AgentScheduler:
         self.scheduler = AsyncIOScheduler(timezone=self.tz)
 
     async def load_jobs(self) -> None:
-        """Load all active jobs from JobStore into APScheduler."""
+        """Load all active jobs from JobStore into APScheduler.
+
+        Past one-shots (whose ``run_at`` has already elapsed, e.g. while the
+        agent was down) are retired to ``done`` rather than registered, so they
+        drop out of the active jobs list instead of lingering forever.
+        """
         jobs = await self.job_store.list_jobs(status="active")
         for job in jobs:
+            if await self._retire_if_past(job):
+                continue
             self._register_job(job)
+
+    def _resolve_run_at(self, job: dict) -> datetime | None:
+        """Parse a one-shot job's ``run_at`` into a tz-aware datetime.
+
+        Returns ``None`` when absent or unparseable. Naive datetimes are
+        assumed to be in the configured timezone.
+        """
+        run_at_str = job.get("run_at")
+        if not run_at_str:
+            return None
+        try:
+            run_at = datetime.fromisoformat(run_at_str)
+        except ValueError:
+            return None
+        if run_at.tzinfo is None:
+            run_at = run_at.replace(tzinfo=self.tz)
+        return run_at
+
+    async def _retire_if_past(self, job: dict) -> bool:
+        """Mark an active, past one-shot job as ``done``. Returns True if retired."""
+        if job.get("schedule") != "once" or job.get("status") != "active":
+            return False
+        run_at = self._resolve_run_at(job)
+        if run_at is not None and run_at < datetime.now(self.tz):
+            await self.job_store.update_status(job["id"], "done")
+            log.info("One-shot job %r is in the past; marked done", job["id"])
+            return True
+        return False
 
     def _register_job(self, job: dict) -> None:
         """Register a single job dict into APScheduler."""
@@ -260,24 +295,13 @@ class AgentScheduler:
 
         try:
             if schedule == "once":
-                run_at_str = job.get("run_at")
-                if not run_at_str:
-                    log.warning("One-shot job %r has no run_at; skipping", job_id)
+                run_at = self._resolve_run_at(job)
+                if run_at is None:
+                    log.warning("One-shot job %r has no/invalid run_at; skipping", job_id)
                     return
-                try:
-                    run_at = datetime.fromisoformat(run_at_str)
-                except ValueError:
-                    log.warning(
-                        "One-shot job %r has invalid run_at %r; skipping", job_id, run_at_str
-                    )
-                    return
-                # Treat naive datetimes as being in the configured timezone
-                if run_at.tzinfo is None:
-                    run_at = run_at.replace(tzinfo=self.tz)
-                # Skip one-shots in the past
+                # Skip one-shots in the past (retired to done by _retire_if_past)
                 if run_at < datetime.now(self.tz):
-                    log.info("One-shot job %r is in the past; marking done", job_id)
-                    # Can't await here, but we'll handle it in load_jobs
+                    log.info("One-shot job %r is in the past; skipping", job_id)
                     return
 
                 if job_type == "system":
@@ -399,6 +423,8 @@ class AgentScheduler:
         # If the job is still active, re-register it
         job = await self.job_store.get_job(job_id)
         if job and job["status"] == "active":
+            if await self._retire_if_past(job):
+                return
             self._register_job(job)
         elif job:
             log.info("Job %r has status %r; removed from scheduler", job_id, job["status"])
