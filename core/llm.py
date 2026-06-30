@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import contextvars
 import importlib
 import json
 import logging
+import time
+from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Any, cast
 
@@ -14,6 +17,50 @@ from anthropic import AsyncAnthropic
 # the REPL bumps it to INFO to stream reasoning live without spamming server logs.
 reasoning_log = logging.getLogger("core.llm.reasoning")
 reasoning_log.setLevel(logging.WARNING)
+
+# ── Inference-payload capture (admin Inspect tab, #99) ─────────────────────
+# Last full request sent to the model, per conversation context — the exact
+# system prompt + history window + tool defs that ran. In-memory only, bounded;
+# the agent sets the context for a turn, generate() records the payload, the
+# admin Inspect tab reads it back. ponytail: process-global dict, fine for one
+# agent process; move onto the agent instance if multi-tenant ever lands.
+_CtxKey = "tuple[str, str, str]"  # (channel, user_id, chat_id)
+_capture_ctx: contextvars.ContextVar = contextvars.ContextVar("mpa_llm_capture_ctx", default=None)
+_LAST_SENT: OrderedDict[tuple[str, str, str], dict[str, Any]] = OrderedDict()
+_CAPTURE_CAP = 100  # ponytail: LRU cap; bump if you watch >100 live chats
+
+
+def set_capture_context(ctx: tuple[str, str, str] | None) -> Any:
+    """Bind the conversation context that generate() should record under.
+
+    Pass ``None`` to suppress capture (e.g. subagents, which run inside the
+    spawner's context but must not overwrite its captured payload). Returns a
+    token for :func:`reset_capture_context`."""
+    return _capture_ctx.set(ctx)
+
+
+def reset_capture_context(token: Any) -> None:
+    _capture_ctx.reset(token)
+
+
+def record_sent_payload(ctx: tuple[str, str, str] | None, payload: dict[str, Any]) -> None:
+    """Store ``payload`` as the last-sent request for ``ctx`` (no-op if None)."""
+    if ctx is None:
+        return
+    _LAST_SENT[ctx] = payload
+    _LAST_SENT.move_to_end(ctx)
+    while len(_LAST_SENT) > _CAPTURE_CAP:
+        _LAST_SENT.popitem(last=False)
+
+
+def get_sent_payload(ctx: tuple[str, str, str]) -> dict[str, Any] | None:
+    return _LAST_SENT.get(ctx)
+
+
+def clear_captured() -> None:
+    """Drop all captured payloads (used by tests)."""
+    _LAST_SENT.clear()
+
 
 _DEFAULT_BASE_URLS = {
     "google": "https://generativelanguage.googleapis.com/v1beta/openai",
@@ -271,6 +318,21 @@ class LLMClient:
         # Collapse any run of consecutive user turns (group rooms record silent
         # turns between replies, #30) so the array honours strict alternation.
         messages = _coalesce_user_messages(messages)
+        # Snapshot the exact request for the Inspect tab (#99). Shallow-copy the
+        # lists so the caller's later mutations (tool-result ping-pong) don't edit
+        # what we stored; each generate() overwrites, so the slot holds last-sent.
+        record_sent_payload(
+            _capture_ctx.get(),
+            {
+                "captured_at": time.time(),
+                "provider": self.provider,
+                "model": resolved_model,
+                "max_tokens": max_tokens,
+                "system": system,
+                "messages": list(messages),
+                "tools": list(tools),
+            },
+        )
         if self.provider == "anthropic":
             client_any = cast(Any, self._client)
             messages_client = cast(Any, getattr(client_any, "messages"))  # type: ignore[attr-defined]

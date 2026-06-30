@@ -28,7 +28,13 @@ from core.goal_decomposition import DecomposedGoal, classify_complexity, decompo
 from core.history import ConversationHistory
 from core.imagegen import ImageBudget
 from core.job_store import JobStore
-from core.llm import LLMClient, LLMToolCall, model_supports_vision
+from core.llm import (
+    LLMClient,
+    LLMToolCall,
+    model_supports_vision,
+    reset_capture_context,
+    set_capture_context,
+)
 from core.log_streams import set_stream, subagent_stream
 from core.memory import MemoryStore
 from core.models import IMAGE_MIME_TYPES, AgentResponse, Attachment
@@ -1129,8 +1135,25 @@ class AgentCore:
                 prompt=system,
             )
 
-        if self.history_mode == "session":
-            return await self._process_session(
+        # Record every generate() this turn under this context so the admin
+        # Inspect tab can show the exact last-sent payload (#99). Reset in finally
+        # so a context never leaks onto an unrelated later turn on the same task.
+        cap_token = set_capture_context((channel, user_id, chat_id))
+        try:
+            if self.history_mode == "session":
+                return await self._process_session(
+                    system,
+                    preamble,
+                    message,
+                    channel,
+                    user_id,
+                    attachments,
+                    chat_id,
+                    tools,
+                    persona,
+                    message_id,
+                )
+            return await self._process_injection(
                 system,
                 preamble,
                 message,
@@ -1142,18 +1165,8 @@ class AgentCore:
                 persona,
                 message_id,
             )
-        return await self._process_injection(
-            system,
-            preamble,
-            message,
-            channel,
-            user_id,
-            attachments,
-            chat_id,
-            tools,
-            persona,
-            message_id,
-        )
+        finally:
+            reset_capture_context(cap_token)
 
     async def _resolve_persona(self, channel: str, user_id: str, chat_id: str) -> Persona | None:
         """Resolve the active persona for this request, in precedence order:
@@ -2920,8 +2933,15 @@ class AgentCore:
         ``[subagent:<label>]`` so it filters out of the shared stream; ``fallback``
         names the stream for a top-level scheduled run that inherited none.
         """
-        with subagent_stream(run.persona or run.run_id, fallback=run.persona):
-            return await self._run_subagent_loop_inner(task, child_persona, child_state, run)
+        # Suppress Inspect capture (#99): a subagent runs inside the spawner's
+        # contextvar but is a different conversation — don't clobber the parent's
+        # last-sent payload with the child's.
+        cap_token = set_capture_context(None)
+        try:
+            with subagent_stream(run.persona or run.run_id, fallback=run.persona):
+                return await self._run_subagent_loop_inner(task, child_persona, child_state, run)
+        finally:
+            reset_capture_context(cap_token)
 
     async def _run_subagent_loop_inner(
         self, task: str, child_persona: Persona | None, child_state: dict, run: SubagentRun
