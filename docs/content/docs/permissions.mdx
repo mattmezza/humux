@@ -76,6 +76,22 @@ For `run_command` actions, the full CLI command is included after the colon. Thi
 "run_command:sqlite3*/app/data/memory.db*SELECT*": "ALWAYS"
 ```
 
+## Per-persona scoping
+
+Rules are scoped per [persona](/docs/personae). Each persona/agent has its own ruleset layered over a global **Default** scope that every persona falls back to:
+
+- A persona-specific rule **overrides** a Default rule for the same action — so a `coach` persona can be allowed to `git push` while `finance` still has to ask.
+- Any action a persona has **no** rule for resolves through the Default ruleset (which is where the shipped defaults live). Personae without explicit rules behave exactly as before.
+- The hard `NEVER` rails and the wildcard/shell-injection guards apply within whichever ruleset is in effect.
+
+When the agent runs under a persona, its approvals are learned into that persona's scope only — approving a command for `coach` never silently widens it for everyone.
+
+```
+Default scope:   "run_command:git*push*"  → ASK     (shipped default)
+coach scope:     "run_command:git*push*"  → ALWAYS  (override; coach only)
+finance scope:   (no rule)                → falls back to Default → ASK
+```
+
 ## Approval flow
 
 When the agent wants to perform an action with `ASK` permission, it sends a message through the originating channel (typically Telegram) with inline keyboard buttons:
@@ -104,7 +120,7 @@ Agent: Added rule: send_email to simge@example.com → ALWAYS
 
 ### Via admin UI
 
-Navigate to Permissions in the admin UI to view, add, edit, and delete rules.
+Navigate to Permissions in the admin UI to view, add, edit, and delete rules. The scope picker at the top selects which ruleset you're editing — **Default** (every persona's fallback) or a specific persona's own overrides.
 
 ### Via config
 
