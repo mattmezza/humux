@@ -651,7 +651,8 @@ def format_approval_message(tool_name: str, params: dict) -> str:
         subject = params.get("subject", "?")
         return f"Send email to {to}\nSubject: {subject}"
     if tool_name == "reply_email":
-        account = params.get("account", "?")
+        # account is optional now — persona-routed when omitted (#110).
+        account = params.get("account") or "the persona's default account"
         msg_id = params.get("message_id", "?")
         return f"Reply to message {msg_id} on {account}"
     if tool_name == "send_message":

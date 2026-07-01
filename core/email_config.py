@@ -150,9 +150,12 @@ async def materialize_himalaya_config(config_store) -> bool:
     resolve = getattr(config_store, "vault_resolve", None)
     content = providers_to_toml(providers, resolve)
 
+    # 0600: the file holds resolved account passwords, so keep it owner-only (#110).
     HIMALAYA_CONFIG_PATH.write_text(content)
+    HIMALAYA_CONFIG_PATH.chmod(0o600)
     HIMALAYA_XDG_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
     HIMALAYA_XDG_CONFIG_PATH.write_text(content)
+    HIMALAYA_XDG_CONFIG_PATH.chmod(0o600)
     log.info(
         "Materialized Himalaya config (%d accounts) to %s", len(providers), HIMALAYA_CONFIG_PATH
     )
