@@ -159,7 +159,7 @@ def build_prompt_sections(
     # the configured default is used, so first-run behaviour with no agent is
     # unchanged. (personalia was merged into character in #98.)
     character_text = agent.character if agent else cfg.character
-    # A agent may go by its own name; otherwise the globally-configured name.
+    # An agent may go by its own name; otherwise the globally-configured name.
     agent_name = agent.agent_name if agent and agent.agent_name else cfg.name
 
     intro = (

@@ -254,7 +254,7 @@ class PermissionEngine:
     Rules are scoped per agent/agent (#100): each agent slug has its own
     ruleset layered over the global default scope (``""``). ``self.rules`` is the
     default set (seeded from :data:`DEFAULT_RULES` + persisted ``scope=''`` rows);
-    ``self.scoped`` holds each agent's overrides. A agent-specific rule wins
+    ``self.scoped`` holds each agent's overrides. An agent-specific rule wins
     over a default rule of the same pattern; everything else falls back.
     """
 

@@ -9,7 +9,7 @@ A **agent** is a first-class, swappable identity the agent can take on — a fit
 coach, a finance assistant, a travel planner — without any bespoke code. It is the same
 idea as the base `character`, made selectable.
 
-A agent is exactly these things:
+An agent is exactly these things:
 
 - its own **identity** — `character` (who the agent is + its tone & behaviour);
 - an optional **agent name** it goes by (e.g. *Forge*), overriding the global assistant name;
@@ -38,7 +38,7 @@ Agents mirror the [skills](/docs/skills) pipeline:
 
 ## Markdown format
 
-A agent is a markdown file with YAML frontmatter. Identity lives in the frontmatter as block
+An agent is a markdown file with YAML frontmatter. Identity lives in the frontmatter as block
 scalars; any markdown body after the frontmatter is appended to `character` (which holds
 both who the agent is and its tone).
 
@@ -79,7 +79,7 @@ agent as a card below, marking the active one. From there you can:
   checkboxes, secret scope) with a **raw markdown** toggle for power users;
 - **rename** an agent's slug in the editor — the new slug is cascaded to everything that
   references it (per-chat bindings, private memories, scheduled jobs, the active selection,
-  and the `telegram:<slug>` bot channel), so no association is lost. A agent with its own
+  and the `telegram:<slug>` bot channel), so no association is lost. An agent with its own
   bot needs an agent restart afterwards so the bot re-registers under the new slug;
 - **create** or **delete** agents.
 
@@ -172,12 +172,12 @@ Supported tools:
 
 | Tool | Per-agent identity |
 |------|----------------------|
-| `gh` (GitHub) | Pick the agent's identity explicitly with **GitHub identity → Personal Access Token or GitHub App** (raw frontmatter `gh: {enabled: true, auth: "pat"}` or `auth: "app"`). **PAT:** type a new token (stored encrypted in the **infra vault**, machine-key so it works headless and in [scheduled jobs](/docs/scheduler), namespaced `GH_TOKEN_<SLUG>`) or reuse an existing infra-vault secret (`gh: {auth: "pat", token_secret: SOME_INFRA_SECRET}`). **GitHub App:** give the agent its **own** app — `gh: {auth: "app", app_id: "123", installation_id: "456", private_key_secret: SOME_PEM_SECRET}` (paste the PEM as an infra secret first, then reference it) — so it runs as a distinct `<app>[bot]`. Leave the app fields blank to use the system-wide App bot. So you can run **multiple apps, one per agent**, mixed freely with PAT agents. A agent **never** borrows the owner's PAT. Optionally set an **allowed repos** list (`gh: {..., repos: [owner/a, owner/b]}`) — a best-effort `--repo` gate; the app installation's own repo selection is the hard boundary, and a subagent can only narrow this list, never widen it. |
+| `gh` (GitHub) | Pick the agent's identity explicitly with **GitHub identity → Personal Access Token or GitHub App** (raw frontmatter `gh: {enabled: true, auth: "pat"}` or `auth: "app"`). **PAT:** type a new token (stored encrypted in the **infra vault**, machine-key so it works headless and in [scheduled jobs](/docs/scheduler), namespaced `GH_TOKEN_<SLUG>`) or reuse an existing infra-vault secret (`gh: {auth: "pat", token_secret: SOME_INFRA_SECRET}`). **GitHub App:** give the agent its **own** app — `gh: {auth: "app", app_id: "123", installation_id: "456", private_key_secret: SOME_PEM_SECRET}` (paste the PEM as an infra secret first, then reference it) — so it runs as a distinct `<app>[bot]`. Leave the app fields blank to use the system-wide App bot. So you can run **multiple apps, one per agent**, mixed freely with PAT agents. An agent **never** borrows the owner's PAT. Optionally set an **allowed repos** list (`gh: {..., repos: [owner/a, owner/b]}`) — a best-effort `--repo` gate; the app installation's own repo selection is the hard boundary, and a subagent can only narrow this list, never widen it. |
 | `browser` | The agent's own **profile** — an isolated Chromium session dir, so its logged-in sessions don't leak to other agents. Used by default (the agent need not pass `--profile`). Blank = the agent slug. |
 
 How it flows into the agent: when an agent runs `run_command`, its tool environment is
 swapped in for that call, and the `<tools>` section of the system prompt notes which
-identity is active (*"`gh` is authenticated with this agent's own token"*). A agent
+identity is active (*"`gh` is authenticated with this agent's own token"*). An agent
 with **no** `tool_config` entry for a tool inherits the system config unchanged, so existing
 setups keep working.
 
@@ -217,7 +217,7 @@ Each binding carries an **access level** and, for email, a **sender identity** f
 - **sender identity** (email only, at most one) — the account the agent sends *from* by
   default; automatically read/write (you cannot send from a read-only account).
 
-**A agent with no bindings has no email, calendar, or contacts access** — the safe default.
+**An agent with no bindings has no email, calendar, or contacts access** — the safe default.
 `send_email`, `reply_email`, `create_calendar_event`, `search_contacts`, and `create_contact`
 route to the agent's bound account automatically: they default to the sender identity / a
 writable calendar / a bound contacts book, so the model rarely passes an `account` at all. A

@@ -7,7 +7,7 @@
   <div class="flex items-center justify-between gap-2 mb-4 flex-wrap">
     <div>
       <h1 class="text-xl text-accent">{% if is_new %}New Agent{% else %}Edit Agent{% endif %}</h1>
-      <p class="text-muted text-xs mt-1">A agent is a swappable identity: its own character, the skills and tools it may use, and its voice.</p>
+      <p class="text-muted text-xs mt-1">An agent is a swappable identity: its own character, the skills and tools it may use, and its voice.</p>
     </div>
     <div class="flex items-center gap-1 text-xs">
       <button class="btn btn-sm" :class="mode === 'guided' && 'btn-primary'" @click="mode = 'guided'">Guided</button>
@@ -24,7 +24,7 @@
             <label class="label">Name (slug)</label>
             <input class="input-sm" x-model="name" placeholder="fitness-coach">
             {% if not is_new %}
-            <p class="hint" x-show="name.trim() !== originalName">Renaming moves this agent's chat bindings, private memories and scheduled jobs to the new slug. A agent with its own bot needs an agent restart afterwards.</p>
+            <p class="hint" x-show="name.trim() !== originalName">Renaming moves this agent's chat bindings, private memories and scheduled jobs to the new slug. An agent with its own bot needs an agent restart afterwards.</p>
             {% endif %}
           </div>
           <div>

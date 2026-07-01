@@ -454,7 +454,7 @@ async def test_search_and_list_skills_dispatch_scoped(agent) -> None:
     await agent.skills.store.upsert_skill("email", "# email\nsend and read email")
     await agent.skills.store.upsert_skill("weather", "# weather\nfetch the forecast")
 
-    # A agent allowlisted to email only must not discover weather (#50 scoping).
+    # An agent allowlisted to email only must not discover weather (#50 scoping).
     rs = agent._new_request_state(Agent(name="p", skills=["email"]))
 
     search = await agent._execute_tool(

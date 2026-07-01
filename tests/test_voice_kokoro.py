@@ -116,7 +116,7 @@ def test_synthesize_edge_backend_drops_kokoro_voice(monkeypatch):
 
 
 def test_synthesize_fallback_keeps_edge_voice(monkeypatch):
-    """A agent's valid edge-tts voice must survive a Kokoro failure (#84)."""
+    """An agent's valid edge-tts voice must survive a Kokoro failure (#84)."""
     p = _bare_pipeline()
     p._kokoro = _FakeKokoro(raise_it=True)
     seen = {}

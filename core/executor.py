@@ -182,7 +182,7 @@ class ToolExecutor:
             # wacli: identify the linked device as MPA (matches the Docker ENV).
             if wants_wacli_label:
                 env.setdefault("WACLI_DEVICE_LABEL", "MPA")
-            # A agent-scoped override is authoritative over the registry's managed
+            # An agent-scoped override is authoritative over the registry's managed
             # keys: strip any it didn't set so an agent can't inherit a tool
             # credential (e.g. GH_TOKEN from .env) its policy dropped (#93).
             if agent_scoped:

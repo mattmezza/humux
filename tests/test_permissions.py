@@ -229,7 +229,7 @@ async def test_always_allow_button_never_creates_bare_rule(tmp_path) -> None:
 
 
 def test_scoped_rule_overrides_default() -> None:
-    # A agent rule wins over a default rule for the same action; other agents
+    # An agent rule wins over a default rule for the same action; other agents
     # and the default scope are unaffected.
     engine = PermissionEngine()
     assert engine.check("send_message", {}) == PermissionLevel.ASK  # default

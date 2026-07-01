@@ -56,7 +56,7 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-# A agent slug becomes part of a channel name (``telegram:<slug>``) and a URL
+# An agent slug becomes part of a channel name (``telegram:<slug>``) and a URL
 # path (``/admin/agents/<slug>``), so it must avoid ':' , '/' and whitespace.
 # Capped at 64 chars so it can't bloat every channel string it is embedded in.
 _VALID_SLUG = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
@@ -3058,7 +3058,7 @@ def create_admin_app(
         The slug is a foreign key without a DB constraint: per-chat bindings,
         private memory scope, scheduled jobs, the active-agent selection and the
         ``telegram:<slug>`` bot channel all reference it by value, so each is
-        repointed here (#69). A agent with its own bot needs an agent restart for
+        repointed here (#69). An agent with its own bot needs an agent restart for
         the bot to re-register under the new slug.
         """
         content_type = request.headers.get("content-type", "")
@@ -3078,7 +3078,7 @@ def create_admin_app(
         if await store.get(old) is None:
             raise HTTPException(404, f"Agent not found: {old}")
         if await store.get(new) is not None:
-            raise HTTPException(409, f"A agent named '{new}' already exists")
+            raise HTTPException(409, f"An agent named '{new}' already exists")
         # ponytail: best-effort cascade across the separate SQLite DBs — no cross-DB
         # transaction. The references are repointed first and the agents PK row is
         # renamed LAST, so if any step fails the old slug still fully resolves and the

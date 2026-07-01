@@ -89,7 +89,7 @@ async def test_agent_browser_profile_injected(agent: AgentCore, monkeypatch) -> 
 
 
 async def test_agent_without_tool_config_inherits(agent: AgentCore, monkeypatch) -> None:
-    # A agent that never configured tools still gets the owner token (migration:
+    # An agent that never configured tools still gets the owner token (migration:
     # unchanged behaviour until you opt an agent in).
     plain = Agent(name="plain")
     cap = await _run(agent, plain, monkeypatch)
@@ -113,6 +113,6 @@ async def test_subagent_keeps_agent_tool_identity(agent: AgentCore) -> None:
     parent_state = agent._new_request_state(None)
     enabled = Agent(name="hopper", tool_config={"gh": {"enabled": True}})
     assert agent._narrow_agent(enabled, parent_state).tool_setting("gh") == {"enabled": True}
-    # A agent explicitly DENIED gh stays denied as a subagent.
+    # An agent explicitly DENIED gh stays denied as a subagent.
     denied = Agent(name="lingua", tool_config={"gh": {"enabled": False}})
     assert agent._narrow_agent(denied, parent_state).tool_setting("gh") == {"enabled": False}

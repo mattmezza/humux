@@ -195,7 +195,7 @@ def _agent_gh_token(
     * ``auth=""`` (legacy/inferred) → PAT if it has one, else own App, else the
       system App bot.
 
-    A agent NEVER falls back to the owner's PAT (#93 no-borrow): only its own
+    An agent NEVER falls back to the owner's PAT (#93 no-borrow): only its own
     credentials or the App bot (which is not the owner) are ever used.
     """
     auth = (gh.get("auth") or "").strip().lower()
@@ -448,7 +448,7 @@ def effective_tool_env(
       to no token rather than silently borrowing the owner's.
     * ``browser`` — set ``BROWSER_PROFILE`` to the agent's isolated profile.
 
-    A agent with no entry for a tool inherits the system config unchanged, so
+    An agent with no entry for a tool inherits the system config unchanged, so
     existing setups keep working (migration §6).
     """
     env = tool_env(config)

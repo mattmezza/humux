@@ -901,7 +901,7 @@ TOOLS = [
 def _agent_scope(agent: Agent | None) -> str:
     """The memory scope key for an active agent (#42).
 
-    A agent's own name is its private scope; no agent (default identity) =
+    An agent's own name is its private scope; no agent (default identity) =
     ``""`` = shared only.
     """
     return agent.name if agent else ""

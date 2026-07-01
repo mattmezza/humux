@@ -567,7 +567,7 @@ class MemoryStore:
 
     async def rename_scope(self, old: str, new: str) -> None:
         """Move an agent's private memories to a new scope key after the agent
-        slug is renamed (#69). A agent's scope key is its slug (see #42)."""
+        slug is renamed (#69). An agent's scope key is its slug (see #42)."""
         await self._ensure_schema()
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute("UPDATE long_term SET scope = ? WHERE scope = ?", (new, old))
