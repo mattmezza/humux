@@ -26,7 +26,7 @@
         <p class="text-amber-600 text-xs mt-1" x-show="{{ level }} && !modelSupportsThinking({{ model }})">Heads up: “<span x-text="{{ model }}"></span>” isn't a recognized reasoning model — only set a level if you know it supports thinking, or the inference call may error.</p>
       </div>
 {%- endmacro %}
-<div class="space-y-6" x-data="llmTab(
+<div x-data="llmTab(
   {{ provider|default('anthropic', true)|tojson|forceescape }},
   {{ anthropic_api_key|default('', true)|tojson|forceescape }},
   {{ model|default('', true)|tojson|forceescape }},
@@ -75,9 +75,17 @@
   {{ temperature|default('0.5', true)|tojson|forceescape }},
   {{ tr_max_reflections|default('12', true)|tojson|forceescape }}
 )">
+  {# Sub-tabs (issue #114): split the crowded LLM settings into three views. #}
+  <div class="flex border-b border-border mb-4 overflow-x-auto">
+    <button type="button" class="tab-link" :class="section === 'sysprompt' && 'tab-link-active'" @click="setSection('sysprompt')">SysPrompt</button>
+    <button type="button" class="tab-link" :class="section === 'inference' && 'tab-link-active'" @click="setSection('inference')">Inference</button>
+    <button type="button" class="tab-link" :class="section === 'providers' && 'tab-link-active'" @click="setSection('providers')">Providers</button>
+  </div>
+
+  <div class="space-y-6" x-show="section === 'sysprompt'">
   <div class="card">
     <h2 class="text-base mb-1">System Prompt Controls</h2>
-    <p class="text-muted text-xs mb-4">Preview the full assembled system prompt, edit override blocks, compare against defaults, and optionally capture recent runtime prompts.</p>
+    <p class="text-muted text-xs mb-4">Preview the full assembled system prompt, edit override blocks, compare against defaults, and optionally capture recent runtime prompts. Debugging a live run? The <button type="button" class="text-accent hover:underline" @click="$dispatch('switch-tab', 'inspect')">Inspect</button> tab shows the exact last-sent payload per chat.</p>
 
     <form class="space-y-4" @submit.prevent>
       <div class="space-y-2">
@@ -195,7 +203,9 @@
       </template>
     </div>
   </div>
+  </div>{# /sysprompt #}
 
+  <div class="space-y-6" x-show="section === 'inference'" style="display:none">
   <div class="card">
     <h2 class="text-base mb-1">Active Inference Provider</h2>
     <p class="text-muted text-xs mb-4">Select the provider used for agent inference after testing its connection.</p>
@@ -219,7 +229,7 @@
             <option :value="item.value"></option>
           </template>
         </datalist>
-        <p class="text-muted text-xs mt-1">Type any model id, or pick from the list. Use “Fetch models” in the provider card below to load the live list from the API.</p>
+        <p class="text-muted text-xs mt-1">Type any model id, or pick from the list. Use “Fetch models” in the provider card on the <button type="button" class="text-accent hover:underline" @click="setSection('providers')">Providers</button> tab to load the live list from the API.</p>
 
         {# Native-vision indicator + one-tap vision-fallback prompt. #}
         <p class="text-muted text-xs mt-1" x-show="model && modelSupportsVision(model, provider)">
@@ -264,15 +274,6 @@
                   },
                   body: JSON.stringify({values: {
                     'agent.llm_provider': provider,
-                    'agent.anthropic_api_key': apiKey,
-                    'agent.openai_api_key': openaiKey,
-                    'agent.openai_base_url': openaiBaseUrl,
-                    'agent.google_api_key': googleKey,
-                    'agent.google_base_url': googleBaseUrl,
-                    'agent.grok_api_key': grokKey,
-                    'agent.grok_base_url': grokBaseUrl,
-                    'agent.deepseek_api_key': deepseekKey,
-                    'agent.deepseek_base_url': deepseekBaseUrl,
                     'agent.model': model,
                     'agent.thinking_level': thinkingLevel,
                     'agent.max_tokens': String(maxTokens),
@@ -691,7 +692,12 @@
       <div :class="visionResultOk ? 'alert-success' : 'alert-error'" class="mt-2" x-text="visionResult"></div>
     </template>
   </div>
+  </div>{# /inference #}
 
+  <div class="space-y-6" x-show="section === 'providers'" style="display:none">
+  <div class="mb-2 rounded border border-border bg-muted/10 px-3 py-2 text-muted text-xs">
+    🔒 Provider API keys are stored in the <strong>Secrets</strong> vault on save — only a <code>${vault:NAME}</code> reference is kept in config, never the raw key. Manage or reuse them from the <button type="button" class="text-accent hover:underline" @click="$dispatch('switch-tab', 'secrets')">Secrets</button> tab.
+  </div>
   <div class="card">
     <h2 class="text-base mb-1">Anthropic</h2>
     <p class="text-muted text-xs mb-4">Configure the Anthropic API key and test the connection.</p>
@@ -701,7 +707,7 @@
         <input type="text" class="input-sm" style="max-width:500px; display:none"
                autocomplete="username" aria-hidden="true" tabindex="-1">
         {% if anthropic_vaulted %}
-        <div class="text-xs text-muted py-1" style="max-width:500px">🔒 Stored in the <strong>Secrets</strong> vault — manage it there.</div>
+        <div class="text-xs text-muted py-1" style="max-width:500px">🔒 Stored in the <strong>Secrets</strong> vault as <code>${vault:ANTHROPIC_API_KEY}</code> for easy reuse — manage it from the <button type="button" class="text-accent hover:underline" @click="$dispatch('switch-tab', 'secrets')">Secrets</button> tab.</div>
         {% else %}
         <input type="password" class="input-sm" style="max-width:500px"
                autocomplete="new-password"
@@ -746,6 +752,7 @@
                 .then(d => {
                   result = resultOk ? 'Anthropic settings saved' : (d.detail || 'Error');
                   if (resultOk && window.showToast) { window.showToast('Anthropic settings saved'); }
+                  if (resultOk) { reloadLlmPartial(); }
                 })
                 .catch(e => { resultOk = false; result = e.message; })
               ">
@@ -761,7 +768,7 @@
       <div>
         <label class="label">OpenAI API Key</label>
         {% if openai_vaulted %}
-        <div class="text-xs text-muted py-1" style="max-width:500px">🔒 Stored in the <strong>Secrets</strong> vault — manage it there.</div>
+        <div class="text-xs text-muted py-1" style="max-width:500px">🔒 Stored in the <strong>Secrets</strong> vault as <code>${vault:OPENAI_API_KEY}</code> for easy reuse — manage it from the <button type="button" class="text-accent hover:underline" @click="$dispatch('switch-tab', 'secrets')">Secrets</button> tab.</div>
         {% else %}
         <input type="password" class="input-sm" style="max-width:500px"
                autocomplete="new-password"
@@ -812,6 +819,7 @@
                 .then(d => {
                   result = resultOk ? 'OpenAI settings saved' : (d.detail || 'Error');
                   if (resultOk && window.showToast) { window.showToast('OpenAI settings saved'); }
+                  if (resultOk) { reloadLlmPartial(); }
                 })
                 .catch(e => { resultOk = false; result = e.message; })
               ">
@@ -827,7 +835,7 @@
       <div>
         <label class="label">Google API Key</label>
         {% if google_vaulted %}
-        <div class="text-xs text-muted py-1" style="max-width:500px">🔒 Stored in the <strong>Secrets</strong> vault — manage it there.</div>
+        <div class="text-xs text-muted py-1" style="max-width:500px">🔒 Stored in the <strong>Secrets</strong> vault as <code>${vault:GOOGLE_API_KEY}</code> for easy reuse — manage it from the <button type="button" class="text-accent hover:underline" @click="$dispatch('switch-tab', 'secrets')">Secrets</button> tab.</div>
         {% else %}
         <input type="password" class="input-sm" style="max-width:500px"
                autocomplete="new-password"
@@ -878,6 +886,7 @@
                 .then(d => {
                   result = resultOk ? 'Google settings saved' : (d.detail || 'Error');
                   if (resultOk && window.showToast) { window.showToast('Google settings saved'); }
+                  if (resultOk) { reloadLlmPartial(); }
                 })
                 .catch(e => { resultOk = false; result = e.message; })
               ">
@@ -893,7 +902,7 @@
       <div>
         <label class="label">Grok API Key</label>
         {% if grok_vaulted %}
-        <div class="text-xs text-muted py-1" style="max-width:500px">🔒 Stored in the <strong>Secrets</strong> vault — manage it there.</div>
+        <div class="text-xs text-muted py-1" style="max-width:500px">🔒 Stored in the <strong>Secrets</strong> vault as <code>${vault:GROK_API_KEY}</code> for easy reuse — manage it from the <button type="button" class="text-accent hover:underline" @click="$dispatch('switch-tab', 'secrets')">Secrets</button> tab.</div>
         {% else %}
         <input type="password" class="input-sm" style="max-width:500px"
                autocomplete="new-password"
@@ -944,6 +953,7 @@
                 .then(d => {
                   result = resultOk ? 'Grok settings saved' : (d.detail || 'Error');
                   if (resultOk && window.showToast) { window.showToast('Grok settings saved'); }
+                  if (resultOk) { reloadLlmPartial(); }
                 })
                 .catch(e => { resultOk = false; result = e.message; })
               ">
@@ -959,7 +969,7 @@
       <div>
         <label class="label">DeepSeek API Key</label>
         {% if deepseek_vaulted %}
-        <div class="text-xs text-muted py-1" style="max-width:500px">🔒 Stored in the <strong>Secrets</strong> vault — manage it there.</div>
+        <div class="text-xs text-muted py-1" style="max-width:500px">🔒 Stored in the <strong>Secrets</strong> vault as <code>${vault:DEEPSEEK_API_KEY}</code> for easy reuse — manage it from the <button type="button" class="text-accent hover:underline" @click="$dispatch('switch-tab', 'secrets')">Secrets</button> tab.</div>
         {% else %}
         <input type="password" class="input-sm" style="max-width:500px"
                autocomplete="new-password"
@@ -1010,6 +1020,7 @@
                 .then(d => {
                   result = resultOk ? 'DeepSeek settings saved' : (d.detail || 'Error');
                   if (resultOk && window.showToast) { window.showToast('DeepSeek settings saved'); }
+                  if (resultOk) { reloadLlmPartial(); }
                 })
                 .catch(e => { resultOk = false; result = e.message; })
               ">
@@ -1017,4 +1028,5 @@
       </button>
     </div>
   </div>
+  </div>{# /providers #}
 </div>

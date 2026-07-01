@@ -518,13 +518,16 @@ async def test_patch_config_preserves_vault_ref(tmp_path) -> None:
     assert "agent.anthropic_api_key" not in resp.json()["updated"]  # dropped, not written
     assert await cs.get("agent.anthropic_api_key") == "${vault:ANTHROPIC_API_KEY}"
     assert await cs.get("agent.model") == "claude-x"  # non-secret still saved
-    # Re-entering a real key still works (guard only drops blank/echoed writes).
+    # Re-entering a real key now auto-vaults it (#114): the config keeps only the
+    # reference and the vault value is updated in place — plaintext never lands
+    # in config.
     client.patch(
         "/config",
         json={"values": {"agent.anthropic_api_key": "sk-new-plaintext"}},
         headers=_auth(),
     )
-    assert await cs.get("agent.anthropic_api_key") == "sk-new-plaintext"
+    assert await cs.get("agent.anthropic_api_key") == "${vault:ANTHROPIC_API_KEY}"
+    assert await s.get_infra_secret("ANTHROPIC_API_KEY") == "sk-new-plaintext"
 
 
 # ── Safe UI collapse (issue #35) ───────────────────────────────────────────
@@ -535,7 +538,10 @@ async def test_llm_tab_collapses_vaulted_key(admin_client) -> None:
     await cs.set("agent.anthropic_api_key", "${vault:ANTHROPIC_API_KEY}")
     body = client.get("/partials/llm", headers=_auth()).text
     assert "Stored in the" in body  # read-only vault note shown
-    assert "${vault:ANTHROPIC_API_KEY}" not in body  # ref never shipped to the browser
+    # The note names the vault ref for reuse (#114); the secret VALUE is never
+    # rendered and the editable key input is collapsed away.
+    assert "${vault:ANTHROPIC_API_KEY}" in body
+    assert 'x-model="apiKey"' not in body  # anthropic input replaced by the note
     assert 'x-model="openaiKey"' in body  # other providers still editable
 
 
@@ -591,3 +597,43 @@ async def test_delete_channel_preserves_vaulted_token(admin_client) -> None:
     assert resp.status_code == 200
     assert await cs.get("channels.telegram.bot_token") == "${vault:TELEGRAM_BOT_TOKEN}"
     assert await cs.get("channels.telegram.enabled") == "false"  # still disabled
+
+
+async def test_llm_provider_key_autovaults_on_save(tmp_path) -> None:
+    """A freshly-typed LLM provider key is vaulted, never stored plaintext (#114)."""
+    db = str(tmp_path / "config.db")
+    cs = ConfigStore(db_path=db)
+    await cs.set_setup_step("done")
+    await cs.set_admin_password("testpw")
+    s = SecretStore(db_path=db, infra_vault=InfraVault("test-machine-key"))
+    app, _ = create_admin_app(AgentState(), cs, secret_store=s)
+    client = TestClient(app)
+
+    resp = client.patch(
+        "/config",
+        json={"values": {"agent.anthropic_api_key": "sk-ant-secret"}},
+        headers=_auth(),
+    )
+    assert resp.status_code == 200
+    # Config keeps only the reference; the raw key lives in the vault.
+    assert await cs.get("agent.anthropic_api_key") == "${vault:ANTHROPIC_API_KEY}"
+    assert await s.get_infra_secret("ANTHROPIC_API_KEY") == "sk-ant-secret"
+    # A later blank save (the vaulted field submits empty) must not orphan the ref.
+    client.patch("/config", json={"values": {"agent.anthropic_api_key": ""}}, headers=_auth())
+    assert await cs.get("agent.anthropic_api_key") == "${vault:ANTHROPIC_API_KEY}"
+
+
+async def test_llm_provider_key_plaintext_without_machine_key(tmp_path) -> None:
+    """No machine key -> fall back to plaintext config instead of crashing (#114)."""
+    db = str(tmp_path / "config.db")
+    cs = ConfigStore(db_path=db)
+    await cs.set_setup_step("done")
+    await cs.set_admin_password("testpw")
+    s = SecretStore(db_path=db)  # no infra vault -> not available
+    app, _ = create_admin_app(AgentState(), cs, secret_store=s)
+    client = TestClient(app)
+    resp = client.patch(
+        "/config", json={"values": {"agent.openai_api_key": "sk-plain"}}, headers=_auth()
+    )
+    assert resp.status_code == 200
+    assert await cs.get("agent.openai_api_key") == "sk-plain"

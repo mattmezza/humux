@@ -115,6 +115,12 @@
     function llmTab(provider, apiKey, model, openaiKey, openaiBaseUrl, googleKey, googleBaseUrl, grokKey, grokBaseUrl, deepseekKey, deepseekBaseUrl, extractionProvider, extractionModel, consolidationProvider, consolidationModel, gdEnabled, gdProvider, gdModel, trEnabled, trProvider, trModel, promptToolUsageOverride, promptHistoryOverride, defaultToolUsage, defaultHistoryHandling, promptCaptureEnabled, compactionProvider, compactionModel, thinkingLevel, extractionThinkingLevel, consolidationThinkingLevel, gdThinkingLevel, trThinkingLevel, compactionThinkingLevel, visionEnabled, visionProvider, visionModel, rdEnabled, rdProvider, rdModel, rdThinkingLevel, rdGroupOnly, rdMaxReplies, rdWindowSeconds, maxTokens, temperature, trMaxReflections) {
       const currentProvider = provider || 'anthropic';
       return {
+        // Sub-tab within the LLM tab (issue #114): sysprompt | inference | providers.
+        // Persisted so switching away and back, or a partial reload after a
+        // provider save, lands on the same sub-tab.
+        section: (() => { try { return localStorage.getItem('llm_section') || 'sysprompt'; } catch (e) { return 'sysprompt'; } })(),
+        setSection(s) { this.section = s; try { localStorage.setItem('llm_section', s); } catch (e) {} },
+        reloadLlmPartial() { if (window.htmx) { htmx.ajax('GET', '/partials/llm', {target: '#tab-content', swap: 'innerHTML'}); } },
         providerOptions: [
           {value: 'anthropic', label: 'Anthropic'},
           {value: 'openai', label: 'OpenAI'},

@@ -828,23 +828,47 @@ def create_admin_app(
             return await config_store.export_to_config(vault_resolve=secret_store.infra_resolve)
         return await config_store.export_to_config()
 
-    async def _preserve_vault_refs(values: dict) -> dict:
-        """Drop blank/echoed writes to vault-managed secret keys.
+    # LLM provider credential keys that auto-migrate into the vault on save
+    # (issue #114). Base URLs are not secrets and stay as plaintext config.
+    _AUTOVAULT_KEYS = {
+        "agent.anthropic_api_key",
+        "agent.openai_api_key",
+        "agent.google_api_key",
+        "agent.grok_api_key",
+        "agent.deepseek_api_key",
+    }
 
-        Once a credential is migrated its tab shows a read-only "managed in
-        vault" field that submits empty (or echoes the ref). Without this guard
-        that save would overwrite the ``${vault:NAME}`` reference and orphan the
-        secret. A real, freshly-typed value (non-empty, not a ``${…}`` ref) is
-        always allowed through, so re-entering a key still works.
+    async def _preserve_vault_refs(values: dict) -> dict:
+        """Guard vault-managed secret keys on write.
+
+        * Auto-vault (issue #114): a freshly-typed LLM provider key is encrypted
+          into the infra vault and its config value replaced with a
+          ``${vault:NAME}`` reference, so no plaintext provider credential ever
+          lands in the config store. Falls back to plaintext only when no
+          machine key is configured.
+        * Preserve (issue #35): once a credential lives in the vault its tab
+          shows a read-only note that submits empty (or echoes the ref); dropping
+          those writes stops them orphaning the ``${vault:NAME}`` reference. A
+          real, freshly-typed value is always allowed through, so re-entering a
+          key still works.
         """
         from core.secret_store import INFRA_VAULT_KEYS
 
         out = dict(values)
-        for key in INFRA_VAULT_KEYS:
+        for key, vname in INFRA_VAULT_KEYS.items():
             if key not in out:
                 continue
             incoming = str(out[key])
             if incoming and not incoming.startswith("${"):
+                if (
+                    key in _AUTOVAULT_KEYS
+                    and secret_store is not None
+                    and secret_store.infra.available
+                ):
+                    await secret_store.set_infra_secret(
+                        vname, incoming, f"saved from LLM settings ({key})"
+                    )
+                    out[key] = f"${{vault:{vname}}}"
                 continue
             if _is_vault_ref(await config_store.get(key)):
                 del out[key]

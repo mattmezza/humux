@@ -276,6 +276,17 @@ class TestVoicePreview:
         assert "Coding harness" in resp.text
         assert "workspace.directory" in resp.text
 
+    def test_llm_partial_has_three_subtabs(self):
+        # Issue #114: the LLM tab is split into SysPrompt / Inference / Providers
+        # sub-tabs, with a link to the Inspect tab for debugging.
+        client = _client(setup_complete=True)
+        resp = client.get("/partials/llm", headers=AUTH)
+        assert resp.status_code == 200
+        for sec in ("sysprompt", "inference", "providers"):
+            assert f"setSection('{sec}')" in resp.text
+            assert f"section === '{sec}'" in resp.text
+        assert "$dispatch('switch-tab', 'inspect')" in resp.text  # SysPrompt -> Inspect
+
     def test_llm_partial_has_vision_fallback(self):
         client = _client(setup_complete=True)
         resp = client.get("/partials/llm", headers=AUTH)
