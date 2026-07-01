@@ -17,7 +17,8 @@ A persona is exactly these things:
 - a **tool scope** — which function-tools are advertised (empty = all; `load_skill` is always available);
 - a **voice** — a TTS voice override (empty = the configured default);
 - a **secret scope** — which [vault](/docs/secrets) secrets it may use, enforced as a reference-only ACL (a persona may use a secret only if it is shared or named in this scope);
-- **tool identities** — its own credentials and sessions for the external CLI tools (its own GitHub token, its own browser profile), so each persona acts as a distinct identity (see [Tool identities](#tool-identities)).
+- **tool identities** — its own credentials and sessions for the external CLI tools (its own GitHub token, its own browser profile), so each persona acts as a distinct identity (see [Tool identities](#tool-identities));
+- **email & calendar accounts** — which mail/calendar accounts it may use, at `read` or `read_write`, with an optional send identity (empty = no access; see [Email & calendar accounts](#email--calendar-accounts)).
 
 When **no** persona is active, the agent uses the configured `character` from
 the **Assistant** tab — so first-run behaviour is unchanged. The default identity *is* the
@@ -191,6 +192,68 @@ per-persona token requires a master key (configure one in the **Secrets** tab fi
 > Per-persona `gh` isolation assumes **token-based** auth. A shared `gh auth login` writes
 > credentials to `~/.config/gh` (a shared HOME), which token env vars can't override — so
 > authenticate `gh` via per-persona tokens here, not an interactive login.
+
+## Email & calendar accounts
+
+Each persona declares which email and calendar **accounts** it may use, and at what level
+([#110](https://github.com/mattmezza/mpa/issues/110)). The accounts themselves live in the
+**Email** and **Calendar** tabs (the registry); a persona simply **binds** to some of them.
+
+Two shapes of account, one model:
+
+- **Agent-owned** — the persona has its own dedicated mailbox / calendar (e.g. a cheap
+  one-mailbox-per-persona provider). It sends, receives, and schedules as itself.
+- **User-owned (delegated)** — the persona is granted access to *your* personal or work
+  account. Access is per-persona and per-account: persona A may have read-only on your
+  personal inbox, persona B read/write on your work calendar, persona C nothing at all.
+
+Each binding carries an **access level** and, for email, a **sender identity** flag:
+
+- **read** — the persona may read that account only.
+- **read/write** — it may also send email / create calendar events through it.
+- **sender identity** (email only, at most one) — the account the persona sends *from* by
+  default; automatically read/write (you cannot send from a read-only account).
+
+**A persona with no bindings has no email or calendar access** — the safe default. `send_email`,
+`reply_email`, and `create_calendar_event` route to the persona's bound account automatically:
+they default to the sender identity / a writable calendar, so the model rarely passes an
+`account` at all. A call to an unbound account, or a *send* on a read-only binding, is refused
+with a clear error. Which accounts the persona holds (names + levels, never credentials) is
+listed in its per-turn prompt, so it routes without guessing and can answer *"what email
+accounts does the fitness persona have?"* on the go.
+
+In the persona editor, the **Email & calendar accounts** card lists every configured account
+with a **None / Read / Read & write** selector and — for email — a **sender** radio. In raw
+markdown the frontmatter keys are:
+
+```yaml
+email_accounts:
+  - account: fitness-agent      # a name from the Email tab
+    access_level: read_write
+    is_sender_identity: true
+  - account: personal           # delegated, read-only access to your inbox
+    access_level: read
+calendar_accounts:
+  - account: fitness-agent
+    access_level: read_write
+```
+
+**Credentials never touch the model.** An account's password lives in config (encrypted at
+rest) or, better, in the [infra vault](/docs/secrets) referenced as `${vault:NAME}` in the
+account's password field — resolved only when the Himalaya email config is materialised, so it
+reaches the CLI but never the prompt, chat, or logs. Binding levels are enforced at the tool
+boundary, and **subagents inherit-never-widen**: a subagent can reach only accounts its parent
+persona holds, at an equal or lower level.
+
+> **Upgrade note:** before #110 any persona could use any configured account. On the first
+> start after upgrading, every existing persona that has no bindings yet is granted read/write
+> access to all existing accounts (the first email account becomes its sender identity), so
+> nothing breaks. Personae you create afterwards start with **no** access — bind accounts to
+> them explicitly.
+
+> **Test connection.** Adding an account in the Email/Calendar tabs offers provider presets
+> (Purelymail, Gmail, Fastmail; generic CalDAV) and a **Test connection** button that verifies
+> IMAP/SMTP/CalDAV login before you save — completable on a phone in under a minute.
 
 ## Bot-per-persona
 

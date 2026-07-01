@@ -45,6 +45,11 @@ channels:
     bridge_url: "local-wacli"
     allowed_numbers: "${WHATSAPP_ALLOWED_NUMBERS}"
 
+# Each account below is a registry entry. Personae bind to accounts by name with a
+# read / read_write access level (Persona editor → "Email & calendar accounts", or the
+# email_accounts / calendar_accounts frontmatter keys). A persona with no bindings has no
+# email/calendar access. Passwords may be ${vault:NAME} references (infra vault) so the
+# credential never sits in config or the model's context. See /docs/personae.
 calendar:
   providers:
     - name: "google"
