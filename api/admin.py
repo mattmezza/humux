@@ -1380,6 +1380,12 @@ def create_admin_app(
         gh_enabled = gh_enabled if gh_enabled is not None else "false"
         gh_token = await config_store.get("tools.gh.token") or ""
         gh_token_vaulted = _is_vault_ref(gh_token)
+        # GitHub App (#111) — App ID + Installation ID are non-secret; the PEM
+        # private key is vault-backed like the PAT.
+        gh_app_id = await config_store.get("tools.gh.app_id") or ""
+        gh_installation_id = await config_store.get("tools.gh.installation_id") or ""
+        gh_private_key = await config_store.get("tools.gh.private_key") or ""
+        gh_key_vaulted = _is_vault_ref(gh_private_key)
 
         browser_enabled = await config_store.get("tools.browser.enabled")
         browser_enabled = browser_enabled if browser_enabled is not None else "false"
@@ -1444,6 +1450,10 @@ def create_admin_app(
             gh_enabled=gh_enabled,
             gh_token="" if gh_token_vaulted else gh_token,
             gh_token_vaulted=gh_token_vaulted,
+            gh_app_id=gh_app_id,
+            gh_installation_id=gh_installation_id,
+            gh_private_key="" if gh_key_vaulted else gh_private_key,
+            gh_key_vaulted=gh_key_vaulted,
             browser_enabled=browser_enabled,
             browser_headless=browser_headless,
             browser_cdp=browser_cdp,
@@ -1483,8 +1493,34 @@ def create_admin_app(
 
     @app.post("/tools/gh/test", dependencies=[Depends(auth)])
     async def test_gh_tool(request: Request) -> dict:
-        """Verify a GitHub token by calling the GitHub API as that token."""
+        """Verify GitHub auth — a PAT (default) or a GitHub App (#111)."""
         body = await request.json()
+        if str(body.get("mode", "pat")).strip().lower() == "app":
+            app_id = str(body.get("app_id", "")).strip()
+            installation_id = str(body.get("installation_id", "")).strip()
+            private_key = str(body.get("private_key", "")).strip()
+            if not private_key:
+                # Masked/vaulted key submits blank → verify with the stored one.
+                stored = await config_store.get("tools.gh.private_key") or ""
+                if _is_vault_ref(stored):
+                    private_key = (await _resolved_config()).tools.gh.private_key
+                else:
+                    private_key = stored
+            if not (app_id and installation_id and private_key):
+                return {
+                    "ok": False,
+                    "error": "App ID, Installation ID and private key are required.",
+                }
+            from core import github_app
+
+            try:
+                info = await asyncio.to_thread(
+                    github_app.test_installation, app_id, installation_id, private_key
+                )
+            except Exception as exc:  # noqa: BLE001 — surface any error to the UI
+                return {"ok": False, "error": str(exc)}
+            return {"ok": True, "login": info.get("login", ""), "repos": info.get("repos", [])}
+
         token = str(body.get("token", "")).strip()
         if not token:
             return {"ok": False, "error": "Token is required."}

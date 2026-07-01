@@ -1,7 +1,10 @@
 {# Tools tab partial — manage optional external CLI tools #}
 <div class="space-y-6" x-data="toolsTab(
   {{ gh_enabled|default('false', true)|tojson|forceescape }},
-  {{ gh_token|default('', true)|tojson|forceescape }}
+  {{ gh_token|default('', true)|tojson|forceescape }},
+  {{ gh_app_id|default('', true)|tojson|forceescape }},
+  {{ gh_installation_id|default('', true)|tojson|forceescape }},
+  {{ gh_private_key|default('', true)|tojson|forceescape }}
 )">
   <div class="card">
     <h2 class="text-base mb-1">Tools</h2>
@@ -323,7 +326,7 @@
     </template>
   </div>
 
-  {# GitHub CLI (gh) #}
+  {# GitHub CLI (gh) — Personal Access Token or GitHub App (#111) #}
   <div class="card">
     <div class="flex items-center justify-between gap-3 mb-1">
       <h3 class="text-sm text-accent">GitHub CLI (gh)</h3>
@@ -336,12 +339,23 @@
     <p class="text-muted text-xs mb-4">
       Let the agent query and act on GitHub (issues, PRs, repos, <code>gh api</code>,
       search). Read operations run without asking; creating issues, PRs or releases
-      ask for confirmation first. This token is the <strong>system-wide default</strong> —
-      give a persona its own GitHub identity in the <strong>Personae</strong> editor
-      (Tool identities), which overrides this token for that persona.
+      ask for confirmation first. This identity is the <strong>system-wide default</strong> —
+      give a persona its own in the <strong>Personae</strong> editor (Tool identities),
+      which overrides it for that persona.
     </p>
 
-    <div class="space-y-3">
+    {# Auth mode — PAT (simple) vs GitHub App (bot identity, fine-grained, own rate limit) #}
+    <div class="flex flex-wrap items-center gap-4 mb-3">
+      <label class="flex items-center gap-2 text-sm">
+        <input type="radio" value="pat" x-model="ghMode"> Personal Access Token
+      </label>
+      <label class="flex items-center gap-2 text-sm">
+        <input type="radio" value="app" x-model="ghMode"> GitHub App
+      </label>
+    </div>
+
+    {# PAT mode #}
+    <div class="space-y-3" x-show="ghMode === 'pat'">
       <div>
         <label class="label">Personal Access Token</label>
         {% if gh_token_vaulted %}
@@ -358,55 +372,58 @@
         <p class="text-muted text-xs mt-1">
           A GitHub
           <a class="link" href="https://github.com/settings/tokens" target="_blank" rel="noreferrer">Personal Access Token</a>.
-          Injected as <code>GH_TOKEN</code> so <code>gh</code> is authenticated
-          non-interactively. Grant only the scopes you want the agent to have
-          (e.g. <code>repo</code>, <code>read:org</code>).
+          Simpler, but actions appear as <em>you</em> and scopes are coarser. Grant only
+          what the agent needs (e.g. <code>repo</code>, <code>read:org</code>).
         </p>
         {% endif %}
       </div>
     </div>
 
-    <div class="flex items-center gap-2 mt-4">
-      <button class="btn-primary btn-sm"
-              @click="
-                const vals = {
-                  'tools.gh.enabled': String(ghEnabled === true || ghEnabled === 'true'),
-                  'tools.gh.token': ghToken
-                };
-                fetch('/config', {
-                  method: 'PATCH',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': 'Bearer ' + (localStorage.getItem('admin_api_key') || '')
-                  },
-                  body: JSON.stringify({values: vals})
-                })
-                .then(r => { resultOk = r.ok; return r.json(); })
-                .then(d => {
-                  result = resultOk ? 'GitHub CLI settings saved' : (d.detail || 'Error');
-                  if (resultOk && window.showToast) { window.showToast('GitHub CLI settings saved'); }
-                })
-                .catch(e => { resultOk = false; result = e.message; })
-              ">
-        Save
-      </button>
-      <button class="btn btn-sm" :disabled="testing || !ghToken"
-              @click="
-                testing = true; testResult = '';
-                fetch('/tools/gh/test', {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': 'Bearer ' + (localStorage.getItem('admin_api_key') || '')
-                  },
-                  body: JSON.stringify({token: ghToken})
-                })
-                .then(r => r.json())
-                .then(d => { testResult = d.ok ? ('Authenticated as ' + (d.login || 'user')) : ('Failed: ' + (d.error || 'unknown')); })
-                .catch(e => { testResult = 'Error: ' + e.message; })
-                .finally(() => { testing = false; })
-              ">
-        <span x-show="!testing">Test token</span>
+    {# GitHub App mode #}
+    <div class="space-y-3" x-show="ghMode === 'app'">
+      <p class="text-muted text-xs">
+        A <a class="link" href="https://github.com/settings/apps/new" target="_blank" rel="noreferrer">GitHub App</a>
+        gives the agent its own bot identity (<code>&lt;app&gt;[bot]</code>), fine-grained
+        per-repo permissions, and its own rate limit. Register the app, install it on the
+        repos you want, then paste the three values below. The App takes precedence over the
+        PAT, which stays as a fallback.
+      </p>
+      <div class="grid gap-3"
+           style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); max-width:640px">
+        <div>
+          <label class="label">App ID</label>
+          <input type="text" inputmode="numeric" class="input-sm"
+                 x-model="ghAppId" placeholder="123456">
+        </div>
+        <div>
+          <label class="label">Installation ID</label>
+          <input type="text" inputmode="numeric" class="input-sm"
+                 x-model="ghInstallationId" placeholder="12345678">
+        </div>
+      </div>
+      <div>
+        <label class="label">Private key (PEM)</label>
+        {% if gh_key_vaulted %}
+        <div class="text-xs text-muted py-1" style="max-width:640px">
+          🔒 Stored in the <strong>Secrets</strong> vault — manage it there. Never shown or logged.
+        </div>
+        {% else %}
+        <textarea class="input-sm" x-model="ghPrivateKey"
+                  style="max-width:640px; min-height:160px; font-family:monospace; font-size:0.75rem"
+                  placeholder="-----BEGIN RSA PRIVATE KEY-----&#10;...&#10;-----END RSA PRIVATE KEY-----"></textarea>
+        <p class="text-muted text-xs mt-1">
+          Paste the <code>.pem</code> you downloaded when creating the App (pasting works on
+          mobile). After saving, move it to the vault from the <strong>Secrets</strong> tab so
+          it never sits in config.
+        </p>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="flex flex-wrap items-center gap-2 mt-4">
+      <button class="btn-primary btn-sm" @click="saveGh()">Save</button>
+      <button class="btn btn-sm" :disabled="testing" @click="testGh()">
+        <span x-show="!testing">Test connection</span>
         <span x-show="testing">Testing...</span>
       </button>
     </div>
@@ -415,7 +432,7 @@
       <div :class="resultOk ? 'alert-success' : 'alert-error'" class="mt-2" x-text="result"></div>
     </template>
     <template x-if="testResult">
-      <div :class="testResult.startsWith('Authenticated') ? 'alert-success' : 'alert-error'" class="mt-2" x-text="testResult"></div>
+      <div :class="testOk ? 'alert-success' : 'alert-error'" class="mt-2" x-text="testResult"></div>
     </template>
   </div>
 
@@ -580,14 +597,65 @@
 </div>
 
 <script>
-  function toolsTab(ghEnabled, ghToken) {
+  function toolsTab(ghEnabled, ghToken, ghAppId, ghInstallationId, ghPrivateKey) {
     return {
       ghEnabled: ghEnabled,
       ghToken: ghToken,
+      ghAppId: ghAppId || '',
+      ghInstallationId: ghInstallationId || '',
+      ghPrivateKey: ghPrivateKey || '',
+      ghMode: ghAppId ? 'app' : 'pat',
       result: '',
       resultOk: false,
       testing: false,
-      testResult: ''
+      testResult: '',
+      testOk: false,
+      saveGh() {
+        const vals = {
+          'tools.gh.enabled': String(this.ghEnabled === true || this.ghEnabled === 'true')
+        };
+        if (this.ghMode === 'app') {
+          vals['tools.gh.app_id'] = this.ghAppId.trim();
+          vals['tools.gh.installation_id'] = this.ghInstallationId.trim();
+          vals['tools.gh.private_key'] = this.ghPrivateKey;
+        } else {
+          vals['tools.gh.token'] = this.ghToken;
+        }
+        fetch('/config', {
+          method: 'PATCH',
+          headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('admin_api_key') || '')},
+          body: JSON.stringify({values: vals})
+        })
+        .then(r => { this.resultOk = r.ok; return r.json(); })
+        .then(d => {
+          this.result = this.resultOk ? 'GitHub settings saved' : (d.detail || 'Error');
+          if (this.resultOk && window.showToast) { window.showToast('GitHub settings saved'); }
+        })
+        .catch(e => { this.resultOk = false; this.result = e.message; });
+      },
+      testGh() {
+        this.testing = true; this.testResult = '';
+        const payload = this.ghMode === 'app'
+          ? {mode: 'app', app_id: this.ghAppId.trim(), installation_id: this.ghInstallationId.trim(), private_key: this.ghPrivateKey}
+          : {mode: 'pat', token: this.ghToken};
+        fetch('/tools/gh/test', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('admin_api_key') || '')},
+          body: JSON.stringify(payload)
+        })
+        .then(r => r.json())
+        .then(d => {
+          this.testOk = !!d.ok;
+          if (d.ok) {
+            const repos = (d.repos && d.repos.length) ? (' — repos: ' + d.repos.join(', ')) : '';
+            this.testResult = 'Authenticated as ' + (d.login || 'user') + repos;
+          } else {
+            this.testResult = 'Failed: ' + (d.error || 'unknown');
+          }
+        })
+        .catch(e => { this.testOk = false; this.testResult = 'Error: ' + e.message; })
+        .finally(() => { this.testing = false; });
+      }
     };
   }
 

@@ -233,6 +233,17 @@
                   Reuses the vault secret <code x-text="ghTokenSecret"></code> as this persona's
                   <code>GH_TOKEN</code> — no separate copy is stored.
                 </p>
+                {# Per-persona repo allowlist (#111). #}
+                <div>
+                  <label class="label">Allowed repos <span class="text-muted">(optional)</span></label>
+                  <input type="text" class="input-sm" x-model="ghRepos"
+                         placeholder="owner/repo, owner/other  — blank = no restriction">
+                  <p class="text-xs text-muted mt-1">
+                    Comma-separated. When set, this persona may only pass these repos to
+                    <code>gh --repo</code>. Best-effort — the real boundary is the GitHub App
+                    installation's own repo selection.
+                  </p>
+                </div>
               </div>
             </template>
           </div>
@@ -293,6 +304,7 @@
       ghToken: '',
       ghTokenSet: {{ gh_token_set|tojson }},
       ghTokenSecret: '',
+      ghRepos: '',
       infraAvailable: {{ infra_available|tojson }},
       infraNames: {{ infra_names|tojson }},
       modes: {},
@@ -314,6 +326,7 @@
           this.profiles[k] = (e && e.profile) || '';
         }
         this.ghTokenSecret = (this.toolConfig.gh && this.toolConfig.gh.token_secret) || '';
+        this.ghRepos = ((this.toolConfig.gh && this.toolConfig.gh.repos) || []).join(', ');
 
         // Seed the account selectors: every known account starts at 'none', then
         // existing bindings override. A binding to an account no longer in the
@@ -364,6 +377,11 @@
           if (k === 'browser' && (this.profiles[k] || '').trim()) e.profile = this.profiles[k].trim();
           // gh: a chosen vault secret is referenced instead of storing a copy.
           if (k === 'gh' && this.ghTokenSecret) e.token_secret = this.ghTokenSecret;
+          // gh: per-persona repo allowlist (#111). Blank = no restriction.
+          if (k === 'gh') {
+            const repos = this.ghRepos.split(',').map(s => s.trim()).filter(Boolean);
+            if (repos.length) e.repos = repos;
+          }
           tc[k] = e;
         }
         return tc;
