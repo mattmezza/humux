@@ -55,6 +55,8 @@ secrets: []
 tool_config:
   gh: {enabled: true}            # uses this agent's own GitHub token
   browser: {enabled: true, profile: forge}
+chat_settings:                   # per-chat trigger/DM gate — see below
+  "-1001234567890": {mode: users, users: [111111111]}
 character: |
   You are a strength & conditioning coach…
 
@@ -302,6 +304,41 @@ channel: the bot is part of the agent's identity.
 
 Same process, N bots today; a separate deployment per agent (one token each) is a later
 step that needs no further code.
+
+## Per-chat Telegram settings
+
+`allowed_user_ids` is a single **bot-wide** allowlist. To gate who can reach an agent **per
+chat** — trigger it in one group but not another, let some users DM it and block others — use
+per-chat settings ([#129](https://github.com/mattmezza/mpa/issues/129)).
+
+Open the agent in the admin UI: the **Telegram chat settings** section lists every Telegram
+chat the agent takes part in (its own bot's chats, chats bound to it, and — when it is the
+active agent — the default bot's chats). Each chat has one control:
+
+- **Everyone** — no restriction (the default; a chat with no setting behaves this way).
+- **Nobody** — the agent ignores every message here (it never replies).
+- **Specific users** — only the listed Telegram **user IDs** may trigger a reply (in a group)
+  or DM the agent. IDs are typed comma-separated, same as `allowed_user_ids` — there is no
+  group-member roster to pick from.
+
+In frontmatter the key is `chat_settings`, a map of `chat_id` → `{mode, users}`:
+
+```markdown
+---
+role: Fitness coach
+allowed_user_ids: [111111111, 222222222]
+chat_settings:
+  "-1001234567890": {mode: users, users: [111111111]}   # group: only this user triggers
+  "222222222": {mode: nobody, users: []}                 # this DM: ignored
+character: |
+  …
+---
+```
+
+The `chat_id` is the runtime key: a group's id (negative) in groups, the sender's id in a DM.
+Enforcement runs in the Telegram channel **on top of** `allowed_user_ids` — a user blocked by
+either gate is ignored — and applies to text, voice, photo and `/jobs`. Record-only turns (a
+group message not addressed to the bot) are unaffected: they were never going to reply.
 
 ## Roadmap
 
