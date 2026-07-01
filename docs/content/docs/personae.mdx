@@ -182,7 +182,7 @@ setups keep working.
 
 In raw markdown the field is `tool_config` (a map of `{tool: {enabled, …}}`); the GitHub
 token itself is **never** stored in the persona doc — it lives only in the vault. Setting a
-per-persona token requires a master key (configure one in the **Secrets** tab first).
+per-persona token requires a master key (configure one in the **Vaults** tab first).
 
 > **Note:** per-persona tokens live in the infra vault, which has the same on-disk posture
 > as the system `GH_TOKEN` (a machine key on the data volume), not the password-gated persona
@@ -231,7 +231,7 @@ raw markdown the frontmatter keys are:
 
 ```yaml
 email_accounts:
-  - account: fitness-agent      # a name from the Email tab
+  - account: fitness-agent      # a name from the Accounts → Email tab
     access_level: read_write
     is_sender_identity: true
   - account: personal           # delegated, read-only access to your inbox
@@ -240,7 +240,7 @@ calendar_accounts:
   - account: fitness-agent
     access_level: read_write
 contacts_accounts:
-  - account: fitness-agent      # a name from the Contacts tab (CardDAV/WebDAV)
+  - account: fitness-agent      # a name from the Accounts → Contacts tab (CardDAV/WebDAV)
     access_level: read_write
 ```
 
@@ -272,7 +272,7 @@ reach only accounts its parent identity holds, at an equal or lower level.
 > all existing accounts (the first email account becomes its sender identity), so nothing breaks.
 > Personae you create afterwards start with **no** access — bind accounts to them explicitly.
 
-> **Test connection.** Adding an account in the Email / Calendar / Contacts tabs offers provider
+> **Test connection.** Adding an account in the **Accounts** tab (Email / Calendars / Contacts) offers provider
 > presets (Purelymail, Gmail, Fastmail; generic CalDAV) and a **Test connection** button that
 > verifies IMAP/SMTP/CalDAV/CardDAV reachability before you save — completable on a phone in under
 > a minute.
