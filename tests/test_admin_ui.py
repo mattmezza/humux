@@ -165,6 +165,10 @@ class TestPageRoutes:
         resp = client.get("/admin")
         assert resp.status_code == 200
         assert "text/html" in resp.headers["content-type"]
+        # #133: the Channels tab is gone (Telegram config moved onto agents).
+        assert "select('channels')" not in resp.text  # no tab button
+        assert "openChannelWizard" not in resp.text  # no wizard JS
+        assert "/partials/channels" not in resp.text  # no nav-map entry
 
     def test_admin_page_redirects_to_setup_when_not_complete(self):
         client = _client(setup_complete=False)

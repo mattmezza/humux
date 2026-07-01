@@ -163,6 +163,21 @@ def test_agent_editor_lists_available_accounts(tmp_path) -> None:
     assert "coach-agent" in page and "google" in page  # available accounts injected
 
 
+def test_agent_editor_has_telegram_section(tmp_path) -> None:
+    # #133: all Telegram config lives on the agent editor now (no Channels tab),
+    # and the forum-topics concept is gone.
+    client, _ = _client(tmp_path)
+    client.post("/agents", json={"name": "coach"}, headers=AUTH)
+    page = client.get("/admin/agents/coach", headers=AUTH).text
+    assert "Telegram bot" in page
+    assert "Bot token" in page
+    assert "Group multi-agent rooms" in page  # per-agent group-room toggles
+    assert "groupChat" in page  # wired into the save/raw payload
+    assert "Telegram chat settings" in page  # #129 per-chat permissions
+    # No trace of the removed forum-topics feature.
+    assert "forum" not in page.lower() and "topics_enabled" not in page
+
+
 def test_agent_raw_markdown_upsert(tmp_path) -> None:
     client, _ = _client(tmp_path)
     # A legacy `personalia:` key still parses — folded into character (#98).
