@@ -246,6 +246,9 @@ def _channel(
     ch = TelegramChannel(cfg, MagicMock(), channel_name=channel_name)
     ch._bot_id = 999
     ch._bot_username = "coachbot"
+    # Per-chat trigger/DM gate (#129) is async and defaults permissive here; the
+    # tests that exercise it set their own return value.
+    ch.agent.may_act_in_chat = AsyncMock(return_value=True)
     return ch
 
 
@@ -303,6 +306,28 @@ def test_is_group_off_when_disabled() -> None:
     ch = _channel(GroupChatConfig(enabled=False))
     assert ch._is_group(GROUP) is False
     assert ch._convo_user_id(GROUP, 1) == "1"  # falls back to per-sender
+
+
+@pytest.mark.asyncio
+async def test_callback_respects_per_chat_gate() -> None:
+    # A /jobs Cancel (and any approve/deny) button is an action in the chat, so a
+    # user the resolved agent bars there (#129) must not drive it via the callback.
+    ch = _channel()
+    ch._finalize_approval_response = AsyncMock()
+    ch.agent.subagents = SimpleNamespace(cancel=MagicMock(return_value=True))
+    query = SimpleNamespace(data="sub_cancel:run1", message=None, answer=AsyncMock())
+    upd = SimpleNamespace(callback_query=query, effective_user=_user(uid=7), effective_chat=GROUP)
+    ctx = SimpleNamespace(bot=SimpleNamespace(id=999, username="coachbot"))
+
+    ch.agent.may_act_in_chat = AsyncMock(return_value=False)  # blocked
+    await ch._on_approval_callback(upd, ctx)
+    ch.agent.subagents.cancel.assert_not_called()
+    # Gate was consulted with the turn's own (convo_user, chat_id) keys.
+    ch.agent.may_act_in_chat.assert_awaited_once_with("telegram", "-100", "-100", 7)
+
+    ch.agent.may_act_in_chat = AsyncMock(return_value=True)  # allowed
+    await ch._on_approval_callback(upd, ctx)
+    ch.agent.subagents.cancel.assert_called_once_with("run1")
 
 
 def test_speaker_name_fallbacks() -> None:

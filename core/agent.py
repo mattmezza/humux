@@ -1367,6 +1367,21 @@ class AgentCore:
         # 3. Default identity.
         return None
 
+    async def may_act_in_chat(
+        self, channel: str, user_id: str, chat_id: str, sender_id: int
+    ) -> bool:
+        """Per-chat trigger/DM gate (#129): may ``sender_id`` make the resolved
+        agent reply in this chat?
+
+        Consults the agent that owns this chat (same resolution the turn uses) and
+        its ``chat_settings``. No agent, or no setting for the chat, means allowed —
+        so unconfigured chats behave exactly as before.
+        """
+        agent = await self._resolve_agent(channel, user_id, chat_id)
+        if agent is None:
+            return True
+        return agent.chat_permits(str(chat_id), sender_id)
+
     async def _load_agent(self, name: str) -> Agent | None:
         """Load an agent by name, returning ``None`` if it is missing/broken."""
         try:

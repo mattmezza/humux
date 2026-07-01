@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS agents (
     email_accounts TEXT DEFAULT '',
     calendar_accounts TEXT DEFAULT '',
     contacts_accounts TEXT DEFAULT '',
+    chat_settings TEXT DEFAULT '',
     created_at DATETIME DEFAULT (datetime('now')),
     updated_at DATETIME DEFAULT (datetime('now'))
 );
@@ -73,6 +74,7 @@ _MIGRATIONS = (
     "ALTER TABLE agents ADD COLUMN email_accounts TEXT DEFAULT ''",  # #110
     "ALTER TABLE agents ADD COLUMN calendar_accounts TEXT DEFAULT ''",  # #110
     "ALTER TABLE agents ADD COLUMN contacts_accounts TEXT DEFAULT ''",  # #110 (contacts)
+    "ALTER TABLE agents ADD COLUMN chat_settings TEXT DEFAULT ''",  # #129
     # #98: personalia merged into character. Prepend any existing personalia to
     # character (idempotent — the WHERE guard empties it, so a re-run is a no-op),
     # then drop the now-unused column. On a fresh DB (no such column) both raise
@@ -112,6 +114,27 @@ class Agent:
     # is {account, access_level: read|read_write}; read = search/list, read_write =
     # also create contacts. Empty = no contacts access (safe default).
     contacts_accounts: list[dict] = field(default_factory=list)
+    # Per-agent, per-Telegram-chat trigger/DM permissions (#129). Keyed by the
+    # runtime chat id (group id in a group, sender id in a DM). Each value is
+    # {"mode": "everyone"|"nobody"|"users", "users": [int]}. A chat with no entry
+    # (or mode "everyone") is unrestricted — so the default is unchanged.
+    chat_settings: dict = field(default_factory=dict)
+
+    def chat_permits(self, chat_id: str, sender_id: int) -> bool:
+        """Whether ``sender_id`` may trigger this agent (or DM it) in ``chat_id``.
+
+        No stored setting = everyone allowed (unchanged behaviour). ``nobody``
+        blocks all; ``users`` allows only the listed Telegram ids (#129).
+        """
+        setting = self.chat_settings.get(chat_id) if isinstance(self.chat_settings, dict) else None
+        if not isinstance(setting, dict):
+            return True
+        mode = setting.get("mode", "everyone")
+        if mode == "nobody":
+            return False
+        if mode == "users":
+            return sender_id in setting.get("users", [])
+        return True  # "everyone" / unknown → allow
 
     def allows_skill(self, name: str) -> bool:
         return not self.skills or name in self.skills
@@ -183,6 +206,41 @@ def _as_tool_config(value: object) -> dict:
             return {}
         return _as_tool_config(loaded)
     return {}
+
+
+def _as_chat_settings(value: object) -> dict:
+    """Coerce a frontmatter / form / DB-column value into per-chat settings (#129).
+
+    Shape: ``{chat_id: {"mode": everyone|nobody|users, "users": [int]}}``. Accepts
+    a parsed dict (frontmatter/form) or a JSON string (DB column). ``everyone``
+    entries are dropped (that is the default — an absent chat is unrestricted), so
+    the stored dict stays lean. Non-numeric user ids and malformed entries are
+    discarded so a broken value never breaks load.
+    """
+    if isinstance(value, str) and value.strip():
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError, ValueError:
+            return {}
+    if not isinstance(value, dict):
+        return {}
+    out: dict = {}
+    for cid, spec in value.items():
+        if not isinstance(spec, dict):
+            continue
+        mode = str(spec.get("mode", "everyone") or "everyone").strip().lower()
+        if mode not in ("everyone", "nobody", "users"):
+            mode = "everyone"
+        if mode == "everyone":
+            continue  # the default — no need to store it
+        users: list[int] = []
+        for u in spec.get("users") or []:
+            try:
+                users.append(int(u))
+            except TypeError, ValueError:
+                continue
+        out[str(cid)] = {"mode": mode, "users": users}
+    return out
 
 
 _ACCESS_LEVELS = ("read", "read_write")
@@ -295,6 +353,7 @@ def parse_markdown(text: str, *, name: str) -> Agent:
         email_accounts=_as_account_list(fm.get("email_accounts"), sender=True),
         calendar_accounts=_as_account_list(fm.get("calendar_accounts")),
         contacts_accounts=_as_account_list(fm.get("contacts_accounts")),
+        chat_settings=_as_chat_settings(fm.get("chat_settings")),
     )
 
 
@@ -314,6 +373,7 @@ def to_markdown(a: Agent) -> str:
         "email_accounts": a.email_accounts,
         "calendar_accounts": a.calendar_accounts,
         "contacts_accounts": a.contacts_accounts,
+        "chat_settings": a.chat_settings,
         "character": a.character,
     }
     dumped = yaml.safe_dump(fm, sort_keys=False, allow_unicode=True, default_flow_style=False)
@@ -389,8 +449,8 @@ class AgentStore:
             "INSERT INTO agents "
             "(name, agent_name, role, emoji, voice, character, skills, tools, "
             "secrets, bot_token, allowed_user_ids, tool_config, "
-            "email_accounts, calendar_accounts, contacts_accounts) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "email_accounts, calendar_accounts, contacts_accounts, chat_settings) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(name) DO UPDATE SET "
             "agent_name=excluded.agent_name, role=excluded.role, emoji=excluded.emoji, "
             "voice=excluded.voice, character=excluded.character, "
@@ -398,7 +458,8 @@ class AgentStore:
             "bot_token=excluded.bot_token, allowed_user_ids=excluded.allowed_user_ids, "
             "tool_config=excluded.tool_config, email_accounts=excluded.email_accounts, "
             "calendar_accounts=excluded.calendar_accounts, "
-            "contacts_accounts=excluded.contacts_accounts, updated_at=datetime('now')",
+            "contacts_accounts=excluded.contacts_accounts, "
+            "chat_settings=excluded.chat_settings, updated_at=datetime('now')",
             (
                 a.name,
                 a.agent_name,
@@ -415,6 +476,7 @@ class AgentStore:
                 json.dumps(a.email_accounts) if a.email_accounts else "",
                 json.dumps(a.calendar_accounts) if a.calendar_accounts else "",
                 json.dumps(a.contacts_accounts) if a.contacts_accounts else "",
+                json.dumps(a.chat_settings) if a.chat_settings else "",
             ),
         )
 
@@ -443,6 +505,9 @@ class AgentStore:
             ),
             contacts_accounts=_as_account_list(
                 row["contacts_accounts"] if "contacts_accounts" in row.keys() else ""
+            ),
+            chat_settings=_as_chat_settings(
+                row["chat_settings"] if "chat_settings" in row.keys() else ""
             ),
         )
 

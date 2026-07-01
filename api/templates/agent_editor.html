@@ -86,6 +86,31 @@
         </div>
       </div>
 
+      {# ── Per-chat Telegram settings (#129) ── #}
+      <div class="card space-y-3" x-show="chats.length">
+        <h3 class="text-xs text-muted uppercase tracking-wider">Telegram chat settings <span class="text-muted normal-case tracking-normal">— who can trigger / DM</span></h3>
+        <p class="text-xs text-muted">Per chat this agent is in: who may trigger a reply (groups) or DM it. <strong>Everyone</strong> = no restriction (default). <strong>Nobody</strong> = ignore every message here. <strong>Specific users</strong> = only the listed Telegram user IDs.</p>
+        <template x-for="c in chats" :key="c.chat_id">
+          <div class="border-b border-border last:border-0 pb-2 last:pb-0">
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-xs break-all">
+                <span x-text="c.kind === 'group' ? '👥 Group' : '💬 DM'"></span>
+                <code x-text="c.chat_id"></code>
+              </span>
+              <select class="select input-sm" style="max-width:150px" x-model="chatMode[c.chat_id]">
+                <option value="everyone">Everyone</option>
+                <option value="nobody">Nobody</option>
+                <option value="users">Specific users</option>
+              </select>
+            </div>
+            <div x-show="chatMode[c.chat_id] === 'users'" class="mt-1">
+              <input class="input-sm" x-model="chatUsers[c.chat_id]" placeholder="Telegram user IDs — 111111111, 222222222">
+              <p class="text-xs text-muted mt-1" x-text="c.kind === 'group' ? 'Only these users can make the agent reply in this group.' : 'Only these users may DM the agent.'"></p>
+            </div>
+          </div>
+        </template>
+      </div>
+
       <div class="card">
         <label class="label">Character &amp; tone <span class="text-muted">— who the agent is + tone & behaviour</span></label>
         <textarea class="textarea" x-model="character" style="min-height:260px; font-size:0.8rem; line-height:1.5"
@@ -332,7 +357,7 @@
   <div x-show="mode === 'raw'" class="card">
     <label class="label">Markdown (YAML frontmatter)</label>
     <textarea class="textarea" x-model="raw" style="min-height:460px; font-size:0.8rem; line-height:1.5; tab-size:2"></textarea>
-    <p class="hint">Saving in raw mode parses this document directly — frontmatter keys (role, emoji, voice, bot_token, allowed_user_ids, skills, tools, secrets, email_accounts, calendar_accounts, contacts_accounts, character).</p>
+    <p class="hint">Saving in raw mode parses this document directly — frontmatter keys (role, emoji, voice, bot_token, allowed_user_ids, skills, tools, secrets, email_accounts, calendar_accounts, contacts_accounts, chat_settings, character).</p>
   </div>
 
   <div class="flex items-center gap-2 mt-3">
@@ -392,6 +417,12 @@
       contactsAccess: {},
       senderIdentity: '',
 
+      // Per-chat Telegram trigger/DM settings (#129).
+      chats: {{ agent_chats|tojson }},
+      chatSettings: {{ agent.chat_settings|tojson }},
+      chatMode: {},
+      chatUsers: {},
+
       init() {
         for (const k of this.toolKeys) {
           const e = this.toolConfig[k];
@@ -426,6 +457,32 @@
           if (!(c.account in this.contactsAccess)) this.availableContacts.push(c.account);
           this.contactsAccess[c.account] = c.access_level || 'read';
         }
+
+        // Seed the per-chat controls: everyone by default, stored settings win.
+        for (const c of this.chats) {
+          const s = this.chatSettings[c.chat_id] || {};
+          this.chatMode[c.chat_id] = s.mode || 'everyone';
+          this.chatUsers[c.chat_id] = (s.users || []).join(', ');
+        }
+      },
+
+      // Emit {chat_id: {mode, users}} for restricted chats only. Settings for
+      // chats not currently listed (inactive since) are carried through untouched
+      // so saving the form never silently drops them.
+      buildChatSettings() {
+        const out = {};
+        for (const cid in this.chatSettings) {
+          if (!this.chats.some(c => c.chat_id === cid)) out[cid] = this.chatSettings[cid];
+        }
+        for (const c of this.chats) {
+          const mode = this.chatMode[c.chat_id] || 'everyone';
+          if (mode === 'everyone') continue;
+          const users = (this.chatUsers[c.chat_id] || '')
+            .split(/[\s,]+/).map(s => s.trim()).filter(Boolean)
+            .map(Number).filter(Number.isFinite);
+          out[c.chat_id] = { mode, users };
+        }
+        return out;
       },
 
       // Emit the account bindings the API expects; skip 'none'. The sender
@@ -510,6 +567,7 @@
           'email_accounts: ' + JSON.stringify(this.buildEmailAccounts()) + '\n' +
           'calendar_accounts: ' + JSON.stringify(this.buildCalendarAccounts()) + '\n' +
           'contacts_accounts: ' + JSON.stringify(this.buildContactsAccounts()) + '\n' +
+          'chat_settings: ' + JSON.stringify(this.buildChatSettings()) + '\n' +
           'character: |\n  ' + esc(this.character) + '\n' +
           '---\n';
       },
@@ -537,6 +595,7 @@
               email_accounts: this.buildEmailAccounts(),
               calendar_accounts: this.buildCalendarAccounts(),
               contacts_accounts: this.buildContactsAccounts(),
+              chat_settings: this.buildChatSettings(),
             };
         fetch('/agents', { method: 'POST', headers: this._headers(), body: JSON.stringify(body) })
           .then(r => { this.ok = r.ok; return r.text().then(t => ({ ok: r.ok, t })); })

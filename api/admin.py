@@ -639,6 +639,7 @@ class AgentUpsertIn(BaseModel):
     email_accounts: list[dict] = []  # [{account, access_level, is_sender_identity}] — #110
     calendar_accounts: list[dict] = []  # [{account, access_level}] — #110
     contacts_accounts: list[dict] = []  # [{account, access_level}] — #110 (contacts)
+    chat_settings: dict = {}  # {chat_id: {mode, users}} per-chat trigger/DM gate — #129
     gh_token: str = ""  # this agent's GitHub PAT → infra vault; empty = leave unchanged
     raw: str = ""  # when set, the markdown doc is parsed instead of the fields above
 
@@ -1067,6 +1068,38 @@ def create_admin_app(
             ],
         }
 
+    async def _agent_chats(name: str) -> list[dict]:
+        """Telegram chats this agent participates in, for the per-chat settings
+        UI (#129). A chat belongs to the agent when it resolves to it: the agent's
+        own bot channel (``telegram:<name>``), a chat bound to it, or — when it is
+        the globally-active agent — an unbound default-bot chat. ``kind`` is
+        ``group`` for a negative Telegram id, else ``dm``.
+        """
+        if not name:
+            return []
+        history = await _history_from_config(config_store)
+        active = (await config_store.get("agent.active_agent") or "").strip()
+        own = f"telegram:{name}"
+        out: list[dict] = []
+        seen: set[str] = set()
+        for c in await history.list_chats():
+            ch = c["channel"]
+            if ch == own:
+                owner = name
+            elif ch == "telegram":
+                owner = c["agent"] or active
+            else:
+                continue  # another agent's bot, or a non-Telegram channel
+            if owner != name:
+                continue
+            cid = c["chat_id"] or c["user_id"]
+            if not cid or cid in seen:
+                continue
+            seen.add(cid)
+            kind = "group" if cid.split(":", 1)[0].startswith("-") else "dm"
+            out.append({"chat_id": cid, "kind": kind, "last_active": c.get("last_active", "")})
+        return out
+
     async def _agent_gh_token_set(name: str) -> bool:
         """Whether this agent already has a GitHub token in the infra vault (#93)."""
         if not name or secret_store is None or not secret_store.infra.available:
@@ -1090,6 +1123,7 @@ def create_admin_app(
             agent=Agent(name=""),
             raw=to_markdown(Agent(name="")),
             gh_token_set=False,
+            agent_chats=[],
             **ctx,
         )
 
@@ -1111,6 +1145,7 @@ def create_admin_app(
             agent=agent,
             raw=to_markdown(agent),
             gh_token_set=await _agent_gh_token_set(name),
+            agent_chats=await _agent_chats(name),
             **ctx,
         )
 
@@ -2991,6 +3026,7 @@ def create_admin_app(
         from core.agents import (
             Agent,
             _as_account_list,
+            _as_chat_settings,
             _as_int_list,
             _as_tool_config,
             parse_markdown,
@@ -3021,6 +3057,7 @@ def create_admin_app(
                 email_accounts=_as_account_list(body.email_accounts, sender=True),
                 calendar_accounts=_as_account_list(body.calendar_accounts),
                 contacts_accounts=_as_account_list(body.contacts_accounts),
+                chat_settings=_as_chat_settings(body.chat_settings),
             )
         # A per-agent GitHub token goes into the infra vault (machine-key,
         # boot-unsealed so it works headless), namespaced per agent (#93). Empty
