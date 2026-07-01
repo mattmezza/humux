@@ -84,7 +84,6 @@ def test_agent_crud_and_activation(tmp_path) -> None:
         json={
             "name": "coach",
             "role": "Fitness coach",
-            "emoji": "🏋️",
             "voice": "en-US-GuyNeural",
             "character": "You are Forge. Direct.",
             "skills": ["memory"],

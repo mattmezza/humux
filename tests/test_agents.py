@@ -45,7 +45,6 @@ def test_markdown_roundtrip() -> None:
     p = Agent(
         name="t",
         role="R",
-        emoji="🤖",
         voice="en-GB-SoniaNeural",
         character="How.",
         skills=["memory"],

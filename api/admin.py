@@ -200,12 +200,10 @@ async def _wizard_step_context(step: str, config_store: ConfigStore) -> dict[str
                 ctx[var] = val
     elif step == "agent":
         store = await _agent_store_from_config(config_store)
-        # Plain dicts so the wizard template (Jinja) can read emoji/role/name.
+        # Plain dicts so the wizard template (Jinja) can read role/name.
         # The current default is offered as the "Default" radio, not a starter card.
         ctx["agents"] = [  # type: ignore[assignment]
-            {"name": p.name, "role": p.role, "emoji": p.emoji}
-            for p in await store.list_agents()
-            if not p.is_default
+            {"name": p.name, "role": p.role} for p in await store.list_agents() if not p.is_default
         ]
     elif step == "email":
         raw = await config_store.get("email.providers")
@@ -563,7 +561,6 @@ class AgentUpsertIn(BaseModel):
     name: str
     agent_name: str = ""
     role: str = ""
-    emoji: str = ""
     voice: str = ""
     character: str = ""
     skills: list[str] = []
@@ -958,10 +955,12 @@ def create_admin_app(
         A globally-disabled feature (e.g. artifacts) is dropped so its tool is
         hidden from the agent scope UI.
         """
-        from voice.pipeline import KOKORO_LANGUAGES, KOKORO_VOICES
-
         store = await _skills_store_from_config(config_store)
-        all_skills = [s["name"] for s in await store.list_skills()]
+        # Skills carry a summary; tools get a short static blurb (#135) so the
+        # editor can show what each does next to its checkbox.
+        all_skills = [
+            {"name": s["name"], "summary": s.get("summary", "")} for s in await store.list_skills()
+        ]
         sub_enabled = await config_store.get("subagents.enabled")
         sub_on = sub_enabled is None or sub_enabled == "true"
         ig_on = (await config_store.get("tools.imagegen.enabled")) == "true"
@@ -970,13 +969,17 @@ def create_admin_app(
         )
         return {
             "all_skills": all_skills,
-            "all_tools": gateable_tools_for(
-                subagents_enabled=sub_on,
-                imagegen_enabled=ig_on,
-                workspace_enabled=ws_on,
-            ),
-            "kokoro_voices": KOKORO_VOICES,
-            "kokoro_languages": KOKORO_LANGUAGES,
+            "all_tools": [
+                {"name": t, "desc": TOOL_DESCRIPTIONS.get(t, "")}
+                for t in gateable_tools_for(
+                    subagents_enabled=sub_on,
+                    imagegen_enabled=ig_on,
+                    workspace_enabled=ws_on,
+                )
+            ],
+            # Global Voice (STT/TTS) settings — the editor's Identity tab now hosts
+            # this panel (#135); it moved off the Agents list tab.
+            **await _voice_context(),
             # External CLI tools that support a per-agent identity (#93). Only the
             # system-wide enabled ones are offered, so the registry stays the
             # source of truth for what exists.
@@ -1136,14 +1139,11 @@ def create_admin_app(
         }
 
     async def _agents_context() -> dict:
-        """Context for the Agents tab: all agents (the default flagged one pinned
-        first) + the global voice card (#115 flw)."""
+        """Context for the Agents tab: all agents, the default flagged one pinned
+        first. The global voice card moved to the agent editor's Identity tab (#135)."""
         store = await _agent_store_from_config(config_store)
         agents = sorted(await store.list_agents(), key=lambda a: (not a.is_default, a.name))
-        return {
-            "agents": agents,
-            **await _voice_context(),
-        }
+        return {"agents": agents}
 
     @app.get("/partials/identity", dependencies=[Depends(auth)])
     async def partial_identity() -> HTMLResponse:
@@ -2886,7 +2886,6 @@ def create_admin_app(
                 name=name,
                 agent_name=body.agent_name.strip(),
                 role=body.role.strip(),
-                emoji=body.emoji.strip(),
                 voice=body.voice.strip(),
                 character=body.character,
                 skills=[s.strip() for s in body.skills if s.strip()],
@@ -4054,6 +4053,29 @@ _WORKSPACE_TOOLS = (
     "grep",
     "run_command_in_dir",
 )
+
+# One-line blurbs for the per-agent Tool scope UI (#135), so each checkbox says
+# what it does. Keyed by the gateable tool name; unlisted tools show no blurb.
+TOOL_DESCRIPTIONS = {
+    "run_command": "Run shell commands on the host (guarded; risky ones ask first).",
+    "send_email": "Compose and send email from a bound account.",
+    "reply_email": "Reply within an existing email thread.",
+    "send_message": "Send a chat message to a Telegram/WhatsApp conversation.",
+    "set_reaction": "React to a message with an emoji.",
+    "create_calendar_event": "Create events on a bound calendar.",
+    "search_contacts": "Look up people in a bound address book.",
+    "create_contact": "Add a contact to a bound address book.",
+    "web_search": "Search the web (needs the Web search tool enabled).",
+    "manage_jobs": "Schedule, list and cancel the agent's own jobs.",
+    "spawn_subagent": "Delegate a scoped subtask to a child agent.",
+    "generate_image": "Generate images and send them as photos.",
+    "read_file": "Read a file inside the workspace.",
+    "write_file": "Create or overwrite a file inside the workspace.",
+    "edit_file": "Edit a file inside the workspace.",
+    "list_dir": "List a directory inside the workspace.",
+    "grep": "Search file contents inside the workspace.",
+    "run_command_in_dir": "Run a command inside a workspace subdirectory.",
+}
 
 
 def gateable_tools_for(

@@ -21,7 +21,7 @@
                  || {{ p.name|tojson|forceescape }}.toLowerCase().includes(filter.toLowerCase())
                  || {{ (p.role or '')|tojson|forceescape }}.toLowerCase().includes(filter.toLowerCase())">
       <div class="flex items-start gap-2">
-        <span class="text-2xl leading-none">{{ p.emoji or '🧩' }}</span>
+        <span class="text-2xl leading-none">🧩</span>
         <div class="min-w-0 flex-1">
           <div class="text-sm font-semibold truncate">{{ p.role or p.name }}</div>
           <div class="text-muted text-xs break-all">{{ p.name }}</div>
@@ -69,12 +69,5 @@
     {% if not agents %}
     <div class="text-muted text-xs py-2 col-span-full">No agents yet — create one to get started.</div>
     {% endif %}
-  </div>
-
-  {# Global voice settings (STT/TTS — applies to every agent) #}
-  <div class="mt-8 border-t border-border pt-6">
-    <h2 class="text-base mb-1">Voice</h2>
-    <p class="text-muted text-xs mb-3">Global speech-to-text / text-to-speech settings, shared by every agent.</p>
-    {% include "partials/identity.html" %}
   </div>
 </div>

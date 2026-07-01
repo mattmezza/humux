@@ -34,7 +34,6 @@ CREATE TABLE IF NOT EXISTS agents (
     name TEXT PRIMARY KEY,
     agent_name TEXT DEFAULT '',
     role TEXT DEFAULT '',
-    emoji TEXT DEFAULT '',
     voice TEXT DEFAULT '',
     character TEXT DEFAULT '',
     skills TEXT DEFAULT '',
@@ -106,7 +105,6 @@ class Agent:
     name: str  # slug / identifier (PK)
     agent_name: str = ""  # display name it goes by when active; empty = global agent.name
     role: str = ""
-    emoji: str = ""
     voice: str = ""  # TTS voice override; empty = configured default
     character: str = ""  # identity + tone (a legacy `personalia` field folded in here — #98)
     skills: list[str] = field(default_factory=list)  # allowlist; [] = all
@@ -393,7 +391,6 @@ def parse_markdown(text: str, *, name: str) -> Agent:
         name=name,
         agent_name=str(fm.get("agent_name", "") or ""),
         role=str(fm.get("role", "") or ""),
-        emoji=str(fm.get("emoji", "") or ""),
         voice=str(fm.get("voice", "") or ""),
         character=character,
         skills=_as_list(fm.get("skills")),
@@ -415,7 +412,6 @@ def to_markdown(a: Agent) -> str:
     fm = {
         "agent_name": a.agent_name,
         "role": a.role,
-        "emoji": a.emoji,
         "voice": a.voice,
         "bot_token": a.bot_token,
         "allowed_user_ids": a.allowed_user_ids,
@@ -605,12 +601,12 @@ class AgentStore:
     async def _upsert(db: aiosqlite.Connection, a: Agent) -> None:
         await db.execute(
             "INSERT INTO agents "
-            "(name, agent_name, role, emoji, voice, character, skills, tools, "
+            "(name, agent_name, role, voice, character, skills, tools, "
             "secrets, bot_token, allowed_user_ids, tool_config, "
             "email_accounts, calendar_accounts, contacts_accounts, chat_settings, group_chat) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(name) DO UPDATE SET "
-            "agent_name=excluded.agent_name, role=excluded.role, emoji=excluded.emoji, "
+            "agent_name=excluded.agent_name, role=excluded.role, "
             "voice=excluded.voice, character=excluded.character, "
             "skills=excluded.skills, tools=excluded.tools, secrets=excluded.secrets, "
             "bot_token=excluded.bot_token, allowed_user_ids=excluded.allowed_user_ids, "
@@ -623,7 +619,6 @@ class AgentStore:
                 a.name,
                 a.agent_name,
                 a.role,
-                a.emoji,
                 a.voice,
                 a.character,
                 "\n".join(a.skills),
@@ -646,7 +641,6 @@ class AgentStore:
             name=row["name"],
             agent_name=row["agent_name"] or "",
             role=row["role"] or "",
-            emoji=row["emoji"] or "",
             voice=row["voice"] or "",
             character=row["character"] or "",
             skills=_as_list(row["skills"]),
@@ -781,7 +775,6 @@ if __name__ == "__main__":
     md = """---
 agent_name: Forge
 role: Fitness coach
-emoji: "🏋️"
 skills: [scheduling, memory]
 tools:
   - run_command
@@ -822,7 +815,6 @@ Extra prose in the body.
     a = parse_markdown(md, name="fitness-coach")
     assert a.agent_name == "Forge", a.agent_name
     assert a.role == "Fitness coach", a.role
-    assert a.emoji == "🏋️"
     assert a.skills == ["scheduling", "memory"], a.skills
     assert a.tools == ["run_command", "send_message"], a.tools
     assert a.bot_token == "123:ABC", a.bot_token

@@ -15,22 +15,26 @@
     </div>
   </div>
 
-  {# ── Guided mode ── #}
-  <div x-show="mode === 'guided'" class="flex gap-4 flex-wrap items-start">
-    <div class="flex-[2] min-w-[280px] space-y-3">
+  {# ── Guided mode: one tab per concern (#135) ── #}
+  <div x-show="mode === 'guided'">
+    <div class="flex border-b border-border mb-4 overflow-x-auto">
+      <button type="button" class="tab-link" :class="tab === 'identity' && 'tab-link-active'" @click="tab = 'identity'">Identity</button>
+      <button type="button" class="tab-link" :class="tab === 'telegram' && 'tab-link-active'" @click="tab = 'telegram'">Telegram</button>
+      <button type="button" class="tab-link" :class="tab === 'accounts' && 'tab-link-active'" @click="tab = 'accounts'">Accounts</button>
+      <button type="button" class="tab-link" :class="tab === 'skills' && 'tab-link-active'" @click="tab = 'skills'">Skills</button>
+      <button type="button" class="tab-link" :class="tab === 'tools' && 'tab-link-active'" @click="tab = 'tools'">Tools</button>
+      <button type="button" class="tab-link" :class="tab === 'secrets' && 'tab-link-active'" @click="tab = 'secrets'">Secrets</button>
+    </div>
+
+    {# ── Identity ── #}
+    <div x-show="tab === 'identity'" class="space-y-3">
       <div class="card space-y-3">
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div class="sm:col-span-2">
-            <label class="label">Name (slug)</label>
-            <input class="input-sm" x-model="name" placeholder="fitness-coach">
-            {% if not is_new %}
-            <p class="hint" x-show="name.trim() !== originalName">Renaming moves this agent's chat bindings, private memories and scheduled jobs to the new slug. An agent with its own bot needs an agent restart afterwards.</p>
-            {% endif %}
-          </div>
-          <div>
-            <label class="label">Emoji</label>
-            <input class="input-sm" x-model="emoji" placeholder="🏋️">
-          </div>
+        <div>
+          <label class="label">Name (slug)</label>
+          <input class="input-sm" x-model="name" placeholder="fitness-coach">
+          {% if not is_new %}
+          <p class="hint" x-show="name.trim() !== originalName">Renaming moves this agent's chat bindings, private memories and scheduled jobs to the new slug. An agent with its own bot needs an agent restart afterwards.</p>
+          {% endif %}
         </div>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
@@ -42,37 +46,55 @@
             <input class="input-sm" x-model="agent_name" placeholder="Forge">
           </div>
         </div>
-        <div>
-          <label class="label">Voice <span class="text-muted">(TTS — blank = default)</span></label>
-          <input class="input-sm" x-model="voice" list="voice-options" placeholder="en-US-AvaNeural">
-          <datalist id="voice-options">
-            <option value="en-US-AvaNeural"></option>
-            <option value="en-US-AndrewNeural"></option>
-            <option value="en-US-GuyNeural"></option>
-            <option value="en-GB-SoniaNeural"></option>
-            <option value="en-GB-RyanNeural"></option>
-            <option value="en-AU-NatashaNeural"></option>
-            {% for v in kokoro_voices %}
-            <option value="{{ v }}"></option>
-            {% endfor %}
-          </datalist>
-          <div class="flex items-center gap-2 mt-2 flex-wrap">
-            <input type="text" class="input-sm" style="max-width:240px" x-model="previewText"
-                   placeholder="Preview text… (blank = sample)">
-            <select x-show="/^[a-z][fm]_/.test(voice)" class="input-sm" style="max-width:170px"
-                    x-model="previewLang" title="Pronunciation language">
-              <option value="">Auto (match voice)</option>
-              {% for code, label in kokoro_languages %}
-              <option value="{{ code }}">{{ label }}</option>
-              {% endfor %}
-            </select>
-            <button type="button" class="btn btn-sm"
-                    @click="previewVoice(voice, previewText, /^[a-z][fm]_/.test(voice) ? previewLang : '', $event.currentTarget)">▶ Preview</button>
-          </div>
-          <p class="text-muted text-xs mt-1">Edge TTS names (<code>en-US-AvaNeural</code>) or Kokoro names (<code>af_bella</code>) — match the active backend. Preview plays the selected voice; for Kokoro you can override the language.</p>
-        </div>
       </div>
 
+      <div class="card">
+        <label class="label">Character &amp; tone <span class="text-muted">— who the agent is + tone & behaviour</span></label>
+        <textarea class="textarea" x-model="character" style="min-height:260px; font-size:0.8rem; line-height:1.5"
+                  placeholder="You are a strength &amp; conditioning coach…&#10;&#10;## Tone&#10;- Direct and motivating…"></textarea>
+      </div>
+
+      {# Per-agent voice override #}
+      <div class="card">
+        <h3 class="text-xs text-muted uppercase tracking-wider mb-2">This agent's voice</h3>
+        <label class="label">Voice <span class="text-muted">(TTS — blank = the global default below)</span></label>
+        <input class="input-sm" x-model="voice" list="voice-options" placeholder="en-US-AvaNeural">
+        <datalist id="voice-options">
+          <option value="en-US-AvaNeural"></option>
+          <option value="en-US-AndrewNeural"></option>
+          <option value="en-US-GuyNeural"></option>
+          <option value="en-GB-SoniaNeural"></option>
+          <option value="en-GB-RyanNeural"></option>
+          <option value="en-AU-NatashaNeural"></option>
+          {% for v in kokoro_voices %}
+          <option value="{{ v }}"></option>
+          {% endfor %}
+        </datalist>
+        <div class="flex items-center gap-2 mt-2 flex-wrap">
+          <input type="text" class="input-sm" style="max-width:240px" x-model="previewText"
+                 placeholder="Preview text… (blank = sample)">
+          <select x-show="/^[a-z][fm]_/.test(voice)" class="input-sm" style="max-width:170px"
+                  x-model="previewLang" title="Pronunciation language">
+            <option value="">Auto (match voice)</option>
+            {% for code, label in kokoro_languages %}
+            <option value="{{ code }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+          <button type="button" class="btn btn-sm"
+                  @click="previewVoice(voice, previewText, /^[a-z][fm]_/.test(voice) ? previewLang : '', $event.currentTarget)">▶ Preview</button>
+        </div>
+        <p class="text-muted text-xs mt-1">Edge TTS names (<code>en-US-AvaNeural</code>) or Kokoro names (<code>af_bella</code>) — match the active backend. Preview plays the selected voice; for Kokoro you can override the language.</p>
+      </div>
+
+      {# Global speech engine (STT/TTS) — shared by every agent (#135). #}
+      <div>
+        <p class="text-muted text-xs mb-2">Engine settings below are <strong>global</strong> — the STT model and TTS backend are shared by every agent. The <em>Voice</em> field above overrides only this agent's speaking voice.</p>
+        {% include "partials/identity.html" %}
+      </div>
+    </div>
+
+    {# ── Telegram ── #}
+    <div x-show="tab === 'telegram'" class="space-y-3">
       <div class="card space-y-3">
         <h3 class="text-xs text-muted uppercase tracking-wider">Telegram bot</h3>
         <p class="text-xs text-muted">Each agent talks to Telegram through its own bot. Paste a token to bring this agent online; leave it blank and the agent has no bot of its own. The <strong>default</strong> agent's bot is the one people reach when no other bot or per-chat binding matches. Restart the agent after changing a token.</p>
@@ -136,50 +158,10 @@
           </div>
         </template>
       </div>
-
-      <div class="card">
-        <label class="label">Character &amp; tone <span class="text-muted">— who the agent is + tone & behaviour</span></label>
-        <textarea class="textarea" x-model="character" style="min-height:260px; font-size:0.8rem; line-height:1.5"
-                  placeholder="You are a strength &amp; conditioning coach…&#10;&#10;## Tone&#10;- Direct and motivating…"></textarea>
-      </div>
     </div>
 
-    {# Scopes #}
-    <div class="flex-1 min-w-[240px] space-y-3">
-      <div class="card">
-        <h3 class="text-xs text-muted uppercase tracking-wider mb-2">Skills allowlist</h3>
-        <p class="text-xs text-muted mb-2">None ticked = all skills allowed.</p>
-        <div class="space-y-1 max-h-56 overflow-y-auto">
-          {% for s in all_skills %}
-          <label class="flex items-center gap-2 text-xs">
-            <input type="checkbox" value="{{ s }}" x-model="skills"> {{ s }}
-          </label>
-          {% else %}
-          <p class="text-xs text-muted">No skills defined yet.</p>
-          {% endfor %}
-        </div>
-      </div>
-
-      <div class="card">
-        <h3 class="text-xs text-muted uppercase tracking-wider mb-2">Tool scope</h3>
-        <p class="text-xs text-muted mb-2">None ticked = all tools. <code>load_skill</code> is always available.</p>
-        <div class="space-y-1">
-          {% for t in all_tools %}
-          <label class="flex items-center gap-2 text-xs">
-            <input type="checkbox" value="{{ t }}" x-model="tools"> {{ t }}
-          </label>
-          {% endfor %}
-        </div>
-      </div>
-
-      <div class="card">
-        <h3 class="text-xs text-muted uppercase tracking-wider mb-2">Secret scope</h3>
-        <p class="text-xs text-muted mb-2">Vault namespaces (one per line). Stored now; enforced once the secrets vault lands.</p>
-        <textarea class="textarea" x-model="secretsText" style="min-height:64px; font-size:0.75rem"
-                  placeholder="agent:fitness-coach:*"></textarea>
-      </div>
-
-      {# ── Email, calendar & contacts accounts (#110) ── #}
+    {# ── Accounts: email, calendar & contacts bindings (#110) ── #}
+    <div x-show="tab === 'accounts'" class="space-y-3">
       <div class="card">
         <h3 class="text-xs text-muted uppercase tracking-wider mb-2">Email, calendar &amp; contacts accounts</h3>
         <p class="text-xs text-muted mb-3">
@@ -252,6 +234,46 @@
         <template x-if="!availableContacts.length">
           <p class="text-xs text-muted mt-3">No contacts accounts configured yet — add one in the Contacts tab.</p>
         </template>
+      </div>
+    </div>
+
+    {# ── Skills ── #}
+    <div x-show="tab === 'skills'">
+      <div class="card">
+        <h3 class="text-xs text-muted uppercase tracking-wider mb-2">Skills allowlist</h3>
+        <p class="text-xs text-muted mb-3">Tick the skills this agent may load. None ticked = all skills allowed.</p>
+        <div class="space-y-2 max-h-[32rem] overflow-y-auto">
+          {% for s in all_skills %}
+          <label class="flex items-start gap-2 text-xs">
+            <input type="checkbox" value="{{ s.name }}" x-model="skills" class="mt-0.5">
+            <span>
+              <span class="font-semibold break-all">{{ s.name }}</span>
+              {% if s.summary %}<span class="text-muted block">{{ s.summary }}</span>{% endif %}
+            </span>
+          </label>
+          {% else %}
+          <p class="text-xs text-muted">No skills defined yet.</p>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    {# ── Tools: scope + per-agent tool identities (#93) ── #}
+    <div x-show="tab === 'tools'" class="space-y-3">
+      <div class="card">
+        <h3 class="text-xs text-muted uppercase tracking-wider mb-2">Tool scope</h3>
+        <p class="text-xs text-muted mb-3">Tick the tools this agent may call. None ticked = all tools. <code>load_skill</code> is always available.</p>
+        <div class="space-y-2">
+          {% for t in all_tools %}
+          <label class="flex items-start gap-2 text-xs">
+            <input type="checkbox" value="{{ t.name }}" x-model="tools" class="mt-0.5">
+            <span>
+              <span class="font-semibold">{{ t.name }}</span>
+              {% if t.desc %}<span class="text-muted block">{{ t.desc }}</span>{% endif %}
+            </span>
+          </label>
+          {% endfor %}
+        </div>
       </div>
 
       {# ── Tool identities (#93) ── #}
@@ -377,13 +399,23 @@
         {% endfor %}
       </div>
     </div>
+
+    {# ── Secrets ── #}
+    <div x-show="tab === 'secrets'">
+      <div class="card">
+        <h3 class="text-xs text-muted uppercase tracking-wider mb-2">Secret scope</h3>
+        <p class="text-xs text-muted mb-2">Vault namespaces (one per line). Stored now; enforced once the secrets vault lands.</p>
+        <textarea class="textarea" x-model="secretsText" style="min-height:64px; font-size:0.75rem"
+                  placeholder="agent:fitness-coach:*"></textarea>
+      </div>
+    </div>
   </div>
 
   {# ── Raw mode ── #}
   <div x-show="mode === 'raw'" class="card">
     <label class="label">Markdown (YAML frontmatter)</label>
     <textarea class="textarea" x-model="raw" style="min-height:460px; font-size:0.8rem; line-height:1.5; tab-size:2"></textarea>
-    <p class="hint">Saving in raw mode parses this document directly — frontmatter keys (role, emoji, voice, bot_token, allowed_user_ids, group_chat, skills, tools, secrets, email_accounts, calendar_accounts, contacts_accounts, chat_settings, character).</p>
+    <p class="hint">Saving in raw mode parses this document directly — frontmatter keys (role, voice, bot_token, allowed_user_ids, group_chat, skills, tools, secrets, email_accounts, calendar_accounts, contacts_accounts, chat_settings, character).</p>
   </div>
 
   <div class="flex items-center gap-2 mt-3">
@@ -396,12 +428,12 @@
   function agentEditor() {
     return {
       mode: 'guided',
+      tab: 'identity',
       isNew: {{ is_new|tojson }},
       originalName: {{ agent.name|tojson }},
       name: {{ agent.name|tojson }},
       agent_name: {{ agent.agent_name|tojson }},
       role: {{ agent.role|tojson }},
-      emoji: {{ agent.emoji|tojson }},
       voice: {{ agent.voice|tojson }},
       previewText: '',
       previewLang: '',
@@ -599,7 +631,6 @@
           '---\n' +
           'agent_name: ' + (this.agent_name || '') + '\n' +
           'role: ' + (this.role || '') + '\n' +
-          'emoji: ' + (this.emoji || '') + '\n' +
           'voice: ' + (this.voice || '') + '\n' +
           'bot_token: ' + JSON.stringify(this.bot_token || '') + '\n' +
           'allowed_user_ids: ' + list(userIds) + '\n' +
@@ -630,7 +661,7 @@
           ? { name: name, raw: this.raw, gh_token: ghToken }
           : {
               name: name, agent_name: this.agent_name, role: this.role,
-              emoji: this.emoji, voice: this.voice,
+              voice: this.voice,
               character: this.character,
               skills: this.skills, tools: this.tools,
               secrets: this.secretsText.split('\n').map(s => s.trim()).filter(Boolean),
