@@ -634,6 +634,7 @@ class PersonaUpsertIn(BaseModel):
     tool_config: dict = {}  # per-persona external-tool config (gh/browser) — #93
     email_accounts: list[dict] = []  # [{account, access_level, is_sender_identity}] — #110
     calendar_accounts: list[dict] = []  # [{account, access_level}] — #110
+    contacts_accounts: list[dict] = []  # [{account, access_level}] — #110 (contacts)
     gh_token: str = ""  # this persona's GitHub PAT → infra vault; empty = leave unchanged
     raw: str = ""  # when set, the markdown doc is parsed instead of the fields above
 
@@ -1030,6 +1031,9 @@ def create_admin_app(
             "available_calendar_accounts": [
                 p["name"] for p in await _calendar_providers_context(config_store) if p["name"]
             ],
+            "available_contacts_accounts": [
+                p["name"] for p in await _contact_providers_context(config_store) if p["name"]
+            ],
         }
 
     async def _persona_gh_token_set(name: str) -> bool:
@@ -1115,6 +1119,7 @@ def create_admin_app(
     @app.get("/partials/identity", dependencies=[Depends(auth)])
     async def partial_identity() -> HTMLResponse:
         """Agent identity tab partial."""
+        from core.personae import _as_account_list
         from voice.pipeline import KOKORO_LANGUAGES, KOKORO_VOICES
 
         character = await config_store.get("agent.character") or ""
@@ -1124,6 +1129,8 @@ def create_admin_app(
         tts_enabled = await config_store.get("voice.tts_enabled") or "true"
         backend = await config_store.get("voice.backend") or "edge-tts"
         kokoro_voice = await config_store.get("voice.kokoro.default_voice") or "af_bella"
+        # Default-identity account bindings (#110): the registry accounts to pick
+        # from, plus what's currently bound to the default agent (no persona).
         return _render_partial(
             "partials/identity.html",
             character=character,
@@ -1135,6 +1142,22 @@ def create_admin_app(
             kokoro_voice=kokoro_voice,
             kokoro_voices=KOKORO_VOICES,
             kokoro_languages=KOKORO_LANGUAGES,
+            available_email_accounts=await _email_account_names(config_store),
+            available_calendar_accounts=[
+                p["name"] for p in await _calendar_providers_context(config_store) if p["name"]
+            ],
+            available_contacts_accounts=[
+                p["name"] for p in await _contact_providers_context(config_store) if p["name"]
+            ],
+            default_email_accounts=_as_account_list(
+                await config_store.get("agent.email_accounts") or "", sender=True
+            ),
+            default_calendar_accounts=_as_account_list(
+                await config_store.get("agent.calendar_accounts") or ""
+            ),
+            default_contacts_accounts=_as_account_list(
+                await config_store.get("agent.contacts_accounts") or ""
+            ),
         )
 
     @app.get("/partials/you", dependencies=[Depends(auth)])
@@ -2089,6 +2112,9 @@ def create_admin_app(
             try:
                 new_config = await _resolved_config()
                 agent.config = new_config
+                # Rebuild the default-identity account bindings so a change on the
+                # Assistant tab applies live, no restart (#110).
+                agent._default_accounts = agent._build_default_accounts(new_config)
                 agent.llm = LLMClient.from_agent_config(new_config.agent)
                 agent.llm.temperature = new_config.agent.temperature  # #12: live temp update
                 agent.executor.tool_env = tool_env(new_config)
@@ -2437,6 +2463,42 @@ def create_admin_app(
                 )
                 cals = client.principal().calendars()
                 return {"ok": True, "calendars": len(cals)}
+            except Exception as exc:  # noqa: BLE001 — surface the reason to the admin
+                return {"ok": False, "error": str(exc)}
+
+        return await asyncio.to_thread(_probe)
+
+    @app.post("/contacts/test", dependencies=[Depends(auth)])
+    async def test_contacts_account(body: CalendarTestIn) -> dict:
+        """Probe CardDAV/WebDAV reachability for one contacts account (#110): a
+        PROPFIND against the address-book URL. Vault-backed passwords resolve
+        server-side and are never echoed back."""
+        import asyncio
+
+        password = _resolve_secret_ref(body.password.strip())
+
+        def _probe() -> dict:
+            import requests
+
+            from tools.contacts import _parse_propfind_hrefs
+
+            try:
+                url = body.url.strip().rstrip("/") + "/"
+                dav_body = (
+                    '<?xml version="1.0" encoding="utf-8"?>'
+                    '<d:propfind xmlns:d="DAV:"><d:prop><d:getcontenttype/></d:prop></d:propfind>'
+                )
+                resp = requests.request(
+                    "PROPFIND",
+                    url,
+                    data=dav_body,
+                    auth=(body.username.strip(), password),
+                    headers={"Depth": "1", "Content-Type": "application/xml; charset=utf-8"},
+                    timeout=15,
+                )
+                resp.raise_for_status()
+                vcards = [h for h in _parse_propfind_hrefs(resp.text) if h.lower().endswith(".vcf")]
+                return {"ok": True, "contacts": len(vcards)}
             except Exception as exc:  # noqa: BLE001 — surface the reason to the admin
                 return {"ok": False, "error": str(exc)}
 
@@ -2864,6 +2926,7 @@ def create_admin_app(
                 tool_config=_as_tool_config(body.tool_config),
                 email_accounts=_as_account_list(body.email_accounts, sender=True),
                 calendar_accounts=_as_account_list(body.calendar_accounts),
+                contacts_accounts=_as_account_list(body.contacts_accounts),
             )
         # A per-persona GitHub token goes into the infra vault (machine-key,
         # boot-unsealed so it works headless), namespaced per persona (#93). Empty

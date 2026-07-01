@@ -42,6 +42,7 @@
           <div x-show="provider.type === 'carddav'">
             <label class="label">App password</label>
             <input type="password" class="input-sm" x-model="provider.password" placeholder="xxxx xxxx xxxx xxxx" autocomplete="new-password">
+            <p class="text-muted text-xs mt-1">May be a <code>${vault:NAME}</code> reference. Purelymail: use your unique CardDAV URL from <code>purelymail.com/manage/cardDavUrl</code>.</p>
           </div>
           <div x-show="provider.type === 'google_contacts'">
             <label class="label">Google Client ID</label>
@@ -62,10 +63,18 @@
         <div class="mt-3 text-xs text-muted">
           <strong>Notes</strong>
           <ul class="list-disc ml-5 mt-1 space-y-1">
-            <li>CardDAV providers include iCloud, Fastmail, and most work accounts.</li>
-            <li>Google Contacts uses the People API scope and a one-time authorization.</li>
+            <li>CardDAV providers include Purelymail, iCloud, Fastmail, and most work accounts.</li>
+            <li>Google Contacts uses the People API scope and a one-time authorization (read-only).</li>
             <li>Contacts are queried directly from the provider (no local sync).</li>
           </ul>
+        </div>
+
+        <div x-show="provider.type === 'carddav'" class="flex items-center gap-2 mt-3 flex-wrap">
+          <button class="btn btn-sm" type="button" @click="testProvider(provider)" :disabled="provider.testing">
+            <span x-show="!provider.testing">Test connection</span>
+            <span x-show="provider.testing">Testing…</span>
+          </button>
+          <span class="text-xs" :class="provider.testOk ? 'text-accent' : 'text-warn'" x-text="provider.testResult"></span>
         </div>
       </div>
     </template>

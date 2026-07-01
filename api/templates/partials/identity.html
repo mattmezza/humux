@@ -79,6 +79,87 @@
     </template>
   </div>
 
+  {# Default-identity account bindings (#110) #}
+  <div class="card" x-data="defaultAccounts(
+    {{ available_email_accounts|tojson }},
+    {{ available_calendar_accounts|tojson }},
+    {{ available_contacts_accounts|tojson }},
+    {{ default_email_accounts|tojson }},
+    {{ default_calendar_accounts|tojson }},
+    {{ default_contacts_accounts|tojson }}
+  )">
+    <h2 class="text-base mb-1">Email, calendar &amp; contacts accounts</h2>
+    <p class="text-muted text-xs mb-3">
+      Which accounts the default agent (when no persona is active) may use, and at what level.
+      <strong>None</strong> = no binding. <strong>Read</strong> = read only. <strong>Read &amp; write</strong>
+      = also send / create. Pick one email account as the <strong>sender</strong> identity. Leave
+      everything on <strong>None</strong> to keep the legacy behaviour (the default agent may use any
+      configured account). Add accounts in the Email / Calendar / Contacts tabs.
+    </p>
+
+    <template x-if="availableEmail.length">
+      <div class="mb-3">
+        <label class="label mb-1">Email</label>
+        <template x-for="acc in availableEmail" :key="acc">
+          <div class="flex items-center justify-between gap-2 mb-1">
+            <span class="text-xs break-all" x-text="acc"></span>
+            <div class="flex items-center gap-2 shrink-0">
+              <select class="select input-sm" style="max-width:128px" x-model="emailAccess[acc]">
+                <option value="none">None</option>
+                <option value="read">Read</option>
+                <option value="read_write">Read &amp; write</option>
+              </select>
+              <label class="flex items-center gap-1 text-xs" :class="emailAccess[acc] === 'none' && 'opacity-40'">
+                <input type="radio" name="default-sender" :value="acc" x-model="senderIdentity"
+                       :disabled="emailAccess[acc] === 'none'"> sender
+              </label>
+            </div>
+          </div>
+        </template>
+      </div>
+    </template>
+    <template x-if="availableCalendar.length">
+      <div class="mb-3">
+        <label class="label mb-1">Calendar</label>
+        <template x-for="acc in availableCalendar" :key="acc">
+          <div class="flex items-center justify-between gap-2 mb-1">
+            <span class="text-xs break-all" x-text="acc"></span>
+            <select class="select input-sm" style="max-width:128px" x-model="calAccess[acc]">
+              <option value="none">None</option>
+              <option value="read">Read</option>
+              <option value="read_write">Read &amp; write</option>
+            </select>
+          </div>
+        </template>
+      </div>
+    </template>
+    <template x-if="availableContacts.length">
+      <div>
+        <label class="label mb-1">Contacts</label>
+        <template x-for="acc in availableContacts" :key="acc">
+          <div class="flex items-center justify-between gap-2 mb-1">
+            <span class="text-xs break-all" x-text="acc"></span>
+            <select class="select input-sm" style="max-width:128px" x-model="contactsAccess[acc]">
+              <option value="none">None</option>
+              <option value="read">Read</option>
+              <option value="read_write">Read &amp; write</option>
+            </select>
+          </div>
+        </template>
+      </div>
+    </template>
+    <template x-if="!availableEmail.length && !availableCalendar.length && !availableContacts.length">
+      <p class="text-xs text-muted">No accounts configured yet — add them in the Email / Calendar / Contacts tabs.</p>
+    </template>
+
+    <div class="flex justify-end mt-3">
+      <button class="btn-primary btn-sm" @click="save()">Save accounts</button>
+    </div>
+    <template x-if="result">
+      <div :class="ok ? 'alert-success' : 'alert-error'" class="mt-2" x-text="result"></div>
+    </template>
+  </div>
+
   {# Voice #}
   <div class="card" x-data="{
     ttsEnabled: {{ tts_enabled|default('true', true)|tojson|forceescape }},

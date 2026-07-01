@@ -152,7 +152,7 @@ def test_persona_editor_lists_available_accounts(tmp_path) -> None:
         headers=AUTH,
     )
     page = client.get("/admin/personae/coach", headers=AUTH).text
-    assert "Email &amp; calendar accounts" in page  # the binding card renders
+    assert "Email, calendar &amp; contacts accounts" in page  # the binding card renders
     assert "coach-agent" in page and "google" in page  # available accounts injected
 
 

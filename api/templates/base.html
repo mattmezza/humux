@@ -809,6 +809,74 @@
     }
     window.calendarTab = calendarTab;
 
+    // Default-identity account bindings (#110) — same shape as the persona
+    // editor's, saved to agent.email_accounts/calendar_accounts/contacts_accounts.
+    function defaultAccounts(availEmail, availCal, availContacts, emailB, calB, contactsB) {
+      return {
+        availableEmail: Array.isArray(availEmail) ? [...availEmail] : [],
+        availableCalendar: Array.isArray(availCal) ? [...availCal] : [],
+        availableContacts: Array.isArray(availContacts) ? [...availContacts] : [],
+        emailAccess: {}, calAccess: {}, contactsAccess: {}, senderIdentity: '',
+        result: '', ok: false,
+        init() {
+          for (const a of this.availableEmail) this.emailAccess[a] = 'none';
+          for (const a of this.availableCalendar) this.calAccess[a] = 'none';
+          for (const a of this.availableContacts) this.contactsAccess[a] = 'none';
+          for (const e of (emailB || [])) {
+            if (!(e.account in this.emailAccess)) this.availableEmail.push(e.account);
+            this.emailAccess[e.account] = e.access_level || 'read';
+            if (e.is_sender_identity) this.senderIdentity = e.account;
+          }
+          for (const c of (calB || [])) {
+            if (!(c.account in this.calAccess)) this.availableCalendar.push(c.account);
+            this.calAccess[c.account] = c.access_level || 'read';
+          }
+          for (const c of (contactsB || [])) {
+            if (!(c.account in this.contactsAccess)) this.availableContacts.push(c.account);
+            this.contactsAccess[c.account] = c.access_level || 'read';
+          }
+        },
+        _buildEmail() {
+          const out = [];
+          for (const a of this.availableEmail) {
+            const lvl = this.emailAccess[a];
+            if (!lvl || lvl === 'none') continue;
+            const isSender = this.senderIdentity === a;
+            out.push({account: a, access_level: isSender ? 'read_write' : lvl, is_sender_identity: isSender});
+          }
+          return out;
+        },
+        _buildLevels(available, access) {
+          const out = [];
+          for (const a of available) {
+            const lvl = access[a];
+            if (!lvl || lvl === 'none') continue;
+            out.push({account: a, access_level: lvl});
+          }
+          return out;
+        },
+        save() {
+          const vals = {
+            'agent.email_accounts': JSON.stringify(this._buildEmail()),
+            'agent.calendar_accounts': JSON.stringify(this._buildLevels(this.availableCalendar, this.calAccess)),
+            'agent.contacts_accounts': JSON.stringify(this._buildLevels(this.availableContacts, this.contactsAccess)),
+          };
+          fetch('/config', {
+            method: 'PATCH',
+            headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('admin_api_key') || '')},
+            body: JSON.stringify({values: vals})
+          })
+            .then(r => { this.ok = r.ok; return r.json().catch(() => ({})); })
+            .then(d => {
+              this.result = this.ok ? 'Default accounts saved' : (d.detail || 'Error');
+              if (this.ok && window.showToast) window.showToast('Default accounts saved');
+            })
+            .catch(e => { this.ok = false; this.result = e.message; });
+        },
+      };
+    }
+    window.defaultAccounts = defaultAccounts;
+
     function contactsTab(providers) {
       const list = Array.isArray(providers) ? providers : [];
       return {
@@ -821,7 +889,8 @@
           password: p.password || '',
           client_id: p.client_id || '',
           client_secret: p.client_secret || '',
-          oauth_status: ''
+          oauth_status: '',
+          testing: false, testOk: false, testResult: ''
         })),
         status: '',
         result: '',
@@ -835,11 +904,33 @@
             username: '',
             password: '',
             client_id: '',
-            client_secret: ''
+            client_secret: '',
+            testing: false, testOk: false, testResult: ''
           });
         },
         removeProvider(index) {
           this.providers.splice(index, 1);
+        },
+        testProvider(provider) {
+          provider.testing = true; provider.testResult = ''; provider.testOk = false;
+          fetch('/contacts/test', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ' + (localStorage.getItem('admin_api_key') || '')
+            },
+            credentials: 'same-origin',
+            body: JSON.stringify({url: provider.url, username: provider.username, password: provider.password})
+          })
+            .then(async r => { const t = await r.text(); let d = {}; try { d = t ? JSON.parse(t) : {}; } catch (e) { d = {error: t}; } return {ok: r.ok, d}; })
+            .then(({ok, d}) => {
+              provider.testing = false;
+              provider.testOk = ok && !!d.ok;
+              provider.testResult = provider.testOk
+                ? ('Connected — ' + (d.contacts ?? 0) + ' contact(s)')
+                : (d.error || d.detail || 'Test failed');
+            })
+            .catch(e => { provider.testing = false; provider.testResult = e.message || 'Network error'; });
         },
         saveProviders() {
           this.status = 'Saving...';

@@ -128,14 +128,15 @@
                   placeholder="persona:fitness-coach:*"></textarea>
       </div>
 
-      {# ── Email & calendar accounts (#110) ── #}
+      {# ── Email, calendar & contacts accounts (#110) ── #}
       <div class="card">
-        <h3 class="text-xs text-muted uppercase tracking-wider mb-2">Email &amp; calendar accounts</h3>
+        <h3 class="text-xs text-muted uppercase tracking-wider mb-2">Email, calendar &amp; contacts accounts</h3>
         <p class="text-xs text-muted mb-3">
           Which accounts this persona may use, and at what level. <strong>None</strong> = no access
           (safe default). <strong>Read</strong> = read only. <strong>Read &amp; write</strong> = also
-          send / create events. Pick one email account as the <strong>sender</strong> identity.
-          Add or edit the accounts themselves in the <strong>Email</strong> / <strong>Calendar</strong> tabs.
+          send / create events / add contacts. Pick one email account as the <strong>sender</strong>
+          identity. Add or edit the accounts in the <strong>Email</strong> / <strong>Calendar</strong> /
+          <strong>Contacts</strong> tabs.
         </p>
 
         <template x-if="availableEmail.length">
@@ -180,6 +181,25 @@
         </template>
         <template x-if="!availableCalendar.length">
           <p class="text-xs text-muted">No calendar accounts configured yet — add one in the Calendar tab.</p>
+        </template>
+
+        <template x-if="availableContacts.length">
+          <div class="mt-3">
+            <label class="label mb-1">Contacts</label>
+            <template x-for="acc in availableContacts" :key="acc">
+              <div class="flex items-center justify-between gap-2 mb-1">
+                <span class="text-xs break-all" x-text="acc"></span>
+                <select class="select input-sm" style="max-width:128px" x-model="contactsAccess[acc]">
+                  <option value="none">None</option>
+                  <option value="read">Read</option>
+                  <option value="read_write">Read &amp; write</option>
+                </select>
+              </div>
+            </template>
+          </div>
+        </template>
+        <template x-if="!availableContacts.length">
+          <p class="text-xs text-muted mt-3">No contacts accounts configured yet — add one in the Contacts tab.</p>
         </template>
       </div>
 
@@ -255,7 +275,7 @@
   <div x-show="mode === 'raw'" class="card">
     <label class="label">Markdown (YAML frontmatter)</label>
     <textarea class="textarea" x-model="raw" style="min-height:460px; font-size:0.8rem; line-height:1.5; tab-size:2"></textarea>
-    <p class="hint">Saving in raw mode parses this document directly — frontmatter keys (role, emoji, voice, bot_token, allowed_user_ids, skills, tools, secrets, email_accounts, calendar_accounts, character).</p>
+    <p class="hint">Saving in raw mode parses this document directly — frontmatter keys (role, emoji, voice, bot_token, allowed_user_ids, skills, tools, secrets, email_accounts, calendar_accounts, contacts_accounts, character).</p>
   </div>
 
   <div class="flex items-center gap-2 mt-3">
@@ -298,13 +318,16 @@
       modes: {},
       profiles: {},
 
-      // Per-persona email/calendar account bindings (#110).
+      // Per-persona email/calendar/contacts account bindings (#110).
       availableEmail: {{ available_email_accounts|tojson }},
       availableCalendar: {{ available_calendar_accounts|tojson }},
+      availableContacts: {{ available_contacts_accounts|tojson }},
       emailBindings: {{ persona.email_accounts|tojson }},
       calendarBindings: {{ persona.calendar_accounts|tojson }},
+      contactsBindings: {{ persona.contacts_accounts|tojson }},
       emailAccess: {},
       calAccess: {},
+      contactsAccess: {},
       senderIdentity: '',
 
       init() {
@@ -320,6 +343,7 @@
         // registry still shows (so it can be cleaned up).
         for (const acc of this.availableEmail) this.emailAccess[acc] = 'none';
         for (const acc of this.availableCalendar) this.calAccess[acc] = 'none';
+        for (const acc of this.availableContacts) this.contactsAccess[acc] = 'none';
         for (const e of this.emailBindings) {
           if (!(e.account in this.emailAccess)) this.availableEmail.push(e.account);
           this.emailAccess[e.account] = e.access_level || 'read';
@@ -328,6 +352,10 @@
         for (const c of this.calendarBindings) {
           if (!(c.account in this.calAccess)) this.availableCalendar.push(c.account);
           this.calAccess[c.account] = c.access_level || 'read';
+        }
+        for (const c of this.contactsBindings) {
+          if (!(c.account in this.contactsAccess)) this.availableContacts.push(c.account);
+          this.contactsAccess[c.account] = c.access_level || 'read';
         }
       },
 
@@ -347,6 +375,15 @@
         const out = [];
         for (const acc of this.availableCalendar) {
           const lvl = this.calAccess[acc];
+          if (!lvl || lvl === 'none') continue;
+          out.push({ account: acc, access_level: lvl });
+        }
+        return out;
+      },
+      buildContactsAccounts() {
+        const out = [];
+        for (const acc of this.availableContacts) {
+          const lvl = this.contactsAccess[acc];
           if (!lvl || lvl === 'none') continue;
           out.push({ account: acc, access_level: lvl });
         }
@@ -389,6 +426,7 @@
           'tool_config: ' + JSON.stringify(this.buildToolConfig()) + '\n' +
           'email_accounts: ' + JSON.stringify(this.buildEmailAccounts()) + '\n' +
           'calendar_accounts: ' + JSON.stringify(this.buildCalendarAccounts()) + '\n' +
+          'contacts_accounts: ' + JSON.stringify(this.buildContactsAccounts()) + '\n' +
           'character: |\n  ' + esc(this.character) + '\n' +
           '---\n';
       },
@@ -415,6 +453,7 @@
               tool_config: this.buildToolConfig(), gh_token: ghToken,
               email_accounts: this.buildEmailAccounts(),
               calendar_accounts: this.buildCalendarAccounts(),
+              contacts_accounts: this.buildContactsAccounts(),
             };
         fetch('/personae', { method: 'POST', headers: this._headers(), body: JSON.stringify(body) })
           .then(r => { this.ok = r.ok; return r.text().then(t => ({ ok: r.ok, t })); })
