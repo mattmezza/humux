@@ -1065,6 +1065,62 @@ class AgentCore:
         addressed: bool = True,
         message_id: int | None = None,
     ) -> AgentResponse:
+        """Serialize concurrent turns of one chat, then run the turn.
+
+        A single ``(channel, user_id, chat_id)`` is one conversation, and its
+        turns share in-memory history/session caches. When two inbound messages
+        of the same chat arrive as separate tasks (a crowded group room), their
+        read-modify-writes can interleave — the silent-fold RMW in
+        ``_record_inbound`` drops a line of ambient context, and the session
+        cache can lose an append. The per-chat lock makes turns of one chat run
+        one at a time; different chats and agents get different keys, so
+        cross-chat concurrency is unchanged. The turn logic lives in
+        ``_process_impl``.
+        """
+        async with self._chat_lock(channel, user_id, chat_id):
+            return await self._process_impl(
+                message,
+                channel,
+                user_id,
+                attachments=attachments,
+                chat_id=chat_id,
+                agent_name=agent_name,
+                respond=respond,
+                addressed=addressed,
+                message_id=message_id,
+            )
+
+    def _chat_lock(self, channel: str, user_id: str, chat_id: str) -> asyncio.Lock:
+        """The turn lock for one chat key, created on first use.
+
+        Built lazily rather than in ``__init__`` so ``process()`` also works on an
+        instance created via ``object.__new__`` (the bare-agent test pattern) and
+        on any future alternate constructor — the lock map has a single owner here.
+        In-memory, resets on restart. ponytail: one lock per distinct chat key,
+        never evicted — a lock is tiny; prune stale keys only if a real deployment
+        ever shows growth.
+        """
+        locks = getattr(self, "_chat_locks", None)
+        if locks is None:
+            locks = self._chat_locks = {}
+        key = (channel, user_id, chat_id)
+        lock = locks.get(key)
+        if lock is None:
+            lock = locks[key] = asyncio.Lock()
+        return lock
+
+    async def _process_impl(
+        self,
+        message: str,
+        channel: str,
+        user_id: str,
+        attachments: list[Attachment] | None = None,
+        chat_id: str = "",
+        agent_name: str | None = None,
+        respond: bool = True,
+        addressed: bool = True,
+        message_id: int | None = None,
+    ) -> AgentResponse:
         """Process an incoming message through the LLM with tool-use loop.
 
         ``chat_id`` distinguishes different chats for the same user (e.g.
@@ -3568,24 +3624,31 @@ class AgentCore:
     ) -> None:
         """Record a background batch's notification + digest as an assistant turn —
         merged into the trailing assistant turn so replayed history stays strictly
-        alternating for providers that require it (#15)."""
+        alternating for providers that require it (#15).
+
+        Runs in the background subagent task, so it holds the same per-chat lock as
+        ``process()``: this fold is another read-modify-write on the chat's history,
+        and a concurrent foreground turn on the same chat would otherwise interleave
+        with it. Background delivery never runs under a held lock for this key (the
+        spawning turn returned long ago), so acquiring it here can't deadlock."""
         if not chat_id or channel == "system":
             return
         try:
-            if self.history_mode == "session":
-                merged = await self.history.append_to_last_session_message(
-                    channel, user_id, f"\n\n{framed}", chat_id
-                )
-                if not merged:
-                    await self.history.append_session_message(
-                        channel, user_id, {"role": "assistant", "content": framed}, chat_id
+            async with self._chat_lock(channel, user_id, chat_id):
+                if self.history_mode == "session":
+                    merged = await self.history.append_to_last_session_message(
+                        channel, user_id, f"\n\n{framed}", chat_id
                     )
-            else:
-                merged = await self.history.append_to_last_turn(
-                    channel, user_id, "assistant", f"\n\n{framed}", chat_id
-                )
-                if not merged:
-                    await self.history.add_turn(channel, user_id, "assistant", framed, chat_id)
+                    if not merged:
+                        await self.history.append_session_message(
+                            channel, user_id, {"role": "assistant", "content": framed}, chat_id
+                        )
+                else:
+                    merged = await self.history.append_to_last_turn(
+                        channel, user_id, "assistant", f"\n\n{framed}", chat_id
+                    )
+                    if not merged:
+                        await self.history.add_turn(channel, user_id, "assistant", framed, chat_id)
         except Exception:
             log.exception("Failed to record subagent context (chat=%s)", chat_id)
 
@@ -3609,10 +3672,10 @@ class AgentCore:
         starts a fresh user turn — ``_coalesce_user_messages`` merges the run back
         into one before the next LLM call, so alternation always holds.
 
-        ponytail: the fold is a non-locked read-modify-write, so two silent
-        records racing in one busy group can drop a line of ambient context (never
-        a reply). Add a per-(channel,user,chat) asyncio.Lock around process() if a
-        room ever shows missing turns.
+        This fold is a read-modify-write; two silent records racing in one busy
+        group would drop a line of ambient context. It runs inside ``process()``,
+        which now holds a per-(channel,user,chat) lock, so records of one chat are
+        serialized and the race is closed.
         """
         if channel == "system":
             return
