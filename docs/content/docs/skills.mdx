@@ -181,8 +181,8 @@ secret name into the prompt:
 | `search_skills(query, limit?)` | The top matching skills as `name + summary` (keyword-ranked over name and summary) |
 | `list_skills()` | Every available skill as `name + summary` (browse the whole catalogue) |
 
-Both are scoped to the active persona's skill allowlist, the same scope that
-`load_skill` enforces — a persona never discovers a skill it can't load. The flow
+Both are scoped to the active agent's skill allowlist, the same scope that
+`load_skill` enforces — an agent never discovers a skill it can't load. The flow
 becomes: `search_skills` → pick a name → `load_skill` → act. This extends the
 existing lazy pattern (bodies are already loaded on demand) up one level to the
 index itself.

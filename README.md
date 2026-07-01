@@ -5,14 +5,14 @@ A self-hosted personal AI agent that runs in a single Docker container. MPA acts
 ## Features
 
 - **Messaging** — Telegram channel with text and voice messages; WhatsApp as an agent tool (read/send via wacli)
-- **Email** — Read, compose, and manage emails via [Himalaya](https://github.com/pimalaya/himalaya) CLI. Each persona can own a dedicated mailbox or be granted read / read-write access to your inbox; credentials resolve from the vault, never the model's context
-- **Calendar** — CalDAV integration (Google Calendar, iCloud, etc.), bindable per-persona with read / read-write access levels
-- **Contacts** — CardDAV (over WebDAV — Purelymail, iCloud, Fastmail) and Google Contacts; the agent can search and create contacts, bindable per-persona with read / read-write access levels
-- **Personae** — Swappable agent identities (own character, skill/tool scope, voice, and its own email/calendar/contacts accounts). Bind one per chat — and, on Telegram, per forum topic — so several run concurrently, each with its own isolated context. Give a persona its own bot token and it becomes a separate Telegram contact (bot-per-persona); add several persona-bots to one Telegram group and they take turns — each replies only when addressed, ignores other bots so they never loop, and tags who said what in the shared history
+- **Email** — Read, compose, and manage emails via [Himalaya](https://github.com/pimalaya/himalaya) CLI. Each agent can own a dedicated mailbox or be granted read / read-write access to your inbox; credentials resolve from the vault, never the model's context
+- **Calendar** — CalDAV integration (Google Calendar, iCloud, etc.), bindable per-agent with read / read-write access levels
+- **Contacts** — CardDAV (over WebDAV — Purelymail, iCloud, Fastmail) and Google Contacts; the agent can search and create contacts, bindable per-agent with read / read-write access levels
+- **Agents** — Swappable agent identities (own character, skill/tool scope, voice, and its own email/calendar/contacts accounts). Bind one per chat — and, on Telegram, per forum topic — so several run concurrently, each with its own isolated context. Give an agent its own bot token and it becomes a separate Telegram contact (bot-per-agent); add several agent-bots to one Telegram group and they take turns — each replies only when addressed, ignores other bots so they never loop, and tags who said what in the shared history
 - **Reply decision** — In shared/group chats the agent decides per message whether to reply at all, staying quiet for messages aimed at another bot or caught in a bot-to-bot reaction loop, with a hard rate cap that guarantees runaway loops end (off by default)
 - **Memory** — Two-tier system: permanent long-term facts and expiring short-term context, both extracted automatically from conversations
 - **Scheduled tasks** — Cron-based jobs for morning briefings, email checks, contact sync, and custom tasks
-- **Subagents** — Delegate a scoped subtask to a sub-loop under a chosen persona, on demand or scheduled. Runs sync (result returned in-turn) or in the background; a finished background batch is distilled by a summary inference into a one-line chat notification + a concise context digest (raw output never reaches the user or the agent's context). The agent sizes each run (steps / token budget / thinking effort) and defaults the persona to its own; scope is a subset of the caller's (inherit-never-widen). Monitor and cancel from Telegram (`/jobs`) or the admin UI
+- **Subagents** — Delegate a scoped subtask to a sub-loop under a chosen agent, on demand or scheduled. Runs sync (result returned in-turn) or in the background; a finished background batch is distilled by a summary inference into a one-line chat notification + a concise context digest (raw output never reaches the user or the agent's context). The agent sizes each run (steps / token budget / thinking effort) and defaults the agent to its own; scope is a subset of the caller's (inherit-never-widen). Monitor and cancel from Telegram (`/jobs`) or the admin UI
 - **Reactions** — On Telegram the agent can acknowledge a message with an emoji (`set_reaction`) instead of a text reply — thumbsup for "got it", heart for thanks, eyes for a photo, and so on. Cosmetic and pre-approved, so a quick ack never interrupts with a prompt
 - **Voice** — Speech-to-text (faster-whisper) and text-to-speech (edge-tts, or Kokoro 82M for fully offline multilingual voice)
 - **Image generation** — Optional `generate_image` tool (OpenRouter, fal.ai, or OpenAI) that creates images on request and sends them as native photos. Reuses an existing OpenRouter/OpenAI LLM key, with a daily/monthly budget cap (off by default)
@@ -20,9 +20,9 @@ A self-hosted personal AI agent that runs in a single Docker container. MPA acts
 - **Web search** — Tavily integration for real-time information
 - **Browser automation** — Optional headless browser (Playwright) to read JS-heavy pages and act on sites, with persistent logged-in profiles and per-domain approval (off by default)
 - **Web artifacts** — The agent publishes pages, multi-file sites, or documents by writing files under `{workspace}/artifacts/<slug>/` with the [workspace](/docs/configuration) file tools, served as shareable links at `/artifacts/<slug>/` behind a sandbox CSP
-- **Secrets vault** — Encrypted, two-tier secrets store: infrastructure keys (machine-key sealed, served into config via `${vault:NAME}`) and per-persona login/agent secrets (admin-password sealed, used by reference as `{{secret:NAME}}` in commands — values never enter the model's context). Bitwarden import + secure-link credential requests
+- **Secrets vault** — Encrypted, two-tier secrets store: infrastructure keys (machine-key sealed, served into config via `${vault:NAME}`) and per-agent login/agent secrets (admin-password sealed, used by reference as `{{secret:NAME}}` in commands — values never enter the model's context). Bitwarden import + secure-link credential requests
 - **Permissions** — Glob-pattern rules (ALWAYS/ASK/NEVER) with interactive Telegram approval for write actions
-- **Admin UI** — Web dashboard for configuration, persona & per-chat binding, skills editing, memory inspection, job management, per-agent log streams (filterable by stream / level / time / text), and agent lifecycle control
+- **Admin UI** — Web dashboard for configuration, agent & per-chat binding, skills editing, memory inspection, job management, per-agent log streams (filterable by stream / level / time / text), and agent lifecycle control
 - **Skills** — Teach the agent new capabilities by writing markdown files instead of code
 - **Setup wizard** — Step-by-step first-boot configuration via the admin UI
 
@@ -95,7 +95,7 @@ MPA uses a dual-layer config system:
 | `config.yml` | Agent settings, channels, calendar, scheduler jobs |
 | `character.md` | Agent identity, personality, and communication style (editable) |
 | `skills/*.md` | Skill documents that teach the agent how to use tools |
-| `personae/*.md` | Persona definitions — swappable agent identities (starter gallery) |
+| `agents/*.md` | Optional agent-definition seed files (none ship; create agents in the admin UI) |
 
 ## Project structure
 
@@ -124,7 +124,7 @@ tools/          CLI helper scripts
   calendar_write.py  CalDAV event creator
   wacli/              WhatsApp CLI (vendor)
 skills/         Markdown skill files
-personae/       Persona definitions (starter gallery)
+agents/       Optional agent-definition seed files (empty by default)
 schema/         Database schemas
 tests/          Test suite
 data/           Runtime SQLite databases (gitignored)

@@ -34,9 +34,9 @@ async def test_run_command_allows_whitelisted_prefix(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_persona_override_strips_leaked_managed_env(monkeypatch) -> None:
+async def test_agent_override_strips_leaked_managed_env(monkeypatch) -> None:
     # A GH_TOKEN present in the process env (e.g. loaded from .env) must NOT leak
-    # to a persona-scoped run whose override doesn't set it — otherwise a persona
+    # to an agent-scoped run whose override doesn't set it — otherwise an agent
     # that switched gh off could still act as the owner (#93 security boundary).
     # GITHUB_TOKEN is gh's fallback var — it must be stripped too, not just GH_TOKEN.
     monkeypatch.setenv("GH_TOKEN", "owner-leaked")
@@ -48,7 +48,7 @@ async def test_persona_override_strips_leaked_managed_env(monkeypatch) -> None:
     )
     resolved = executor._resolve_command(cmd)
 
-    # persona-scoped override with no token → both gh vars stripped from the env.
+    # agent-scoped override with no token → both gh vars stripped from the env.
     res = await executor._exec(resolved, 30, tool_env={})
     assert res["stdout"].strip() == "NONE|NONE", res
 

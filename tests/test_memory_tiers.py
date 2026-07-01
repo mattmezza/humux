@@ -247,8 +247,8 @@ class TestRecall:
         assert all("turkish" not in m["content"] for m in out)
 
     async def test_scope_isolation(self, embed_store):
-        # Recall must honour persona scope (#42): a persona sees shared + its own
-        # private memories, never another persona's private rows.
+        # Recall must honour agent scope (#42): an agent sees shared + its own
+        # private memories, never another agent's private rows.
         await embed_store._insert_long_term("fact", "matteo", "allergic to dust", scope="")
         await embed_store._insert_long_term(
             "health", "matteo", "allergic to shellfish", scope="coach"

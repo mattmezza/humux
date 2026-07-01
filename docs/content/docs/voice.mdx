@@ -61,7 +61,7 @@ voice:
     default_voice: "af_bella"
 ```
 
-You can also set the backend and default voice from the admin UI (**Assistant → Voice**), and pick a per-persona voice in the persona editor. Both have a **Preview** box: type a few words, optionally pick a **language**, and hear the voice before saving. Because the voice (timbre) and the pronunciation language are independent in Kokoro, any voice can read any language — e.g. an Italian voice reading English.
+You can also set the backend and default voice from the admin UI (**Agents → Default agent → Voice**), and pick a per-agent voice in the agent editor. Both have a **Preview** box: type a few words, optionally pick a **language**, and hear the voice before saving. Because the voice (timbre) and the pronunciation language are independent in Kokoro, any voice can read any language — e.g. an Italian voice reading English.
 
 ### Whisper model sizes
 
@@ -142,14 +142,14 @@ The voice name's first letter selects the language (used for phonemization):
 | `pf_`, `pm_` | Portuguese F/M | `pf_dora`, `pm_alex` |
 | `hf_`, `hm_` | Hindi F/M | `hm_omega` |
 
-### Per-persona voice
+### Per-agent voice
 
-A persona can speak in its own voice — set `voice:` in the persona's frontmatter
+An agent can speak in its own voice — set `voice:` in the agent's frontmatter
 to a Kokoro voice name (e.g. a French tutor using `ff_siwis`). The same field
 also works for edge-tts voice names; pick one that matches the active backend.
 
 ```yaml
-voice: "ff_siwis"   # this persona speaks French
+voice: "ff_siwis"   # this agent speaks French
 ```
 
 ## Resource requirements

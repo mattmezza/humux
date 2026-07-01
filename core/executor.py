@@ -128,7 +128,7 @@ class ToolExecutor:
         """Execute a shell command and return its output.
 
         ``tool_env`` overrides the default :attr:`tool_env` for this one call —
-        used to inject the active persona's own tool identity (own GH_TOKEN,
+        used to inject the active agent's own tool identity (own GH_TOKEN,
         browser profile) so each agent authenticates as itself (#93).
         """
         # Security: validate against whitelist
@@ -170,22 +170,22 @@ class ToolExecutor:
         tool_env: dict[str, str] | None = None,
     ) -> dict:
         """Run a shell command and capture output."""
-        # Per-call override (active persona's identity) wins over the shared default.
-        persona_scoped = tool_env is not None
+        # Per-call override (active agent's identity) wins over the shared default.
+        agent_scoped = tool_env is not None
         effective_tool_env = self.tool_env if tool_env is None else tool_env
         env = None
         wants_wacli_label = "wacli" in command and "WACLI_DEVICE_LABEL" not in os.environ
-        if "himalaya" in command or effective_tool_env or wants_wacli_label or persona_scoped:
+        if "himalaya" in command or effective_tool_env or wants_wacli_label or agent_scoped:
             env = os.environ.copy()
             if "himalaya" in command:
                 env.update(himalaya_env())
             # wacli: identify the linked device as MPA (matches the Docker ENV).
             if wants_wacli_label:
                 env.setdefault("WACLI_DEVICE_LABEL", "MPA")
-            # A persona-scoped override is authoritative over the registry's managed
-            # keys: strip any it didn't set so a persona can't inherit a tool
+            # An agent-scoped override is authoritative over the registry's managed
+            # keys: strip any it didn't set so an agent can't inherit a tool
             # credential (e.g. GH_TOKEN from .env) its policy dropped (#93).
-            if persona_scoped:
+            if agent_scoped:
                 from core.tools import MANAGED_TOOL_ENV_KEYS
 
                 for key in MANAGED_TOOL_ENV_KEYS - effective_tool_env.keys():

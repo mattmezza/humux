@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from core.agents import Agent
 from core.config import Config
 from core.goal_decomposition import DecomposedGoal
-from core.personae import Persona
 from core.tools import active_tool_prompts
 
 DEFAULT_TOOL_USAGE_BLOCK = """For write actions that have a dedicated structured tool —
@@ -130,7 +130,7 @@ def build_prompt_sections(
     memories: str,
     reflections: str,
     decomposed_goal: DecomposedGoal | None,
-    persona: Persona | None = None,
+    agent: Agent | None = None,
     secrets_available: bool = False,
     include_memories: bool = True,
     include_reflections: bool = True,
@@ -155,23 +155,23 @@ def build_prompt_sections(
         getattr(config.prompt, "history_handling_override", ""),
     )
 
-    # When a persona is active it supplies its own identity (character); otherwise
-    # the configured default is used, so first-run behaviour with no persona is
+    # When an agent is active it supplies its own identity (character); otherwise
+    # the configured default is used, so first-run behaviour with no agent is
     # unchanged. (personalia was merged into character in #98.)
-    character_text = persona.character if persona else cfg.character
-    # A persona may go by its own name; otherwise the globally-configured name.
-    agent_name = persona.agent_name if persona and persona.agent_name else cfg.name
+    character_text = agent.character if agent else cfg.character
+    # An agent may go by its own name; otherwise the globally-configured name.
+    agent_name = agent.agent_name if agent and agent.agent_name else cfg.name
 
     intro = (
         f"You are {agent_name}, a personal AI assistant for {cfg.owner_name}.\n\n"
         f"Your timezone is {cfg.timezone}. The current date and time is provided at the "
         f"start of each user message — always use that as 'now'."
     )
-    if persona and persona.role:
-        intro += f"\n\nYou are currently acting as the **{persona.role}** persona."
+    if agent and agent.role:
+        intro += f"\n\nYou are currently acting as the **{agent.role}** agent."
 
     # Prompt-injection rail (#3): untrusted content (email/web/file/tool output) must
-    # never be treated as instructions. Lives in the non-overridable intro so a persona
+    # never be treated as instructions. Lives in the non-overridable intro so an agent
     # or tool_usage override can't drop it. Defence-in-depth, not a guarantee.
     intro += (
         "\n\n<security>\n"
@@ -189,7 +189,7 @@ def build_prompt_sections(
     about_user = f"<about_user>\n{about_user_block}\n</about_user>" if about_user_block else ""
     tool_usage = f"<tool_usage>\n{tool_usage_text}\n</tool_usage>"
 
-    tool_blocks = active_tool_prompts(config, persona)
+    tool_blocks = active_tool_prompts(config, agent)
     tools_section = ""
     if tool_blocks:
         tools_section = "<tools>\n" + "\n\n".join(tool_blocks) + "\n</tools>"
@@ -213,7 +213,7 @@ def build_prompt_sections(
         )
     # Voice is a base capability, not a skill or a function-tool: when TTS is on
     # (same flag that brings up the pipeline in main.py) every agent — default or
-    # persona, 1:1 or group room — is told it can speak. Without this the only
+    # agent, 1:1 or group room — is told it can speak. Without this the only
     # documentation of the [respond_with_voice] marker lived inside the `voice`
     # skill, so a model that hadn't loaded it would deny having any voice tool.
     voice_section = ""

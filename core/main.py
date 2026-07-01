@@ -70,12 +70,12 @@ async def _start_agent(config_store: ConfigStore):
         await agent.job_store.seed_from_config(seed_data)
 
     # -- One-time #110 account-binding migration --
-    # Before #110 any persona could use any configured email/calendar account. Now
-    # an empty binding means no access, so on first start we grant every persona
+    # Before #110 any agent could use any configured email/calendar account. Now
+    # an empty binding means no access, so on first start we grant every agent
     # (that has none yet) full access to all existing accounts, preserving prior
-    # behaviour. Personae created afterwards start empty (safe default). Runs once.
-    if not await config_store.get("accounts.persona_binding_migrated"):
-        from core.personae import bind_existing_accounts
+    # behaviour. Agents created afterwards start empty (safe default). Runs once.
+    if not await config_store.get("accounts.agent_binding_migrated"):
+        from core.agents import bind_existing_accounts
 
         def _account_names(raw: str | None) -> list[str]:
             try:
@@ -89,13 +89,13 @@ async def _start_agent(config_store: ConfigStore):
             ]
 
         n = await bind_existing_accounts(
-            agent.personae,
+            agent.agents,
             _account_names(await config_store.get("email.providers")),
             _account_names(await config_store.get("calendar.providers")),
         )
-        await config_store.set("accounts.persona_binding_migrated", "true")
+        await config_store.set("accounts.agent_binding_migrated", "true")
         if n:
-            log.info("Bound existing email/calendar accounts to %d persona(s) (#110)", n)
+            log.info("Bound existing email/calendar accounts to %d agent(s) (#110)", n)
 
     # -- Voice pipeline --
     voice: VoicePipeline | None = None
@@ -117,7 +117,7 @@ async def _start_agent(config_store: ConfigStore):
         )
         agent.voice = voice
 
-    # -- Telegram: the default bot plus one bot per persona that carries a token (#29).
+    # -- Telegram: the default bot plus one bot per agent that carries a token (#29).
     # A single bad/revoked token must never abort the others, WhatsApp, or the
     # scheduler — each bot is brought up independently and failures are isolated.
     async def _start_tg(conf, name: str, channel_name: str = "telegram") -> None:
@@ -139,26 +139,26 @@ async def _start_agent(config_store: ConfigStore):
             seen_tokens.add(tg_global.bot_token)
             await _start_tg(tg_global, "telegram")
 
-        for persona in await agent.personae.list_personae():
-            token = (persona.bot_token or "").strip()
+        for ag in await agent.agents.list_agents():
+            token = (ag.bot_token or "").strip()
             if not token:
                 continue  # no own bot — reachable only via the default bot
             if token in seen_tokens:
                 log.warning(
-                    "Persona %s shares a bot token with another bot — skipping its bot "
+                    "Agent %s shares a bot token with another bot — skipping its bot "
                     "(one token can only be polled once)",
-                    persona.name,
+                    ag.name,
                 )
                 continue
             seen_tokens.add(token)
             pconf = TelegramConfig(
                 enabled=True,
                 bot_token=token,
-                allowed_user_ids=persona.allowed_user_ids or tg_global.allowed_user_ids,
+                allowed_user_ids=ag.allowed_user_ids or tg_global.allowed_user_ids,
                 topics_enabled=tg_global.topics_enabled,
                 group_chat=tg_global.group_chat,  # inherit group-room behaviour (#30)
             )
-            await _start_tg(pconf, f"telegram:{persona.name}", f"telegram:{persona.name}")
+            await _start_tg(pconf, f"telegram:{ag.name}", f"telegram:{ag.name}")
 
         # WhatsApp is a tool now (#97), not a channel: the agent reads/sends via
         # the `wacli` CLI through run_command. Linking/sync live on the admin app's
@@ -178,7 +178,7 @@ async def _start_agent(config_store: ConfigStore):
 
 
 async def _stop_telegram_bots(agent) -> None:
-    """Stop and deregister the default bot and every per-persona bot (#29).
+    """Stop and deregister the default bot and every per-agent bot (#29).
 
     Each bot is torn down independently: one that fails to stop must not strand
     the rest still polling (which would 409 on the next start).
@@ -228,7 +228,7 @@ async def _lifespan(application):  # noqa: ANN001
     load_dotenv()
     await _config_store.seed_if_empty()
     await _config_store.ensure_admin_password()
-    # Initialise the persona vault's wrapped DEK when an admin password is set via
+    # Initialise the agent vault's wrapped DEK when an admin password is set via
     # the environment (the only point at boot where plaintext is available). When
     # the password is set through the wizard/UI instead, the admin routes mint it.
     seed_pw = environ.get("ADMIN_PASSWORD") or environ.get("ADMIN_API_KEY")

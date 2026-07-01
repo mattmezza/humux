@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING
 from core.config import Config
 
 if TYPE_CHECKING:
-    from core.personae import Persona
+    from core.agents import Agent
 
 # Advertisement injected into the system prompt when `gh` is active.
 _GH_PROMPT = """<tool name="gh">
@@ -146,13 +146,13 @@ def _gh_env(config: Config) -> dict[str, str]:
 
 
 def _gh_app_configured(config: Config) -> bool:
-    """Whether the system App can be a shared bot for personae (respects auth)."""
+    """Whether the system App can be a shared bot for agents (respects auth)."""
     gh = config.tools.gh
     return bool(gh.enabled) and _gh_prefers_app(gh)
 
 
-def _persona_has_own_app(gh: dict) -> bool:
-    """Whether the persona carries its OWN GitHub App creds (#111)."""
+def _agent_has_own_app(gh: dict) -> bool:
+    """Whether the agent carries its OWN GitHub App creds (#111)."""
     return bool(
         str(gh.get("app_id") or "").strip()
         and str(gh.get("installation_id") or "").strip()
@@ -160,14 +160,14 @@ def _persona_has_own_app(gh: dict) -> bool:
     )
 
 
-def _persona_app_token(gh: dict, resolve_secret: Callable[[str], str | None]) -> str | None:
-    """Mint a persona's OWN GitHub App installation token, or ``None`` (#111).
+def _agent_app_token(gh: dict, resolve_secret: Callable[[str], str | None]) -> str | None:
+    """Mint an agent's OWN GitHub App installation token, or ``None`` (#111).
 
     ``app_id`` + ``installation_id`` are non-secret; the PEM is referenced by
     ``private_key_secret`` (an infra-vault name) so it is never stored in the
-    persona doc — same posture as ``token_secret`` for PATs.
+    agent doc — same posture as ``token_secret`` for PATs.
     """
-    if not _persona_has_own_app(gh):
+    if not _agent_has_own_app(gh):
         return None
     app_id = str(gh.get("app_id")).strip()
     installation_id = str(gh.get("installation_id")).strip()
@@ -180,13 +180,13 @@ def _persona_app_token(gh: dict, resolve_secret: Callable[[str], str | None]) ->
     return github_app.installation_token(app_id, installation_id, pem)
 
 
-def _persona_gh_token(
+def _agent_gh_token(
     gh: dict,
-    persona_name: str,
+    agent_name: str,
     config: Config,
     resolve_secret: Callable[[str], str | None],
 ) -> str | None:
-    """Resolve a persona's ``GH_TOKEN`` honoring its explicit auth mode (#111).
+    """Resolve an agent's ``GH_TOKEN`` honoring its explicit auth mode (#111).
 
     * ``auth="pat"`` → its own PAT (``token_secret`` or ``GH_TOKEN_<slug>``); it
       never borrows the App.
@@ -195,13 +195,13 @@ def _persona_gh_token(
     * ``auth=""`` (legacy/inferred) → PAT if it has one, else own App, else the
       system App bot.
 
-    A persona NEVER falls back to the owner's PAT (#93 no-borrow): only its own
+    An agent NEVER falls back to the owner's PAT (#93 no-borrow): only its own
     credentials or the App bot (which is not the owner) are ever used.
     """
     auth = (gh.get("auth") or "").strip().lower()
 
     def own_pat() -> str | None:
-        name = (gh.get("token_secret") or "").strip() or gh_token_secret_name(persona_name)
+        name = (gh.get("token_secret") or "").strip() or gh_token_secret_name(agent_name)
         return resolve_secret(name)
 
     def system_app() -> str | None:
@@ -217,15 +217,15 @@ def _persona_gh_token(
     if auth == "app":
         # Own app → own app or NOTHING: never silently cross over to the system
         # bot on a transient mint failure (that could be a different, broader
-        # identity). Only a persona that configured no own app uses the shared bot.
-        return _persona_app_token(gh, resolve_secret) if _persona_has_own_app(gh) else system_app()
+        # identity). Only an agent that configured no own app uses the shared bot.
+        return _agent_app_token(gh, resolve_secret) if _agent_has_own_app(gh) else system_app()
     # Legacy / inferred: PAT first, then own app (own-app-or-nothing — same
     # no-crossover rule as auth="app"), else the shared system bot.
     token = own_pat()
     if token:
         return token
-    if _persona_has_own_app(gh):
-        return _persona_app_token(gh, resolve_secret)
+    if _agent_has_own_app(gh):
+        return _agent_app_token(gh, resolve_secret)
     return system_app()
 
 
@@ -233,8 +233,8 @@ def _whatsapp_env(config: Config) -> dict[str, str]:
     wa = config.tools.whatsapp
     if not wa.enabled:
         return {}
-    # Identity knobs for the wacli store. Per-persona overrides ride #93's
-    # per-persona tool_env on top of these defaults.
+    # Identity knobs for the wacli store. Per-agent overrides ride #93's
+    # per-agent tool_env on top of these defaults.
     env: dict[str, str] = {}
     if wa.store:
         env["WACLI_STORE"] = wa.store
@@ -280,9 +280,9 @@ _REGISTRY: tuple[ToolSpec, ...] = (
 )
 
 
-# Env vars the tool registry manages. When a per-persona env override is applied
+# Env vars the tool registry manages. When a per-agent env override is applied
 # (#93), any managed key absent from the override is stripped from the inherited
-# process environment too — so a persona that switched `gh` off can never inherit
+# process environment too — so an agent that switched `gh` off can never inherit
 # a token that leaked in via `.env`/Docker ENV and act as the owner. `gh` reads
 # GH_TOKEN, then GITHUB_TOKEN, then the enterprise variants (in that precedence),
 # so ALL of them must be stripped, not just GH_TOKEN.
@@ -310,10 +310,10 @@ def _is_enabled(config: Config, key: str) -> bool:
     return bool(getattr(sub, "enabled", False))
 
 
-def active_tool_prompts(config: Config, persona: Persona | None = None) -> list[str]:
+def active_tool_prompts(config: Config, agent: Agent | None = None) -> list[str]:
     """Return system-prompt advertisement blocks for every *enabled* tool.
 
-    When ``persona`` is active and has per-tool config (#93), a tool it opted out
+    When ``agent`` is active and has per-tool config (#93), a tool it opted out
     of is dropped, and a note about its own identity (own ``gh`` token, own browser
     profile) is injected into the tool block so the model authenticates as itself.
     """
@@ -321,13 +321,13 @@ def active_tool_prompts(config: Config, persona: Persona | None = None) -> list[
     for spec in _REGISTRY:
         if not _is_enabled(config, spec.key):
             continue
-        setting = persona.tool_setting(spec.key) if persona else None
+        setting = agent.tool_setting(spec.key) if agent else None
         if setting is not None and not setting.get("enabled"):
-            continue  # this persona has the tool switched off
+            continue  # this agent has the tool switched off
         block = spec.prompt(config).strip()
         if not block:
             continue
-        note = _persona_tool_note(spec.key, setting, persona)
+        note = _agent_tool_note(spec.key, setting, agent)
         if note:
             block = block.replace("</tool>", f"{note}\n</tool>", 1)
         blocks.append(block)
@@ -343,20 +343,20 @@ def tool_env(config: Config) -> dict[str, str]:
     return env
 
 
-# -- Per-persona tool identity (#93) ----------------------------------------
+# -- Per-agent tool identity (#93) ----------------------------------------
 
 
-def gh_token_secret_name(persona_name: str) -> str:
-    """Infra-vault name holding a persona's own GitHub token.
+def gh_token_secret_name(agent_name: str) -> str:
+    """Infra-vault name holding an agent's own GitHub token.
 
-    Namespaced per persona so each agent authenticates as a distinct GitHub user.
+    Namespaced per agent so each agent authenticates as a distinct GitHub user.
     Stored in the *infra* vault (machine-key, boot-unsealed) so it works headless
     and in scheduled jobs — same on-disk posture as the system-wide ``GH_TOKEN``.
 
     The slug is kept verbatim (case preserved; infra names are case-sensitive) so
-    two personae whose slugs differ only by case don't collide on one token.
+    two agents whose slugs differ only by case don't collide on one token.
     """
-    slug = re.sub(r"[^A-Za-z0-9_-]+", "_", (persona_name or "").strip())
+    slug = re.sub(r"[^A-Za-z0-9_-]+", "_", (agent_name or "").strip())
     return f"GH_TOKEN_{slug}"
 
 
@@ -369,10 +369,10 @@ _GH_REPO_FLAG_RE = re.compile(
 )
 
 
-def github_repo_violation(persona: Persona | None, command: str) -> str | None:
-    """First GitHub repo the persona is NOT allowed to touch, or ``None`` (#111).
+def github_repo_violation(agent: Agent | None, command: str) -> str | None:
+    """First GitHub repo the agent is NOT allowed to touch, or ``None`` (#111).
 
-    Best-effort per-persona repo allowlist from ``tool_config["gh"]["repos"]``.
+    Best-effort per-agent repo allowlist from ``tool_config["gh"]["repos"]``.
     Absent ``repos`` key = unrestricted; a *present* list restricts to it, and a
     present-but-empty list (e.g. a subagent whose scope was narrowed to a set
     disjoint from its parent's) allows **nothing** — it blocks every ``--repo``
@@ -384,9 +384,9 @@ def github_repo_violation(persona: Persona | None, command: str) -> str | None:
     those is a bug farm and would give false confidence. Tighten the App
     installation to narrow access for real.
     """
-    if persona is None or not command:
+    if agent is None or not command:
         return None
-    gh = persona.tool_setting("gh") or {}
+    gh = agent.tool_setting("gh") or {}
     repos = gh.get("repos")
     if repos is None:
         return None  # no allowlist → unrestricted
@@ -399,9 +399,9 @@ def github_repo_violation(persona: Persona | None, command: str) -> str | None:
     return None
 
 
-def _persona_tool_note(key: str, setting: dict | None, persona: Persona | None) -> str:
-    """A one-line identity note injected into a tool's prompt block for a persona."""
-    if persona is None or setting is None:
+def _agent_tool_note(key: str, setting: dict | None, agent: Agent | None) -> str:
+    """A one-line identity note injected into a tool's prompt block for an agent."""
+    if agent is None or setting is None:
         return ""
     if key == "gh":
         repos = [r for r in (setting.get("repos") or []) if str(r).strip()]
@@ -410,23 +410,23 @@ def _persona_tool_note(key: str, setting: dict | None, persona: Persona | None) 
         )
         if (setting.get("token_secret") or "").strip():
             return (
-                f'Running as persona "{persona.name}": `gh` is authenticated with the '
-                "GitHub token configured for this persona. Every gh/git action appears "
+                f'Running as agent "{agent.name}": `gh` is authenticated with the '
+                "GitHub token configured for this agent. Every gh/git action appears "
                 "as that token's GitHub user." + repo_note
             )
         return (
-            f'Running as persona "{persona.name}": `gh` is authenticated with this '
-            "persona's OWN GitHub identity (a distinct identity from the owner). Every "
-            "gh/git action appears as this persona's GitHub user or the configured "
+            f'Running as agent "{agent.name}": `gh` is authenticated with this '
+            "agent's OWN GitHub identity (a distinct identity from the owner). Every "
+            "gh/git action appears as this agent's GitHub user or the configured "
             "GitHub App bot." + repo_note
         )
     if key == "browser":
-        profile = (setting.get("profile") or persona.name).strip()
+        profile = (setting.get("profile") or agent.name).strip()
         if profile:
             return (
-                f'Running as persona "{persona.name}": your browser profile is '
+                f'Running as agent "{agent.name}": your browser profile is '
                 f'"{profile}" — it is used by default, so your logged-in sessions are '
-                "isolated from other personae. Pass `--profile " + profile + "` "
+                "isolated from other agents. Pass `--profile " + profile + "` "
                 "explicitly when a command needs it."
             )
     return ""
@@ -434,39 +434,39 @@ def _persona_tool_note(key: str, setting: dict | None, persona: Persona | None) 
 
 def effective_tool_env(
     config: Config,
-    persona: Persona | None,
+    agent: Agent | None,
     resolve_secret: Callable[[str], str | None],
 ) -> dict[str, str]:
-    """The tool environment for a turn, adjusted for the active persona (#93).
+    """The tool environment for a turn, adjusted for the active agent (#93).
 
-    Starts from the system-wide :func:`tool_env` and, for a persona that has its
+    Starts from the system-wide :func:`tool_env` and, for an agent that has its
     own tool config, swaps in its own identity:
 
-    * ``gh`` — replace ``GH_TOKEN`` with the persona's own token (resolved from the
-      infra vault). If the persona switched ``gh`` off, ``GH_TOKEN`` is *removed*
+    * ``gh`` — replace ``GH_TOKEN`` with the agent's own token (resolved from the
+      infra vault). If the agent switched ``gh`` off, ``GH_TOKEN`` is *removed*
       so it can never act as the owner; if it has no own token, it also falls back
       to no token rather than silently borrowing the owner's.
-    * ``browser`` — set ``BROWSER_PROFILE`` to the persona's isolated profile.
+    * ``browser`` — set ``BROWSER_PROFILE`` to the agent's isolated profile.
 
-    A persona with no entry for a tool inherits the system config unchanged, so
+    An agent with no entry for a tool inherits the system config unchanged, so
     existing setups keep working (migration §6).
     """
     env = tool_env(config)
-    if persona is None:
+    if agent is None:
         return env
 
-    gh = persona.tool_setting("gh")
+    gh = agent.tool_setting("gh")
     if gh is not None:
-        # Persona has an explicit gh policy → never inherit the owner's token.
+        # Agent has an explicit gh policy → never inherit the owner's token.
         env.pop("GH_TOKEN", None)
         if gh.get("enabled") and config.tools.gh.enabled:
-            token = _persona_gh_token(gh, persona.name, config, resolve_secret)
+            token = _agent_gh_token(gh, agent.name, config, resolve_secret)
             if token:
                 env["GH_TOKEN"] = token
 
-    browser = persona.tool_setting("browser")
+    browser = agent.tool_setting("browser")
     if browser is not None and browser.get("enabled") and config.tools.browser.enabled:
-        profile = (browser.get("profile") or persona.name).strip()
+        profile = (browser.get("profile") or agent.name).strip()
         if profile:
             env["BROWSER_PROFILE"] = profile
 
@@ -474,8 +474,8 @@ def effective_tool_env(
 
 
 if __name__ == "__main__":
-    # ponytail: one runnable check covering per-persona env swap + prompt notes.
-    from core.personae import Persona
+    # ponytail: one runnable check covering per-agent env swap + prompt notes.
+    from core.agents import Agent
 
     cfg = Config()
     cfg.tools.gh.enabled = True
@@ -488,16 +488,16 @@ if __name__ == "__main__":
     vault = {"GH_TOKEN_hopper": "hopper-token", "SHARED_PAT": "shared-token"}
     resolve = vault.get  # Callable[[str], str | None]
 
-    # No persona → system token, no profile.
+    # No agent → system token, no profile.
     base = effective_tool_env(cfg, None, resolve)
     assert base["GH_TOKEN"] == "owner-token" and "BROWSER_PROFILE" not in base
 
-    # Persona with no tool_config → inherits system config unchanged (migration).
-    plain = Persona(name="plain")
+    # Agent with no tool_config → inherits system config unchanged (migration).
+    plain = Agent(name="plain")
     assert effective_tool_env(cfg, plain, resolve)["GH_TOKEN"] == "owner-token"
 
-    # Persona with its own gh token + browser profile → own identity.
-    hopper = Persona(
+    # Agent with its own gh token + browser profile → own identity.
+    hopper = Agent(
         name="hopper",
         tool_config={"gh": {"enabled": True}, "browser": {"enabled": True, "profile": "hop"}},
     )
@@ -506,18 +506,18 @@ if __name__ == "__main__":
     assert env["BROWSER_PROFILE"] == "hop"
 
     # gh enabled but no own token stored → no token (never borrows the owner's).
-    atlas = Persona(name="atlas", tool_config={"gh": {"enabled": True}})
+    atlas = Agent(name="atlas", tool_config={"gh": {"enabled": True}})
     assert "GH_TOKEN" not in effective_tool_env(cfg, atlas, resolve)
 
     # token_secret reuses an existing vault secret instead of the namespaced one.
-    ref = Persona(name="atlas", tool_config={"gh": {"enabled": True, "token_secret": "SHARED_PAT"}})
+    ref = Agent(name="atlas", tool_config={"gh": {"enabled": True, "token_secret": "SHARED_PAT"}})
     assert effective_tool_env(cfg, ref, resolve)["GH_TOKEN"] == "shared-token"
 
     # gh explicitly disabled → GH_TOKEN removed.
-    lingua = Persona(name="lingua", tool_config={"gh": {"enabled": False}})
+    lingua = Agent(name="lingua", tool_config={"gh": {"enabled": False}})
     assert "GH_TOKEN" not in effective_tool_env(cfg, lingua, resolve)
 
-    # GitHub App configured + persona has no own PAT → uses the shared bot token (#111).
+    # GitHub App configured + agent has no own PAT → uses the shared bot token (#111).
     app_cfg = Config()
     app_cfg.tools.gh.enabled = True
     app_cfg.tools.gh.app_id = "42"
@@ -533,15 +533,15 @@ if __name__ == "__main__":
         assert effective_tool_env(app_cfg, atlas, resolve)["GH_TOKEN"] == "app:42"
 
         # Explicit auth="pat" → own PAT only, NEVER the App (even if App fields set).
-        pat_only = Persona(
+        pat_only = Agent(
             name="hopper", tool_config={"gh": {"enabled": True, "auth": "pat", "app_id": "99"}}
         )
         assert effective_tool_env(app_cfg, pat_only, resolve)["GH_TOKEN"] == "hopper-token"
-        pat_none = Persona(name="none", tool_config={"gh": {"enabled": True, "auth": "pat"}})
+        pat_none = Agent(name="none", tool_config={"gh": {"enabled": True, "auth": "pat"}})
         assert "GH_TOKEN" not in effective_tool_env(app_cfg, pat_none, resolve)
 
-        # Persona's OWN GitHub App (multiple apps) → its own bot (app 500), not 42.
-        own_app = Persona(
+        # Agent's OWN GitHub App (multiple apps) → its own bot (app 500), not 42.
+        own_app = Agent(
             name="coder",
             tool_config={
                 "gh": {
@@ -557,10 +557,10 @@ if __name__ == "__main__":
         assert effective_tool_env(app_cfg, own_app, resolve)["GH_TOKEN"] == "app:500"
 
         # auth="app" but no own App creds → falls back to the shared system App bot.
-        app_shared = Persona(name="w", tool_config={"gh": {"enabled": True, "auth": "app"}})
+        app_shared = Agent(name="w", tool_config={"gh": {"enabled": True, "auth": "app"}})
         assert effective_tool_env(app_cfg, app_shared, resolve)["GH_TOKEN"] == "app:42"
 
-        # System auth forced to "pat" → the App bot is NOT offered to personae.
+        # System auth forced to "pat" → the App bot is NOT offered to agents.
         pat_sys = Config()
         pat_sys.tools.gh.enabled = True
         pat_sys.tools.gh.auth = "pat"
@@ -571,8 +571,8 @@ if __name__ == "__main__":
     finally:
         _ga.installation_token = _real_it
 
-    # Per-persona repo allowlist (#111): only --repo targets outside the list are blocked.
-    scoped = Persona(name="coder", tool_config={"gh": {"enabled": True, "repos": ["me/mpa"]}})
+    # Per-agent repo allowlist (#111): only --repo targets outside the list are blocked.
+    scoped = Agent(name="coder", tool_config={"gh": {"enabled": True, "repos": ["me/mpa"]}})
     assert github_repo_violation(scoped, "gh issue list --repo me/mpa") is None
     assert github_repo_violation(scoped, "gh pr view 1 -R me/other") == "me/other"
     assert github_repo_violation(scoped, "gh api user") is None  # no --repo → can't tell → allow
@@ -583,17 +583,17 @@ if __name__ == "__main__":
     assert github_repo_violation(scoped, "gh pr view 1 --repo=me/mpa") is None
     assert github_repo_violation(scoped, "grep -R foo/bar .") is None  # not a gh command
     # Present-but-empty allowlist = block every --repo (disjoint-narrow result).
-    blocked = Persona(name="sub", tool_config={"gh": {"enabled": True, "repos": []}})
+    blocked = Agent(name="sub", tool_config={"gh": {"enabled": True, "repos": []}})
     assert github_repo_violation(blocked, "gh pr view 1 --repo me/mpa") == "me/mpa"
     assert github_repo_violation(blocked, "gh api user") is None  # no --repo target
 
     # Prompts: hopper sees gh + browser, with identity notes; lingua's gh is hidden.
     hp = "\n".join(active_tool_prompts(cfg, hopper))
-    assert 'persona "hopper"' in hp and "OWN GitHub identity" in hp and "hop" in hp
+    assert 'agent "hopper"' in hp and "OWN GitHub identity" in hp and "hop" in hp
     lp = "\n".join(active_tool_prompts(cfg, lingua))
     assert 'name="gh"' not in lp and 'name="browser"' in lp
-    # No persona → plain blocks, no identity notes.
+    # No agent → plain blocks, no identity notes.
     nop = "\n".join(active_tool_prompts(cfg))
-    assert 'name="gh"' in nop and "Running as persona" not in nop
+    assert 'name="gh"' in nop and "Running as agent" not in nop
 
     print("tools.py self-check OK")

@@ -15,13 +15,13 @@ from fastapi.testclient import TestClient
 
 from api.admin import AgentState, create_admin_app
 from core.agent import AgentCore
+from core.agents import Agent
 from core.config import Config, resolve_vault_vars
 from core.config_store import ConfigStore
 from core.llm import LLMToolCall
 from core.permissions import PermissionLevel
-from core.personae import Persona
 from core.secret_store import SecretStore, parse_bitwarden_export
-from core.vault import InfraVault, PersonaVault, VaultLocked
+from core.vault import AgentVault, InfraVault, VaultLocked
 
 # ── Crypto / envelope ──────────────────────────────────────────────────────
 
@@ -35,22 +35,22 @@ def test_infra_vault_roundtrip_and_isolation() -> None:
     assert not InfraVault(None).available
 
 
-def test_persona_vault_envelope_and_rotation() -> None:
-    pv = PersonaVault()
+def test_agent_vault_envelope_and_rotation() -> None:
+    pv = AgentVault()
     with pytest.raises(VaultLocked):
         pv.encrypt("x")
-    wrapped, salt = PersonaVault.create_wrapped_dek("pw1")
+    wrapped, salt = AgentVault.create_wrapped_dek("pw1")
     assert pv.unseal("pw1", wrapped, salt)
     ct = pv.encrypt("secret")
     assert pv.decrypt(ct) == "secret"
     # Wrong password cannot unseal.
-    assert not PersonaVault().unseal("nope", wrapped, salt)
+    assert not AgentVault().unseal("nope", wrapped, salt)
     # Rotation preserves the DEK -> old ciphertext still decrypts.
-    nw, ns = PersonaVault.rewrap("pw1", "pw2", wrapped, salt)
-    pv2 = PersonaVault()
+    nw, ns = AgentVault.rewrap("pw1", "pw2", wrapped, salt)
+    pv2 = AgentVault()
     assert pv2.unseal("pw2", nw, ns)
     assert pv2.decrypt(ct) == "secret"
-    assert not PersonaVault().unseal("pw1", nw, ns)
+    assert not AgentVault().unseal("pw1", nw, ns)
 
 
 # ── Secret store: ACL, resolution, lifecycle ───────────────────────────────
@@ -64,7 +64,7 @@ async def store(tmp_path) -> SecretStore:
 
 
 async def test_acl_allows_scoped_and_shared(store: SecretStore) -> None:
-    await store.set_secret("PRIV", "p", owner="persona:x")
+    await store.set_secret("PRIV", "p", owner="agent:x")
     await store.set_secret("SHARED", "s", shared=True)
     cmd = "curl {{secret:PRIV}} {{secret:SHARED}}"
     # In scope: both resolve.
@@ -73,7 +73,7 @@ async def test_acl_allows_scoped_and_shared(store: SecretStore) -> None:
     # Out of scope: PRIV denied even though SHARED is allowed.
     _, err = await store.resolve_command_secrets(cmd, allowed=set())
     assert err and "scope" in err
-    # Shared alone resolves with empty persona scope.
+    # Shared alone resolves with empty agent scope.
     out, err = await store.resolve_command_secrets("{{secret:SHARED}}", allowed=set())
     assert err is None and out == "s"
 
@@ -116,7 +116,7 @@ async def test_audit_records_use_never_value(store: SecretStore) -> None:
 
 async def test_locked_vault_refuses_resolution(store: SecretStore) -> None:
     await store.set_secret("K", "v", shared=True)
-    store.lock_persona()
+    store.lock_agent()
     _, err = await store.resolve_command_secrets("{{secret:K}}", allowed=set())
     assert err and "locked" in err
 
@@ -142,10 +142,10 @@ async def test_decrypt_mismatch_returns_error_not_crash(tmp_path) -> None:
     await s.ensure_wrapped_dek("pw")
     await s.set_secret("K", "v", shared=True)
     # Swap in a *different* unsealed DEK so the stored ciphertext can't decrypt.
-    other = PersonaVault()
-    w, salt = PersonaVault.create_wrapped_dek("pw")
+    other = AgentVault()
+    w, salt = AgentVault.create_wrapped_dek("pw")
     other.unseal("pw", w, salt)
-    s.persona = other
+    s.agent = other
     _, err = await s.resolve_command_secrets("{{secret:K}}", allowed=set())
     assert err and "key mismatch" in err
 
@@ -159,7 +159,7 @@ async def test_rotate_password_preserves_secrets_and_rejects_wrong_old(store: Se
 
 
 async def test_requests_are_one_time(store: SecretStore) -> None:
-    tok = await store.create_request("NEW", persona="finance", reason="r")
+    tok = await store.create_request("NEW", agent="finance", reason="r")
     req = await store.get_request(tok)
     assert req and req["name"] == "NEW"
     assert await store.resolve_request(tok)
@@ -273,7 +273,7 @@ async def test_substitution_only_in_run_command(agent: AgentCore, monkeypatch) -
 
 
 async def test_run_command_acl_denies_out_of_scope(agent: AgentCore, monkeypatch) -> None:
-    await agent.secret_store.set_secret("PRIV", "nope", owner="persona:x")
+    await agent.secret_store.set_secret("PRIV", "nope", owner="agent:x")
     monkeypatch.setattr(agent.permissions, "check", lambda *a, **k: PermissionLevel.ALWAYS)
     ran = {"called": False}
 
@@ -282,7 +282,7 @@ async def test_run_command_acl_denies_out_of_scope(agent: AgentCore, monkeypatch
         return {"stdout": "", "stderr": "", "exit_code": 0}
 
     monkeypatch.setattr(agent.executor, "_exec", fake_exec)
-    rs = agent._new_request_state(Persona(name="other"))  # no PRIV in scope
+    rs = agent._new_request_state(Agent(name="other"))  # no PRIV in scope
     call = LLMToolCall(
         id="1", name="run_command", arguments={"command": "curl {{secret:PRIV}}", "purpose": "p"}
     )
@@ -292,7 +292,7 @@ async def test_run_command_acl_denies_out_of_scope(agent: AgentCore, monkeypatch
 
 
 async def test_request_secret_creates_request_and_link(agent: AgentCore) -> None:
-    rs = agent._new_request_state(Persona(name="finance"))
+    rs = agent._new_request_state(Agent(name="finance"))
     call = LLMToolCall(
         id="1",
         name="request_secret",
@@ -302,13 +302,13 @@ async def test_request_secret_creates_request_and_link(agent: AgentCore) -> None
     assert result["status"] == "requested" and "/vault/fill/" in result["secure_link"]
     token = result["secure_link"].rsplit("/", 1)[-1]
     req = await agent.secret_store.get_request(token)
-    assert req and req["name"] == "ACME_LOGIN" and req["persona"] == "finance"
+    assert req and req["name"] == "ACME_LOGIN" and req["agent"] == "finance"
 
 
 async def test_prompt_points_to_tool_not_secret_names(agent: AgentCore) -> None:
     # Discovery is via the list_secrets tool — the prompt must NOT dump secret
     # names (context pollution) or values, just a static pointer + usage rule.
-    prompt = await agent._build_system_prompt(persona=None)
+    prompt = await agent._build_system_prompt(agent=None)
     assert "list_secrets" in prompt  # tells the model how to discover on demand
     assert "{{secret:NAME}}" in prompt  # usage instruction present
     assert "TOKEN" not in prompt  # the specific secret NAME is not injected
@@ -317,7 +317,7 @@ async def test_prompt_points_to_tool_not_secret_names(agent: AgentCore) -> None:
 
 async def test_no_secrets_block_without_vault() -> None:
     agent = AgentCore(Config(), secret_store=None)
-    prompt = await agent._build_system_prompt(persona=None)
+    prompt = await agent._build_system_prompt(agent=None)
     assert "list_secrets" not in prompt  # no vault configured -> no secrets block
 
 
@@ -330,8 +330,8 @@ async def admin_client(tmp_path):
     cs = ConfigStore(db_path=db)
     await cs.set_setup_step("done")
     await cs.set_admin_password("testpw")
-    await cs.set("agent.personae_db_path", str(tmp_path / "personae.db"))
-    await cs.set("agent.personae_dir", "")
+    await cs.set("agent.agents_db_path", str(tmp_path / "agents.db"))
+    await cs.set("agent.agents_dir", "")
     s = SecretStore(db_path=db)
     await s.ensure_wrapped_dek("testpw")
     app, _ = create_admin_app(AgentState(), cs, secret_store=s)
@@ -395,7 +395,7 @@ async def test_delete_infra_secret_via_admin(tmp_path) -> None:
 
 async def test_vault_fill_flow(admin_client) -> None:
     client, s, _cs = admin_client
-    token = await s.create_request("NEWKEY", persona="", reason="need")
+    token = await s.create_request("NEWKEY", agent="", reason="need")
     # Page shell is public.
     assert client.get(f"/vault/fill/{token}").status_code == 200
     # Detail + submit require auth.
@@ -478,8 +478,8 @@ async def _migrate_app(tmp_path, *, machine_key="mk"):
     cs = ConfigStore(db_path=db)
     await cs.set_setup_step("done")
     await cs.set_admin_password("testpw")
-    await cs.set("agent.personae_db_path", str(tmp_path / "personae.db"))
-    await cs.set("agent.personae_dir", "")
+    await cs.set("agent.agents_db_path", str(tmp_path / "agents.db"))
+    await cs.set("agent.agents_dir", "")
     s = SecretStore(db_path=db, infra_vault=InfraVault(machine_key))
     await s.ensure_wrapped_dek("testpw")
     app, _ = create_admin_app(AgentState(), cs, secret_store=s)

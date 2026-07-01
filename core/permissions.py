@@ -236,8 +236,8 @@ DEFAULT_RULES: dict[str, str] = {
 }
 
 
-# Rules are keyed by (scope, pattern): scope = persona/agent slug, "" = the
-# global default every persona falls back to (#100). SQLite can't add a column
+# Rules are keyed by (scope, pattern): scope = agent/agent slug, "" = the
+# global default every agent falls back to (#100). SQLite can't add a column
 # to an existing primary key, so the migration in _ensure_schema rebuilds the
 # old single-scope table into this shape with existing rules as the default.
 _CREATE_PERMISSIONS = (
@@ -251,17 +251,17 @@ _CREATE_PERMISSIONS = (
 class PermissionEngine:
     """Check tool actions against permission rules using glob patterns.
 
-    Rules are scoped per persona/agent (#100): each persona slug has its own
+    Rules are scoped per agent/agent (#100): each agent slug has its own
     ruleset layered over the global default scope (``""``). ``self.rules`` is the
     default set (seeded from :data:`DEFAULT_RULES` + persisted ``scope=''`` rows);
-    ``self.scoped`` holds each persona's overrides. A persona-specific rule wins
+    ``self.scoped`` holds each agent's overrides. An agent-specific rule wins
     over a default rule of the same pattern; everything else falls back.
     """
 
     def __init__(self, db_path: str = "data/config.db") -> None:
         self.db_path = db_path
         self.rules: dict[str, str] = dict(DEFAULT_RULES)
-        # persona/agent slug → its own {pattern: level} overrides (#100).
+        # agent/agent slug → its own {pattern: level} overrides (#100).
         self.scoped: dict[str, dict[str, str]] = {}
         self._ready = False
         # Pending approval requests: request_id → PendingApproval
@@ -319,9 +319,9 @@ class PermissionEngine:
             db.commit()
 
     def _effective_rules(self, scope: str = "") -> dict[str, str]:
-        """The rules seen by ``scope``: persona overrides layered over the default.
+        """The rules seen by ``scope``: agent overrides layered over the default.
 
-        No scope (or a persona with no own rules) → the default set unchanged, so
+        No scope (or an agent with no own rules) → the default set unchanged, so
         the hot ``check()`` path allocates nothing for the common case.
         """
         own = self.scoped.get(scope)
@@ -331,7 +331,7 @@ class PermissionEngine:
 
     def rules_for_scope(self, scope: str = "") -> dict[str, str]:
         """Rules OWNED by a scope (for the admin editor): the default set for
-        ``""``, else just that persona's own overrides."""
+        ``""``, else just that agent's own overrides."""
         return self.rules if not scope else self.scoped.get(scope, {})
 
     def _load_yolo(self) -> None:
@@ -492,8 +492,8 @@ class PermissionEngine:
         and checks it against all rules. First match wins, with more
         specific (longer) patterns tried first.
 
-        ``scope`` selects the persona/agent ruleset (#100): its own rules layer
-        over the global default, so a persona can tighten or loosen an action
+        ``scope`` selects the agent/agent ruleset (#100): its own rules layer
+        over the global default, so an agent can tighten or loosen an action
         without affecting others. Empty scope = the global default set.
         """
         match_key = self._build_match_key(tool_name, params)
@@ -541,8 +541,8 @@ class PermissionEngine:
         (read-action auto-approve). A degenerate/over-broad key is skipped so the
         action keeps asking instead of blanket-whitelisting the whole tool (#79).
 
-        The rule is learned into ``scope`` (the approving persona), so its
-        approval doesn't silently widen other personae. Skipped if the effective
+        The rule is learned into ``scope`` (the approving agent), so its
+        approval doesn't silently widen other agents. Skipped if the effective
         ruleset for that scope already covers it.
         """
         pattern = self._rule_pattern(match_key) if generalize else match_key
@@ -575,8 +575,8 @@ class PermissionEngine:
         a channel callback, resolve_approval() completes the future with
         one of ``"approved"``, ``"denied"``, or ``"skipped"``.
 
-        ``scope`` is the persona that asked, so an "always allow" learns the rule
-        into that persona's ruleset rather than the global default (#100).
+        ``scope`` is the agent that asked, so an "always allow" learns the rule
+        into that agent's ruleset rather than the global default (#100).
         """
         request_id = uuid.uuid4().hex[:12]
         loop = asyncio.get_running_loop()
@@ -655,8 +655,8 @@ def format_approval_message(tool_name: str, params: dict) -> str:
         subject = params.get("subject", "?")
         return f"Send email to {to}\nSubject: {subject}"
     if tool_name == "reply_email":
-        # account is optional now — persona-routed when omitted (#110).
-        account = params.get("account") or "the persona's default account"
+        # account is optional now — agent-routed when omitted (#110).
+        account = params.get("account") or "the agent's default account"
         msg_id = params.get("message_id", "?")
         return f"Reply to message {msg_id} on {account}"
     if tool_name == "send_message":

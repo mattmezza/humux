@@ -128,8 +128,8 @@ class TelegramChannel:
         self.agent = agent
         self.voice = voice
         # The channel string this bot reports to the agent. The default bot is
-        # bare "telegram"; a per-persona bot is "telegram:<persona>" (#29), which
-        # silos history and resolves straight to that persona.
+        # bare "telegram"; a per-agent bot is "telegram:<agent>" (#29), which
+        # silos history and resolves straight to that agent.
         self.channel_name = channel_name
         # Last chat a user wrote from, used to route approval prompts. Holds a
         # folded "<chat>:<thread>" string when the message came from a topic.
@@ -147,8 +147,8 @@ class TelegramChannel:
         self.app.add_handler(MessageHandler(filters.TEXT, self._on_text))
         self.app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, self._on_voice))
         self.app.add_handler(MessageHandler(filters.PHOTO | filters.Document.IMAGE, self._on_photo))
-        # Topic→persona auto-bind only makes sense on the default bot: a persona
-        # bot resolves straight to its own persona (rung 0), so a per-topic binding
+        # Topic→agent auto-bind only makes sense on the default bot: an agent
+        # bot resolves straight to its own agent (rung 0), so a per-topic binding
         # would be ignored. Topic *folding* (history isolation) still applies below.
         if config.topics_enabled and channel_name == "telegram":
             self.app.add_handler(
@@ -235,8 +235,8 @@ class TelegramChannel:
         """True for a Telegram group/supergroup with group-room behaviour on.
 
         A genuine forum topic under ``topics_enabled`` is exempt: a topic is its
-        own persona-bound 1:1-style context (#14), so group turn-taking would
-        wrongly silence its bound persona. Group rooms (#30) apply to the rest of
+        own agent-bound 1:1-style context (#14), so group turn-taking would
+        wrongly silence its bound agent. Group rooms (#30) apply to the rest of
         the group/supergroup.
         """
         if not (
@@ -359,7 +359,7 @@ class TelegramChannel:
         """Decide how to handle an inbound message in a group room (#30).
 
         Returns ``user_id`` (the shared conversation key — the group, or the
-        sender for a DM), the ``speaker_tag`` to prepend so the persona knows who
+        sender for a DM), the ``speaker_tag`` to prepend so the agent knows who
         spoke, ``respond`` (reply now, or just record for context), and
         ``addressed`` (was the message explicitly directed at THIS bot). Outside a
         group room every message gets ``respond=True``/``addressed=True`` and no
@@ -582,7 +582,7 @@ class TelegramChannel:
             return
         for r in runs:
             text = (
-                f"🤖 <b>{r.persona or 'default'}</b> · {r.status} · {r.elapsed_str}\n"
+                f"🤖 <b>{r.agent or 'default'}</b> · {r.status} · {r.elapsed_str}\n"
                 f"{(r.progress or '—')}\n"
                 f"<i>{r.task[:160]}</i>"
             )
@@ -631,10 +631,10 @@ class TelegramChannel:
             await self._finalize_approval_response(query, True, label)
 
     async def _on_forum_topic(self, update: Update, context) -> None:
-        """Auto-bind a freshly created/renamed forum topic to a matching persona.
+        """Auto-bind a freshly created/renamed forum topic to a matching agent.
 
         The topic name is only carried on these service messages (not on ordinary
-        messages), so this is the one place a topic→persona name match can happen
+        messages), so this is the one place a topic→agent name match can happen
         without a web round-trip. Binding is skipped when the topic is already
         bound, so a manual rebind is never clobbered.
         """
@@ -656,9 +656,9 @@ class TelegramChannel:
         # Bind under the same conversational id messages resolve with. A forum
         # topic under topics_enabled is exempt from group rooms (#30), so this
         # resolves to the sender id — matching how messages in the topic key,
-        # keeping the per-topic persona binding intact.
+        # keeping the per-topic agent binding intact.
         convo_user = self._convo_user_id(chat, user_id, message)
-        bound = await self.agent.bind_chat_persona_by_label(
+        bound = await self.agent.bind_chat_agent_by_label(
             self.channel_name, convo_user, chat_id, name
         )
         if bound:
@@ -828,7 +828,7 @@ class TelegramChannel:
         of the REPL's self-updating spinner line). No-op when nothing is running.
         """
         # ponytail: the explore status file is a single global singleton, so only
-        # the default bot mirrors it — otherwise a run triggered via one persona-bot
+        # the default bot mirrors it — otherwise a run triggered via one agent-bot
         # would bubble into every other bot's chat (#29). Per-run scoping (a status
         # path keyed by channel/profile) belongs in the browser tool — follow-up.
         if self.channel_name != "telegram":

@@ -15,19 +15,19 @@ agent:
   max_tokens: 8192                  # max tokens the model may emit per response; raise for capable models (Claude up to 128000)
   timezone: "Europe/Zurich"
   skills_dir: "skills/"
-  personae_dir: "personae/"        # starter-gallery seed directory
-  active_persona: ""               # slug of the active persona; "" = default identity
+  agents_dir: "agents/"        # optional seed dir — drop agent .md files here to auto-seed (empty by default)
+  active_agent: ""               # slug of the active agent; "" = default identity
 
 channels:
   telegram:
     enabled: true
     bot_token: "${TELEGRAM_BOT_TOKEN}"
     allowed_user_ids: "${TELEGRAM_ALLOWED_USER_IDS}"
-    # Opt-in: treat each forum topic as its own persona-bound context (#14).
+    # Opt-in: treat each forum topic as its own agent-bound context (#14).
     topics_enabled: false
     # Multi-agent group rooms (#30) — turn-taking + loop guard + speaker tags.
-    # Lets several persona-bots share one group without all answering every
-    # message or looping replies at each other. Inherited by per-persona bots.
+    # Lets several agent-bots share one group without all answering every
+    # message or looping replies at each other. Inherited by per-agent bots.
     # Opt-in (off by default): enabling it makes a bot reply only when addressed
     # and re-keys group history from per-sender to per-group (no migration; prior
     # group history is not carried forward).
@@ -45,12 +45,12 @@ channels:
     bridge_url: "local-wacli"
     allowed_numbers: "${WHATSAPP_ALLOWED_NUMBERS}"
 
-# Each account below is a registry entry. Personae (and the default agent, on the
+# Each account below is a registry entry. Agents (and the default agent, on the
 # Assistant tab) bind to accounts by name with a read / read_write access level
 # (email_accounts / calendar_accounts / contacts_accounts). An identity with no
 # bindings has no email/calendar/contacts access. Passwords may be ${vault:NAME}
 # references (infra vault) so the credential never sits in config or the model's
-# context. See /docs/personae.
+# context. See /docs/agents.
 calendar:
   providers:
     - name: "google"
@@ -79,7 +79,7 @@ voice:
   # Kokoro 82M: offline multilingual TTS (#84). The Docker image bundles the
   # model by default, so just set backend: kokoro. (Opt out of the bundle with
   # --build-arg INSTALL_KOKORO=false.) Falls back to edge-tts if the model can't
-  # load. Per-persona voices: set `voice: af_bella` in a persona's frontmatter.
+  # load. Per-agent voices: set `voice: af_bella` in a agent's frontmatter.
   kokoro:
     model_path: "models/kokoro/kokoro-v1.0.onnx"
     voices_path: "models/kokoro/voices-v1.0.bin"
@@ -99,12 +99,12 @@ scheduler:
       cron: "0 */8 * * *"
       task: "sqlite3 /app/data/memory.db \"DELETE FROM short_term WHERE expires_at < datetime('now');\""
       type: "system"
-    # A scheduled subagent: runs `task` under a chosen persona (#15). Its scope
-    # is that persona's tools/skills/secrets; the result is posted to `channel`.
+    # A scheduled subagent: runs `task` under a chosen agent (#15). Its scope
+    # is that agent's tools/skills/secrets; the result is posted to `channel`.
     # - id: "weekly_review"
     #   cron: "0 18 * * 5"
     #   type: "subagent"
-    #   persona: "writing-editor"
+    #   agent: "writing-editor"
     #   task: "Draft a short weekly review from this week's notes and email it to me"
     #   channel: "telegram"
 
@@ -183,8 +183,8 @@ tools:
   #    rate limit. Register at github.com/settings/apps/new, install it on your
   #    repos, then fill these in.
   #  `auth` makes the choice explicit: "app" (App, PAT only as mint-failure
-  #  fallback), "pat" (force PAT even if App fields linger), "" (infer). Personae
-  #  can each pick their own identity — even their own App — see docs/personae.
+  #  fallback), "pat" (force PAT even if App fields linger), "" (infer). Agents
+  #  can each pick their own identity — even their own App — see docs/agents.
   gh:
     enabled: false
     auth: ""                                      # "" (infer) | "pat" | "app"
@@ -210,7 +210,7 @@ workspace:
   directory: ""            # e.g. "~/projects/my-repo" — the only dir the agent may touch
 
 # Subagents — the agent can delegate a scoped subtask to a sub-loop running
-# under a chosen persona, on demand (spawn_subagent tool) or on a schedule
+# under a chosen agent, on demand (spawn_subagent tool) or on a schedule
 # (a "subagent" job above). A child's tools/skills/secrets are a subset of the
 # caller's — never wider. Defaults work out of the box; tune the guardrails:
 subagents:

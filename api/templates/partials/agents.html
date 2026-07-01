@@ -1,0 +1,105 @@
+{# Agents tab partial — the default agent + swappable agent identities (#115) #}
+<div x-data="{ filter: '' }">
+  {# ── Default agent: the identity used when no other agent is active ── #}
+  <div class="mb-8">
+    <div class="flex items-center gap-2 mb-1">
+      <h2 class="text-base">Default agent</h2>
+      {% if not active %}
+      <span class="badge-ok whitespace-nowrap">✓ Active</span>
+      {% endif %}
+    </div>
+    <p class="text-muted text-xs mb-4">
+      The identity the assistant answers with when no other agent is active. Name it, give it a
+      character and voice, and bind its accounts below.
+    </p>
+    {% include "partials/identity.html" %}
+  </div>
+
+  {# ── Other agents ── #}
+  <div class="border-t border-border pt-6">
+    {# Active-agent strip #}
+    <div class="card mb-4">
+      <div class="flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <h2 class="text-base mb-0.5">Agents</h2>
+          {% if active %}
+          <p class="text-muted text-xs">
+            Answering as <span class="text-accent">{{ active }}</span> in every chat.
+          </p>
+          {% else %}
+          <p class="text-muted text-xs">
+            The <span class="text-accent">Default agent</span> above is active. Pick one below to switch.
+          </p>
+          {% endif %}
+        </div>
+        {% if active %}
+        <button class="btn btn-sm"
+                hx-post="/agents/activate" hx-vals='{"name": ""}'
+                hx-target="#tab-content" hx-swap="innerHTML">
+          Use default
+        </button>
+        {% endif %}
+      </div>
+      <p class="text-muted text-xs mt-2">
+        Switching applies to new turns; an open chat keeps its identity until you send <code>/new</code>.
+      </p>
+    </div>
+
+    {# Toolbar #}
+    <div class="flex items-center gap-2 mb-4 flex-wrap">
+      <a class="btn btn-sm" href="/admin/agents/new">+ Create agent</a>
+      <input type="text" class="input-sm flex-1" style="max-width:280px"
+             placeholder="Filter agents..." x-model="filter">
+      <span class="text-muted text-xs">{{ agents|length }} agents</span>
+    </div>
+
+    {# Card grid — 1 col on phone, 2 on small, 3 on large #}
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+      {% for p in agents %}
+      <div class="card flex flex-col gap-2 {% if p.name == active %}border-accent{% endif %}"
+           x-show="!filter
+                   || {{ p.name|tojson|forceescape }}.toLowerCase().includes(filter.toLowerCase())
+                   || {{ (p.role or '')|tojson|forceescape }}.toLowerCase().includes(filter.toLowerCase())">
+        <div class="flex items-start gap-2">
+          <span class="text-2xl leading-none">{{ p.emoji or '🧩' }}</span>
+          <div class="min-w-0 flex-1">
+            <div class="text-sm font-semibold truncate">{{ p.role or p.name }}</div>
+            <div class="text-muted text-xs break-all">{{ p.name }}</div>
+          </div>
+          {% if p.name == active %}
+          <span class="badge-ok whitespace-nowrap">✓ Active</span>
+          {% endif %}
+        </div>
+
+        <div class="text-muted text-xs">
+          {{ p.skills|length or 'all' }} skill{{ '' if p.skills|length == 1 else 's' }}
+          · {{ p.tools|length or 'all' }} tool{{ '' if p.tools|length == 1 else 's' }}
+          {% if p.voice %}· 🔊 {{ p.voice }}{% endif %}
+        </div>
+
+        <div class="flex items-center gap-1.5 mt-auto pt-1 flex-wrap">
+          {% if p.name == active %}
+          <button class="btn btn-sm" disabled>Active</button>
+          {% else %}
+          <button class="btn-primary btn-sm"
+                  hx-post="/agents/activate" hx-vals='{"name": {{ p.name|tojson }} }'
+                  hx-target="#tab-content" hx-swap="innerHTML">
+            Use
+          </button>
+          {% endif %}
+          <a class="btn btn-sm" href="/admin/agents/{{ p.name }}">edit</a>
+          <button class="btn-danger btn-sm ml-auto"
+                  hx-post="/agents/delete" hx-target="#tab-content" hx-swap="innerHTML"
+                  hx-vals='{"name": {{ p.name|tojson }} }'
+                  hx-confirm="Delete agent &quot;{{ p.name }}&quot;?">
+            x
+          </button>
+        </div>
+      </div>
+      {% endfor %}
+      {% if not agents %}
+      <div class="text-muted text-xs text-center py-6 col-span-full">No agents yet.</div>
+      {% endif %}
+    </div>
+  </div>
+</div>

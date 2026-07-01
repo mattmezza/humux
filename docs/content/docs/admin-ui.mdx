@@ -29,15 +29,14 @@ Most settings apply live. A few are read only when the agent starts — **channe
 WhatsApp, including forum-topic mode), **voice** (STT/TTS), and **history → max turns** — so
 saving them shows a **"Restart required"** banner with a **Restart now** button (which also
 updates the status badge). Those sections also carry an inline ⟳ note. Everything else (LLM,
-vision, memory, compaction, search, personae, permissions, jobs, calendars/contacts/email,
+vision, memory, compaction, search, agents, permissions, jobs, calendars/contacts/email,
 identity) takes effect immediately.
 
 ### Configuration
 
 Edit agent settings without touching config files:
 
-- **Assistant** — the default identity (agent name, character & tone), used when no persona is active
-- **Personae** — create, edit, and switch swappable agent identities (see below)
+- **Agents** — the **default agent** (name, character & tone, voice, and account bindings — used when no other agent is active) shown above the list of swappable agent identities you can create, edit, and switch between (see below)
 - **Inspect** — developer view with two sub-tabs: **Context** (a master/detail list of every active context showing the exact payload last sent to the LLM for each — see below) and **Logs** (the live application log stream)
 - **LLM** — split into four sub-tabs to keep it uncluttered:
     - **SysPrompt** — build and preview the system prompt (tool-usage / history-handling overrides, default-block references, prompt preview, captured runtime prompts). Links to the **Inspect** tab for debugging live payloads.
@@ -47,7 +46,7 @@ Edit agent settings without touching config files:
 - **Channels** — enable/disable Telegram and WhatsApp
 - **Tools** — enable/disable and configure the agent's optional tools, including **Web search** (Tavily)
 - **Accounts** — external accounts, grouped into three sub-tabs: **Email** (Himalaya configuration), **Calendars** (CalDAV providers), and **Contacts** (contact providers)
-- **Vaults** — the [secrets vault](/docs/secrets), split into **Agents** (per-persona / login secrets), **Infra** (machine-key-encrypted infrastructure secrets + migrate plaintext credentials into the vault), and **Import** (Bitwarden import)
+- **Vaults** — the [secrets vault](/docs/secrets), split into **Agents** (per-agent / login secrets), **Infra** (machine-key-encrypted infrastructure secrets + migrate plaintext credentials into the vault), and **Import** (Bitwarden import)
 - **Voice** — STT/TTS settings, including the **TTS backend** (Edge TTS or offline Kokoro), the default voice, and a **Preview** button to hear a voice before saving
 
 ### Tools
@@ -61,9 +60,9 @@ Enable optional tools. When a tool is enabled it is authenticated and advertised
 
 Built-in skill editor for creating, editing, and deleting skill files. Changes take effect immediately — no restart needed.
 
-### Personae
+### Agents
 
-Manage swappable agent identities — each with its own character, skill allowlist, tool scope, voice, and secret scope. Cards show every persona and the active one; **Use** activates one (applied live to new turns) or revert to **Default** (the Assistant-tab identity). The editor offers a **guided form** (identity, agent name, voice with a **Preview** button and Edge/Kokoro suggestions, skill + tool checkboxes, secret scope) and a **raw markdown** toggle for power users. Six starter personae ship seeded. The page is responsive at phone width. See [Personae](/docs/personae) for the full model.
+Manage the default agent and swappable agent identities on one tab (#115). The **Default agent** — name, character & tone, voice, and account bindings, used when no other agent is active — sits at the top; below it, cards show every custom agent and the active one, each with its own character, skill allowlist, tool scope, voice, and secret scope. **Use** activates one (applied live to new turns) or revert to **Default** (the default agent above). The editor offers a **guided form** (identity, agent name, voice with a **Preview** button and Edge/Kokoro suggestions, skill + tool checkboxes, secret scope) and a **raw markdown** toggle for power users. No agents ship by default — you create them here. The page is responsive at phone width. See [Agents](/docs/agents) for the full model.
 
 ### Inspect
 
@@ -87,15 +86,15 @@ Both panels include a plain-language "How it works (the science)" explainer.
 
 ### Permissions
 
-View, add, edit, and delete permission rules. See current glob patterns and their levels (ALWAYS / ASK / NEVER). A scope picker switches between the global **Default** ruleset and a specific persona's own [scoped overrides](/docs/permissions#per-persona-scoping).
+View, add, edit, and delete permission rules. See current glob patterns and their levels (ALWAYS / ASK / NEVER). A scope picker switches between the global **Default** ruleset and a specific agent's own [scoped overrides](/docs/permissions#per-agent-scoping).
 
 ### Jobs
 
 Manage scheduled tasks:
 
-- View all registered jobs with their cron expressions and the **persona** each runs as
-- Filter the list by persona to focus on one agent's jobs
-- Create new jobs (optionally scoped to a persona for `agent`/`agent_silent`/`subagent` types)
+- View all registered jobs with their cron expressions and the **agent** each runs as
+- Filter the list by agent to focus on one agent's jobs
+- Create new jobs (optionally scoped to an agent for `agent`/`agent_silent`/`subagent` types)
 - Pause/resume jobs
 - Delete jobs
 - View job execution history
@@ -109,8 +108,8 @@ A sub-tab of the **LLM** tab (LLM → History). Configure conversation history a
 
 ### Vaults
 
-Manage the [secrets vault](/docs/secrets), organized into three sub-tabs: **Agents** (per-persona
-/ login secrets — a **persona × secret access matrix** to grant a persona use of a secret, plus
+Manage the [secrets vault](/docs/secrets), organized into three sub-tabs: **Agents** (per-agent
+/ login secrets — an **agent × secret access matrix** to grant an agent use of a secret, plus
 add/rotate/revoke), **Infra** (machine-key-encrypted infrastructure secrets and a one-click
 migrate of scattered plaintext credentials into the vault), and **Import** (Bitwarden JSON
 import). Lists secret **names** + descriptions + recent-use audit only — values are write-only
@@ -120,7 +119,7 @@ can see names and access but never values.
 ### Logs
 
 Real-time log viewer for debugging and monitoring agent behavior. Each line is
-tagged with the **stream** it belongs to — the active persona's slug, or
+tagged with the **stream** it belongs to — the active agent's slug, or
 `default` for the base identity — shown as a colour-coded `[stream]` badge so
 concurrent agents are easy to tell apart. A [subagent](/docs/subagents)'s lines
 (its reasoning and tool calls) flow into the **same stream as the agent that

@@ -4,7 +4,7 @@ A *subagent* is one execution primitive (``AgentCore.run_subagent``) reached by
 two trigger paths: on demand via the ``spawn_subagent`` tool, or on a schedule
 via a ``subagent`` job. Either way it runs the existing agent loop with **system
 semantics** (no goal decomposition / memory / reflection / approval prompts) and
-a persona whose tool/skill/secret scope is a *subset* of the caller's — never
+an agent whose tool/skill/secret scope is a *subset* of the caller's — never
 wider (``narrow_scope``).
 
 This module holds only the lifecycle bookkeeping: a small in-memory registry of
@@ -85,7 +85,7 @@ def resolve_cap(value: object, ceiling: int, floor: int = 1) -> int:
 def narrow_scope(parent: list[str] | None, child: list[str] | None) -> list[str]:
     """Intersect a child scope with the parent's — inherit, never widen.
 
-    The allowlist convention (see :class:`core.personae.Persona`) is ``[]``/``None``
+    The allowlist convention (see :class:`core.agents.Agent`) is ``[]``/``None``
     = *all*. So an empty parent means "no restriction → the child's own scope
     applies", an empty child means "unspecified → inherit the parent's", and when
     both list names the result is their intersection (the child can never gain a
@@ -106,9 +106,9 @@ def narrow_accounts(parent: list[dict] | None, child: list[dict] | None) -> list
     Unlike :func:`narrow_scope`, account bindings are a *grant* list, not an
     allowlist: an empty list means *no access*, not *all*. So the semantics are:
 
-    * ``parent is None`` — no parent persona (the spawning turn ran unscoped, i.e.
+    * ``parent is None`` — no parent agent (the spawning turn ran unscoped, i.e.
       the owner's own full access) → the child keeps its own bindings.
-    * ``parent == []`` — a persona with no account access → the child gets none.
+    * ``parent == []`` — an agent with no account access → the child gets none.
     * otherwise — keep only accounts the parent also has, at the *lower* of the two
       access levels, and drop a send identity the parent can't itself write to
       (inherit-never-widen).
@@ -139,7 +139,7 @@ class SubagentRun:
     """One subagent execution and its live status."""
 
     run_id: str
-    persona: str
+    agent: str
     task: str
     depth: int = 1
     background: bool = False
@@ -264,7 +264,7 @@ def short_summary(text: str, limit: int = 280) -> str:
     return (text or "").strip()[:limit]
 
 
-# (task, outcome, persona, status) for one finished background run.
+# (task, outcome, agent, status) for one finished background run.
 SummaryItem = tuple[str, str, str, str]
 
 _SUMMARY_PROMPT = (
@@ -283,7 +283,7 @@ _SUMMARY_PROMPT = (
 
 def _format_items(items: list[SummaryItem]) -> str:
     blocks = []
-    for task, outcome, _persona, status in items:
+    for task, outcome, _agent, status in items:
         blocks.append(f"--- task: {task}\nstatus: {status}\nresult:\n{outcome}")
     return "\n\n".join(blocks)
 
@@ -324,7 +324,7 @@ def _selfcheck() -> None:
 
     rw = {"account": "x", "access_level": "read_write", "is_sender_identity": True}
     ro = {"account": "x", "access_level": "read", "is_sender_identity": False}
-    # No parent persona (unscoped owner) → child keeps its own bindings.
+    # No parent agent (unscoped owner) → child keeps its own bindings.
     assert narrow_accounts(None, [rw]) == [rw]
     # Parent with no access → child gets nothing.
     assert narrow_accounts([], [rw]) == []

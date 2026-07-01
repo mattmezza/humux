@@ -14,7 +14,7 @@ MPA includes a built-in scheduler powered by [APScheduler](https://apscheduler.r
 | **agent** | Natural language task processed by the agent | "Give me a morning briefing" |
 | **system** | Raw CLI command executed directly | `sqlite3 ... DELETE FROM short_term ...` |
 | **memory_consolidation** | LLM-driven memory review and promotion | Review short-term memories |
-| **subagent** | Task run by a [subagent](/docs/subagents) under a `persona` | "Draft my weekly review" |
+| **subagent** | Task run by a [subagent](/docs/subagents) under a `agent` | "Draft my weekly review" |
 
 ### Agent jobs
 
@@ -137,7 +137,7 @@ Navigate to Jobs in the admin UI to view, create, edit, pause, and delete schedu
 
 By default the list shows only live jobs (`active` and `paused`). Completed and cancelled jobs — including one-time jobs whose time has already passed — are hidden to keep the view clean. Flip the **Show completed** switch to reveal them.
 
-Each row shows the **persona** the job runs as (or `—` for the default identity), and a dropdown narrows the list to a single persona. An `agent`, `agent_silent`, or `subagent` job can be scoped to a persona at create/edit time so it runs under that identity.
+Each row shows the **agent** the job runs as (or `—` for the default identity), and a dropdown narrows the list to a single agent. An `agent`, `agent_silent`, or `subagent` job can be scoped to an agent at create/edit time so it runs under that identity.
 
 ### Via chat
 
@@ -151,8 +151,8 @@ Agent: I'll set up an hourly email check for messages from Alice.
 ### Originating context
 
 A job scheduled through chat remembers **who** scheduled it and **where**. When the
-job fires it runs as the persona that created it and is delivered back to the same
-chat — so a reminder set by a persona in a group chat is posted by that persona in
+job fires it runs as the agent that created it and is delivered back to the same
+chat — so a reminder set by an agent in a group chat is posted by that agent in
 that group, not by the default agent in your 1:1 DM. Jobs created from `config.yml`,
 the CLI, or the admin UI have no chat origin and are delivered to the owner's chat as
 before.

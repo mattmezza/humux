@@ -1,26 +1,29 @@
 <div class="card" x-data="{ selected: {{ (step_ctx.active or '')|tojson }} }">
-  <h2 class="text-base mb-1">Pick a starting persona <span class="text-muted font-normal text-xs">(optional)</span></h2>
+  <h2 class="text-base mb-1">Pick a starting agent <span class="text-muted font-normal text-xs">(optional)</span></h2>
   <p class="text-muted text-xs mb-3">
-    A persona gives your assistant a specialty — its own character, skills, and voice.
-    Keep the default for a general assistant; you can add or switch personae anytime.
+    An agent gives your assistant a specialty — its own character, skills, and voice.
+    Keep the default for a general assistant; you can add or switch agents anytime.
   </p>
 
   <div class="space-y-1.5 max-h-72 overflow-y-auto">
     <label class="flex items-center gap-2 text-sm cursor-pointer p-2 rounded hover:bg-surface"
            :class="selected === '' && 'bg-accent-dim/20'">
-      <input type="radio" name="persona" value="" x-model="selected">
+      <input type="radio" name="agent" value="" x-model="selected">
       <span class="text-lg">🧭</span>
       <span><span class="font-semibold">Default</span> — general assistant</span>
     </label>
-    {% for p in step_ctx.personae %}
+    {% for p in step_ctx.agents %}
     <label class="flex items-center gap-2 text-sm cursor-pointer p-2 rounded hover:bg-surface"
            :class="selected === {{ p.name|tojson }} && 'bg-accent-dim/20'">
-      <input type="radio" name="persona" value="{{ p.name }}" x-model="selected">
+      <input type="radio" name="agent" value="{{ p.name }}" x-model="selected">
       <span class="text-lg">{{ p.emoji or '🧩' }}</span>
       <span><span class="font-semibold">{{ p.role or p.name }}</span>
         <span class="text-muted text-xs">{{ p.name }}</span></span>
     </label>
     {% endfor %}
+    {% if not step_ctx.agents %}
+    <p class="text-muted text-xs px-2 pt-1">No prebuilt agents — create your own anytime on the Agents tab.</p>
+    {% endif %}
   </div>
 
   <div class="flex justify-between mt-4">
@@ -39,7 +42,7 @@
               @click="
                 htmx.ajax('POST', '/setup/step', {
                   target: '#wizard-step', swap: 'innerHTML',
-                  values: { step: 'telegram', 'values[agent.active_persona]': selected }
+                  values: { step: 'telegram', 'values[agent.active_agent]': selected }
                 })
               ">
         Continue

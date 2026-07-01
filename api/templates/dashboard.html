@@ -66,17 +66,13 @@
 
   {# Tab navigation #}
   <div class="flex border-b border-border mb-4 overflow-x-auto" x-data="adminTabs()" x-init="init()" @switch-tab.window="select($event.detail)">
-    <button class="tab-link" :class="tab === 'identity' && 'tab-link-active'"
-            @click="select('identity')">
-      Assistant
+    <button class="tab-link" :class="tab === 'agents' && 'tab-link-active'"
+            @click="select('agents')">
+      Agents
     </button>
     <button class="tab-link" :class="tab === 'you' && 'tab-link-active'"
             @click="select('you')">
       You
-    </button>
-    <button class="tab-link" :class="tab === 'personae' && 'tab-link-active'"
-            @click="select('personae')">
-      Personae
     </button>
     <button class="tab-link" :class="tab === 'llm' && 'tab-link-active'"
             @click="select('llm')">
@@ -672,9 +668,8 @@
 
   function adminTabs() {
     const tabs = {
-      identity: '/partials/identity',
       you: '/partials/you',
-      personae: '/partials/personae',
+      agents: '/partials/agents',
       llm: '/partials/llm',
       memory: '/partials/memory',
       channels: '/partials/channels',
@@ -712,7 +707,7 @@
           history.replaceState(history.state, '', u);
           urlTab = top;
         }
-        const initialTab = (urlTab && tabs[urlTab]) ? urlTab : 'identity';
+        const initialTab = (urlTab && tabs[urlTab]) ? urlTab : 'agents';
         this.tab = initialTab;
         if (!urlTab) {
           const url = new URL(window.location.href);
@@ -726,7 +721,7 @@
         });
 
         window.addEventListener('popstate', () => {
-          const current = new URLSearchParams(window.location.search).get('tab') || 'identity';
+          const current = new URLSearchParams(window.location.search).get('tab') || 'agents';
           if (tabs[current]) {
             this.loadTab(current, false);
           }

@@ -77,7 +77,7 @@ SETUP_STEPS = [
     "welcome",
     "llm",
     "identity",
-    "persona",
+    "agent",
     "telegram",
     "email",
     "calendar",
@@ -387,6 +387,24 @@ class ConfigStore:
             await self.set("agent.character", f"{legacy.strip()}\n\n{character}".strip())
             await self.delete("agent.personalia")
             log.info("Folded legacy agent.personalia into agent.character (#98)")
+            seeded = True
+
+        # #115: persona → agent config-key renames. Carry each legacy key's value
+        # to its new name (only if the new one isn't already set), then drop the
+        # old key so this runs once.
+        for old_key, new_key in (
+            ("agent.active_persona", "agent.active_agent"),
+            ("agent.personae_dir", "agent.agents_dir"),
+            ("agent.personae_db_path", "agent.agents_db_path"),
+            ("accounts.persona_binding_migrated", "accounts.agent_binding_migrated"),
+        ):
+            old_val = await self.get(old_key)
+            if old_val is None:
+                continue
+            if await self.get(new_key) is None:
+                await self.set(new_key, old_val)
+            await self.delete(old_key)
+            log.info("Renamed legacy config key %s → %s (#115)", old_key, new_key)
             seeded = True
 
         return seeded

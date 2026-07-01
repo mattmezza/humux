@@ -20,6 +20,7 @@ from zoneinfo import ZoneInfo
 from tavily import TavilyClient
 
 from core import coding, imagegen
+from core.agents import Agent, AgentStore
 from core.compaction import compact_messages, should_compact
 from core.config import Config
 from core.embeddings import LOCAL_PROVIDERS, EmbeddingClient, LocalEmbeddingClient
@@ -39,7 +40,6 @@ from core.log_streams import set_stream, subagent_stream
 from core.memory import MemoryStore
 from core.models import IMAGE_MIME_TYPES, AgentResponse, Attachment
 from core.permissions import PermissionEngine, PermissionLevel, format_approval_message
-from core.personae import Persona, PersonaStore
 from core.prompt_builder import SKILLS_DISCOVERY_POINTER, build_prompt_sections
 from core.reply_decision import should_reply
 from core.scheduler import AgentScheduler
@@ -65,7 +65,7 @@ from voice.pipeline import VoicePipeline
 log = logging.getLogger(__name__)
 
 
-def _narrow_gh_repos(parent: Persona | None, requested_tc: dict) -> dict:
+def _narrow_gh_repos(parent: Agent | None, requested_tc: dict) -> dict:
     """Copy a child's tool identity verbatim but intersect its GitHub repo
     allowlist with the parent's — inherit-never-widen for repos (#111).
 
@@ -265,8 +265,8 @@ TOOLS = [
                 "account": {
                     "type": "string",
                     "description": "Email account name (e.g. 'personal', 'work'). Optional — "
-                    "defaults to the active persona's sender identity. Only accounts the "
-                    "persona is allowed to send from may be used.",
+                    "defaults to the active agent's sender identity. Only accounts the "
+                    "agent is allowed to send from may be used.",
                 },
                 "from": {
                     "type": "string",
@@ -293,7 +293,7 @@ TOOLS = [
                 "account": {
                     "type": "string",
                     "description": "Email account name (e.g. 'personal', 'work'). Optional — "
-                    "defaults to the active persona's sender identity.",
+                    "defaults to the active agent's sender identity.",
                 },
                 "message_id": {
                     "type": "string",
@@ -394,7 +394,7 @@ TOOLS = [
                 "calendar": {
                     "type": "string",
                     "description": "Calendar name (e.g. 'google', 'icloud'). Optional — defaults "
-                    "to the active persona's writable calendar. Only calendars the persona "
+                    "to the active agent's writable calendar. Only calendars the agent "
                     "has read_write access to may be used.",
                 },
                 "summary": {"type": "string", "description": "Event title"},
@@ -654,15 +654,15 @@ TOOLS = [
         "name": "spawn_subagent",
         "description": (
             "Delegate a self-contained subtask to a subagent. The subagent runs "
-            "the full agent loop under a persona, with a tool/skill/secret scope "
+            "the full agent loop under an agent, with a tool/skill/secret scope "
             "that is never wider than yours, and returns a structured result. It "
             "has NO memory of this conversation — put everything it needs in "
             "'task'.\n"
-            "Persona: by DEFAULT omit 'persona' — the subagent runs as YOU (your "
+            "Agent: by DEFAULT omit 'agent' — the subagent runs as YOU (your "
             "identity, tools, scope). This is almost always what you want. Set "
-            "'persona' ONLY when the user explicitly asked for a named specialist, "
+            "'agent' ONLY when the user explicitly asked for a named specialist, "
             "or the subtask plainly belongs to a different one. Never pick a "
-            "persona just because the roster lists some.\n"
+            "agent just because the roster lists some.\n"
             "Sizing: by default the subagent runs at the configured ceilings. Size "
             "it to the job with 'max_steps', 'token_budget', and 'thinking_effort' "
             "— smaller for a quick lookup, larger / 'high' effort for hard "
@@ -687,10 +687,10 @@ TOOLS = [
                         "self-contained — it cannot see this conversation."
                     ),
                 },
-                "persona": {
+                "agent": {
                     "type": "string",
                     "description": (
-                        "Persona name to run as. OMIT THIS by default — the subagent "
+                        "Agent name to run as. OMIT THIS by default — the subagent "
                         "then runs as you (same identity, tools, scope), which is "
                         "almost always correct. Only set it when the user explicitly "
                         "named a specialist or the subtask clearly belongs to one."
@@ -761,7 +761,7 @@ TOOLS = [
                 },
                 "suggested_scope": {
                     "type": "string",
-                    "description": "Optional hint: which persona(s) should be able to use it",
+                    "description": "Optional hint: which agent(s) should be able to use it",
                 },
             },
             "required": ["name", "reason"],
@@ -898,29 +898,29 @@ TOOLS = [
 ]
 
 
-def _persona_scope(persona: Persona | None) -> str:
-    """The memory scope key for an active persona (#42).
+def _agent_scope(agent: Agent | None) -> str:
+    """The memory scope key for an active agent (#42).
 
-    A persona's own name is its private scope; no persona (default identity) =
+    An agent's own name is its private scope; no agent (default identity) =
     ``""`` = shared only.
     """
-    return persona.name if persona else ""
+    return agent.name if agent else ""
 
 
-def scoped_tools(persona: Persona | None) -> list[dict]:
-    """Filter the function-tool schemas by the active persona's tool scope.
+def scoped_tools(agent: Agent | None) -> list[dict]:
+    """Filter the function-tool schemas by the active agent's tool scope.
 
-    ``load_skill`` is always retained — it is the core mechanic personae rely on
-    to read their allowlisted skills. An empty scope (or no persona) = all tools.
+    ``load_skill`` is always retained — it is the core mechanic agents rely on
+    to read their allowlisted skills. An empty scope (or no agent) = all tools.
     """
-    if persona is None or not persona.tools:
+    if agent is None or not agent.tools:
         return TOOLS
     # ``load_skill`` and the vault discovery/request tools are always retained:
-    # they are the mechanics personae rely on to read skills and obtain secrets.
-    # ``search_skills``/``list_skills`` mirror ``load_skill`` (a persona needs them
+    # they are the mechanics agents rely on to read skills and obtain secrets.
+    # ``search_skills``/``list_skills`` mirror ``load_skill`` (an agent needs them
     # to discover its own allowlisted skills in on-demand mode — #50); the feature
     # gate below still drops them when that mode is off. ``recall_memory`` too —
-    # memory is injected for every persona (scope-filtered), so its on-demand
+    # memory is injected for every agent (scope-filtered), so its on-demand
     # counterpart exposes nothing extra and stays available (#47).
     _always = {
         "load_skill",
@@ -931,7 +931,7 @@ def scoped_tools(persona: Persona | None) -> list[dict]:
         "list_secrets",
         "request_secret",
     }
-    return [t for t in TOOLS if persona.allows_tool(t["name"]) or t["name"] in _always]
+    return [t for t in TOOLS if agent.allows_tool(t["name"]) or t["name"] in _always]
 
 
 def apply_feature_gates(
@@ -980,7 +980,7 @@ def apply_feature_gates(
 class AgentCore:
     def __init__(self, config: Config, secret_store: SecretStore | None = None):
         self.config = config
-        # Secrets vault (issue #19). Shared, process-wide so the persona DEK
+        # Secrets vault (issue #19). Shared, process-wide so the agent DEK
         # unsealed by an admin login is visible to the agent at runtime.
         self.secret_store = secret_store
         self.llm: LLMClient = LLMClient.from_agent_config(config.agent)
@@ -989,13 +989,13 @@ class AgentCore:
             db_path=config.agent.skills_db_path,
             seed_dir=config.agent.skills_dir,
         )
-        self.personae = PersonaStore(
-            db_path=config.agent.personae_db_path,
-            seed_dir=config.agent.personae_dir,
+        self.agents = AgentStore(
+            db_path=config.agent.agents_db_path,
+            seed_dir=config.agent.agents_dir,
         )
-        # Account bindings for the default identity (no persona active) — built
+        # Account bindings for the default identity (no agent active) — built
         # once from config (#110). None = unscoped (legacy: any account); otherwise
-        # a Persona-shaped carrier used only for account routing/enforcement, never
+        # an Agent-shaped carrier used only for account routing/enforcement, never
         # for scoping/memory/character (which stay the default agent's).
         self._default_accounts = self._build_default_accounts(config)
         self.executor = ToolExecutor(tool_env=tool_env(config))
@@ -1060,7 +1060,7 @@ class AgentCore:
         user_id: str,
         attachments: list[Attachment] | None = None,
         chat_id: str = "",
-        persona_name: str | None = None,
+        agent_name: str | None = None,
         respond: bool = True,
         addressed: bool = True,
         message_id: int | None = None,
@@ -1072,16 +1072,16 @@ class AgentCore:
         (channel, user_id, chat_id) triple gets its own conversation history,
         preventing context leakage across chats.
 
-        ``persona_name`` forces the identity instead of resolving it from the
-        channel/binding ladder — used by the scheduler so a ``telegram:<persona>``
-        job is generated *as* that persona while keeping the ``system`` execution
+        ``agent_name`` forces the identity instead of resolving it from the
+        channel/binding ladder — used by the scheduler so a ``telegram:<agent>``
+        job is generated *as* that agent while keeping the ``system`` execution
         mode (auto-approved writes, no memory/reflection) (#29).
 
         ``respond=False`` records the message into history for context but
         generates no reply — the respond-gate for group rooms (#30): a bot stays
         silent for messages not addressed to it (and for other bots' messages),
         yet still sees them as inbound turns when it is later addressed. No
-        persona, preamble, or LLM call runs on this path.
+        agent, preamble, or LLM call runs on this path.
 
         ``addressed`` is whether the message was explicitly directed at THIS bot
         (@mention / reply / ``/cmd@bot``). It usually tracks ``respond``, but
@@ -1154,18 +1154,18 @@ class AgentCore:
             )
             return AgentResponse(text="Conversation cleared.")
 
-        # Resolve the active persona (its identity, skills + tool scope) — a
-        # per-chat binding wins over the globally selected persona (#14). An
+        # Resolve the active agent (its identity, skills + tool scope) — a
+        # per-chat binding wins over the globally selected agent (#14). An
         # explicit override (scheduler) skips the ladder (#29).
-        if persona_name:
-            persona = await self._load_persona(persona_name)
+        if agent_name:
+            agent = await self._load_agent(agent_name)
         else:
-            persona = await self._resolve_persona(channel, user_id, chat_id)
+            agent = await self._resolve_agent(channel, user_id, chat_id)
 
-        # Tag this turn's log records with the persona's stream (#75) so the admin
+        # Tag this turn's log records with the agent's stream (#75) so the admin
         # Logs tab can filter per agent. Subagents spawned below inherit it (the
         # ContextVar is copied into their task) and add their own label.
-        set_stream(persona.name if persona else "default")
+        set_stream(agent.name if agent else "default")
 
         # Reply decision (#36): in a shared/group chat, stay quiet for messages
         # aimed at someone else or caught in a bot-to-bot reaction loop. Off by
@@ -1194,7 +1194,7 @@ class AgentCore:
                     channel,
                 )
                 return AgentResponse(text="")
-            identity = persona.name if persona else "the assistant"
+            identity = agent.name if agent else "the assistant"
             llm = self._background_llm(rd_cfg.provider, rd_cfg.thinking_level)
             if not await should_reply(llm, rd_cfg.model, message, identity):
                 self._release_reply(channel, chat_id, reserved)
@@ -1208,16 +1208,16 @@ class AgentCore:
             decomposed_goal = await self._maybe_decompose(message)
 
         # Per-turn preamble: live date/time + fresh memory/reflections + skills
-        # index + plan. Memory is scoped to the active persona (#42): shared +
-        # its private. Skills index is scoped to the persona's allowlist (#46).
+        # index + plan. Memory is scoped to the active agent (#42): shared +
+        # its private. Skills index is scoped to the agent's allowlist (#46).
         session_key = (channel, user_id, chat_id) if self.history_mode == "session" else None
         preamble = await self._turn_preamble(
             decomposed_goal,
             query=message,
-            scope=_persona_scope(persona),
-            persona=persona,
+            scope=_agent_scope(agent),
+            agent=agent,
             session_key=session_key,
-            offer_personae=True,
+            offer_agents=True,
         )
         # Append the status of still-running background subagents from this chat,
         # so the agent always knows what is pending (their results are folded into
@@ -1227,16 +1227,16 @@ class AgentCore:
             if note:
                 preamble = f"{preamble}\n\n{note}"
 
-        tools = self._tools_for_turn(persona)
+        tools = self._tools_for_turn(agent)
 
         # Static system prompt. In session mode it is snapshotted once at the
         # start of the session and reused for every turn (so the static content
         # is only built once, not rebuilt and re-sent each turn). In injection
         # mode the prompt is windowed/stateless, so it is rebuilt per call.
         if self.history_mode == "session":
-            system = await self._session_system_prompt(channel, user_id, chat_id, persona=persona)
+            system = await self._session_system_prompt(channel, user_id, chat_id, agent=agent)
         else:
-            system = await self._build_system_prompt(persona=persona)
+            system = await self._build_system_prompt(agent=agent)
 
         if self.config.admin.capture_prompts:
             self._record_system_prompt(
@@ -1261,7 +1261,7 @@ class AgentCore:
                     attachments,
                     chat_id,
                     tools,
-                    persona,
+                    agent,
                     message_id,
                 )
             return await self._process_injection(
@@ -1273,96 +1273,96 @@ class AgentCore:
                 attachments,
                 chat_id,
                 tools,
-                persona,
+                agent,
                 message_id,
             )
         finally:
             reset_capture_context(cap_token)
 
-    async def _resolve_persona(self, channel: str, user_id: str, chat_id: str) -> Persona | None:
-        """Resolve the active persona for this request, in precedence order:
+    async def _resolve_agent(self, channel: str, user_id: str, chat_id: str) -> Agent | None:
+        """Resolve the active agent for this request, in precedence order:
 
-        0. a per-persona bot — a ``"telegram:<name>"`` channel binds straight to
-           persona ``<name>``: the bot that received the message *is* the persona (#29),
+        0. a per-agent bot — a ``"telegram:<name>"`` channel binds straight to
+           agent ``<name>``: the bot that received the message *is* the agent (#29),
         1. the per-chat binding for ``(channel, user_id, chat_id)`` (#14),
-        2. the globally-selected persona (``config.agent.active_persona``, #13),
+        2. the globally-selected agent (``config.agent.active_agent``, #13),
         3. the default identity (``None``).
         """
-        # 0. Bot-per-persona: the channel name carries the persona (e.g. "telegram:coach").
-        _, sep, persona_name = channel.partition(":")
-        if sep and persona_name:
-            persona = await self._load_persona(persona_name)
-            if persona:
-                return persona
-            # Unknown/deleted persona — fall through to the ordinary ladder.
+        # 0. Bot-per-agent: the channel name carries the agent (e.g. "telegram:coach").
+        _, sep, agent_name = channel.partition(":")
+        if sep and agent_name:
+            agent = await self._load_agent(agent_name)
+            if agent:
+                return agent
+            # Unknown/deleted agent — fall through to the ordinary ladder.
 
         # 1. Per-chat binding.
-        bound = await self.history.get_chat_persona(channel, user_id, chat_id)
+        bound = await self.history.get_chat_agent(channel, user_id, chat_id)
         if bound:
-            persona = await self._load_persona(bound)
-            if persona:
-                return persona
+            agent = await self._load_agent(bound)
+            if agent:
+                return agent
 
-        # 2. Globally-selected persona.
-        name = (self.config.agent.active_persona or "").strip()
+        # 2. Globally-selected agent.
+        name = (self.config.agent.active_agent or "").strip()
         if name:
-            return await self._load_persona(name)
+            return await self._load_agent(name)
 
         # 3. Default identity.
         return None
 
-    async def _load_persona(self, name: str) -> Persona | None:
-        """Load a persona by name, returning ``None`` if it is missing/broken."""
+    async def _load_agent(self, name: str) -> Agent | None:
+        """Load an agent by name, returning ``None`` if it is missing/broken."""
         try:
-            return await self.personae.get(name)
+            return await self.agents.get(name)
         except Exception:
-            log.exception("Failed to load persona %r", name)
+            log.exception("Failed to load agent %r", name)
             return None
 
-    async def bind_chat_persona(
-        self, channel: str, user_id: str, chat_id: str, persona_name: str
+    async def bind_chat_agent(
+        self, channel: str, user_id: str, chat_id: str, agent_name: str
     ) -> None:
-        """Bind (or, with an empty name, unbind) a chat to a persona.
+        """Bind (or, with an empty name, unbind) a chat to an agent.
 
         Thin pass-through to the history store, which also drops the snapshotted
         session system prompt so the new identity takes effect on the next turn.
         """
-        await self.history.bind_chat_persona(channel, user_id, chat_id, persona_name)
+        await self.history.bind_chat_agent(channel, user_id, chat_id, agent_name)
 
-    async def bind_chat_persona_by_label(
+    async def bind_chat_agent_by_label(
         self, channel: str, user_id: str, chat_id: str, label: str
     ) -> str | None:
-        """Auto-bind a chat to the persona matching ``label`` (case-insensitive).
+        """Auto-bind a chat to the agent matching ``label`` (case-insensitive).
 
-        Matches the label against each persona's ``name``, ``agent_name`` and
+        Matches the label against each agent's ``name``, ``agent_name`` and
         ``role``. Only binds when the chat is not already bound, so a manual
-        rebind is never clobbered. Returns the bound persona name, or ``None``.
+        rebind is never clobbered. Returns the bound agent name, or ``None``.
         """
         label = (label or "").strip()
         if not label:
             return None
-        if await self.history.get_chat_persona(channel, user_id, chat_id):
+        if await self.history.get_chat_agent(channel, user_id, chat_id):
             return None  # already bound — don't override a manual choice
         target = label.lower()
         try:
-            personae = await self.personae.list_personae()
+            agents = await self.agents.list_agents()
         except Exception:
-            log.exception("Failed to list personae for topic auto-bind")
+            log.exception("Failed to list agents for topic auto-bind")
             return None
-        for p in personae:
+        for p in agents:
             labels = {p.name.lower(), (p.agent_name or "").lower(), (p.role or "").lower()}
             if target in labels - {""}:
-                await self.bind_chat_persona(channel, user_id, chat_id, p.name)
+                await self.bind_chat_agent(channel, user_id, chat_id, p.name)
                 return p.name
         return None
 
-    def _tools_for_turn(self, persona: Persona | None) -> list[dict]:
-        """The function-tool schemas offered to the model this turn: the persona's
+    def _tools_for_turn(self, agent: Agent | None) -> list[dict]:
+        """The function-tool schemas offered to the model this turn: the agent's
         tool scope, with feature-gated tools dropped — including the skill-discovery
         tools when the index is not in on-demand mode (#50). The single seam that
         translates ``skills_index_mode`` into the advertised tool set."""
         return apply_feature_gates(
-            scoped_tools(persona),
+            scoped_tools(agent),
             secrets_available=self.secret_store is not None,
             skills_on_demand=self.config.agent.skills_index_mode == "on_demand",
             subagents_enabled=self.config.subagents.enabled,
@@ -1377,9 +1377,9 @@ class AgentCore:
         decomposed_goal: DecomposedGoal | None,
         query: str | None = None,
         scope: str = "",
-        persona: Persona | None = None,
+        agent: Agent | None = None,
         session_key: tuple[str, str, str] | None = None,
-        offer_personae: bool = False,
+        offer_agents: bool = False,
     ) -> str:
         """Build the per-turn preamble prepended to the current user message.
 
@@ -1394,9 +1394,9 @@ class AgentCore:
         every turn and rides on the new (uncached) user message, so it costs only
         the block's own tokens and is also relevance-ranked per turn.
 
-        ``scope`` is the active persona's memory scope (#42): ``""`` = shared
-        only, ``"<persona>"`` = shared + that persona's private memory.
-        ``persona`` scopes the skills index to its allowlist. ``session_key``
+        ``scope`` is the active agent's memory scope (#42): ``""`` = shared
+        only, ``"<agent>"`` = shared + that agent's private memory.
+        ``agent`` scopes the skills index to its allowlist. ``session_key``
         gates skills re-injection (see below); ``None`` = always inject.
         """
         now = datetime.now(ZoneInfo(self.config.agent.timezone))
@@ -1417,7 +1417,7 @@ class AgentCore:
                 "login. Write there only to share deliberately — never private data.]"
             )
 
-        # Skills index, scoped to the persona's allowlist. Rebuilt fresh per turn
+        # Skills index, scoped to the agent's allowlist. Rebuilt fresh per turn
         # so a skill added mid-session (e.g. via skill-creator) is immediately
         # visible without a /new (#46). Cheap: a local DB read, like memory.
         #
@@ -1426,7 +1426,7 @@ class AgentCore:
         # accumulate identical copies. We skip it only when the exact block is
         # ALREADY present in the replayed history (so the model still sees it).
         # Gating on the real history — not a side cache — keeps it correct by
-        # construction across /new, compaction, persona rebind and concurrent
+        # construction across /new, compaction, agent rebind and concurrent
         # turns: any of those that drop or change the block simply won't find it,
         # and the failure direction is a harmless re-send, never a blind turn.
         # Injection mode and tests pass ``None`` → always include.
@@ -1439,7 +1439,7 @@ class AgentCore:
                 block = f"<available_skills>\n{SKILLS_DISCOVERY_POINTER}\n</available_skills>"
             else:
                 skills_index = await self.skills.get_index_block(
-                    allow=persona.skills if persona else None
+                    allow=agent.skills if agent else None
                 )
                 block = (
                     f"<available_skills>\n{skills_index}\n</available_skills>"
@@ -1465,19 +1465,19 @@ class AgentCore:
         except Exception:
             log.exception("Failed to load memories for turn preamble")
 
-        # Roster of personae the agent can delegate to via spawn_subagent, so its
+        # Roster of agents the agent can delegate to via spawn_subagent, so its
         # choice is informed rather than guessed (#15). Only on the main turn —
-        # selection stays user-led (omit persona = run as yourself / the bound one).
-        if offer_personae:
-            roster = await self._personae_roster_block(persona)
+        # selection stays user-led (omit agent = run as yourself / the bound one).
+        if offer_agents:
+            roster = await self._agents_roster_block(agent)
             if roster:
                 preamble += f"\n\n{roster}"
 
         # Which email/calendar/contacts accounts this identity may use, so the
         # tools route without guessing account names (#110). Names and access
         # levels only — credentials never enter the prompt. Falls back to the
-        # default-agent bindings when no persona is active.
-        accounts_identity = persona if persona is not None else self._default_accounts
+        # default-agent bindings when no agent is active.
+        accounts_identity = agent if agent is not None else self._default_accounts
         if accounts_identity is not None:
             note = self._account_note(accounts_identity)
             if note:
@@ -1502,26 +1502,26 @@ class AgentCore:
             )
         return preamble
 
-    async def _personae_roster_block(self, persona: Persona | None) -> str:
-        """Compact `name — role` roster of personae the agent can delegate to (#15).
+    async def _agents_roster_block(self, agent: Agent | None) -> str:
+        """Compact `name — role` roster of agents the agent can delegate to (#15).
 
         Makes specialist delegation an informed choice instead of a guess, while
-        leaving selection user-led: omitting ``persona`` runs the subagent as the
+        leaving selection user-led: omitting ``agent`` runs the subagent as the
         caller itself. Returns "" (nothing injected) when subagents are disabled,
-        the active persona can't spawn, or there is no one to delegate to.
+        the active agent can't spawn, or there is no one to delegate to.
         """
         if not self.config.subagents.enabled:
             return ""
-        if persona is not None and not persona.allows_tool("spawn_subagent"):
+        if agent is not None and not agent.allows_tool("spawn_subagent"):
             return ""
         try:
-            personae = await self.personae.list_personae()
+            agents = await self.agents.list_agents()
         except Exception:
-            log.exception("Failed to list personae for the subagent roster")
+            log.exception("Failed to list agents for the subagent roster")
             return ""
-        current = persona.name if persona else ""
+        current = agent.name if agent else ""
         lines = []
-        for p in personae:
+        for p in agents:
             role = p.role.strip().splitlines()[0].strip() if (p.role or "").strip() else ""
             tag = " (you)" if p.name == current else ""
             lines.append(f"- {p.name}{tag}" + (f" — {role}" if role else ""))
@@ -1529,13 +1529,13 @@ class AgentCore:
             return ""
         body = "\n".join(lines)
         return (
-            "<personae>\n"
-            "These personae exist ONLY so you can honour an explicit request for a "
-            "specialist. By default, spawn_subagent with NO 'persona' so the "
+            "<agents>\n"
+            "These agents exist ONLY so you can honour an explicit request for a "
+            "specialist. By default, spawn_subagent with NO 'agent' so the "
             "subagent runs as you — do not assign one of these unless the user "
             "asked for it or the subtask plainly belongs to it.\n"
             f"{body}\n"
-            "</personae>"
+            "</agents>"
         )
 
     async def _skills_block_in_history(self, session_key: tuple[str, str, str], block: str) -> bool:
@@ -1545,7 +1545,7 @@ class AgentCore:
 
         Reads the same message array that will be sent to the model, so the
         decision is correct by construction: after a /new or compaction the block
-        is gone (→ re-send), a persona rebind or new skill changes the block (→
+        is gone (→ re-send), an agent rebind or new skill changes the block (→
         re-send), and concurrent turns that haven't yet persisted both re-send
         (harmless). Cheap: a substring scan over the (compaction-bounded) history.
         """
@@ -1575,7 +1575,7 @@ class AgentCore:
             return ""
         lines = []
         for r in runs:
-            who = f"- [{r.run_id}] {r.persona or 'default'} — running ({r.elapsed_str})"
+            who = f"- [{r.run_id}] {r.agent or 'default'} — running ({r.elapsed_str})"
             lines.append(f"{who}; {r.progress}" if r.progress else who)
         body = "\n".join(lines)
         return (
@@ -1593,7 +1593,7 @@ class AgentCore:
         channel: str,
         user_id: str,
         chat_id: str,
-        persona: Persona | None = None,
+        agent: Agent | None = None,
     ) -> str:
         """Return the session's static system prompt, building it once if needed.
 
@@ -1605,7 +1605,7 @@ class AgentCore:
         cached = await self.history.get_session_system(channel, user_id, chat_id)
         if cached is not None:
             return cached
-        system = await self._build_system_prompt(persona=persona)
+        system = await self._build_system_prompt(agent=agent)
         await self.history.set_session_system(channel, user_id, system, chat_id)
         return system
 
@@ -1754,7 +1754,7 @@ class AgentCore:
         attachments: list[Attachment] | None = None,
         chat_id: str = "",
         tools: list[dict] | None = None,
-        persona: Persona | None = None,
+        agent: Agent | None = None,
         message_id: int | None = None,
     ) -> AgentResponse:
         """Injection mode: replay windowed history as native alternating messages."""
@@ -1789,7 +1789,7 @@ class AgentCore:
 
         # Agentic loop — keep going while the LLM wants to call tools
         request_state = self._new_request_state(
-            persona,
+            agent,
             origin={
                 "channel": channel,
                 "user_id": user_id,
@@ -1847,7 +1847,7 @@ class AgentCore:
 
         # Check if the LLM wants to respond with voice
         voice_bytes = await self._maybe_synthesize_voice(
-            final_text, voice=persona.voice if persona else None
+            final_text, voice=agent.voice if agent else None
         )
         # Strip the control marker unconditionally — it must never reach the user,
         # even when synthesis was skipped or failed (voice_bytes is None).
@@ -1865,7 +1865,7 @@ class AgentCore:
         # Automatic memory extraction
         if channel != "system":
             asyncio.create_task(
-                self._extract_memories(message, final_text, persona),
+                self._extract_memories(message, final_text, agent),
                 name=f"memory-extract-{user_id}",
             )
 
@@ -1892,7 +1892,7 @@ class AgentCore:
         attachments: list[Attachment] | None = None,
         chat_id: str = "",
         tools: list[dict] | None = None,
-        persona: Persona | None = None,
+        agent: Agent | None = None,
         message_id: int | None = None,
     ) -> AgentResponse:
         """Session mode: sticky session per (channel, user_id, chat_id).
@@ -1930,7 +1930,7 @@ class AgentCore:
         # Agentic loop — keep going while the LLM wants to call tools
         new_messages: list[dict] = []
         request_state = self._new_request_state(
-            persona,
+            agent,
             origin={
                 "channel": channel,
                 "user_id": user_id,
@@ -2015,7 +2015,7 @@ class AgentCore:
 
         # Check if the LLM wants to respond with voice
         voice_bytes = await self._maybe_synthesize_voice(
-            final_text, voice=persona.voice if persona else None
+            final_text, voice=agent.voice if agent else None
         )
         # Strip the control marker unconditionally — it must never reach the user,
         # even when synthesis was skipped or failed (voice_bytes is None).
@@ -2024,7 +2024,7 @@ class AgentCore:
         # Automatic memory extraction
         if channel != "system":
             asyncio.create_task(
-                self._extract_memories(message, final_text, persona),
+                self._extract_memories(message, final_text, agent),
                 name=f"memory-extract-{user_id}",
             )
 
@@ -2054,7 +2054,7 @@ class AgentCore:
         return message
 
     async def _maybe_synthesize_voice(self, text: str, voice: str | None = None) -> bytes | None:
-        """Synthesize voice if requested by the LLM, using the persona's voice
+        """Synthesize voice if requested by the LLM, using the agent's voice
         when one is set (else the configured default)."""
         if _VOICE_MARKER_RE.search(text) and self.voice:
             clean_text = strip_voice_marker(text)
@@ -2117,8 +2117,8 @@ class AgentCore:
         if request_state is None:
             request_state = self._new_request_state()
 
-        # Permission rules are scoped to the active persona (#100); "" = default.
-        persona_scope = request_state.get("persona_name") or ""
+        # Permission rules are scoped to the active agent (#100); "" = default.
+        agent_scope = request_state.get("agent_name") or ""
 
         is_write_action = self.permissions.is_write_action(name, params)
         # Write-state is tracked per distinct action (tool + params), so a
@@ -2154,7 +2154,7 @@ class AgentCore:
             }
 
         # --- Permission check ---
-        level = self.permissions.check(name, params, scope=persona_scope)
+        level = self.permissions.check(name, params, scope=agent_scope)
 
         if level == PermissionLevel.NEVER:
             log.warning("Permission DENIED (NEVER): %s — %s", name, params)
@@ -2180,7 +2180,7 @@ class AgentCore:
                 decision = approvals[match_key]
             else:
                 decision = await self._request_approval(
-                    name, params, channel, user_id, scope=persona_scope
+                    name, params, channel, user_id, scope=agent_scope
                 )
                 if is_write_action:
                     write_decisions[write_sig] = decision
@@ -2209,7 +2209,7 @@ class AgentCore:
                 self.permissions.learn_always_rule(
                     self.permissions.match_key(name, params),
                     generalize=False,
-                    scope=persona_scope,
+                    scope=agent_scope,
                 )
 
         # --- Dispatch ---
@@ -2224,35 +2224,35 @@ class AgentCore:
             # elsewhere and never pass through this path, so a secret cannot be
             # exfiltrated through a message/email body.
             if self.secret_store is not None:
-                allowed = set(request_state.get("persona_secrets") or [])
+                allowed = set(request_state.get("agent_secrets") or [])
                 command, serr = await self.secret_store.resolve_command_secrets(command, allowed)
                 if serr:
                     return {"error": serr}
-            # Per-persona tool identity (#93): a persona runs `gh`/`browser` with its
-            # own credentials/profile, never the owner's. No persona → the shared
+            # Per-agent tool identity (#93): an agent runs `gh`/`browser` with its
+            # own credentials/profile, never the owner's. No agent → the shared
             # default env (unchanged path).
-            persona = request_state.get("persona_obj")
-            # Per-persona GitHub repo allowlist (#111) — block before running.
-            bad_repo = github_repo_violation(persona, command)
+            agent = request_state.get("agent_obj")
+            # Per-agent GitHub repo allowlist (#111) — block before running.
+            bad_repo = github_repo_violation(agent, command)
             if bad_repo:
                 return {
                     "error": (
-                        f"Persona '{persona.name}' is not allowed to use the GitHub "
-                        f"repo '{bad_repo}'. Allowed repos are set on the persona's "
+                        f"Agent '{agent.name}' is not allowed to use the GitHub "
+                        f"repo '{bad_repo}'. Allowed repos are set on the agent's "
                         "GitHub tool identity."
                     )
                 }
-            persona_env = None
-            # Build the per-turn tool env when a persona is active OR a GitHub App
+            agent_env = None
+            # Build the per-turn tool env when an agent is active OR a GitHub App
             # is configured — the latter so its rotating installation token (#111)
             # is minted fresh per command instead of the stale one cached at
-            # construction. A static PAT doesn't rotate, so the no-persona/PAT case
+            # construction. A static PAT doesn't rotate, so the no-agent/PAT case
             # keeps using the executor's shared default (unchanged).
-            if persona is not None or _gh_app_configured(self.config):
+            if agent is not None or _gh_app_configured(self.config):
                 store = self.secret_store
                 resolve = store.infra_resolve if store else (lambda _n: None)
-                persona_env = effective_tool_env(self.config, persona, resolve)
-            return await self.executor.run_command(command, tool_env=persona_env)
+                agent_env = effective_tool_env(self.config, agent, resolve)
+            return await self.executor.run_command(command, tool_env=agent_env)
 
         if name == "send_email":
             result = await self._tool_send_email(params, request_state)
@@ -2303,7 +2303,7 @@ class AgentCore:
                 return {"error": "Missing skill name."}
             allowed = (request_state or {}).get("allowed_skills")
             if allowed and skill_name not in allowed:
-                return {"error": f"Skill '{skill_name}' is not available to the active persona."}
+                return {"error": f"Skill '{skill_name}' is not available to the active agent."}
             content = await self.skills.get_skill_content(skill_name)
             if not content:
                 return {"error": f"Skill not found: {skill_name}"}
@@ -2342,7 +2342,7 @@ class AgentCore:
         if name == "list_secrets":
             if self.secret_store is None:
                 return {"error": "Secrets vault is not configured."}
-            allowed = set(request_state.get("persona_secrets") or [])
+            allowed = set(request_state.get("agent_secrets") or [])
             allowed |= await self.secret_store.shared_names()
             meta = await self.secret_store.list_secret_meta(allowed=allowed)
             return {
@@ -2400,7 +2400,7 @@ class AgentCore:
 
     @staticmethod
     def _new_request_state(
-        persona: Persona | None = None,
+        agent: Agent | None = None,
         *,
         depth: int = 0,
         origin: dict | None = None,
@@ -2408,9 +2408,9 @@ class AgentCore:
     ) -> dict:
         """Fresh per-turn state tracking write actions and approval decisions.
 
-        ``allowed_skills`` carries the active persona's skill allowlist so
+        ``allowed_skills`` carries the active agent's skill allowlist so
         ``load_skill`` can refuse skills outside scope (defence in depth — the
-        index already hides them). ``depth``/``origin``/``persona_obj`` carry the
+        index already hides them). ``depth``/``origin``/``agent_obj`` carry the
         context a ``spawn_subagent`` call needs to narrow scope, cap recursion,
         and post a background result back to the originating chat (issue #15).
         """
@@ -2420,12 +2420,12 @@ class AgentCore:
             "approvals": {},
             # Media produced mid-turn (e.g. generate_image) to deliver natively (#55).
             "pending_attachments": [],
-            "allowed_skills": persona.skills if persona else None,
+            "allowed_skills": agent.skills if agent else None,
             # Secret scope for {{secret:}} ACL in run_command (issue #19).
-            "persona_secrets": list(persona.secrets) if persona else [],
-            "persona_name": persona.name if persona else "",
+            "agent_secrets": list(agent.secrets) if agent else [],
+            "agent_name": agent.name if agent else "",
             # Subagent plumbing (issue #15).
-            "persona_obj": persona,
+            "agent_obj": agent,
             "depth": depth,
             "origin": origin or {},
             "run_id": run_id,
@@ -2460,51 +2460,51 @@ class AgentCore:
     # -- Structured tool implementations --
 
     @staticmethod
-    def _build_default_accounts(config: Config) -> Persona | None:
+    def _build_default_accounts(config: Config) -> Agent | None:
         """Build the default identity's account carrier from config (#110).
 
-        When no persona is active, ``send_email``/``create_calendar_event``/etc.
-        route through this. It is a :class:`Persona` holding ONLY the account
+        When no agent is active, ``send_email``/``create_calendar_event``/etc.
+        route through this. It is a :class:`Agent` holding ONLY the account
         bindings (no skills/tools/secrets/character), so it never affects scoping,
         memory, or identity — only account routing. Returns ``None`` when the
         default agent has no bindings, preserving the legacy unscoped behaviour.
         """
-        from core.personae import _as_account_list
+        from core.agents import _as_account_list
 
         email = _as_account_list(config.agent.email_accounts, sender=True)
         calendar = _as_account_list(config.agent.calendar_accounts)
         contacts = _as_account_list(config.agent.contacts_accounts)
         if not email and not calendar and not contacts:
             return None
-        return Persona(
+        return Agent(
             name="",
             email_accounts=email,
             calendar_accounts=calendar,
             contacts_accounts=contacts,
         )
 
-    def _accounts_identity(self, request_state: dict | None) -> Persona | None:
-        """The identity whose account bindings apply this turn: the active persona,
+    def _accounts_identity(self, request_state: dict | None) -> Agent | None:
+        """The identity whose account bindings apply this turn: the active agent,
         else the default-agent carrier (#110). ``None`` = unscoped (legacy)."""
-        persona = (request_state or {}).get("persona_obj")
-        return persona if persona is not None else self._default_accounts
+        agent = (request_state or {}).get("agent_obj")
+        return agent if agent is not None else self._default_accounts
 
     @staticmethod
-    def _account_note(persona: Persona) -> str:
+    def _account_note(agent: Agent) -> str:
         """Preamble block naming the identity's bound email/calendar/contacts
         accounts and access levels (#110). Names + levels only — never credentials."""
         lines: list[str] = []
-        if persona.email_accounts:
+        if agent.email_accounts:
             parts = []
-            for e in persona.email_accounts:
+            for e in agent.email_accounts:
                 tag = e["access_level"] + (", sender" if e.get("is_sender_identity") else "")
                 parts.append(f"{e['account']} ({tag})")
             lines.append("Email accounts: " + ", ".join(parts))
-        if persona.calendar_accounts:
-            parts = [f"{e['account']} ({e['access_level']})" for e in persona.calendar_accounts]
+        if agent.calendar_accounts:
+            parts = [f"{e['account']} ({e['access_level']})" for e in agent.calendar_accounts]
             lines.append("Calendar accounts: " + ", ".join(parts))
-        if persona.contacts_accounts:
-            parts = [f"{e['account']} ({e['access_level']})" for e in persona.contacts_accounts]
+        if agent.contacts_accounts:
+            parts = [f"{e['account']} ({e['access_level']})" for e in agent.contacts_accounts]
             lines.append("Contacts accounts: " + ", ".join(parts))
         if not lines:
             return ""
@@ -2521,31 +2521,29 @@ class AgentCore:
         )
 
     @staticmethod
-    def _resolve_email_send(
-        persona: Persona | None, params: dict
-    ) -> tuple[str | None, dict | None]:
+    def _resolve_email_send(agent: Agent | None, params: dict) -> tuple[str | None, dict | None]:
         """Route + authorise an email account for a send/reply (#110).
 
-        Returns ``(account, error)``. With no active persona the agent runs
+        Returns ``(account, error)``. With no active agent the agent runs
         unscoped (legacy single-user behaviour) and the requested account is used
-        verbatim. With a persona, the email_accounts bindings are the allowlist:
-        the account defaults to the persona's send identity, an unbound account is
+        verbatim. With an agent, the email_accounts bindings are the allowlist:
+        the account defaults to the agent's send identity, an unbound account is
         refused, and sending on a read-only binding is refused. Credentials are
         never touched here — only the account *name* is resolved.
         """
         account = str(params.get("account") or "").strip()
-        if persona is None:
+        if agent is None:
             if not account:
                 return None, {"error": "The 'account' parameter is required."}
             return account, None
         if not account:
-            account = persona.sender_identity() or ""
+            account = agent.sender_identity() or ""
             if not account:
                 return None, {
                     "error": "No send email identity is bound. Bind an email account as "
-                    "the sender identity in the admin UI (persona editor or Assistant tab)."
+                    "the sender identity in the admin UI (agent editor or Assistant tab)."
                 }
-        level = persona.email_access(account)
+        level = agent.email_access(account)
         if level is None:
             return None, {
                 "error": f"Not allowed to use the '{account}' email account. "
@@ -2557,13 +2555,13 @@ class AgentCore:
 
     @staticmethod
     def _resolve_calendar_write(
-        persona: Persona | None, params: dict
+        agent: Agent | None, params: dict
     ) -> tuple[str | None, dict | None]:
         """Route + authorise a calendar for an event write, mirroring
-        :meth:`_resolve_email_send` (#110). Defaults to the persona's first
+        :meth:`_resolve_email_send` (#110). Defaults to the agent's first
         writable calendar; refuses unbound or read-only calendars."""
         calendar = str(params.get("calendar") or "").strip()
-        if persona is None:
+        if agent is None:
             if not calendar:
                 return None, {"error": "The 'calendar' parameter is required."}
             return calendar, None
@@ -2571,7 +2569,7 @@ class AgentCore:
             calendar = next(
                 (
                     e["account"]
-                    for e in persona.calendar_accounts
+                    for e in agent.calendar_accounts
                     if e.get("access_level") == "read_write"
                 ),
                 "",
@@ -2581,7 +2579,7 @@ class AgentCore:
                     "error": "No writable calendar is bound. Grant read_write on a "
                     "calendar account in the admin UI."
                 }
-        level = persona.calendar_access(calendar)
+        level = agent.calendar_access(calendar)
         if level is None:
             return None, {"error": f"Not allowed to use the '{calendar}' calendar."}
         if level != "read_write":
@@ -2592,14 +2590,14 @@ class AgentCore:
 
     @staticmethod
     def _resolve_contacts_access(
-        persona: Persona | None, params: dict, *, need_write: bool
+        agent: Agent | None, params: dict, *, need_write: bool
     ) -> tuple[str | None, dict | None]:
         """Route + authorise a contacts account, mirroring the email/calendar
         resolvers (#110). ``need_write`` gates create_contact on a read_write
         binding; read tools pass ``need_write=False``. Defaults to the first bound
         account (first writable one when ``need_write``)."""
         account = str(params.get("account") or "").strip()
-        if persona is None:
+        if agent is None:
             if not account:
                 return None, {"error": "The 'account' parameter is required."}
             return account, None
@@ -2608,7 +2606,7 @@ class AgentCore:
                 account = next(
                     (
                         e["account"]
-                        for e in persona.contacts_accounts
+                        for e in agent.contacts_accounts
                         if e.get("access_level") == "read_write"
                     ),
                     "",
@@ -2619,15 +2617,13 @@ class AgentCore:
                         "on a contacts account in the admin UI."
                     }
             else:
-                account = (
-                    persona.contacts_accounts[0]["account"] if persona.contacts_accounts else ""
-                )
+                account = agent.contacts_accounts[0]["account"] if agent.contacts_accounts else ""
                 if not account:
                     return None, {
                         "error": "No contacts account is bound. Grant access to a contacts "
                         "account in the admin UI."
                     }
-        level = persona.contacts_access(account)
+        level = agent.contacts_access(account)
         if level is None:
             return None, {"error": f"Not allowed to use the '{account}' contacts account."}
         if need_write and level != "read_write":
@@ -2751,7 +2747,7 @@ class AgentCore:
 
         Defence in depth: the tools are already feature-gated out of the
         advertised set when disabled, but the handlers refuse too — a stale
-        tool-call or a persona allowlist can't reach the filesystem.
+        tool-call or an agent allowlist can't reach the filesystem.
         """
         ws = self.config.workspace
         if not ws.enabled or not ws.directory.strip():
@@ -2893,10 +2889,10 @@ class AgentCore:
             return {"error": "Invalid secret name (use letters, digits, _ - : only)."}
         reason = str(params.get("reason", "")).strip()
         scope = str(params.get("suggested_scope", "")).strip()
-        persona_name = (request_state or {}).get("persona_name", "")
-        log.info("Tool call: request_secret — %s (persona=%s)", sname, persona_name)
+        agent_name = (request_state or {}).get("agent_name", "")
+        log.info("Tool call: request_secret — %s (agent=%s)", sname, agent_name)
         token = await self.secret_store.create_request(
-            sname, persona=persona_name, reason=reason, suggested_scope=scope
+            sname, agent=agent_name, reason=reason, suggested_scope=scope
         )
         link = f"{self._base_url()}/vault/fill/{token}"
         await self._notify_secret_request(channel, user_id, sname, reason, link)
@@ -2980,9 +2976,9 @@ class AgentCore:
     async def _tool_manage_jobs(self, params: dict, request_state: dict | None = None) -> dict:
         """Create, list, or cancel scheduled jobs via the JobStore.
 
-        A created job captures its origin (the persona that scheduled it and the
+        A created job captures its origin (the agent that scheduled it and the
         chat it was scheduled in) from ``request_state`` so the scheduler later
-        runs it as that persona and delivers it back to the same chat — not the
+        runs it as that agent and delivers it back to the same chat — not the
         default identity in the owner's 1:1 DM (issue #71).
         """
         action = params.get("action", "")
@@ -3045,14 +3041,14 @@ class AgentCore:
             cron_expr = params.get("cron")
             run_at_str = params.get("run_at")
 
-            # Capture the originating context (issue #71): the persona that
+            # Capture the originating context (issue #71): the agent that
             # scheduled this and the chat it was scheduled in, so the scheduler
-            # runs it as that persona and delivers back to the same chat. Deliver
-            # from the same bot that received the request (a persona bot answers
+            # runs it as that agent and delivers back to the same chat. Deliver
+            # from the same bot that received the request (an agent bot answers
             # as itself); non-telegram origins (e.g. the scheduler itself) keep
             # the explicit/default delivery channel.
             origin = (request_state or {}).get("origin") or {}
-            origin_persona = (request_state or {}).get("persona_name") or ""
+            origin_agent = (request_state or {}).get("agent_name") or ""
             origin_channel = origin.get("channel") or ""
             if origin_channel == "telegram" or origin_channel.startswith("telegram:"):
                 channel = origin_channel
@@ -3076,9 +3072,9 @@ class AgentCore:
                     task=task,
                     channel=channel,
                     status="active",
-                    created_by=origin_persona or "agent",
+                    created_by=origin_agent or "agent",
                     description=description,
-                    persona=origin_persona,
+                    agent=origin_agent,
                     origin_user_id=origin_user_id,
                     origin_chat_id=origin_chat_id,
                 )
@@ -3112,9 +3108,9 @@ class AgentCore:
                     task=task,
                     channel=channel,
                     status="active",
-                    created_by=origin_persona or "agent",
+                    created_by=origin_agent or "agent",
                     description=description,
-                    persona=origin_persona,
+                    agent=origin_agent,
                     origin_user_id=origin_user_id,
                     origin_chat_id=origin_chat_id,
                 )
@@ -3137,14 +3133,14 @@ class AgentCore:
 
         Replaces hand-built sqlite3 INSERTs from the memory skill: parameterised, so
         arbitrary user text can't break quoting or inject SQL. Scope follows the active
-        persona — same boundary recall and injection use.
+        agent — same boundary recall and injection use.
         """
         content = str(params.get("content", "")).strip()
         if not content:
             return {"error": "Missing 'content'."}
         subject = str(params.get("subject", "")).strip()
         category = str(params.get("category", "") or "fact").strip()
-        scope = (request_state or {}).get("persona_name") or ""
+        scope = (request_state or {}).get("agent_name") or ""
         try:
             await self.memory.remember(content, subject=subject, category=category, scope=scope)
         except Exception:
@@ -3156,17 +3152,17 @@ class AgentCore:
     async def _tool_recall_memory(self, params: dict, request_state: dict | None = None) -> dict:
         """Deliberate semantic search over the full long-term memory store (#47).
 
-        Scoped to the active persona (#42): ``persona_name`` on the per-turn
-        request state is the persona's private memory scope (``""`` = the default
+        Scoped to the active agent (#42): ``agent_name`` on the per-turn
+        request state is the agent's private memory scope (``""`` = the default
         identity's shared-only view), so recall never crosses into another
-        persona's private memories — same boundary the injection readers enforce.
+        agent's private memories — same boundary the injection readers enforce.
         """
         query = str(params.get("query", "")).strip()
         if not query:
             return {"error": "Missing 'query'."}
         limit = params.get("limit")
         limit = limit if isinstance(limit, int) and not isinstance(limit, bool) else None
-        scope = (request_state or {}).get("persona_name") or ""
+        scope = (request_state or {}).get("agent_name") or ""
         try:
             memories = await self.memory.recall(query, limit, scope=scope)
         except Exception:
@@ -3187,7 +3183,7 @@ class AgentCore:
         origin = request_state.get("origin") or {}
         return await self.run_subagent(
             task=task,
-            persona_name=str(params.get("persona", "")).strip(),
+            agent_name=str(params.get("agent", "")).strip(),
             origin_channel=origin.get("channel", channel),
             origin_user_id=str(origin.get("user_id", user_id)),
             origin_chat_id=str(origin.get("chat_id", "")),
@@ -3202,7 +3198,7 @@ class AgentCore:
         self,
         *,
         task: str,
-        persona_name: str = "",
+        agent_name: str = "",
         origin_channel: str = "",
         origin_user_id: str = "",
         origin_chat_id: str = "",
@@ -3233,29 +3229,28 @@ class AgentCore:
                 )
             }
 
-        # Resolve + narrow the persona. A name must exist; with no name the child
+        # Resolve + narrow the agent. A name must exist; with no name the child
         # inherits the caller's identity and scope.
-        if persona_name:
-            requested = await self._load_persona(persona_name)
+        if agent_name:
+            requested = await self._load_agent(agent_name)
             if requested is None:
                 try:
-                    names = [p.name for p in await self.personae.list_personae()]
+                    names = [p.name for p in await self.agents.list_agents()]
                 except Exception:
                     names = []
                 hint = f" Available: {', '.join(names)}." if names else ""
                 return {
                     "error": (
-                        f"Persona not found: {persona_name}.{hint} "
-                        "Omit 'persona' to run as yourself."
+                        f"Agent not found: {agent_name}.{hint} Omit 'agent' to run as yourself."
                     )
                 }
         else:
-            requested = parent_state.get("persona_obj")
-        child_persona = self._narrow_persona(requested, parent_state) if requested else None
+            requested = parent_state.get("agent_obj")
+        child_agent = self._narrow_agent(requested, parent_state) if requested else None
 
         run_id = f"sub_{uuid.uuid4().hex[:8]}"
         child_state = self._new_request_state(
-            child_persona,
+            child_agent,
             depth=parent_depth + 1,
             origin={
                 "channel": origin_channel,
@@ -3266,7 +3261,7 @@ class AgentCore:
         )
         run = SubagentRun(
             run_id=run_id,
-            persona=child_persona.name if child_persona else "",
+            agent=child_agent.name if child_agent else "",
             task=task,
             depth=parent_depth + 1,
             background=background,
@@ -3288,19 +3283,17 @@ class AgentCore:
                 }
             self.subagents.register(run)
             bg = asyncio.create_task(
-                self._run_subagent_background(run, child_persona, child_state),
+                self._run_subagent_background(run, child_agent, child_state),
                 name=f"subagent-{run_id}",
             )
             self.subagents.attach_task(run_id, bg)
-            log.info(
-                "Spawned background subagent %s (persona=%s)", run_id, run.persona or "default"
-            )
+            log.info("Spawned background subagent %s (agent=%s)", run_id, run.agent or "default")
             return {
                 "ok": True,
                 "run_id": run_id,
                 "background": True,
                 "status": "running",
-                "persona": run.persona,
+                "agent": run.agent,
                 "note": (
                     "Running in the background; its result is posted to this chat "
                     "automatically when done — you don't relay it. Each later turn "
@@ -3310,9 +3303,9 @@ class AgentCore:
 
         # Synchronous: run to completion and return the result to the caller.
         self.subagents.register(run)
-        log.info("Running subagent %s (persona=%s)", run_id, run.persona or "default")
+        log.info("Running subagent %s (agent=%s)", run_id, run.agent or "default")
         try:
-            text = await self._run_subagent_loop(task, child_persona, child_state, run)
+            text = await self._run_subagent_loop(task, child_agent, child_state, run)
         except Exception as exc:
             log.exception("Subagent %s failed", run_id)
             self.subagents.finish(run_id, "error", error=str(exc))
@@ -3321,26 +3314,26 @@ class AgentCore:
         return {
             "ok": True,
             "run_id": run_id,
-            "persona": run.persona,
+            "agent": run.agent,
             "summary": short_summary(text),
             "result": text,
         }
 
-    def _narrow_persona(self, requested: Persona, parent_state: dict) -> Persona:
-        """Build a child persona whose scopes are a subset of the caller's."""
-        parent: Persona | None = parent_state.get("persona_obj")
+    def _narrow_agent(self, requested: Agent, parent_state: dict) -> Agent:
+        """Build a child agent whose scopes are a subset of the caller's."""
+        parent: Agent | None = parent_state.get("agent_obj")
         p_skills = parent.skills if parent else []
         p_tools = parent.tools if parent else []
         p_secrets = parent.secrets if parent else []
         # Account bindings are narrowed against the caller's *account* identity: the
-        # parent persona, else the default-agent bindings when the top-level agent
-        # ran unscoped. None (no persona and no default bindings) = unscoped owner,
+        # parent agent, else the default-agent bindings when the top-level agent
+        # ran unscoped. None (no agent and no default bindings) = unscoped owner,
         # so the child keeps its own — narrow_accounts distinguishes None from [].
         account_parent = parent if parent is not None else self._default_accounts
         p_email = account_parent.email_accounts if account_parent else None
         p_cal = account_parent.calendar_accounts if account_parent else None
         p_contacts = account_parent.contacts_accounts if account_parent else None
-        return Persona(
+        return Agent(
             name=requested.name,
             agent_name=requested.agent_name,
             role=requested.role,
@@ -3350,7 +3343,7 @@ class AgentCore:
             skills=narrow_scope(p_skills, requested.skills),
             tools=narrow_scope(p_tools, requested.tools),
             secrets=narrow_scope(p_secrets, requested.secrets),
-            # Tool identity travels verbatim with the persona (#93) — it is who the
+            # Tool identity travels verbatim with the agent (#93) — it is who the
             # child IS (its own gh token / browser profile), not a caller-subset
             # scope. Dropping it would silently fall back to the owner's token and
             # re-open the very identity bleed this feature prevents. The one scope
@@ -3365,11 +3358,11 @@ class AgentCore:
         )
 
     async def _run_subagent_loop(
-        self, task: str, child_persona: Persona | None, child_state: dict, run: SubagentRun
+        self, task: str, child_agent: Agent | None, child_state: dict, run: SubagentRun
     ) -> str:
         """Route this subagent's log records into its spawner's stream (#75).
 
-        The label (persona slug, else run id) prefixes each line as
+        The label (agent slug, else run id) prefixes each line as
         ``[subagent:<label>]`` so it filters out of the shared stream; ``fallback``
         names the stream for a top-level scheduled run that inherited none.
         """
@@ -3378,13 +3371,13 @@ class AgentCore:
         # last-sent payload with the child's.
         cap_token = set_capture_context(None)
         try:
-            with subagent_stream(run.persona or run.run_id, fallback=run.persona):
-                return await self._run_subagent_loop_inner(task, child_persona, child_state, run)
+            with subagent_stream(run.agent or run.run_id, fallback=run.agent):
+                return await self._run_subagent_loop_inner(task, child_agent, child_state, run)
         finally:
             reset_capture_context(cap_token)
 
     async def _run_subagent_loop_inner(
-        self, task: str, child_persona: Persona | None, child_state: dict, run: SubagentRun
+        self, task: str, child_agent: Agent | None, child_state: dict, run: SubagentRun
     ) -> str:
         """The subagent's agentic loop — system semantics, budgeted and depth-capped.
 
@@ -3395,7 +3388,7 @@ class AgentCore:
         cfg = self.config.subagents
         # Same gating as the main loop (incl. the #50 skill-discovery tools, which a
         # subagent needs in on-demand mode — its preamble carries the pointer too).
-        tools = self._tools_for_turn(child_persona)
+        tools = self._tools_for_turn(child_agent)
         # At the depth ceiling a subagent may not spawn further — don't even offer it.
         if child_state["depth"] >= cfg.recursion_depth:
             tools = [t for t in tools if t["name"] != "spawn_subagent"]
@@ -3404,11 +3397,11 @@ class AgentCore:
         # dropped. Don't offer the tool at all.
         tools = [t for t in tools if t["name"] != "generate_image"]
 
-        system = await self._build_system_prompt(persona=child_persona)
+        system = await self._build_system_prompt(agent=child_agent)
         system = f"{system}\n\n{RESULT_FOR_AGENT_INSTRUCTION}\n\n{FILE_HANDOFF_INSTRUCTION}"
         # Memory/reflections inject per-turn via the preamble (#41), scoped to the
-        # child persona (#42); query=task keeps the injection relevant.
-        preamble = await self._turn_preamble(None, query=task, scope=_persona_scope(child_persona))
+        # child agent (#42); query=task keeps the injection relevant.
+        preamble = await self._turn_preamble(None, query=task, scope=_agent_scope(child_agent))
         messages: list[dict] = [await self._build_user_message(task, None, preamble)]
 
         # effort None = inherit the main client's level; otherwise an effort-scoped
@@ -3463,13 +3456,13 @@ class AgentCore:
         return text
 
     async def _run_subagent_background(
-        self, run: SubagentRun, child_persona: Persona | None, child_state: dict
+        self, run: SubagentRun, child_agent: Agent | None, child_state: dict
     ) -> None:
         """Run a subagent off-turn. When the chat's whole batch of background runs
         has finished, the spawning agent ingests their results and writes one reply
         — the user never sees raw subagent output; it works for the agent (#15)."""
         try:
-            text = await self._run_subagent_loop(run.task, child_persona, child_state, run)
+            text = await self._run_subagent_loop(run.task, child_agent, child_state, run)
         except asyncio.CancelledError:
             # User-initiated stop (registry.cancel already flipped the status, so
             # finish() is a no-op here). Mark it synthesised so a sibling's batch
@@ -3556,7 +3549,7 @@ class AgentCore:
             (
                 r.task,
                 r.result if r.status == "done" else f"[failed: {r.error or 'unknown error'}]",
-                r.persona or "",
+                r.agent or "",
                 r.status,
             )
             for r in batch
@@ -3788,7 +3781,7 @@ class AgentCore:
         """
         if channel == "system" or request_state.get("yolo"):
             return  # YOLO: writes fall through to _execute_tool's auto-approve
-        scope = request_state.get("persona_name") or ""  # per-persona rules (#100)
+        scope = request_state.get("agent_name") or ""  # per-agent rules (#100)
         write_decisions = request_state.setdefault("write_decisions", {})
         pending: list[tuple[str, str]] = []  # (signature, description)
         seen: set[str] = set()
@@ -3896,7 +3889,7 @@ class AgentCore:
             return "skipped"
 
     async def _extract_memories(
-        self, user_msg: str, agent_msg: str, persona: Persona | None = None
+        self, user_msg: str, agent_msg: str, agent: Agent | None = None
     ) -> None:
         """Run automatic memory extraction in the background.
 
@@ -3905,8 +3898,8 @@ class AgentCore:
         Exceptions are logged and swallowed — this must never crash the
         main agent loop.
 
-        ``persona`` scopes what is written (#42): facts the extractor marks
-        private land in that persona's scope, everything else stays shared.
+        ``agent`` scopes what is written (#42): facts the extractor marks
+        private land in that agent's scope, everything else stays shared.
         """
         try:
             llm = self._memory_llm(
@@ -3919,7 +3912,7 @@ class AgentCore:
                 user_msg=user_msg,
                 agent_msg=agent_msg,
                 cooldown_seconds=self.config.memory.extraction_cooldown_seconds,
-                persona_scope=_persona_scope(persona),
+                agent_scope=_agent_scope(agent),
             )
             if stored:
                 log.info("Background memory extraction stored %d memories", stored)
@@ -4086,7 +4079,7 @@ class AgentCore:
     async def _build_system_prompt(
         self,
         decomposed_goal: DecomposedGoal | None = None,
-        persona: Persona | None = None,
+        agent: Agent | None = None,
     ) -> str:
         # Memory, reflections AND the skills index are NOT baked into the static
         # prompt: in session mode it is snapshotted once and would freeze stale —
@@ -4100,7 +4093,7 @@ class AgentCore:
             memories="",
             reflections="",
             decomposed_goal=decomposed_goal,
-            persona=persona,
+            agent=agent,
             secrets_available=self.secret_store is not None,
             include_memories=False,
             include_reflections=False,

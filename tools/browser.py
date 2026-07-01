@@ -782,7 +782,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Headless browser automation (Playwright).")
     # Default headless from the env injected by core/tools.py (config.tools.browser).
     headless_default = os.environ.get("BROWSER_HEADLESS", "1") != "0"
-    # Default profile from the env injected per active persona (#93): when an agent
+    # Default profile from the env injected per active agent (#93): when an agent
     # omits --profile, it still gets its OWN isolated session dir, not a shared one.
     profile_default = os.environ.get("BROWSER_PROFILE", "default") or "default"
     parser.add_argument(

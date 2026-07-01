@@ -1,6 +1,6 @@
-"""Persona (profile) engine — SQLite-backed store of swappable agent identities.
+"""Agent (profile) engine — SQLite-backed store of swappable agent identities.
 
-A **persona** is a first-class identity the agent can take on (fitness coach,
+An **agent** is a first-class identity the assistant can take on (fitness coach,
 finance assistant, …). It is exactly four things (issue #13):
 
 - its own system-prompt identity (``character`` — who it is + its tone),
@@ -11,10 +11,13 @@ finance assistant, …). It is exactly four things (issue #13):
   external CLI tool — #93; empty means *inherit the system-wide config*).
 
 The store mirrors :mod:`core.skills`: markdown files with YAML frontmatter,
-seeded into SQLite at startup, editable in the admin UI. When no persona is
-active the agent falls back to the configured ``character`` so first-run
-behaviour is unchanged. (A legacy ``personalia`` field was merged into
+seeded into SQLite at startup, editable in the admin UI. When no agent is
+selected the assistant falls back to the configured default ``character`` so
+first-run behaviour is unchanged. (A legacy ``personalia`` field was merged into
 ``character`` in #98; old frontmatter/rows are folded in on load.)
+
+(Formerly the "persona" concept — the store, tables and DB file were renamed to
+"agent" in #115; existing ``personae`` DBs are migrated in place on first open.)
 """
 
 from __future__ import annotations
@@ -27,7 +30,7 @@ import aiosqlite
 import yaml
 
 _SCHEMA = """
-CREATE TABLE IF NOT EXISTS personae (
+CREATE TABLE IF NOT EXISTS agents (
     name TEXT PRIMARY KEY,
     agent_name TEXT DEFAULT '',
     role TEXT DEFAULT '',
@@ -49,36 +52,43 @@ CREATE TABLE IF NOT EXISTS personae (
 -- Slugs deliberately removed (deleted, or renamed away from) so seeding does not
 -- resurrect them from their markdown file on the next list (#102). Re-creating a
 -- slug via upsert/rename clears its tombstone.
-CREATE TABLE IF NOT EXISTS persona_tombstones (
+CREATE TABLE IF NOT EXISTS agent_tombstones (
     name TEXT PRIMARY KEY,
     created_at DATETIME DEFAULT (datetime('now'))
 );
 """
 
+# #115: rename the legacy "persona" tables to "agent" in place, preserving every
+# row. Skipped (OperationalError) on a fresh DB or once already renamed.
+_TABLE_RENAMES = (
+    "ALTER TABLE personae RENAME TO agents",
+    "ALTER TABLE persona_tombstones RENAME TO agent_tombstones",
+)
+
 # Columns added after the table first shipped — applied to existing DBs on open.
 _MIGRATIONS = (
-    "ALTER TABLE personae ADD COLUMN bot_token TEXT DEFAULT ''",  # #29
-    "ALTER TABLE personae ADD COLUMN allowed_user_ids TEXT DEFAULT ''",  # #29
-    "ALTER TABLE personae ADD COLUMN tool_config TEXT DEFAULT ''",  # #93
-    "ALTER TABLE personae ADD COLUMN email_accounts TEXT DEFAULT ''",  # #110
-    "ALTER TABLE personae ADD COLUMN calendar_accounts TEXT DEFAULT ''",  # #110
-    "ALTER TABLE personae ADD COLUMN contacts_accounts TEXT DEFAULT ''",  # #110 (contacts)
+    "ALTER TABLE agents ADD COLUMN bot_token TEXT DEFAULT ''",  # #29
+    "ALTER TABLE agents ADD COLUMN allowed_user_ids TEXT DEFAULT ''",  # #29
+    "ALTER TABLE agents ADD COLUMN tool_config TEXT DEFAULT ''",  # #93
+    "ALTER TABLE agents ADD COLUMN email_accounts TEXT DEFAULT ''",  # #110
+    "ALTER TABLE agents ADD COLUMN calendar_accounts TEXT DEFAULT ''",  # #110
+    "ALTER TABLE agents ADD COLUMN contacts_accounts TEXT DEFAULT ''",  # #110 (contacts)
     # #98: personalia merged into character. Prepend any existing personalia to
     # character (idempotent — the WHERE guard empties it, so a re-run is a no-op),
     # then drop the now-unused column. On a fresh DB (no such column) both raise
     # OperationalError and are skipped, like the ADD COLUMNs above.
-    "UPDATE personae SET character = TRIM(personalia || char(10) || char(10) || character), "
+    "UPDATE agents SET character = TRIM(personalia || char(10) || char(10) || character), "
     "personalia = '' WHERE TRIM(COALESCE(personalia, '')) != ''",
-    "ALTER TABLE personae DROP COLUMN personalia",
+    "ALTER TABLE agents DROP COLUMN personalia",
 )
 
 
 @dataclass(slots=True)
-class Persona:
+class Agent:
     """A swappable agent identity + its scopes."""
 
     name: str  # slug / identifier (PK)
-    agent_name: str = ""  # name the assistant goes by when active; empty = global agent.name
+    agent_name: str = ""  # display name it goes by when active; empty = global agent.name
     role: str = ""
     emoji: str = ""
     voice: str = ""  # TTS voice override; empty = configured default
@@ -88,17 +98,17 @@ class Persona:
     secrets: list[str] = field(default_factory=list)  # vault scope; stored only (#19)
     bot_token: str = ""  # own Telegram bot; empty = reachable only via the default bot (#29)
     allowed_user_ids: list[int] = field(default_factory=list)  # bot ACL; [] = inherit global
-    # Per-persona config for the optional external CLI tools (gh, browser) — #93.
+    # Per-agent config for the optional external CLI tools (gh, browser) — #93.
     # Shape: {tool_key: {"enabled": bool, **tool-specific cfg}}. Empty = inherit
     # the system-wide tool config (own credentials/profile fall back to shared).
     tool_config: dict = field(default_factory=dict)
-    # Per-persona email/calendar account bindings (#110). Each email entry is
+    # Per-agent email/calendar account bindings (#110). Each email entry is
     # {account, access_level: read|read_write, is_sender_identity: bool}; each
     # calendar entry drops the sender flag. Empty = NO email/calendar access
-    # (safe default — a persona reaches only the accounts it is bound to).
+    # (safe default — an agent reaches only the accounts it is bound to).
     email_accounts: list[dict] = field(default_factory=list)
     calendar_accounts: list[dict] = field(default_factory=list)
-    # Per-persona contacts (CardDAV) account bindings (#110 follow-up). Each entry
+    # Per-agent contacts (CardDAV) account bindings (#110 follow-up). Each entry
     # is {account, access_level: read|read_write}; read = search/list, read_write =
     # also create contacts. Empty = no contacts access (safe default).
     contacts_accounts: list[dict] = field(default_factory=list)
@@ -110,7 +120,7 @@ class Persona:
         return not self.tools or name in self.tools
 
     def email_access(self, account: str) -> str | None:
-        """This persona's access level ('read'/'read_write') on ``account``, or
+        """This agent's access level ('read'/'read_write') on ``account``, or
         None if it is not bound to that email account (#110)."""
         for e in self.email_accounts:
             if e.get("account") == account:
@@ -118,21 +128,21 @@ class Persona:
         return None
 
     def calendar_access(self, account: str) -> str | None:
-        """This persona's access level on calendar ``account``, or None (#110)."""
+        """This agent's access level on calendar ``account``, or None (#110)."""
         for e in self.calendar_accounts:
             if e.get("account") == account:
                 return e.get("access_level")
         return None
 
     def contacts_access(self, account: str) -> str | None:
-        """This persona's access level on contacts ``account``, or None (#110)."""
+        """This agent's access level on contacts ``account``, or None (#110)."""
         for e in self.contacts_accounts:
             if e.get("account") == account:
                 return e.get("access_level")
         return None
 
     def sender_identity(self) -> str | None:
-        """The email account this persona sends from (its is_sender_identity
+        """The email account this agent sends from (its is_sender_identity
         binding), or None if it has no send identity (#110)."""
         for e in self.email_accounts:
             if e.get("is_sender_identity"):
@@ -140,7 +150,7 @@ class Persona:
         return None
 
     def tool_setting(self, key: str) -> dict | None:
-        """This persona's config for external tool ``key`` (gh/browser), or None
+        """This agent's config for external tool ``key`` (gh/browser), or None
         if it has none — in which case the system-wide config applies (#93)."""
         cfg = self.tool_config.get(key) if isinstance(self.tool_config, dict) else None
         return cfg if isinstance(cfg, dict) else None
@@ -233,8 +243,8 @@ def _as_int_list(value: object) -> list[int]:
     return out
 
 
-def parse_markdown(text: str, *, name: str) -> Persona:
-    """Parse a persona markdown doc (YAML frontmatter + optional body).
+def parse_markdown(text: str, *, name: str) -> Agent:
+    """Parse an agent markdown doc (YAML frontmatter + optional body).
 
     Identity lives in the frontmatter (``character`` block scalar); any markdown
     body after the frontmatter is appended to ``character`` so authors can write
@@ -269,7 +279,7 @@ def parse_markdown(text: str, *, name: str) -> Persona:
     if legacy_personalia:  # #98: fold old personalia in, prepended so nothing is lost
         character = f"{legacy_personalia}\n\n{character}".strip()
 
-    return Persona(
+    return Agent(
         name=name,
         agent_name=str(fm.get("agent_name", "") or ""),
         role=str(fm.get("role", "") or ""),
@@ -288,41 +298,62 @@ def parse_markdown(text: str, *, name: str) -> Persona:
     )
 
 
-def to_markdown(p: Persona) -> str:
-    """Serialise a persona back to frontmatter markdown (the raw power-user view)."""
+def to_markdown(a: Agent) -> str:
+    """Serialise an agent back to frontmatter markdown (the raw power-user view)."""
     fm = {
-        "agent_name": p.agent_name,
-        "role": p.role,
-        "emoji": p.emoji,
-        "voice": p.voice,
-        "bot_token": p.bot_token,
-        "allowed_user_ids": p.allowed_user_ids,
-        "skills": p.skills,
-        "tools": p.tools,
-        "secrets": p.secrets,
-        "tool_config": p.tool_config,
-        "email_accounts": p.email_accounts,
-        "calendar_accounts": p.calendar_accounts,
-        "contacts_accounts": p.contacts_accounts,
-        "character": p.character,
+        "agent_name": a.agent_name,
+        "role": a.role,
+        "emoji": a.emoji,
+        "voice": a.voice,
+        "bot_token": a.bot_token,
+        "allowed_user_ids": a.allowed_user_ids,
+        "skills": a.skills,
+        "tools": a.tools,
+        "secrets": a.secrets,
+        "tool_config": a.tool_config,
+        "email_accounts": a.email_accounts,
+        "calendar_accounts": a.calendar_accounts,
+        "contacts_accounts": a.contacts_accounts,
+        "character": a.character,
     }
     dumped = yaml.safe_dump(fm, sort_keys=False, allow_unicode=True, default_flow_style=False)
     return f"---\n{dumped}---\n"
 
 
-class PersonaStore:
-    """SQLite-backed store for personae, seeded from a markdown directory."""
+class AgentStore:
+    """SQLite-backed store for agents, seeded from a markdown directory."""
 
-    def __init__(self, db_path: str = "data/personae.db", seed_dir: str | Path = "personae/"):
+    def __init__(self, db_path: str = "data/agents.db", seed_dir: str | Path = "agents/"):
         self.db_path = db_path
         self.seed_dir = Path(seed_dir) if seed_dir else None
         self._ready = False
+
+    def _migrate_legacy_db_file(self) -> None:
+        """#115: adopt a pre-rename ``personae.db`` sitting next to the new path.
+
+        If the configured DB file is absent but a sibling ``personae.db`` exists,
+        move it into place so an upgraded deployment keeps its agents (the tables
+        inside are renamed on connect below). A wholly custom filename won't match
+        and just gets a fresh DB — acceptable for the default deployment.
+        """
+        new = Path(self.db_path)
+        if new.exists():
+            return
+        legacy = new.with_name("personae.db")
+        if legacy.exists():
+            legacy.rename(new)
 
     async def _ensure_schema(self) -> None:
         if self._ready:
             return
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
+        self._migrate_legacy_db_file()
         async with aiosqlite.connect(self.db_path) as db:
+            for stmt in _TABLE_RENAMES:
+                try:
+                    await db.execute(stmt)
+                except aiosqlite.OperationalError:
+                    pass  # fresh DB or already renamed
             await db.executescript(_SCHEMA)
             for stmt in _MIGRATIONS:
                 try:
@@ -333,15 +364,15 @@ class PersonaStore:
         self._ready = True
 
     async def ensure_seeded(self) -> bool:
-        """Seed missing personae from the seed directory (idempotent)."""
+        """Seed missing agents from the seed directory (idempotent)."""
         await self._ensure_schema()
         if not self.seed_dir or not self.seed_dir.exists():
             return False
         inserted = 0
         async with aiosqlite.connect(self.db_path) as db:
-            cursor = await db.execute("SELECT name FROM personae")
+            cursor = await db.execute("SELECT name FROM agents")
             existing = {row[0] for row in await cursor.fetchall()}
-            cursor = await db.execute("SELECT name FROM persona_tombstones")
+            cursor = await db.execute("SELECT name FROM agent_tombstones")
             tombstoned = {row[0] for row in await cursor.fetchall()}
             for f in sorted(self.seed_dir.glob("*.md")):
                 content = f.read_text().strip()
@@ -353,9 +384,9 @@ class PersonaStore:
         return inserted > 0
 
     @staticmethod
-    async def _upsert(db: aiosqlite.Connection, p: Persona) -> None:
+    async def _upsert(db: aiosqlite.Connection, a: Agent) -> None:
         await db.execute(
-            "INSERT INTO personae "
+            "INSERT INTO agents "
             "(name, agent_name, role, emoji, voice, character, skills, tools, "
             "secrets, bot_token, allowed_user_ids, tool_config, "
             "email_accounts, calendar_accounts, contacts_accounts) "
@@ -369,27 +400,27 @@ class PersonaStore:
             "calendar_accounts=excluded.calendar_accounts, "
             "contacts_accounts=excluded.contacts_accounts, updated_at=datetime('now')",
             (
-                p.name,
-                p.agent_name,
-                p.role,
-                p.emoji,
-                p.voice,
-                p.character,
-                "\n".join(p.skills),
-                "\n".join(p.tools),
-                "\n".join(p.secrets),
-                p.bot_token,
-                "\n".join(str(i) for i in p.allowed_user_ids),
-                json.dumps(p.tool_config) if p.tool_config else "",
-                json.dumps(p.email_accounts) if p.email_accounts else "",
-                json.dumps(p.calendar_accounts) if p.calendar_accounts else "",
-                json.dumps(p.contacts_accounts) if p.contacts_accounts else "",
+                a.name,
+                a.agent_name,
+                a.role,
+                a.emoji,
+                a.voice,
+                a.character,
+                "\n".join(a.skills),
+                "\n".join(a.tools),
+                "\n".join(a.secrets),
+                a.bot_token,
+                "\n".join(str(i) for i in a.allowed_user_ids),
+                json.dumps(a.tool_config) if a.tool_config else "",
+                json.dumps(a.email_accounts) if a.email_accounts else "",
+                json.dumps(a.calendar_accounts) if a.calendar_accounts else "",
+                json.dumps(a.contacts_accounts) if a.contacts_accounts else "",
             ),
         )
 
     @staticmethod
-    def _row_to_persona(row: aiosqlite.Row) -> Persona:
-        return Persona(
+    def _row_to_agent(row: aiosqlite.Row) -> Agent:
+        return Agent(
             name=row["name"],
             agent_name=row["agent_name"] or "",
             role=row["role"] or "",
@@ -415,103 +446,99 @@ class PersonaStore:
             ),
         )
 
-    async def list_personae(self) -> list[Persona]:
+    async def list_agents(self) -> list[Agent]:
         await self.ensure_seeded()
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
-            cursor = await db.execute("SELECT * FROM personae ORDER BY name")
-            return [self._row_to_persona(r) for r in await cursor.fetchall()]
+            cursor = await db.execute("SELECT * FROM agents ORDER BY name")
+            return [self._row_to_agent(r) for r in await cursor.fetchall()]
 
-    async def get(self, name: str) -> Persona | None:
+    async def get(self, name: str) -> Agent | None:
         await self.ensure_seeded()
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
-            cursor = await db.execute("SELECT * FROM personae WHERE name = ?", (name,))
+            cursor = await db.execute("SELECT * FROM agents WHERE name = ?", (name,))
             row = await cursor.fetchone()
-            return self._row_to_persona(row) if row else None
+            return self._row_to_agent(row) if row else None
 
-    async def upsert(self, p: Persona) -> None:
+    async def upsert(self, a: Agent) -> None:
         await self._ensure_schema()
         async with aiosqlite.connect(self.db_path) as db:
-            await self._upsert(db, p)
+            await self._upsert(db, a)
             # Deliberately (re)creating a slug clears any tombstone on it (#102).
-            await db.execute("DELETE FROM persona_tombstones WHERE name = ?", (p.name,))
+            await db.execute("DELETE FROM agent_tombstones WHERE name = ?", (a.name,))
             await db.commit()
 
     async def delete(self, name: str) -> bool:
         await self._ensure_schema()
         async with aiosqlite.connect(self.db_path) as db:
-            cursor = await db.execute("DELETE FROM personae WHERE name = ?", (name,))
+            cursor = await db.execute("DELETE FROM agents WHERE name = ?", (name,))
             if cursor.rowcount > 0:
-                # Tombstone so seeding doesn't resurrect a deleted seed persona (#102).
-                await db.execute(
-                    "INSERT OR IGNORE INTO persona_tombstones(name) VALUES (?)", (name,)
-                )
+                # Tombstone so seeding doesn't resurrect a deleted seed agent (#102).
+                await db.execute("INSERT OR IGNORE INTO agent_tombstones(name) VALUES (?)", (name,))
             await db.commit()
             return cursor.rowcount > 0
 
     async def rename(self, old: str, new: str) -> bool:
-        """Change a persona's slug (its PRIMARY KEY). Returns False if ``old`` is
-        missing; raises ``ValueError`` if ``new`` already names another persona.
+        """Change an agent's slug (its PRIMARY KEY). Returns False if ``old`` is
+        missing; raises ``ValueError`` if ``new`` already names another agent.
 
-        This only moves the personae row. The slug is referenced from other
-        stores (per-chat bindings, memory scope, jobs, the active-persona config,
+        This only moves the agents row. The slug is referenced from other
+        stores (per-chat bindings, memory scope, jobs, the active-agent config,
         and the ``telegram:<slug>`` bot channel) — the admin rename route cascades
         the new slug to those so nothing is orphaned.
         """
         await self._ensure_schema()
         async with aiosqlite.connect(self.db_path) as db:
-            cursor = await db.execute("SELECT 1 FROM personae WHERE name = ?", (new,))
+            cursor = await db.execute("SELECT 1 FROM agents WHERE name = ?", (new,))
             if await cursor.fetchone():
-                raise ValueError(f"A persona named '{new}' already exists")
+                raise ValueError(f"An agent named '{new}' already exists")
             cursor = await db.execute(
-                "UPDATE personae SET name = ?, updated_at = datetime('now') WHERE name = ?",
+                "UPDATE agents SET name = ?, updated_at = datetime('now') WHERE name = ?",
                 (new, old),
             )
             if cursor.rowcount > 0:
                 # Old slug must not resurrect from its seed file; new slug is now
                 # live, so clear any tombstone it carried (#102).
-                await db.execute(
-                    "INSERT OR IGNORE INTO persona_tombstones(name) VALUES (?)", (old,)
-                )
-                await db.execute("DELETE FROM persona_tombstones WHERE name = ?", (new,))
+                await db.execute("INSERT OR IGNORE INTO agent_tombstones(name) VALUES (?)", (old,))
+                await db.execute("DELETE FROM agent_tombstones WHERE name = ?", (new,))
             await db.commit()
             return cursor.rowcount > 0
 
 
 async def bind_existing_accounts(
-    store: PersonaStore,
+    store: AgentStore,
     email_names: list[str],
     calendar_names: list[str],
     contacts_names: list[str] | None = None,
 ) -> int:
-    """One-time #110 compatibility: bind existing accounts to existing personae.
+    """One-time #110 compatibility: bind existing accounts to existing agents.
 
-    Before #110 any persona could use any configured email/calendar/contacts
-    account (the tools took an ``account`` argument with no per-persona gate). #110
-    makes an empty binding mean *no access*, so on upgrade every persona that has
+    Before #110 any agent could use any configured email/calendar/contacts
+    account (the tools took an ``account`` argument with no per-agent gate). #110
+    makes an empty binding mean *no access*, so on upgrade every agent that has
     **no** bindings yet is granted full (``read_write``) access to all existing
     accounts — the first email account becomes its sender identity — preserving
-    prior behaviour exactly. Personae created afterwards start empty (safe default).
-    Idempotent: a persona that already has bindings is left untouched, so a re-run
-    (or a persona configured post-migration) is a no-op. Returns the count updated.
+    prior behaviour exactly. Agents created afterwards start empty (safe default).
+    Idempotent: an agent that already has bindings is left untouched, so a re-run
+    (or an agent configured post-migration) is a no-op. Returns the count updated.
     """
     contacts_names = contacts_names or []
     updated = 0
-    for p in await store.list_personae():
-        # A persona that already carries any binding was configured deliberately —
-        # leave it alone (so a re-run, or a post-migration persona, is a no-op).
-        if p.email_accounts or p.calendar_accounts or p.contacts_accounts:
+    for a in await store.list_agents():
+        # An agent that already carries any binding was configured deliberately —
+        # leave it alone (so a re-run, or a post-migration agent, is a no-op).
+        if a.email_accounts or a.calendar_accounts or a.contacts_accounts:
             continue
         if not email_names and not calendar_names and not contacts_names:
             continue
-        p.email_accounts = [
+        a.email_accounts = [
             {"account": n, "access_level": "read_write", "is_sender_identity": (i == 0)}
             for i, n in enumerate(email_names)
         ]
-        p.calendar_accounts = [{"account": n, "access_level": "read_write"} for n in calendar_names]
-        p.contacts_accounts = [{"account": n, "access_level": "read_write"} for n in contacts_names]
-        await store.upsert(p)
+        a.calendar_accounts = [{"account": n, "access_level": "read_write"} for n in calendar_names]
+        a.contacts_accounts = [{"account": n, "access_level": "read_write"} for n in contacts_names]
+        await store.upsert(a)
         updated += 1
     return updated
 
@@ -556,34 +583,34 @@ character: |
 ---
 Extra prose in the body.
 """
-    p = parse_markdown(md, name="fitness-coach")
-    assert p.agent_name == "Forge", p.agent_name
-    assert p.role == "Fitness coach", p.role
-    assert p.emoji == "🏋️"
-    assert p.skills == ["scheduling", "memory"], p.skills
-    assert p.tools == ["run_command", "send_message"], p.tools
-    assert p.bot_token == "123:ABC", p.bot_token
-    assert p.allowed_user_ids == [111, 222], p.allowed_user_ids
+    a = parse_markdown(md, name="fitness-coach")
+    assert a.agent_name == "Forge", a.agent_name
+    assert a.role == "Fitness coach", a.role
+    assert a.emoji == "🏋️"
+    assert a.skills == ["scheduling", "memory"], a.skills
+    assert a.tools == ["run_command", "send_message"], a.tools
+    assert a.bot_token == "123:ABC", a.bot_token
+    assert a.allowed_user_ids == [111, 222], a.allowed_user_ids
     # #98: legacy personalia folded into character (prepended), body still appended.
-    assert "Forge" in p.character and "motivating" in p.character and "Extra prose" in p.character
-    assert p.character.index("Forge") < p.character.index("motivating")  # personalia first
-    assert p.allows_skill("scheduling") and not p.allows_skill("email")
-    assert p.allows_tool("run_command") and not p.allows_tool("send_email")
-    assert p.tool_setting("gh") == {"enabled": True}, p.tool_setting("gh")
-    assert p.tool_setting("browser") == {"enabled": True, "profile": "forge"}
-    assert p.tool_setting("weather") is None  # no entry = inherit system config
+    assert "Forge" in a.character and "motivating" in a.character and "Extra prose" in a.character
+    assert a.character.index("Forge") < a.character.index("motivating")  # personalia first
+    assert a.allows_skill("scheduling") and not a.allows_skill("email")
+    assert a.allows_tool("run_command") and not a.allows_tool("send_email")
+    assert a.tool_setting("gh") == {"enabled": True}, a.tool_setting("gh")
+    assert a.tool_setting("browser") == {"enabled": True, "profile": "forge"}
+    assert a.tool_setting("weather") is None  # no entry = inherit system config
 
     # #110: email/calendar account bindings + access levels.
-    assert p.email_access("fitness-agent") == "read_write", p.email_accounts
-    assert p.email_access("personal") == "read"
-    assert p.email_access("work") is None  # not bound = no access
-    assert p.sender_identity() == "fitness-agent", p.sender_identity()
-    assert p.calendar_access("fitness-agent") == "read_write"
-    assert p.calendar_access("personal") is None
+    assert a.email_access("fitness-agent") == "read_write", a.email_accounts
+    assert a.email_access("personal") == "read"
+    assert a.email_access("work") is None  # not bound = no access
+    assert a.sender_identity() == "fitness-agent", a.sender_identity()
+    assert a.calendar_access("fitness-agent") == "read_write"
+    assert a.calendar_access("personal") is None
     # Contacts bindings (read + read_write), no sender concept.
-    assert p.contacts_access("fitness-agent") == "read_write"
-    assert p.contacts_access("shared") == "read"
-    assert p.contacts_access("work") is None
+    assert a.contacts_access("fitness-agent") == "read_write"
+    assert a.contacts_access("shared") == "read"
+    assert a.contacts_access("work") is None
 
     # A read-only account marked as sender is force-upgraded to read_write, and
     # only the first sender identity survives.
@@ -599,20 +626,20 @@ Extra prose in the body.
     assert coerced[1]["is_sender_identity"] is False  # second sender demoted
     assert coerced[2] == {"account": "c", "access_level": "read", "is_sender_identity": False}
 
-    # Empty allowlists = allow everything (default persona semantics)…
-    blank = Persona(name="default")
+    # Empty allowlists = allow everything (default agent semantics)…
+    blank = Agent(name="default")
     assert blank.allows_skill("anything") and blank.allows_tool("anything")
     assert blank.tool_setting("gh") is None  # no per-tool config by default
     # …but no account bindings = NO email/calendar access (safe default, #110).
     assert blank.email_access("personal") is None and blank.sender_identity() is None
 
     # Round-trip through markdown preserves the structured fields.
-    p2 = parse_markdown(to_markdown(p), name="fitness-coach")
-    assert p2.agent_name == p.agent_name and p2.skills == p.skills and p2.tools == p.tools
-    assert p2.character.strip() == p.character.strip()
-    assert p2.bot_token == p.bot_token and p2.allowed_user_ids == p.allowed_user_ids
-    assert p2.tool_config == p.tool_config, p2.tool_config
-    assert p2.email_accounts == p.email_accounts, p2.email_accounts
-    assert p2.calendar_accounts == p.calendar_accounts, p2.calendar_accounts
-    assert p2.contacts_accounts == p.contacts_accounts, p2.contacts_accounts
-    print("personae.py self-check OK")
+    a2 = parse_markdown(to_markdown(a), name="fitness-coach")
+    assert a2.agent_name == a.agent_name and a2.skills == a.skills and a2.tools == a.tools
+    assert a2.character.strip() == a.character.strip()
+    assert a2.bot_token == a.bot_token and a2.allowed_user_ids == a.allowed_user_ids
+    assert a2.tool_config == a.tool_config, a2.tool_config
+    assert a2.email_accounts == a.email_accounts, a2.email_accounts
+    assert a2.calendar_accounts == a.calendar_accounts, a2.calendar_accounts
+    assert a2.contacts_accounts == a.contacts_accounts, a2.contacts_accounts
+    print("agents.py self-check OK")

@@ -24,7 +24,7 @@ channels:
     enabled: true
     bot_token: "${TELEGRAM_BOT_TOKEN}"
     allowed_user_ids: "${TELEGRAM_ALLOWED_USER_IDS}"
-    topics_enabled: false   # opt-in: one persona-bound context per forum topic
+    topics_enabled: false   # opt-in: one agent-bound context per forum topic
     group_chat:             # opt-in: multi-agent group rooms (turn-taking + loop guard)
       enabled: false
       reply_when_addressed_only: true
@@ -37,22 +37,22 @@ channels:
 - **Voice messages** — automatically transcribed via Whisper, agent can respond with synthesized voice
 - **Inline keyboards** — used for permission approval flow (Approve / Edit / Deny)
 - **User ID whitelist** — only allowed users can interact with the bot
-- **Forum topics** (opt-in) — with `topics_enabled`, each topic in a group becomes its own context with its own bound persona; see [Per-chat personae](/docs/personae#per-chat-personae)
-- **Bot-per-persona** (opt-in) — give a persona its own bot token and it becomes a separate Telegram contact, running alongside the default bot in the same process; see below
-- **Group rooms** — several persona-bots share one group sanely: each replies only when addressed, ignores other bots, and tags who said what; see below
+- **Forum topics** (opt-in) — with `topics_enabled`, each topic in a group becomes its own context with its own bound agent; see [Per-chat agents](/docs/agents#per-chat-agents)
+- **Bot-per-agent** (opt-in) — give an agent its own bot token and it becomes a separate Telegram contact, running alongside the default bot in the same process; see below
+- **Group rooms** — several agent-bots share one group sanely: each replies only when addressed, ignores other bots, and tags who said what; see below
 
-### Bot-per-persona
+### Bot-per-agent
 
-The `bot_token` above configures the **default** bot. Any persona can additionally carry its
-own token (set on the persona, not here), turning it into an independently-addressable
-contact. Each persona-bot registers as the channel `telegram:<persona>`, isolating its
-history, approvals, and scheduled jobs from the default bot and from every other persona.
-Configure it on the persona and restart the agent — see
-[Bot-per-persona](/docs/personae#bot-per-persona).
+The `bot_token` above configures the **default** bot. Any agent can additionally carry its
+own token (set on the agent, not here), turning it into an independently-addressable
+contact. Each agent-bot registers as the channel `telegram:<agent>`, isolating its
+history, approvals, and scheduled jobs from the default bot and from every other agent.
+Configure it on the agent and restart the agent — see
+[Bot-per-agent](/docs/agents#bot-per-agent).
 
 ### Group rooms (multi-agent turn-taking)
 
-Once each persona is its own bot, adding several to one Telegram group is natural —
+Once each agent is its own bot, adding several to one Telegram group is natural —
 but the raw behaviour is wrong: every bot would answer every message, and two bots
 would loop replying to each other forever. The `group_chat` block fixes the turn-taking:
 
@@ -67,7 +67,7 @@ channels:
 
 Group rooms are **off by default** (like `topics_enabled`), so existing single-bot
 groups are unchanged on upgrade. Turn it on for a group where you've added several
-persona-bots. In a group or supergroup each bot then:
+agent-bots. In a group or supergroup each bot then:
 
 - **replies only when addressed** — @mentioned, or you reply to one of its messages.
   Otherwise it stays silent but still records the message, so it has the full
@@ -78,7 +78,7 @@ persona-bots. In a group or supergroup each bot then:
 - **ignores other bots** — another bot's messages are recorded for context but never
   trigger a reply, so two assistants can't loop. Set `ignore_bots: false` to allow it.
 - **tags every speaker** — each message a bot sees is recorded with a `[from <author>]`
-  prefix (`(bot)` for bots), so a persona is never confused about who said what in the
+  prefix (`(bot)` for bots), so an agent is never confused about who said what in the
   shared history. All participants share one conversation per bot (keyed by the group,
   not the sender).
 
@@ -101,7 +101,7 @@ A few details worth knowing:
   (a bare `/yolo-on`, addressed to no bot, toggles nothing). The setting persists across
   restarts until you turn it off.
 - **Forum topics** — if you also use `topics_enabled`, genuine forum-topic messages keep
-  their per-topic 1:1 behaviour (the bound persona replies without an @mention); group
+  their per-topic 1:1 behaviour (the bound agent replies without an @mention); group
   turn-taking applies to the rest of the group.
 - **Upgrade note** — enabling group rooms re-keys a group's history from per-sender to
   per-group, so a previously-active group starts fresh (old per-sender history is left in
@@ -149,7 +149,7 @@ tools:
 4. Click **Link (scan QR)** and scan the QR code with your WhatsApp mobile app (Linked devices)
 5. Click **Sync** and wait for it to complete
 
-Enable the tool per persona in the **Personae** editor, like any other tool.
+Enable the tool per agent in the **Agents** editor, like any other tool.
 
 ### How it works
 

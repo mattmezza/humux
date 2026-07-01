@@ -221,3 +221,52 @@ def test_install_log_buffer_routes_reasoning_to_buffer_not_console() -> None:
         root.setLevel(saved_level)
         reasoning_logger.setLevel(saved_reasoning_level)
         _LOG_BUFFER.clear()
+
+
+# --- #115 regression: run_job_now must pass the scheduler's agent_name kwarg ---
+# (The scheduler params were renamed persona→agent_name; a stale agent= keyword
+#  raises TypeError at coroutine creation and 500s the "Run now" button.)
+
+
+async def _run_now_client(tmp_path, job_type: str, monkeypatch):
+    import core.scheduler as sched
+
+    async def _agent_stub(
+        *, task, channel, job_id, silent=False, agent_name="", origin_user_id="", origin_chat_id=""
+    ):
+        return None
+
+    async def _subagent_stub(
+        *, agent_name, task, channel, job_id, origin_user_id="", origin_chat_id=""
+    ):
+        return None
+
+    monkeypatch.setattr(sched, "run_agent_task", _agent_stub)
+    monkeypatch.setattr(sched, "run_subagent_task", _subagent_stub)
+
+    store = JobStore(db_path=str(tmp_path / "jobs.db"))
+    await store.upsert_job(
+        "j1",
+        type=job_type,
+        schedule="cron",
+        cron="* * * * *",
+        task="do",
+        channel="telegram",
+        agent="coach",
+    )
+    agent_state = AgentState(agent=cast(Any, SimpleNamespace(job_store=store)))
+    app, _auth = create_admin_app(agent_state, cast(ConfigStore, _ConfigStoreStub()))
+    client = TestClient(app)
+    return client.post(
+        "/jobs/run", json={"job_id": "j1"}, headers={"Authorization": "Bearer secret"}
+    )
+
+
+async def test_run_job_now_agent_job_passes_agent_name(tmp_path, monkeypatch) -> None:
+    resp = await _run_now_client(tmp_path, "agent", monkeypatch)
+    assert resp.status_code == 200  # 500 if admin.py still passed the stale agent= kwarg
+
+
+async def test_run_job_now_subagent_job_passes_agent_name(tmp_path, monkeypatch) -> None:
+    resp = await _run_now_client(tmp_path, "subagent", monkeypatch)
+    assert resp.status_code == 200

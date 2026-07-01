@@ -1,4 +1,4 @@
-"""Per-chat persona binding (#14): store layer, resolution ladder, topic folding."""
+"""Per-chat agent binding (#14): store layer, resolution ladder, topic folding."""
 
 from __future__ import annotations
 
@@ -9,25 +9,25 @@ import pytest
 
 from channels.telegram import TelegramChannel
 from core.agent import AgentCore
+from core.agents import AgentStore
 from core.history import ConversationHistory
-from core.personae import PersonaStore
 
 # ---- History store: bindings + list_chats ----------------------------------
 
 
 @pytest.mark.asyncio
-async def test_chat_persona_set_get_clear(tmp_path) -> None:
+async def test_chat_agent_set_get_clear(tmp_path) -> None:
     h = ConversationHistory(db_path=str(tmp_path / "h.db"))
-    assert await h.get_chat_persona("telegram", "u1", "c1") is None
-    await h.set_chat_persona("telegram", "u1", "coach", "c1")
-    assert await h.get_chat_persona("telegram", "u1", "c1") == "coach"
+    assert await h.get_chat_agent("telegram", "u1", "c1") is None
+    await h.set_chat_agent("telegram", "u1", "coach", "c1")
+    assert await h.get_chat_agent("telegram", "u1", "c1") == "coach"
     # Upsert overwrites.
-    await h.set_chat_persona("telegram", "u1", "writer", "c1")
-    assert await h.get_chat_persona("telegram", "u1", "c1") == "writer"
+    await h.set_chat_agent("telegram", "u1", "writer", "c1")
+    assert await h.get_chat_agent("telegram", "u1", "c1") == "writer"
     # Scoped to the triple — a different chat is unaffected.
-    assert await h.get_chat_persona("telegram", "u1", "c2") is None
-    await h.clear_chat_persona("telegram", "u1", "c1")
-    assert await h.get_chat_persona("telegram", "u1", "c1") is None
+    assert await h.get_chat_agent("telegram", "u1", "c2") is None
+    await h.clear_chat_agent("telegram", "u1", "c1")
+    assert await h.get_chat_agent("telegram", "u1", "c1") is None
 
 
 @pytest.mark.asyncio
@@ -36,12 +36,12 @@ async def test_list_chats_unions_history_and_bindings(tmp_path) -> None:
     # A chat known only from history.
     await h.add_turn("telegram", "u1", "user", "hi", "c1")
     # A chat known only from a binding (a topic auto-bound before its first msg).
-    await h.set_chat_persona("telegram", "u1", "coach", "c2")
+    await h.set_chat_agent("telegram", "u1", "coach", "c2")
     chats = await h.list_chats()
     by_chat = {c["chat_id"]: c for c in chats}
-    assert by_chat["c1"]["persona"] == ""  # unbound
-    assert by_chat["c2"]["persona"] == "coach"  # bound, no history yet
-    assert all({"channel", "user_id", "chat_id", "persona"} <= c.keys() for c in chats)
+    assert by_chat["c1"]["agent"] == ""  # unbound
+    assert by_chat["c2"]["agent"] == "coach"  # bound, no history yet
+    assert all({"channel", "user_id", "chat_id", "agent"} <= c.keys() for c in chats)
 
 
 @pytest.mark.asyncio
@@ -79,116 +79,116 @@ async def test_clear_session_system_keeps_messages(tmp_path) -> None:
 # ---- Agent resolution ladder + auto-bind -----------------------------------
 
 
-def _fake_agent(history: ConversationHistory, personae: PersonaStore, active: str = ""):
-    """A stand-in ``self`` carrying just what the persona methods touch, with the
+def _fake_agent(history: ConversationHistory, agents: AgentStore, active: str = ""):
+    """A stand-in ``self`` carrying just what the agent methods touch, with the
     real ``AgentCore`` methods bound to it — avoids constructing the heavy core."""
     fa: Any = types.SimpleNamespace(
         history=history,
-        personae=personae,
-        config=types.SimpleNamespace(agent=types.SimpleNamespace(active_persona=active)),
+        agents=agents,
+        config=types.SimpleNamespace(agent=types.SimpleNamespace(active_agent=active)),
     )
     for name in (
-        "_load_persona",
-        "_resolve_persona",
-        "bind_chat_persona",
-        "bind_chat_persona_by_label",
+        "_load_agent",
+        "_resolve_agent",
+        "bind_chat_agent",
+        "bind_chat_agent_by_label",
     ):
         setattr(fa, name, types.MethodType(getattr(AgentCore, name), fa))
     return fa
 
 
-async def _seed_personae(tmp_path) -> PersonaStore:
+async def _seed_agents(tmp_path) -> AgentStore:
     seed = tmp_path / "seed"
     seed.mkdir()
     (seed / "coach.md").write_text("---\nagent_name: Forge\nrole: Fitness coach\n---\n")
     (seed / "writer.md").write_text("---\nrole: Writer\n---\n")
-    store = PersonaStore(db_path=str(tmp_path / "p.db"), seed_dir=str(seed))
+    store = AgentStore(db_path=str(tmp_path / "p.db"), seed_dir=str(seed))
     await store.ensure_seeded()
     return store
 
 
 @pytest.mark.asyncio
-async def test_resolve_persona_ladder(tmp_path) -> None:
+async def test_resolve_agent_ladder(tmp_path) -> None:
     h = ConversationHistory(db_path=str(tmp_path / "h.db"))
-    store = await _seed_personae(tmp_path)
+    store = await _seed_agents(tmp_path)
 
     # 3. Default identity when nothing is set.
     fa = _fake_agent(h, store, active="")
-    assert await fa._resolve_persona("telegram", "u1", "c1") is None
+    assert await fa._resolve_agent("telegram", "u1", "c1") is None
 
-    # 2. Global active persona.
+    # 2. Global active agent.
     fa = _fake_agent(h, store, active="writer")
-    p = await fa._resolve_persona("telegram", "u1", "c1")
+    p = await fa._resolve_agent("telegram", "u1", "c1")
     assert p is not None and p.name == "writer"
 
     # 1. Per-chat binding wins over global.
-    await h.set_chat_persona("telegram", "u1", "coach", "c1")
-    p = await fa._resolve_persona("telegram", "u1", "c1")
+    await h.set_chat_agent("telegram", "u1", "coach", "c1")
+    p = await fa._resolve_agent("telegram", "u1", "c1")
     assert p is not None and p.name == "coach"
-    # A different chat still gets the global persona.
-    p2 = await fa._resolve_persona("telegram", "u1", "c2")
+    # A different chat still gets the global agent.
+    p2 = await fa._resolve_agent("telegram", "u1", "c2")
     assert p2 is not None and p2.name == "writer"
 
 
 @pytest.mark.asyncio
-async def test_resolve_persona_bot_per_persona_channel(tmp_path) -> None:
-    # Rung 0 (#29): a "telegram:<name>" channel binds straight to that persona,
-    # outranking the per-chat binding and the global active persona.
+async def test_resolve_agent_bot_per_agent_channel(tmp_path) -> None:
+    # Rung 0 (#29): a "telegram:<name>" channel binds straight to that agent,
+    # outranking the per-chat binding and the global active agent.
     h = ConversationHistory(db_path=str(tmp_path / "h.db"))
-    store = await _seed_personae(tmp_path)
-    await h.set_chat_persona("telegram:coach", "u1", "writer", "c1")  # ignored by rung 0
+    store = await _seed_agents(tmp_path)
+    await h.set_chat_agent("telegram:coach", "u1", "writer", "c1")  # ignored by rung 0
     fa = _fake_agent(h, store, active="writer")
-    p = await fa._resolve_persona("telegram:coach", "u1", "c1")
+    p = await fa._resolve_agent("telegram:coach", "u1", "c1")
     assert p is not None and p.name == "coach"
 
-    # Unknown persona in the channel name → fall through to the ordinary ladder.
-    p2 = await fa._resolve_persona("telegram:ghost", "u1", "c2")
-    assert p2 is not None and p2.name == "writer"  # global active persona
+    # Unknown agent in the channel name → fall through to the ordinary ladder.
+    p2 = await fa._resolve_agent("telegram:ghost", "u1", "c2")
+    assert p2 is not None and p2.name == "writer"  # global active agent
 
 
 @pytest.mark.asyncio
-async def test_resolve_persona_missing_binding_falls_through(tmp_path) -> None:
+async def test_resolve_agent_missing_binding_falls_through(tmp_path) -> None:
     h = ConversationHistory(db_path=str(tmp_path / "h.db"))
-    store = await _seed_personae(tmp_path)
-    await h.set_chat_persona("telegram", "u1", "ghost", "c1")  # not a real persona
+    store = await _seed_agents(tmp_path)
+    await h.set_chat_agent("telegram", "u1", "ghost", "c1")  # not a real agent
     fa = _fake_agent(h, store, active="writer")
-    p = await fa._resolve_persona("telegram", "u1", "c1")
+    p = await fa._resolve_agent("telegram", "u1", "c1")
     assert p is not None and p.name == "writer"  # falls through to global
 
 
 @pytest.mark.asyncio
 async def test_bind_by_label_matches_name_agentname_role(tmp_path) -> None:
     h = ConversationHistory(db_path=str(tmp_path / "h.db"))
-    store = await _seed_personae(tmp_path)
+    store = await _seed_agents(tmp_path)
     fa = _fake_agent(h, store)
 
     # Match by agent_name ("Forge"), case-insensitive.
-    assert await fa.bind_chat_persona_by_label("telegram", "u1", "c1", "forge") == "coach"
-    assert await h.get_chat_persona("telegram", "u1", "c1") == "coach"
+    assert await fa.bind_chat_agent_by_label("telegram", "u1", "c1", "forge") == "coach"
+    assert await h.get_chat_agent("telegram", "u1", "c1") == "coach"
 
     # Already bound → does not override a manual/earlier choice.
-    assert await fa.bind_chat_persona_by_label("telegram", "u1", "c1", "Writer") is None
-    assert await h.get_chat_persona("telegram", "u1", "c1") == "coach"
+    assert await fa.bind_chat_agent_by_label("telegram", "u1", "c1", "Writer") is None
+    assert await h.get_chat_agent("telegram", "u1", "c1") == "coach"
 
     # No match → None, no binding.
-    assert await fa.bind_chat_persona_by_label("telegram", "u1", "c9", "nope") is None
-    assert await h.get_chat_persona("telegram", "u1", "c9") is None
+    assert await fa.bind_chat_agent_by_label("telegram", "u1", "c9", "nope") is None
+    assert await h.get_chat_agent("telegram", "u1", "c9") is None
 
     # Match by role.
-    assert await fa.bind_chat_persona_by_label("telegram", "u1", "c2", "writer") == "writer"
+    assert await fa.bind_chat_agent_by_label("telegram", "u1", "c2", "writer") == "writer"
 
 
 @pytest.mark.asyncio
-async def test_bind_chat_persona_clears_session_system(tmp_path) -> None:
+async def test_bind_chat_agent_clears_session_system(tmp_path) -> None:
     h = ConversationHistory(db_path=str(tmp_path / "h.db"))
-    store = await _seed_personae(tmp_path)
+    store = await _seed_agents(tmp_path)
     fa = _fake_agent(h, store)
     await h.set_session_system("telegram", "u1", "OLD", "c1")
-    await fa.bind_chat_persona("telegram", "u1", "c1", "coach")
+    await fa.bind_chat_agent("telegram", "u1", "c1", "coach")
     assert await h.get_session_system("telegram", "u1", "c1") is None
     # Empty name unbinds.
-    await fa.bind_chat_persona("telegram", "u1", "c1", "")
-    assert await h.get_chat_persona("telegram", "u1", "c1") is None
+    await fa.bind_chat_agent("telegram", "u1", "c1", "")
+    assert await h.get_chat_agent("telegram", "u1", "c1") is None
 
 
 # ---- Telegram topic folding ------------------------------------------------

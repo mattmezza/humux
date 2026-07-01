@@ -6,7 +6,7 @@ description: Delegate scoped subtasks to sub-loops — on demand or scheduled �
 # Subagents
 
 A **subagent** is a scoped run of the agent loop that the main agent can delegate
-work to. It runs under a chosen [persona](/docs/personae), returns a structured
+work to. It runs under a chosen [agent](/docs/agents), returns a structured
 result, and — like a [scheduled job](/docs/scheduler) — appears in a registry you
 can list, monitor, and cancel.
 
@@ -42,7 +42,7 @@ The agent decides to delegate and calls the tool. Two modes:
 // spawn_subagent tool input
 {
   "task": "Research the top 3 Python HTTP clients and summarise trade-offs",
-  "persona": "coding-helper",   // optional — omit to run as yourself (same identity & scope)
+  "agent": "coding-helper",   // optional — omit to run as yourself (same identity & scope)
   "max_steps": 6,                // optional — caller-chosen, capped at the configured max
   "token_budget": 40000,         // optional — caller-chosen, min 1000, capped at the configured max
   "thinking_effort": "high",     // optional — off | low | medium | high; omit to inherit yours
@@ -58,7 +58,7 @@ The agent **sizes each run to the job**: `max_steps`, `token_budget`, and
 multi-step work. Each is optional — omit `max_steps`/`token_budget` for the
 configured ceiling, `thinking_effort` to inherit the caller's level — and the
 numeric caps are clamped to the [Guardrails](#guardrails) maxima, which the
-agent can dial *down* but never past. Omitting `persona` runs the subagent as
+agent can dial *down* but never past. Omitting `agent` runs the subagent as
 the caller itself, with the same identity and scope.
 
 **Files hand back automatically.** The subagent shares the agent's filesystem,
@@ -69,7 +69,7 @@ sends, or attaches.
 ## Scheduled
 
 Run a subagent on a cron or one-shot schedule by giving a job `type: "subagent"`
-and a `persona`. The result is delivered to the job's `channel`.
+and a `agent`. The result is delivered to the job's `channel`.
 
 ```yaml
 scheduler:
@@ -77,7 +77,7 @@ scheduler:
     - id: "weekly_review"
       cron: "0 18 * * 5"        # Fridays at 18:00
       type: "subagent"
-      persona: "writing-editor"
+      agent: "writing-editor"
       task: "Draft a short weekly review from this week's notes and email it to me"
       channel: "telegram"
 ```
@@ -86,22 +86,22 @@ You can also create subagent jobs from the **Jobs** tab of the [admin UI](/docs/
 
 ## Scope: inherit, never widen
 
-A subagent's [persona](/docs/personae) scope — the tools it may call, skills it
+A subagent's [agent](/docs/agents) scope — the tools it may call, skills it
 may load, and [secrets](/docs/secrets) it may use — is the **intersection** of
-the caller's scope and the requested persona's. A child can never gain a
+the caller's scope and the requested agent's. A child can never gain a
 capability the caller lacked. The allowlist convention applies: an empty list
-means "all", so an unrestricted caller delegating to a scoped persona *narrows*,
-and a scoped caller delegating to an open persona keeps its own limits.
+means "all", so an unrestricted caller delegating to a scoped agent *narrows*,
+and a scoped caller delegating to an open agent keeps its own limits.
 
 [Permission rules](/docs/permissions) (`NEVER` in particular) still apply inside
 the subagent, so a blocked action stays blocked at any depth.
 
-## Choosing a persona
+## Choosing an agent
 
-Selection stays **user-led**: omitting `persona` runs the subagent as the caller
-itself (the chat's bound persona), so a subtask stays in the identity the user
+Selection stays **user-led**: omitting `agent` runs the subagent as the caller
+itself (the chat's bound agent), so a subtask stays in the identity the user
 already chose. To make the *specialist* case an informed choice rather than a
-guess, each turn the agent sees a compact roster of available personae
+guess, each turn the agent sees a compact roster of available agents
 (`name — role`) and only names one when the subtask clearly fits it. A wrong
 name is rejected with the list of valid names, so the agent can self-correct.
 
@@ -119,8 +119,8 @@ limit, applied live without a restart), or under `subagents` in `config.yml`:
 | `token_budget` | `100000` | Ceiling on tokens per run (best-effort); the agent may request fewer per spawn, never more |
 | `max_concurrent` | `3` | Max background runs at once |
 
-When disabled, the tool is hidden from the assistant and from the Personae tool
-scope. Assign it per persona in the **Personae** editor. A run that hits its step
+When disabled, the tool is hidden from the assistant and from the Agents tool
+scope. Assign it per agent in the **Agents** editor. A run that hits its step
 or token budget stops and returns what it has, with a note that the budget was
 reached.
 
@@ -148,7 +148,7 @@ Background subagents are first-class runs you can watch and stop:
 
 - **Telegram** — send `/jobs` to list active runs, each with an inline **Cancel**
   button. Monitoring and cancelling a long task from your phone needs no web UI.
-- **Admin UI** — the **Jobs** tab shows a live card per run (persona, status,
+- **Admin UI** — the **Jobs** tab shows a live card per run (agent, status,
   elapsed time, current step) with a cancel button; the layout collapses to a
   single column at phone width.
 

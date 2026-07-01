@@ -22,10 +22,10 @@ def test_whatsapp_advert_and_env_when_enabled() -> None:
     cfg = Config()
     cfg.tools.whatsapp.enabled = True
     cfg.tools.whatsapp.store = "/data/wacli"
-    cfg.tools.whatsapp.device_label = "Persona1"
+    cfg.tools.whatsapp.device_label = "Agent1"
     assert tool_env(cfg) == {
         "WACLI_STORE": "/data/wacli",
-        "WACLI_DEVICE_LABEL": "Persona1",
+        "WACLI_DEVICE_LABEL": "Agent1",
     }
     blocks = active_tool_prompts(cfg)
     assert any('name="whatsapp"' in b and "send text" in b for b in blocks)

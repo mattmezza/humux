@@ -9,13 +9,13 @@ requirements:
   posture as the existing ``.env`` (a key sitting on the data volume), just
   consolidated and editable in the UI.
 
-* :class:`PersonaVault` — encrypts *persona / login* secrets (website logins,
+* :class:`AgentVault` — encrypts *agent / login* secrets (website logins,
   payment keys, …). It uses **envelope encryption**: a random Data-Encryption
   Key (DEK) encrypts the secrets, and the DEK is stored *wrapped* by a
   Key-Encryption Key ``KEK = PBKDF2(admin_password, salt)``. The KEK is derived
   live at login (never stored), so a stolen disk alone cannot open the vault.
   Changing the admin password re-wraps the DEK only — the secrets are never
-  re-encrypted. The vault stays locked until :meth:`PersonaVault.unseal`.
+  re-encrypted. The vault stays locked until :meth:`AgentVault.unseal`.
 
 This module is pure crypto + key handling: no database, no async. Storage,
 ACL, and resolution live in :mod:`core.secret_store`.
@@ -30,7 +30,7 @@ from pathlib import Path
 
 from cryptography.fernet import Fernet, InvalidToken
 
-# PBKDF2 work factor for deriving the persona KEK from the admin password.
+# PBKDF2 work factor for deriving the agent KEK from the admin password.
 # Matches the admin-auth hash cost (core/config_store.py); a *different* salt is
 # used so the stored auth hash can never double as the encryption key.
 KDF_ITERATIONS = 200_000
@@ -128,7 +128,7 @@ class InfraVault:
         return self._fernet.decrypt(token).decode()
 
 
-class PersonaVault:
+class AgentVault:
     """Envelope encryption: DEK encrypts data, KEK (from password) wraps the DEK.
 
     Locked until :meth:`unseal`. The DEK lives only in process memory once
@@ -186,17 +186,17 @@ class PersonaVault:
 
     def encrypt(self, plaintext: str) -> bytes:
         if self._fernet is None:
-            raise VaultLocked("persona vault is locked")
+            raise VaultLocked("agent vault is locked")
         return self._fernet.encrypt(plaintext.encode())
 
     def decrypt(self, token: bytes) -> str:
         if self._fernet is None:
-            raise VaultLocked("persona vault is locked")
+            raise VaultLocked("agent vault is locked")
         return self._fernet.decrypt(token).decode()
 
 
 class VaultLocked(RuntimeError):
-    """Raised when a persona-vault operation is attempted while sealed."""
+    """Raised when an agent-vault operation is attempted while sealed."""
 
 
 if __name__ == "__main__":
@@ -215,8 +215,8 @@ if __name__ == "__main__":
     # No key configured -> unavailable.
     assert not InfraVault(None).available
 
-    # Persona vault: locked until unsealed.
-    pv = PersonaVault()
+    # Agent vault: locked until unsealed.
+    pv = AgentVault()
     assert not pv.unsealed
     try:
         pv.encrypt("nope")
@@ -224,21 +224,21 @@ if __name__ == "__main__":
     except VaultLocked:
         pass
 
-    wrapped, salt = PersonaVault.create_wrapped_dek("hunter2")
+    wrapped, salt = AgentVault.create_wrapped_dek("hunter2")
     assert pv.unseal("hunter2", wrapped, salt)
     assert pv.unsealed
     ct = pv.encrypt("stripe-key-xyz")
     assert pv.decrypt(ct) == "stripe-key-xyz"
 
     # Wrong password fails to unseal a fresh vault.
-    assert not PersonaVault().unseal("wrong", wrapped, salt)
+    assert not AgentVault().unseal("wrong", wrapped, salt)
 
     # Password rotation re-wraps the DEK but preserves stored data.
-    new_wrapped, new_salt = PersonaVault.rewrap("hunter2", "hunter3", wrapped, salt)
-    pv2 = PersonaVault()
+    new_wrapped, new_salt = AgentVault.rewrap("hunter2", "hunter3", wrapped, salt)
+    pv2 = AgentVault()
     assert pv2.unseal("hunter3", new_wrapped, new_salt)
     assert pv2.decrypt(ct) == "stripe-key-xyz"  # same DEK -> old ciphertext still readable
     # Old password no longer unseals the rewrapped DEK.
-    assert not PersonaVault().unseal("hunter2", new_wrapped, new_salt)
+    assert not AgentVault().unseal("hunter2", new_wrapped, new_salt)
 
     print("vault.py self-check OK")

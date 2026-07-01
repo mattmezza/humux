@@ -40,7 +40,7 @@ def _lang_for_voice(voice: str) -> str:
 
 def _is_kokoro_voice(voice: str | None) -> bool:
     """True for Kokoro-style names (``af_bella``, ``jm_kumo``) vs edge-tts
-    names (``en-US-GuyNeural``).  Lets the edge fallback keep a persona's
+    names (``en-US-GuyNeural``).  Lets the edge fallback keep an agent's
     edge voice instead of dropping every voice on Kokoro failure."""
     return bool(re.match(r"[a-z][fm]_", voice or ""))
 
@@ -275,7 +275,7 @@ class VoicePipeline:
         """Convert text to speech.  Returns raw audio bytes (MP3 for edge-tts,
         OGG/Opus for Kokoro) — both formats Telegram ``send_voice`` accepts.
 
-        ``voice`` overrides the configured default (e.g. an active persona's
+        ``voice`` overrides the configured default (e.g. an active agent's
         own voice); empty/None falls back to the backend default.  ``lang`` is
         the ISO-639-1 language the agent wrote the reply in (issue #95): Kokoro
         keeps the voice and reads with that language's phonemes (accent ok),
@@ -299,7 +299,7 @@ class VoicePipeline:
             except Exception:
                 log.exception("Kokoro synthesis failed, falling back to edge-tts")
         # edge-tts path — primary backend, or the Kokoro fallback. edge-tts can't
-        # speak a Kokoro voice name (e.g. a persona configured with af_bella while
+        # speak a Kokoro voice name (e.g. an agent configured with af_bella while
         # the backend is edge-tts), so drop it to the configured default; keep a
         # real edge voice so its preference survives.
         return await self._synthesize_edge(text, self._edge_voice(voice, lang))

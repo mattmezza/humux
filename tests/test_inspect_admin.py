@@ -17,12 +17,12 @@ AUTH = {"Authorization": "Bearer secret"}
 
 
 class _Store:
-    """Config-store stub; personae + history live under tmp_path."""
+    """Config-store stub; agents + history live under tmp_path."""
 
     def __init__(self, tmp_path):
         self._data = {
-            "agent.personae_db_path": str(tmp_path / "personae.db"),
-            "agent.personae_dir": str(tmp_path / "seed"),
+            "agent.agents_db_path": str(tmp_path / "agents.db"),
+            "agent.agents_dir": str(tmp_path / "seed"),
             "history.db_path": str(tmp_path / "history.db"),
         }
 
@@ -67,7 +67,7 @@ def test_inspect_partial_lists_active_contexts(tmp_path) -> None:
     assert "Inspect" in r.text
     assert "c1" in r.text  # the active chat shows up in the master list
     assert 'id="inspect-detail"' in r.text  # master/detail layout present
-    # The persona dropdown was removed (one persona = one agent); no bind form.
+    # The agent dropdown was removed (one agent = one agent); no bind form.
     assert "/chats/bind" not in r.text
 
 

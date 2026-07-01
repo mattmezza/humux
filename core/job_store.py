@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     status      TEXT NOT NULL DEFAULT 'active',
     created_by  TEXT NOT NULL DEFAULT 'admin',
     description TEXT NOT NULL DEFAULT '',
-    persona     TEXT NOT NULL DEFAULT '',
+    agent     TEXT NOT NULL DEFAULT '',
     origin_user_id TEXT NOT NULL DEFAULT '',
     origin_chat_id TEXT NOT NULL DEFAULT '',
     created_at  TEXT NOT NULL DEFAULT (datetime('now')),
@@ -41,12 +41,12 @@ CREATE TABLE IF NOT EXISTS jobs (
 # Additive migrations for DBs created before a column existed. Each is a column
 # name → ALTER statement; applied only when the column is missing.
 _MIGRATIONS = {
-    "persona": "ALTER TABLE jobs ADD COLUMN persona TEXT NOT NULL DEFAULT ''",
+    "agent": "ALTER TABLE jobs ADD COLUMN agent TEXT NOT NULL DEFAULT ''",
     "origin_user_id": "ALTER TABLE jobs ADD COLUMN origin_user_id TEXT NOT NULL DEFAULT ''",
     "origin_chat_id": "ALTER TABLE jobs ADD COLUMN origin_chat_id TEXT NOT NULL DEFAULT ''",
 }
 
-# Valid values. "subagent" runs the spawn_subagent primitive under ``persona``.
+# Valid values. "subagent" runs the spawn_subagent primitive under ``agent``.
 VALID_TYPES = ("agent", "agent_silent", "system", "memory_consolidation", "subagent")
 VALID_SCHEDULES = ("cron", "once")
 VALID_STATUSES = ("active", "paused", "done", "cancelled")
@@ -72,6 +72,12 @@ class JobStore:
             await db.executescript(_SCHEMA)
             cursor = await db.execute("PRAGMA table_info(jobs)")
             cols = {row[1] for row in await cursor.fetchall()}
+            # #115: rename the legacy `persona` column to `agent` in place (keeps
+            # each job's identity) instead of adding a fresh empty `agent` column.
+            if "persona" in cols and "agent" not in cols:
+                await db.execute("ALTER TABLE jobs RENAME COLUMN persona TO agent")
+                cols.discard("persona")
+                cols.add("agent")
             for col, stmt in _MIGRATIONS.items():
                 if col not in cols:
                     await db.execute(stmt)
@@ -87,6 +93,11 @@ class JobStore:
         with sqlite3.connect(self.db_path) as db:
             db.executescript(_SCHEMA)
             cols = {row[1] for row in db.execute("PRAGMA table_info(jobs)").fetchall()}
+            # #115: rename the legacy `persona` column to `agent` in place.
+            if "persona" in cols and "agent" not in cols:
+                db.execute("ALTER TABLE jobs RENAME COLUMN persona TO agent")
+                cols.discard("persona")
+                cols.add("agent")
             for col, stmt in _MIGRATIONS.items():
                 if col not in cols:
                     db.execute(stmt)
@@ -133,7 +144,7 @@ class JobStore:
         status: str = "active",
         created_by: str = "admin",
         description: str = "",
-        persona: str = "",
+        agent: str = "",
         origin_user_id: str = "",
         origin_chat_id: str = "",
     ) -> dict:
@@ -143,7 +154,7 @@ class JobStore:
             db.row_factory = sqlite3.Row
             db.execute(
                 """INSERT INTO jobs (id, type, schedule, cron, run_at, task, channel,
-                                     status, created_by, description, persona,
+                                     status, created_by, description, agent,
                                      origin_user_id, origin_chat_id, updated_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
                    ON CONFLICT(id) DO UPDATE SET
@@ -158,7 +169,7 @@ class JobStore:
                        -- Identity/origin are sticky (#71): a re-upsert that omits
                        -- them (admin "edit", CLI edit/cancel) must not wipe what
                        -- job creation captured. A non-empty new value still wins.
-                       persona = COALESCE(NULLIF(excluded.persona, ''), persona),
+                       agent = COALESCE(NULLIF(excluded.agent, ''), agent),
                        origin_user_id =
                            COALESCE(NULLIF(excluded.origin_user_id, ''), origin_user_id),
                        origin_chat_id =
@@ -176,7 +187,7 @@ class JobStore:
                     status,
                     created_by,
                     description,
-                    persona,
+                    agent,
                     origin_user_id,
                     origin_chat_id,
                 ),
@@ -237,7 +248,7 @@ class JobStore:
         status: str = "active",
         created_by: str = "admin",
         description: str = "",
-        persona: str = "",
+        agent: str = "",
         origin_user_id: str = "",
         origin_chat_id: str = "",
     ) -> dict:
@@ -247,7 +258,7 @@ class JobStore:
             db.row_factory = aiosqlite.Row
             await db.execute(
                 """INSERT INTO jobs (id, type, schedule, cron, run_at, task, channel,
-                                     status, created_by, description, persona,
+                                     status, created_by, description, agent,
                                      origin_user_id, origin_chat_id, updated_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
                    ON CONFLICT(id) DO UPDATE SET
@@ -262,7 +273,7 @@ class JobStore:
                        -- Identity/origin are sticky (#71): a re-upsert that omits
                        -- them (admin "edit", CLI edit/cancel) must not wipe what
                        -- job creation captured. A non-empty new value still wins.
-                       persona = COALESCE(NULLIF(excluded.persona, ''), persona),
+                       agent = COALESCE(NULLIF(excluded.agent, ''), agent),
                        origin_user_id =
                            COALESCE(NULLIF(excluded.origin_user_id, ''), origin_user_id),
                        origin_chat_id =
@@ -280,7 +291,7 @@ class JobStore:
                     status,
                     created_by,
                     description,
-                    persona,
+                    agent,
                     origin_user_id,
                     origin_chat_id,
                 ),
@@ -309,12 +320,12 @@ class JobStore:
             await db.commit()
             return cursor.rowcount > 0
 
-    async def rename_persona(self, old: str, new: str) -> None:
-        """Repoint jobs from a renamed persona slug (#69): the ``persona`` column
-        and the ``telegram:<slug>`` channel a per-persona-bot job delivers to."""
+    async def rename_agent(self, old: str, new: str) -> None:
+        """Repoint jobs from a renamed agent slug (#69): the ``agent`` column
+        and the ``telegram:<slug>`` channel a per-agent-bot job delivers to."""
         await self._ensure_schema()
         async with aiosqlite.connect(self.db_path) as db:
-            await db.execute("UPDATE jobs SET persona = ? WHERE persona = ?", (new, old))
+            await db.execute("UPDATE jobs SET agent = ? WHERE agent = ?", (new, old))
             await db.execute(
                 "UPDATE jobs SET channel = ? WHERE channel = ?",
                 (f"telegram:{new}", f"telegram:{old}"),
@@ -335,7 +346,7 @@ class JobStore:
                     continue
                 await db.execute(
                     """INSERT INTO jobs (id, type, schedule, cron, task, channel,
-                                         status, created_by, description, persona)
+                                         status, created_by, description, agent)
                        VALUES (?, ?, 'cron', ?, ?, ?, 'active', 'config', '', ?)
                     """,
                     (
@@ -344,7 +355,7 @@ class JobStore:
                         job["cron"],
                         job.get("task", ""),
                         job.get("channel", "telegram"),
-                        job.get("persona", ""),
+                        job.get("agent", ""),
                     ),
                 )
                 inserted += 1

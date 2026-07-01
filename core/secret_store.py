@@ -5,14 +5,14 @@ its own tables. Wraps the two vaults from :mod:`core.vault`:
 
 * **infra_secrets** — encrypted with the :class:`~core.vault.InfraVault` machine
   key; resolved into config at load time via ``${vault:NAME}`` (with ``.env``
-  fallback). Read by app code, not persona-scoped.
-* **secrets** — encrypted with the :class:`~core.vault.PersonaVault` (envelope,
+  fallback). Read by app code, not agent-scoped.
+* **secrets** — encrypted with the :class:`~core.vault.AgentVault` (envelope,
   password-derived). Used *by reference* from ``run_command`` as
   ``{{secret:NAME}}`` / ``{{secret:NAME.field}}`` after an ACL check. Values
   never enter the model's context.
 * **secret_requests** — pending "agent needs a secret" requests, redeemed via a
   one-time secure web link.
-* **vault_meta** — the wrapped DEK + salt for the persona vault.
+* **vault_meta** — the wrapped DEK + salt for the agent vault.
 
 Security boundary: placeholder substitution happens **only** where
 :meth:`resolve_command_secrets` is called — the model-facing ``run_command``
@@ -33,7 +33,7 @@ from pathlib import Path
 import aiosqlite
 from cryptography.fernet import InvalidToken
 
-from core.vault import InfraVault, PersonaVault, VaultLocked, load_machine_key
+from core.vault import AgentVault, InfraVault, VaultLocked, load_machine_key
 
 log = logging.getLogger(__name__)
 
@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS secrets (
 CREATE TABLE IF NOT EXISTS secret_requests (
     token_hash      TEXT PRIMARY KEY,
     name            TEXT NOT NULL,
-    persona         TEXT NOT NULL DEFAULT '',
+    agent         TEXT NOT NULL DEFAULT '',
     reason          TEXT NOT NULL DEFAULT '',
     suggested_scope TEXT NOT NULL DEFAULT '',
     status          TEXT NOT NULL DEFAULT 'pending',
@@ -75,7 +75,7 @@ CREATE TABLE IF NOT EXISTS vault_meta (
 );
 """
 
-# A secret name: letters/digits/_/-/: (the ':' allows persona:<name>:* namespaces).
+# A secret name: letters/digits/_/-/: (the ':' allows agent:<name>:* namespaces).
 # No '.' — that is reserved as the field separator in {{secret:NAME.field}}.
 _NAME_RE = re.compile(r"^[A-Za-z0-9_:-]+$")
 _PLACEHOLDER_RE = re.compile(r"\{\{secret:([A-Za-z0-9_:-]+)(?:\.([A-Za-z0-9_-]+))?\}\}")
@@ -157,11 +157,11 @@ class SecretStore:
         self,
         db_path: str = "data/config.db",
         infra_vault: InfraVault | None = None,
-        persona_vault: PersonaVault | None = None,
+        agent_vault: AgentVault | None = None,
     ) -> None:
         self.db_path = db_path
         self.infra = infra_vault if infra_vault is not None else InfraVault(load_machine_key())
-        self.persona = persona_vault if persona_vault is not None else PersonaVault()
+        self.agent = agent_vault if agent_vault is not None else AgentVault()
         self._ready = False
         self._infra_cache: dict[str, str] = {}
         # Serializes secret resolution so single-use ("once") secrets cannot be
@@ -178,7 +178,7 @@ class SecretStore:
             await db.executescript(_SCHEMA)
         self._ready = True
 
-    # -- Persona vault lifecycle --------------------------------------------
+    # -- Agent vault lifecycle --------------------------------------------
 
     async def ensure_wrapped_dek(self, password: str) -> bool:
         """Create the wrapped DEK if none exists (first admin-password set).
@@ -191,13 +191,13 @@ class SecretStore:
             row = await cur.fetchone()
             if row and row[0] and row[1]:
                 # Already initialised — just unseal in memory.
-                if not self.persona.unseal(password, row[0], row[1]):
+                if not self.agent.unseal(password, row[0], row[1]):
                     log.warning(
-                        "Persona vault already initialised but could not be unsealed with "
+                        "Agent vault already initialised but could not be unsealed with "
                         "this password (password may differ from the one that wrapped the DEK)"
                     )
                 return False
-            wrapped, salt = PersonaVault.create_wrapped_dek(password)
+            wrapped, salt = AgentVault.create_wrapped_dek(password)
             await db.execute(
                 "INSERT INTO vault_meta (id, wrapped_dek, salt) VALUES (1, ?, ?) "
                 "ON CONFLICT(id) DO UPDATE SET wrapped_dek = excluded.wrapped_dek, "
@@ -205,20 +205,20 @@ class SecretStore:
                 (wrapped, salt),
             )
             await db.commit()
-        self.persona.unseal(password, wrapped, salt)
+        self.agent.unseal(password, wrapped, salt)
         return True
 
-    async def unseal_persona(self, password: str) -> bool:
+    async def unseal_agent(self, password: str) -> bool:
         """Unwrap + cache the DEK using the admin password. Idempotent."""
         await self._ensure_schema()
-        if self.persona.unsealed:
+        if self.agent.unsealed:
             return True
         async with aiosqlite.connect(self.db_path) as db:
             cur = await db.execute("SELECT wrapped_dek, salt FROM vault_meta WHERE id = 1")
             row = await cur.fetchone()
         if not row or not row[0] or not row[1]:
             return False
-        return self.persona.unseal(password, row[0], row[1])
+        return self.agent.unseal(password, row[0], row[1])
 
     async def rotate_password(self, old_password: str, new_password: str) -> None:
         """Re-wrap the DEK under a new admin password (or create it if missing)."""
@@ -230,9 +230,9 @@ class SecretStore:
                 # Raises InvalidToken if old_password can't unwrap the DEK — the
                 # caller (change_admin_password) must abort the password change so
                 # we never advance the auth hash while orphaning the vault.
-                wrapped, salt = PersonaVault.rewrap(old_password, new_password, row[0], row[1])
+                wrapped, salt = AgentVault.rewrap(old_password, new_password, row[0], row[1])
             else:
-                wrapped, salt = PersonaVault.create_wrapped_dek(new_password)
+                wrapped, salt = AgentVault.create_wrapped_dek(new_password)
             await db.execute(
                 "INSERT INTO vault_meta (id, wrapped_dek, salt) VALUES (1, ?, ?) "
                 "ON CONFLICT(id) DO UPDATE SET wrapped_dek = excluded.wrapped_dek, "
@@ -240,15 +240,15 @@ class SecretStore:
                 (wrapped, salt),
             )
             await db.commit()
-        self.persona.unseal(new_password, wrapped, salt)
+        self.agent.unseal(new_password, wrapped, salt)
 
-    def persona_unsealed(self) -> bool:
-        return self.persona.unsealed
+    def agent_unsealed(self) -> bool:
+        return self.agent.unsealed
 
-    def lock_persona(self) -> None:
-        self.persona.lock()
+    def lock_agent(self) -> None:
+        self.agent.lock()
 
-    # -- Persona secret CRUD -------------------------------------------------
+    # -- Agent secret CRUD -------------------------------------------------
 
     async def set_secret(
         self,
@@ -261,13 +261,13 @@ class SecretStore:
         expires_at: str | None = None,
         max_uses: int | None = None,
     ) -> None:
-        """Encrypt and upsert a persona secret. ``value`` may be a scalar or dict."""
+        """Encrypt and upsert an agent secret. ``value`` may be a scalar or dict."""
         await self._ensure_schema()
         if not valid_name(name):
             raise ValueError(f"invalid secret name: {name!r}")
         structured = isinstance(value, dict)
         plaintext = json.dumps(value) if structured else str(value)
-        token = self.persona.encrypt(plaintext)  # raises VaultLocked if sealed
+        token = self.agent.encrypt(plaintext)  # raises VaultLocked if sealed
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute(
                 "INSERT INTO secrets "
@@ -300,7 +300,7 @@ class SecretStore:
             row = await cur.fetchone()
         if not row:
             return None
-        plaintext = self.persona.decrypt(row[0])  # raises VaultLocked if sealed
+        plaintext = self.agent.decrypt(row[0])  # raises VaultLocked if sealed
         return json.loads(plaintext) if row[1] else plaintext
 
     async def delete_secret(self, name: str) -> bool:
@@ -352,7 +352,7 @@ class SecretStore:
     ) -> tuple[str, str | None]:
         """Substitute ``{{secret:NAME[.field]}}`` in ``command`` after an ACL check.
 
-        ``allowed`` is the set of names the active persona may use; shared
+        ``allowed`` is the set of names the active agent may use; shared
         secrets are always permitted. ``allowed=None`` bypasses the ACL (used
         only for trusted, agent-constructed commands — never for model input).
 
@@ -366,7 +366,7 @@ class SecretStore:
             return command, None
 
         async with self._resolve_lock:
-            if not self.persona.unsealed:
+            if not self.agent.unsealed:
                 return command, (
                     "Secrets vault is locked. Ask the owner to open the admin UI to unlock it."
                 )
@@ -381,7 +381,7 @@ class SecretStore:
                 name, field = m.group(1), m.group(2)
                 if acl is not None and name not in acl:
                     return command, (
-                        f"Secret '{name}' is not in this persona's scope. "
+                        f"Secret '{name}' is not in this agent's scope. "
                         "Request access or use a permitted secret."
                     )
                 value, err = await self._materialize(name)
@@ -432,7 +432,7 @@ class SecretStore:
         if expires and _now() > expires:
             return None, f"Secret '{name}' has expired."
         try:
-            plaintext = self.persona.decrypt(row[0])
+            plaintext = self.agent.decrypt(row[0])
         except VaultLocked:
             return None, "Secrets vault is locked."
         except InvalidToken:
@@ -467,7 +467,7 @@ class SecretStore:
     async def create_request(
         self,
         name: str,
-        persona: str = "",
+        agent: str = "",
         reason: str = "",
         suggested_scope: str = "",
         ttl_sec: int = 86_400,
@@ -484,9 +484,9 @@ class SecretStore:
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute(
                 "INSERT INTO secret_requests "
-                "(token_hash, name, persona, reason, suggested_scope, status, expires_at) "
+                "(token_hash, name, agent, reason, suggested_scope, status, expires_at) "
                 "VALUES (?, ?, ?, ?, ?, 'pending', ?)",
-                (token_hash, name, persona, reason, suggested_scope, expires),
+                (token_hash, name, agent, reason, suggested_scope, expires),
             )
             await db.commit()
         return token
@@ -663,12 +663,12 @@ if __name__ == "__main__":
     async def _check_store() -> None:
         with tempfile.TemporaryDirectory() as d:
             store = SecretStore(db_path=str(Path(d) / "config.db"))
-            # Persona vault must be initialised + unsealed before writes.
+            # Agent vault must be initialised + unsealed before writes.
             await store.ensure_wrapped_dek("admin-pw")
-            assert store.persona_unsealed()
+            assert store.agent_unsealed()
 
             # Scalar secret + ACL resolution.
-            await store.set_secret("STRIPE", "sk_live_abc", owner="persona:finance")
+            await store.set_secret("STRIPE", "sk_live_abc", owner="agent:finance")
             cmd = "curl -H 'Authorization: Bearer {{secret:STRIPE}}' https://api"
             resolved, err = await store.resolve_command_secrets(cmd, allowed={"STRIPE"})
             assert err is None and "sk_live_abc" in resolved and "{{secret" not in resolved
@@ -677,13 +677,13 @@ if __name__ == "__main__":
             _, err = await store.resolve_command_secrets(cmd, allowed=set())
             assert err and "scope" in err
 
-            # Shared secret is allowed regardless of persona scope.
+            # Shared secret is allowed regardless of agent scope.
             await store.set_secret("GLOBAL", "g", shared=True)
             _, err = await store.resolve_command_secrets("x {{secret:GLOBAL}}", allowed=set())
             assert err is None
 
             # Structured secret + field reference.
-            await store.set_secret("ACME", {"username": "u", "password": "pw"}, owner="persona:x")
+            await store.set_secret("ACME", {"username": "u", "password": "pw"}, owner="agent:x")
             r, err = await store.resolve_command_secrets(
                 "login {{secret:ACME.username}}:{{secret:ACME.password}}", allowed={"ACME"}
             )
@@ -715,14 +715,14 @@ if __name__ == "__main__":
             assert "value" not in meta["STRIPE"]
 
             # Requests: one-time token, hash-stored, redeemable once.
-            tok = await store.create_request("NEWKEY", persona="finance", reason="need it")
+            tok = await store.create_request("NEWKEY", agent="finance", reason="need it")
             req = await store.get_request(tok)
             assert req and req["name"] == "NEWKEY" and req["status"] == "pending"
             assert await store.resolve_request(tok)
             assert await store.get_request(tok) is None  # no longer pending
 
             # Locked vault refuses resolution.
-            store.lock_persona()
+            store.lock_agent()
             _, err = await store.resolve_command_secrets("{{secret:GLOBAL}}", allowed={"GLOBAL"})
             assert err and "locked" in err
 

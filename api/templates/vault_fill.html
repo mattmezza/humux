@@ -41,12 +41,12 @@
         <div>
           <label class="label">Who can use it</label>
           <select class="input-sm" x-model="scope">
-            <option value="this">This persona only</option>
-            <option value="personae">Specific persona(s)</option>
-            <option value="all">All personas</option>
+            <option value="this">This agent only</option>
+            <option value="agents">Specific agent(s)</option>
+            <option value="all">All agents</option>
           </select>
-          <input class="input-sm mt-1" x-model="personae" placeholder="persona names, comma-separated"
-                 x-show="scope === 'personae'">
+          <input class="input-sm mt-1" x-model="agents" placeholder="agent names, comma-separated"
+                 x-show="scope === 'agents'">
         </div>
 
         <div>
@@ -74,7 +74,7 @@ function vaultFill(token) {
   return {
     token, req: {}, loaded: false, needsLogin: false, done: false, error: '',
     password: '', password_val: '', username: '', url: '', totp: '',
-    scope: 'this', personae: '', duration: 'forever', until: '',
+    scope: 'this', agents: '', duration: 'forever', until: '',
     _key() { return localStorage.getItem('admin_api_key') || ''; },
     async load() {
       try {
@@ -84,7 +84,7 @@ function vaultFill(token) {
         if (r.status === 401) { this.needsLogin = true; return; }
         if (!r.ok) { this.error = 'Request not found or expired.'; this.loaded = true; return; }
         this.req = await r.json(); this.needsLogin = false; this.loaded = true;
-        if (this.req.suggested_scope) this.personae = this.req.suggested_scope;
+        if (this.req.suggested_scope) this.agents = this.req.suggested_scope;
       } catch (e) { this.error = e.message; }
     },
     saveKeyAndLoad() {
@@ -100,7 +100,7 @@ function vaultFill(token) {
       if (this.url) body.set('url', this.url);
       if (this.totp) body.set('totp', this.totp);
       body.set('scope', this.scope);
-      body.set('personae', this.personae);
+      body.set('agents', this.agents);
       body.set('duration', this.duration);
       body.set('until', this.until);
       try {

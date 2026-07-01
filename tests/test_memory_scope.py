@@ -1,4 +1,4 @@
-"""Two-tier scoped memory: shared pool + per-persona private memory (#42)."""
+"""Two-tier scoped memory: shared pool + per-agent private memory (#42)."""
 
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ def _contents(rows: list[dict]) -> set[str]:
 # --- the isolation invariant ------------------------------------------------
 
 
-async def test_private_memory_invisible_to_other_personas(store):
+async def test_private_memory_invisible_to_other_agents(store):
     await store._insert_long_term("fact", "matteo", "shared owner fact", scope="")
     await store._insert_long_term("health", "matteo", "coach-only fact", scope="coach")
     await store._insert_long_term("work", "matteo", "finance-only fact", scope="finance")
@@ -41,7 +41,7 @@ async def test_private_memory_invisible_to_other_personas(store):
     finance = _contents(await store.get_long_term("finance"))
     assert finance == {"shared owner fact", "finance-only fact"}
 
-    # The default identity (no persona) sees shared only.
+    # The default identity (no agent) sees shared only.
     default = _contents(await store.get_long_term(""))
     assert default == {"shared owner fact"}
 
@@ -73,8 +73,8 @@ async def test_format_for_prompt_scoped(store):
 
 
 async def test_dedup_candidates_bounded_to_scope(store):
-    # An identical fact stored privately under another persona must not be a
-    # dedup/UPDATE/DELETE candidate for this persona.
+    # An identical fact stored privately under another agent must not be a
+    # dedup/UPDATE/DELETE candidate for this agent.
     await store._insert_long_term("fact", "x", "secret number is 42", scope="finance")
     similar = await store._retrieve_similar_long_term("x", "secret number is 42", scope="coach")
     assert similar == []  # finance's private row is invisible to coach
@@ -141,12 +141,12 @@ def test_scope_filter():
 
 
 def test_resolve_extracted_scope():
-    # Private only when a persona is active AND the model tagged it private.
+    # Private only when an agent is active AND the model tagged it private.
     assert _resolve_extracted_scope({"scope": "private"}, "coach") == "coach"
     assert _resolve_extracted_scope({"scope": "PRIVATE"}, "coach") == "coach"
     assert _resolve_extracted_scope({"scope": "shared"}, "coach") == ""
     assert _resolve_extracted_scope({}, "coach") == ""
-    # No active persona → always shared, even if tagged private.
+    # No active agent → always shared, even if tagged private.
     assert _resolve_extracted_scope({"scope": "private"}, "") == ""
 
 

@@ -1,9 +1,9 @@
 """Per-agent log streams (issue #75).
 
-The admin Logs tab used to show one flat stream, so with several personae and
+The admin Logs tab used to show one flat stream, so with several agents and
 subagents running at once you could not tell which line belonged to whom. The
 fix is a :class:`contextvars.ContextVar` that carries the *stream* a log record
-belongs to — the persona slug of the turn in flight, or ``default``.
+belongs to — the agent slug of the turn in flight, or ``default``.
 
 ``asyncio`` copies the context when a task is created, so a background subagent's
 task inherits its spawner's stream for free; a second ContextVar marks subagent
@@ -41,7 +41,7 @@ def current_subagent() -> str:
 def set_stream(name: str) -> None:
     """Tag every later log record in this task with stream ``name``.
 
-    Called once per turn after the persona is resolved. No reset: channels run
+    Called once per turn after the agent is resolved. No reset: channels run
     each turn in its own ``asyncio`` task (so the value dies with the task), and
     a reused task — the REPL — overwrites it at the next turn's entry anyway.
     """
@@ -54,7 +54,7 @@ def subagent_stream(label: str, *, fallback: str = ""):
 
     Keeps the inherited stream (the spawner's) when a turn set one. For a
     top-level run that inherited none — a scheduled ``subagent`` job — it adopts
-    ``fallback`` (the run's own persona slug) so the lines still land in a
+    ``fallback`` (the run's own agent slug) so the lines still land in a
     sensibly named stream instead of ``default``.
     """
     stream_token = None

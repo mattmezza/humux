@@ -180,7 +180,7 @@ def test_write_artifact_tool_removed() -> None:
     assert "write_artifact" not in {t["name"] for t in TOOLS}
 
 
-def test_write_artifact_gone_from_persona_scope() -> None:
+def test_write_artifact_gone_from_agent_scope() -> None:
     from api.admin import GATEABLE_TOOLS, gateable_tools_for
 
     assert "write_artifact" not in GATEABLE_TOOLS

@@ -13,9 +13,9 @@ from fastapi.testclient import TestClient
 from api.admin import AgentState, create_admin_app
 from core import github_app
 from core.agent import _narrow_gh_repos
+from core.agents import Agent
 from core.config import Config
 from core.config_store import ConfigStore
-from core.personae import Persona
 from core.tools import _gh_env, effective_tool_env, github_repo_violation
 
 AUTH = {"Authorization": "Bearer secret"}
@@ -98,7 +98,7 @@ def test_gh_env_prefers_app_then_falls_back_to_pat(monkeypatch) -> None:
     assert _gh_env(cfg) == {"GH_TOKEN": "pat-token"}  # mint failed → PAT fallback
 
 
-def test_persona_without_pat_uses_app_bot_identity(monkeypatch) -> None:
+def test_agent_without_pat_uses_app_bot_identity(monkeypatch) -> None:
     cfg = Config()
     cfg.tools.gh.enabled = True
     cfg.tools.gh.app_id = "1"
@@ -107,7 +107,7 @@ def test_persona_without_pat_uses_app_bot_identity(monkeypatch) -> None:
     monkeypatch.setattr(github_app, "installation_token", lambda *_a: "bot-token")
 
     # gh enabled, no own vault token → borrows the App bot (not the owner).
-    coder = Persona(name="coder", tool_config={"gh": {"enabled": True}})
+    coder = Agent(name="coder", tool_config={"gh": {"enabled": True}})
     env = effective_tool_env(cfg, coder, lambda _n: None)
     assert env["GH_TOKEN"] == "bot-token"
 
@@ -121,12 +121,12 @@ def _app_cfg() -> Config:
     return cfg
 
 
-def test_persona_own_app_beats_system_app(monkeypatch) -> None:
+def test_agent_own_app_beats_system_app(monkeypatch) -> None:
     # Tag the minted token by app_id so we can tell own-App from system-App.
     monkeypatch.setattr(github_app, "installation_token", lambda app_id, *_a: f"app:{app_id}")
     cfg = _app_cfg()
     vault = {"CODER_KEY": "coder-pem"}
-    coder = Persona(
+    coder = Agent(
         name="coder",
         tool_config={
             "gh": {
@@ -138,19 +138,19 @@ def test_persona_own_app_beats_system_app(monkeypatch) -> None:
             }
         },
     )
-    # Persona's OWN app (500) is used, not the system app (42) — multiple apps.
+    # Agent's OWN app (500) is used, not the system app (42) — multiple apps.
     assert effective_tool_env(cfg, coder, vault.get)["GH_TOKEN"] == "app:500"
     # auth="app" but no own creds → falls back to the shared system app bot.
-    shared = Persona(name="w", tool_config={"gh": {"enabled": True, "auth": "app"}})
+    shared = Agent(name="w", tool_config={"gh": {"enabled": True, "auth": "app"}})
     assert effective_tool_env(cfg, shared, vault.get)["GH_TOKEN"] == "app:42"
 
 
-def test_persona_own_app_mint_failure_does_not_cross_to_system(monkeypatch) -> None:
+def test_agent_own_app_mint_failure_does_not_cross_to_system(monkeypatch) -> None:
     # Own-app mint fails transiently → NO token, never the system bot (no silent
     # escalation to a possibly-broader identity).
     monkeypatch.setattr(github_app, "installation_token", lambda *_a: None)
     cfg = _app_cfg()
-    coder = Persona(
+    coder = Agent(
         name="coder",
         tool_config={
             "gh": {
@@ -170,7 +170,7 @@ def test_legacy_auth_own_app_mint_failure_does_not_cross_to_system(monkeypatch) 
     # own-app configured + mint fails → no token, never the system bot.
     monkeypatch.setattr(github_app, "installation_token", lambda *_a: None)
     cfg = _app_cfg()
-    coder = Persona(
+    coder = Agent(
         name="coder",
         tool_config={
             "gh": {
@@ -184,15 +184,15 @@ def test_legacy_auth_own_app_mint_failure_does_not_cross_to_system(monkeypatch) 
     assert "GH_TOKEN" not in effective_tool_env(cfg, coder, {"CODER_KEY": "pem"}.get)
 
 
-def test_persona_auth_pat_never_uses_app(monkeypatch) -> None:
+def test_agent_auth_pat_never_uses_app(monkeypatch) -> None:
     monkeypatch.setattr(github_app, "installation_token", lambda app_id, *_a: f"app:{app_id}")
     cfg = _app_cfg()
     vault = {"GH_TOKEN_p": "pat-tok"}
     # Explicit PAT mode: own PAT is used even though App fields linger.
-    p = Persona(name="p", tool_config={"gh": {"enabled": True, "auth": "pat", "app_id": "500"}})
+    p = Agent(name="p", tool_config={"gh": {"enabled": True, "auth": "pat", "app_id": "500"}})
     assert effective_tool_env(cfg, p, vault.get)["GH_TOKEN"] == "pat-tok"
     # Explicit PAT with no token → nothing (never the App bot, never the owner).
-    none = Persona(name="none", tool_config={"gh": {"enabled": True, "auth": "pat"}})
+    none = Agent(name="none", tool_config={"gh": {"enabled": True, "auth": "pat"}})
     assert "GH_TOKEN" not in effective_tool_env(cfg, none, lambda _n: None)
 
 
@@ -203,8 +203,8 @@ def test_system_auth_pat_disables_app(monkeypatch) -> None:
     cfg.tools.gh.token = "sys-pat"
     # _gh_env forces the PAT even though App fields are set.
     assert _gh_env(cfg) == {"GH_TOKEN": "sys-pat"}
-    # And the App bot is not offered to personae.
-    atlas = Persona(name="atlas", tool_config={"gh": {"enabled": True}})
+    # And the App bot is not offered to agents.
+    atlas = Agent(name="atlas", tool_config={"gh": {"enabled": True}})
     assert "GH_TOKEN" not in effective_tool_env(cfg, atlas, lambda _n: None)
 
 
@@ -217,16 +217,16 @@ def test_gh_env_auth_app_uses_app(monkeypatch) -> None:
 
 
 def test_repo_gate_blocks_only_disallowed_repo_flags() -> None:
-    coder = Persona(name="coder", tool_config={"gh": {"enabled": True, "repos": ["me/mpa"]}})
+    coder = Agent(name="coder", tool_config={"gh": {"enabled": True, "repos": ["me/mpa"]}})
     assert github_repo_violation(coder, "gh pr list --repo me/mpa") is None
     assert github_repo_violation(coder, "gh pr view 1 --repo me/secret") == "me/secret"
     assert github_repo_violation(coder, "gh api user") is None  # no --repo → cannot tell → allow
-    open_p = Persona(name="open", tool_config={"gh": {"enabled": True}})
+    open_p = Agent(name="open", tool_config={"gh": {"enabled": True}})
     assert github_repo_violation(open_p, "gh pr view 1 --repo any/thing") is None
 
 
 def test_repo_gate_is_quote_glue_tolerant_and_gh_scoped() -> None:
-    coder = Persona(name="coder", tool_config={"gh": {"enabled": True, "repos": ["me/mpa"]}})
+    coder = Agent(name="coder", tool_config={"gh": {"enabled": True, "repos": ["me/mpa"]}})
     # Quoting / `=` / glued `-R` must not bypass the gate.
     assert github_repo_violation(coder, 'gh pr view 1 --repo "me/evil"') == "me/evil"
     assert github_repo_violation(coder, "gh pr view 1 --repo='me/evil'") == "me/evil"
@@ -238,32 +238,32 @@ def test_repo_gate_is_quote_glue_tolerant_and_gh_scoped() -> None:
 
 def test_repo_gate_empty_allowlist_blocks_everything() -> None:
     # A present-but-empty allowlist (disjoint-narrow result) = allow nothing.
-    sub = Persona(name="sub", tool_config={"gh": {"enabled": True, "repos": []}})
+    sub = Agent(name="sub", tool_config={"gh": {"enabled": True, "repos": []}})
     assert github_repo_violation(sub, "gh pr view 1 --repo me/mpa") == "me/mpa"
     # Absent repos key = unrestricted (distinct from empty list).
-    plain = Persona(name="plain", tool_config={"gh": {"enabled": True}})
+    plain = Agent(name="plain", tool_config={"gh": {"enabled": True}})
     assert github_repo_violation(plain, "gh pr view 1 --repo me/mpa") is None
 
 
 def test_narrow_gh_repos_never_widens() -> None:
-    parent = Persona(name="p", tool_config={"gh": {"enabled": True, "repos": ["a/x", "a/y"]}})
+    parent = Agent(name="p", tool_config={"gh": {"enabled": True, "repos": ["a/x", "a/y"]}})
     # Child asks for a repo the parent lacks → intersection drops it.
     child_tc = {"gh": {"enabled": True, "repos": ["a/y", "a/z"]}}
     assert _narrow_gh_repos(parent, child_tc)["gh"]["repos"] == ["a/y"]
     # Child unspecified → inherits the parent's restriction.
     assert _narrow_gh_repos(parent, {"gh": {"enabled": True}})["gh"]["repos"] == ["a/x", "a/y"]
     # Parent unrestricted → child keeps its own list (self-narrowing is fine).
-    open_parent = Persona(name="o", tool_config={"gh": {"enabled": True}})
+    open_parent = Agent(name="o", tool_config={"gh": {"enabled": True}})
     assert _narrow_gh_repos(open_parent, child_tc)["gh"]["repos"] == ["a/y", "a/z"]
 
 
 def test_narrow_gh_repos_disjoint_blocks_not_widens() -> None:
     # The escalation bug: disjoint child ∩ parent = [] must mean "block all",
     # NOT "unrestricted". Narrowing yields an empty list, and the gate blocks.
-    parent = Persona(name="p", tool_config={"gh": {"enabled": True, "repos": ["me/a"]}})
+    parent = Agent(name="p", tool_config={"gh": {"enabled": True, "repos": ["me/a"]}})
     narrowed = _narrow_gh_repos(parent, {"gh": {"enabled": True, "repos": ["me/evil"]}})
     assert narrowed["gh"]["repos"] == []
-    child = Persona(name="c", tool_config=narrowed)
+    child = Agent(name="c", tool_config=narrowed)
     assert github_repo_violation(child, "gh issue create --repo other/xyz") == "other/xyz"
 
 
@@ -273,7 +273,7 @@ def test_narrow_gh_repos_disjoint_blocks_not_widens() -> None:
 class _Store:
     def __init__(self, tmp_path):
         self._data = {
-            "agent.personae_db_path": str(tmp_path / "personae.db"),
+            "agent.agents_db_path": str(tmp_path / "agents.db"),
             "history.db_path": str(tmp_path / "history.db"),
             "memory.db_path": str(tmp_path / "memory.db"),
             "tools.gh.enabled": "true",

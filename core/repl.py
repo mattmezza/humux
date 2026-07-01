@@ -219,12 +219,12 @@ def _setup_logging(spinner: Spinner) -> None:
         logging.getLogger(name).setLevel(logging.WARNING)
 
 
-def _print_debug_config(config, persona=None) -> None:
+def _print_debug_config(config, agent=None) -> None:
     a = config.agent
     th = a.thinking_level or "off"
-    if persona:
-        name = persona.agent_name or persona.role or persona.name
-        agent_row = ("agent (persona)", f"{name} (owner {a.owner_name})")
+    if agent:
+        name = agent.agent_name or agent.role or agent.name
+        agent_row = ("agent (agent)", f"{name} (owner {a.owner_name})")
     else:
         agent_row = ("agent", f"{a.name} (owner {a.owner_name})")
     rows = [
@@ -302,10 +302,10 @@ async def main() -> None:
 
     parser = argparse.ArgumentParser(description="Chat with the agent from the terminal.")
     parser.add_argument(
-        "--persona",
+        "--agent",
         metavar="NAME",
         default=None,
-        help="Test with a specific persona active (overrides agent.active_persona).",
+        help="Test with a specific agent active (overrides agent.active_agent).",
     )
     parser.add_argument(
         "--yolo",
@@ -332,38 +332,38 @@ async def main() -> None:
     secret_store = SecretStore()
     await secret_store.load_infra_cache()
     seed_pw = os.environ.get("ADMIN_PASSWORD") or os.environ.get("ADMIN_API_KEY")
-    if seed_pw:  # unseals persona vault in-process (created on first set)
+    if seed_pw:  # unseals agent vault in-process (created on first set)
         await secret_store.ensure_wrapped_dek(seed_pw)
     config = await store.export_to_config(vault_resolve=secret_store.infra_resolve)
 
-    if args.persona is not None:
-        # Validate against the persona store so a typo fails loudly with options.
-        from core.personae import PersonaStore
+    if args.agent is not None:
+        # Validate against the agent store so a typo fails loudly with options.
+        from core.agents import AgentStore
 
-        ps = PersonaStore(db_path=config.agent.personae_db_path, seed_dir=config.agent.personae_dir)
-        if not await ps.get(args.persona):
-            names = [p.name for p in await ps.list_personae()]
-            print(f"Unknown persona: {args.persona!r}. Available: {', '.join(names) or '(none)'}")
+        ps = AgentStore(db_path=config.agent.agents_db_path, seed_dir=config.agent.agents_dir)
+        if not await ps.get(args.agent):
+            names = [p.name for p in await ps.list_agents()]
+            print(f"Unknown agent: {args.agent!r}. Available: {', '.join(names) or '(none)'}")
             return
-        config.agent.active_persona = args.persona
+        config.agent.active_agent = args.agent
 
     agent = AgentCore(config, secret_store=secret_store)
     agent.channels["repl"] = ReplChannel(agent, spinner, yolo=args.yolo)
     if args.yolo:
         print(f"{_DIM}⚠ --yolo: auto-approving all tool permissions this session.{_RESET}")
 
-    if args.persona is not None:
+    if args.agent is not None:
         # Session mode snapshots the system prompt per chat, so a stale session
-        # would keep the previous identity. Clear it so the persona takes effect
+        # would keep the previous identity. Clear it so the agent takes effect
         # on the first turn instead of after a manual /clear.
         if agent.history_mode == "session":
             await agent.history.clear_session("repl", USER_ID, USER_ID)
         else:
             await agent.history.clear("repl", USER_ID, USER_ID)
 
-    active = config.agent.active_persona
-    persona = await agent.personae.get(active) if active else None
-    _print_debug_config(config, persona)
+    active = config.agent.active_agent
+    active_agent = await agent.agents.get(active) if active else None
+    _print_debug_config(config, active_agent)
 
     while True:
         spinner.awaiting_input = True

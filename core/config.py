@@ -92,16 +92,16 @@ class AgentConfig(BaseModel):
     #   "on_demand" — the preamble omits it; the model calls search_skills/list_skills
     # Any unrecognised value falls back to "inject" (the safe default).
     skills_index_mode: str = "inject"
-    personae_dir: str = "personae/"
-    personae_db_path: str = "data/personae.db"
-    active_persona: str = ""  # empty = default identity (character below)
+    agents_dir: str = "agents/"
+    agents_db_path: str = "data/agents.db"
+    active_agent: str = ""  # empty = default identity (character below)
     character: str = ""  # identity + tone (legacy `personalia` was merged in — #98)
-    # Account bindings for the DEFAULT identity — used when no persona is active
-    # (#110). Same shape as the per-persona facets: email entries carry
+    # Account bindings for the DEFAULT identity — used when no agent is active
+    # (#110). Same shape as the per-agent facets: email entries carry
     # {account, access_level, is_sender_identity}, calendar/contacts drop the
     # sender flag. Empty = the default agent is unscoped (legacy behaviour: it may
     # use any configured account); non-empty = it is scoped to these accounts,
-    # enforced exactly like a persona's.
+    # enforced exactly like an agent's.
     email_accounts: list[dict] = Field(default_factory=list)
     calendar_accounts: list[dict] = Field(default_factory=list)
     contacts_accounts: list[dict] = Field(default_factory=list)
@@ -110,7 +110,7 @@ class AgentConfig(BaseModel):
 class GroupChatConfig(BaseModel):
     """Multi-agent group rooms — turn-taking + loop guard + speaker tags (#30).
 
-    Lets several persona-bots share one Telegram group without the raw misbehaviour
+    Lets several agent-bots share one Telegram group without the raw misbehaviour
     (every bot answering every message; bots looping replies at each other). In a
     group/supergroup a bot:
 
@@ -120,7 +120,7 @@ class GroupChatConfig(BaseModel):
     - **ignores other bots** so two assistants never loop replying to each other
       (``ignore_bots``); their messages are still recorded for context,
     - records every message it sees with a ``[from <author>]`` speaker tag, so a
-      persona is never confused about who said what in the shared history.
+      agent is never confused about who said what in the shared history.
 
     Receiving the unaddressed messages that feed the shared context requires the
     bot's Telegram **privacy mode to be OFF** (set via BotFather). With privacy
@@ -146,10 +146,10 @@ class TelegramConfig(BaseModel):
     enabled: bool = False
     bot_token: str = ""
     allowed_user_ids: list[int] = Field(default_factory=list)
-    # Opt-in: fold forum topics into separate contexts (one persona per topic).
+    # Opt-in: fold forum topics into separate contexts (one agent per topic).
     # Off by default so the plain 1:1 DM flow is unchanged.
     topics_enabled: bool = False
-    # Group multi-agent room behaviour (#30); inherited by per-persona bots.
+    # Group multi-agent room behaviour (#30); inherited by per-agent bots.
     group_chat: GroupChatConfig = Field(default_factory=GroupChatConfig)
 
     @field_validator("allowed_user_ids", mode="before")
@@ -196,7 +196,7 @@ class SchedulerJob(BaseModel):
     task: str
     channel: str = "telegram"
     type: str = "agent"
-    persona: str = ""  # for type="subagent": the persona the run adopts
+    agent: str = ""  # for type="subagent": the agent the run adopts
 
 
 class SchedulerConfig(BaseModel):
@@ -405,7 +405,7 @@ class WhatsAppToolConfig(BaseModel):
 
     enabled: bool = False
     # WACLI_STORE override (which linked account). Blank = wacli default (~/.wacli).
-    # ponytail: one global store; per-persona accounts ride #93's tool_env override.
+    # ponytail: one global store; per-agent accounts ride #93's tool_env override.
     store: str = ""
     device_label: str = ""  # WACLI_DEVICE_LABEL; blank = wacli default ("MPA")
 

@@ -8,10 +8,10 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from core.agents import Agent
 from core.config import Config
 from core.job_store import VALID_TYPES, JobStore
 from core.llm import LLMResponse, LLMToolCall
-from core.personae import Persona
 from core.subagents import (
     FILE_HANDOFF_INSTRUCTION,
     SubagentRegistry,
@@ -53,7 +53,7 @@ def test_narrow_scope_both_empty_stays_all() -> None:
 
 
 def _run(run_id: str, status: str = "running") -> SubagentRun:
-    return SubagentRun(run_id=run_id, persona="", task="t", status=status)
+    return SubagentRun(run_id=run_id, agent="", task="t", status=status)
 
 
 def test_registry_register_list_and_active_count() -> None:
@@ -95,8 +95,8 @@ def test_short_summary_first_nonempty_line_capped() -> None:
 
 def test_running_for_filters_by_chat_and_drops_finished() -> None:
     reg = SubagentRegistry()
-    here = SubagentRun(run_id="a", persona="", task="t", origin_channel="tg", origin_chat_id="1")
-    other = SubagentRun(run_id="b", persona="", task="t", origin_channel="tg", origin_chat_id="2")
+    here = SubagentRun(run_id="a", agent="", task="t", origin_channel="tg", origin_chat_id="1")
+    other = SubagentRun(run_id="b", agent="", task="t", origin_channel="tg", origin_chat_id="2")
     reg.register(here)
     reg.register(other)
 
@@ -172,8 +172,8 @@ async def test_run_subagent_depth_cap(agent) -> None:
 
 
 @pytest.mark.asyncio
-async def test_run_subagent_unknown_persona(agent) -> None:
-    result = await agent.run_subagent(task="x", persona_name="does-not-exist")
+async def test_run_subagent_unknown_agent(agent) -> None:
+    result = await agent.run_subagent(task="x", agent_name="does-not-exist")
     assert "not found" in result["error"].lower()
 
 
@@ -252,8 +252,8 @@ async def test_background_batch_delivers_once_when_all_done(agent, monkeypatch) 
     monkeypatch.setattr(agent, "_summarize_and_deliver", fake_deliver)
 
     common = dict(background=True, origin_channel="telegram", origin_chat_id="c")
-    r1 = SubagentRun(run_id="s1", persona="", task="a", origin_user_id="u", **common)
-    r2 = SubagentRun(run_id="s2", persona="", task="b", origin_user_id="u", **common)
+    r1 = SubagentRun(run_id="s1", agent="", task="a", origin_user_id="u", **common)
+    r2 = SubagentRun(run_id="s2", agent="", task="b", origin_user_id="u", **common)
     agent.subagents.register(r1)
     agent.subagents.register(r2)
 
@@ -285,7 +285,7 @@ async def test_cancelling_a_sibling_releases_a_deferred_reply(agent, monkeypatch
 
     gate = asyncio.Event()
 
-    async def fake_loop(task, persona, state, run):
+    async def fake_loop(task, agent, state, run):
         if task == "B-task":
             await gate.wait()  # block so this run is "still running" when A finishes
             return "B done"
@@ -345,7 +345,7 @@ async def test_summarize_batch_calls_llm_and_parses() -> None:
 async def test_run_subagent_background_respects_concurrency(agent) -> None:
     agent.config.subagents.max_concurrent = 1
     # Pre-fill one running slot.
-    agent.subagents.register(SubagentRun(run_id="busy", persona="", task="t"))
+    agent.subagents.register(SubagentRun(run_id="busy", agent="", task="t"))
     result = await agent.run_subagent(task="x", background=True)
     assert "concurrent" in result["error"].lower() or "max" in result["error"].lower()
 
@@ -379,10 +379,10 @@ def test_finish_does_not_overwrite_terminal_state() -> None:
     assert reg.get("a").result == ""
 
 
-def test_narrow_persona_intersects_scopes(agent) -> None:
-    parent = Persona(name="p", skills=["s1", "s2"], tools=["a", "b"], secrets=["x"])
-    requested = Persona(name="child", skills=[], tools=["b", "c"], secrets=["y"])
-    child = agent._narrow_persona(requested, {"persona_obj": parent})
+def test_narrow_agent_intersects_scopes(agent) -> None:
+    parent = Agent(name="p", skills=["s1", "s2"], tools=["a", "b"], secrets=["x"])
+    requested = Agent(name="child", skills=[], tools=["b", "c"], secrets=["y"])
+    child = agent._narrow_agent(requested, {"agent_obj": parent})
     assert child.name == "child"
     assert child.skills == ["s1", "s2"]  # child unspecified → inherits parent
     assert child.tools == ["b"]  # intersection, never 'c'
@@ -393,7 +393,7 @@ def test_subagent_status_note_lists_only_running_runs(agent) -> None:
     agent.subagents.register(
         SubagentRun(
             run_id="r1",
-            persona="coding-helper",
+            agent="coding-helper",
             task="t",
             origin_channel="repl",
             origin_chat_id="repl",
@@ -428,7 +428,7 @@ def test_disabled_drops_spawn_subagent_from_llm_tools() -> None:
     )
 
 
-def test_disabled_hides_spawn_subagent_from_persona_scope() -> None:
+def test_disabled_hides_spawn_subagent_from_agent_scope() -> None:
     from api.admin import GATEABLE_TOOLS, gateable_tools_for
 
     assert "spawn_subagent" in gateable_tools_for()
@@ -441,20 +441,20 @@ def test_subagent_is_valid_job_type() -> None:
 
 
 @pytest.mark.asyncio
-async def test_job_store_persists_persona(tmp_path) -> None:
+async def test_job_store_persists_agent(tmp_path) -> None:
     store = JobStore(db_path=str(tmp_path / "jobs.db"))
     job = await store.upsert_job(
-        "j1", type="subagent", schedule="cron", cron="0 9 * * *", task="brief", persona="analyst"
+        "j1", type="subagent", schedule="cron", cron="0 9 * * *", task="brief", agent="analyst"
     )
     assert job["type"] == "subagent"
-    assert job["persona"] == "analyst"
+    assert job["agent"] == "analyst"
     fetched = await store.get_job("j1")
-    assert fetched["persona"] == "analyst"
+    assert fetched["agent"] == "analyst"
 
 
 @pytest.mark.asyncio
-async def test_job_store_migrates_persona_column(tmp_path) -> None:
-    """A DB created before the persona column gains it on next open."""
+async def test_job_store_migrates_agent_column(tmp_path) -> None:
+    """A DB created before the agent column gains it on next open."""
     import sqlite3
 
     db_path = str(tmp_path / "old.db")
@@ -468,10 +468,10 @@ async def test_job_store_migrates_persona_column(tmp_path) -> None:
         db.commit()
 
     store = JobStore(db_path=db_path)
-    job = await store.upsert_job("new", type="subagent", persona="coach")
-    assert job["persona"] == "coach"
+    job = await store.upsert_job("new", type="subagent", agent="coach")
+    assert job["agent"] == "coach"
     legacy = await store.get_job("legacy")
-    assert legacy["persona"] == ""  # backfilled default
+    assert legacy["agent"] == ""  # backfilled default
 
 
 @pytest.mark.asyncio
@@ -489,7 +489,7 @@ async def test_run_subagent_task_delivers_to_owner() -> None:
     )
     set_agent_context(agent)
 
-    await run_subagent_task(persona="analyst", task="weekly review", channel="telegram")
+    await run_subagent_task(agent_name="analyst", task="weekly review", channel="telegram")
 
     agent.run_subagent.assert_awaited_once()
     channel.send.assert_awaited_once_with(7, "scheduled out")
@@ -589,58 +589,58 @@ async def test_run_subagent_effort_uses_scoped_client(agent, monkeypatch) -> Non
 
 
 # ---------------------------------------------------------------------------
-# Persona roster — let the agent pick a specialist, selection stays user-led
+# Agent roster — let the agent pick a specialist, selection stays user-led
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_personae_roster_lists_name_and_role(agent, monkeypatch) -> None:
-    personae = [
-        Persona(name="coding-helper", role="Writes and reviews code"),
-        Persona(name="writing-editor", role="Edits prose\nsecond line ignored"),
+async def test_agents_roster_lists_name_and_role(agent, monkeypatch) -> None:
+    agents = [
+        Agent(name="coding-helper", role="Writes and reviews code"),
+        Agent(name="writing-editor", role="Edits prose\nsecond line ignored"),
     ]
-    monkeypatch.setattr(agent.personae, "list_personae", AsyncMock(return_value=personae))
-    block = await agent._personae_roster_block(None)
-    assert "<personae>" in block
+    monkeypatch.setattr(agent.agents, "list_agents", AsyncMock(return_value=agents))
+    block = await agent._agents_roster_block(None)
+    assert "<agents>" in block
     assert "- coding-helper — Writes and reviews code" in block
     assert "- writing-editor — Edits prose" in block  # only the first role line
     assert "second line ignored" not in block
 
 
 @pytest.mark.asyncio
-async def test_personae_roster_marks_current_and_gates(agent, monkeypatch) -> None:
-    personae = [Persona(name="me", role="r1"), Persona(name="other", role="r2")]
-    monkeypatch.setattr(agent.personae, "list_personae", AsyncMock(return_value=personae))
-    block = await agent._personae_roster_block(Persona(name="me", role="r1"))
+async def test_agents_roster_marks_current_and_gates(agent, monkeypatch) -> None:
+    agents = [Agent(name="me", role="r1"), Agent(name="other", role="r2")]
+    monkeypatch.setattr(agent.agents, "list_agents", AsyncMock(return_value=agents))
+    block = await agent._agents_roster_block(Agent(name="me", role="r1"))
     assert "- me (you) — r1" in block
-    # a persona whose tool scope excludes spawn_subagent gets no roster
-    scoped = Persona(name="me", tools=["web_search"])
-    assert await agent._personae_roster_block(scoped) == ""
+    # an agent whose tool scope excludes spawn_subagent gets no roster
+    scoped = Agent(name="me", tools=["web_search"])
+    assert await agent._agents_roster_block(scoped) == ""
     # nor when subagents are disabled
     agent.config.subagents.enabled = False
-    assert await agent._personae_roster_block(None) == ""
+    assert await agent._agents_roster_block(None) == ""
 
 
 @pytest.mark.asyncio
-async def test_personae_roster_only_offered_on_main_turn(agent, monkeypatch) -> None:
+async def test_agents_roster_only_offered_on_main_turn(agent, monkeypatch) -> None:
     monkeypatch.setattr(
-        agent.personae,
-        "list_personae",
-        AsyncMock(return_value=[Persona(name="coding-helper", role="code")]),
+        agent.agents,
+        "list_agents",
+        AsyncMock(return_value=[Agent(name="coding-helper", role="code")]),
     )
-    # subagent preamble (offer_personae defaults False) → no roster leaks in
-    assert "<personae>" not in await agent._turn_preamble(None, query="x")
+    # subagent preamble (offer_agents defaults False) → no roster leaks in
+    assert "<agents>" not in await agent._turn_preamble(None, query="x")
     # main turn opts in
-    assert "<personae>" in await agent._turn_preamble(None, query="x", offer_personae=True)
+    assert "<agents>" in await agent._turn_preamble(None, query="x", offer_agents=True)
 
 
 @pytest.mark.asyncio
-async def test_run_subagent_unknown_persona_lists_available(agent, monkeypatch) -> None:
+async def test_run_subagent_unknown_agent_lists_available(agent, monkeypatch) -> None:
     monkeypatch.setattr(
-        agent.personae,
-        "list_personae",
-        AsyncMock(return_value=[Persona(name="coding-helper"), Persona(name="analyst")]),
+        agent.agents,
+        "list_agents",
+        AsyncMock(return_value=[Agent(name="coding-helper"), Agent(name="analyst")]),
     )
-    result = await agent.run_subagent(task="x", persona_name="nope")
+    result = await agent.run_subagent(task="x", agent_name="nope")
     assert "not found" in result["error"].lower()
     assert "coding-helper" in result["error"] and "analyst" in result["error"]

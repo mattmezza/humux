@@ -126,7 +126,7 @@ class SkillsEngine:
 
     async def index_entries(self, allow: list[str] | None = None) -> list[dict]:
         """The skills index as ``{name, summary}`` rows, scoped to ``allow``
-        (a persona's allowlist; ``None``/empty = all). Backs the index block and
+        (an agent's allowlist; ``None``/empty = all). Backs the index block and
         the ``list_skills``/``search_skills`` discovery tools."""
         skills = await self.store.list_skills()
         if allow:
@@ -135,7 +135,7 @@ class SkillsEngine:
         return [{"name": s["name"], "summary": (s.get("summary") or "").strip()} for s in skills]
 
     async def get_index_block(self, allow: list[str] | None = None) -> str:
-        """Render the skills index. When ``allow`` is given (a persona's
+        """Render the skills index. When ``allow`` is given (an agent's
         allowlist), only those skills are advertised; ``None``/empty = all."""
         entries = await self.index_entries(allow=allow)
         if not entries:

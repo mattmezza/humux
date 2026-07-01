@@ -50,11 +50,11 @@ CREATE TABLE IF NOT EXISTS session_system (
     created_at DATETIME DEFAULT (datetime('now')),
     PRIMARY KEY (channel, user_id, chat_id)
 );
-CREATE TABLE IF NOT EXISTS chat_persona (
+CREATE TABLE IF NOT EXISTS chat_agent (
     channel TEXT NOT NULL,
     user_id TEXT NOT NULL,
     chat_id TEXT NOT NULL DEFAULT '',
-    persona TEXT NOT NULL,
+    agent TEXT NOT NULL,
     created_at DATETIME DEFAULT (datetime('now')),
     updated_at DATETIME DEFAULT (datetime('now')),
     PRIMARY KEY (channel, user_id, chat_id)
@@ -102,6 +102,18 @@ class ConversationHistory:
             return
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         async with aiosqlite.connect(self.db_path) as db:
+            # #115: rename the legacy per-chat binding table + column (persona →
+            # agent) in place BEFORE the CREATE IF NOT EXISTS, so an upgraded DB
+            # keeps its bindings instead of orphaning them under a fresh table.
+            for sql in (
+                "ALTER TABLE chat_persona RENAME TO chat_agent",
+                "ALTER TABLE chat_agent RENAME COLUMN persona TO agent",
+            ):
+                try:
+                    await db.execute(sql)
+                    await db.commit()
+                except Exception:
+                    pass  # fresh DB or already renamed
             await db.executescript(_SCHEMA)
             # Run migrations for existing databases that lack the chat_id column.
             for desc, sql in _MIGRATIONS:
@@ -437,7 +449,7 @@ class ConversationHistory:
     async def clear_session_system(self, channel: str, user_id: str, chat_id: str = "") -> None:
         """Drop just the snapshotted system prompt for a session (keep messages).
 
-        Used when the bound persona changes mid-session so the next turn rebuilds
+        Used when the bound agent changes mid-session so the next turn rebuilds
         the static prompt with the new identity without wiping the conversation.
         """
         await self._ensure_schema()
@@ -450,11 +462,11 @@ class ConversationHistory:
         self._session_system.pop((channel, user_id, chat_id), None)
 
     # -------------------------------------------------------------------
-    # Per-chat persona binding — (channel, user_id, chat_id) -> persona name
+    # Per-chat agent binding — (channel, user_id, chat_id) -> agent name
     # -------------------------------------------------------------------
 
-    async def get_chat_persona(self, channel: str, user_id: str, chat_id: str = "") -> str | None:
-        """Return the persona name bound to this triple, or None if unbound.
+    async def get_chat_agent(self, channel: str, user_id: str, chat_id: str = "") -> str | None:
+        """Return the agent name bound to this triple, or None if unbound.
 
         Not cached: a primary-key lookup per turn is cheap, and skipping the
         cache avoids staleness when the binding is changed from the admin UI on
@@ -463,42 +475,39 @@ class ConversationHistory:
         await self._ensure_schema()
         async with aiosqlite.connect(self.db_path) as db:
             cursor = await db.execute(
-                "SELECT persona FROM chat_persona "
-                "WHERE channel = ? AND user_id = ? AND chat_id = ?",
+                "SELECT agent FROM chat_agent WHERE channel = ? AND user_id = ? AND chat_id = ?",
                 (channel, user_id, chat_id),
             )
             row = await cursor.fetchone()
         return row[0] if row else None
 
-    async def set_chat_persona(
-        self, channel: str, user_id: str, persona: str, chat_id: str = ""
+    async def set_chat_agent(
+        self, channel: str, user_id: str, agent: str, chat_id: str = ""
     ) -> None:
-        """Bind a (channel, user_id, chat_id) triple to a persona name (upsert)."""
+        """Bind a (channel, user_id, chat_id) triple to an agent name (upsert)."""
         await self._ensure_schema()
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute(
-                "INSERT INTO chat_persona (channel, user_id, chat_id, persona) "
+                "INSERT INTO chat_agent (channel, user_id, chat_id, agent) "
                 "VALUES (?, ?, ?, ?) "
                 "ON CONFLICT(channel, user_id, chat_id) DO UPDATE SET "
-                "persona = excluded.persona, updated_at = datetime('now')",
-                (channel, user_id, chat_id, persona),
+                "agent = excluded.agent, updated_at = datetime('now')",
+                (channel, user_id, chat_id, agent),
             )
             await db.commit()
 
-    async def clear_chat_persona(self, channel: str, user_id: str, chat_id: str = "") -> None:
-        """Remove a per-chat persona binding (revert to global/default identity)."""
+    async def clear_chat_agent(self, channel: str, user_id: str, chat_id: str = "") -> None:
+        """Remove a per-chat agent binding (revert to global/default identity)."""
         await self._ensure_schema()
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute(
-                "DELETE FROM chat_persona WHERE channel = ? AND user_id = ? AND chat_id = ?",
+                "DELETE FROM chat_agent WHERE channel = ? AND user_id = ? AND chat_id = ?",
                 (channel, user_id, chat_id),
             )
             await db.commit()
 
-    async def bind_chat_persona(
-        self, channel: str, user_id: str, chat_id: str, persona: str
-    ) -> None:
-        """Bind (or, with an empty name, unbind) a chat to a persona.
+    async def bind_chat_agent(self, channel: str, user_id: str, chat_id: str, agent: str) -> None:
+        """Bind (or, with an empty name, unbind) a chat to an agent.
 
         Drops the snapshotted session system prompt so a new identity takes effect
         on the next turn without wiping the conversation (in injection mode there
@@ -506,31 +515,31 @@ class ConversationHistory:
         agent's history instance so its ``_session_system`` cache is the one that
         gets cleared.
         """
-        name = (persona or "").strip()
+        name = (agent or "").strip()
         if name:
-            await self.set_chat_persona(channel, user_id, name, chat_id)
+            await self.set_chat_agent(channel, user_id, name, chat_id)
         else:
-            await self.clear_chat_persona(channel, user_id, chat_id)
+            await self.clear_chat_agent(channel, user_id, chat_id)
         await self.clear_session_system(channel, user_id, chat_id)
 
-    async def rename_persona(self, old: str, new: str) -> None:
-        """Repoint everything keyed by a persona slug after it is renamed (#69).
+    async def rename_agent(self, old: str, new: str) -> None:
+        """Repoint everything keyed by an agent slug after it is renamed (#69).
 
-        Two kinds of reference move: the ``chat_persona.persona`` binding value,
-        and the ``telegram:<slug>`` channel that a per-persona bot's turns,
+        Two kinds of reference move: the ``chat_agent.agent`` binding value,
+        and the ``telegram:<slug>`` channel that a per-agent bot's turns,
         session, and binding rows are stored under (#29).
         """
         old_ch, new_ch = f"telegram:{old}", f"telegram:{new}"
         async with aiosqlite.connect(self.db_path) as db:
-            await db.execute("UPDATE chat_persona SET persona = ? WHERE persona = ?", (new, old))
-            tables = ("conversation_turns", "session_messages", "session_system", "chat_persona")
+            await db.execute("UPDATE chat_agent SET agent = ? WHERE agent = ?", (new, old))
+            tables = ("conversation_turns", "session_messages", "session_system", "chat_agent")
             for table in tables:
                 await db.execute(
                     f"UPDATE {table} SET channel = ? WHERE channel = ?",  # noqa: S608
                     (new_ch, old_ch),
                 )
             await db.commit()
-        # The per-persona bot channel only carries traffic after a restart, so the
+        # The per-agent bot channel only carries traffic after a restart, so the
         # in-memory _session_system cache (keyed by the old channel) is moot here.
 
     async def list_chats(self) -> list[dict[str, str]]:
@@ -540,23 +549,23 @@ class ConversationHistory:
         chat appears whichever history mode produced it (and even when it is only
         bound, e.g. a topic auto-bound before its first message). ``last_active``
         is the most recent turn/message timestamp (UTC ``datetime('now')`` text,
-        so lexically sortable), or "" for a chat that is only bound. ``persona``
-        is the bound persona ("" when unbound). Ordered newest-active first so the
+        so lexically sortable), or "" for a chat that is only bound. ``agent``
+        is the bound agent ("" when unbound). Ordered newest-active first so the
         chat you just messaged floats to the top.
         """
         await self._ensure_schema()
         async with aiosqlite.connect(self.db_path) as db:
             cursor = await db.execute(
                 """
-                SELECT c.channel, c.user_id, c.chat_id, p.persona, a.last_active
+                SELECT c.channel, c.user_id, c.chat_id, p.agent, a.last_active
                 FROM (
                     SELECT DISTINCT channel, user_id, chat_id FROM conversation_turns
                     UNION
                     SELECT DISTINCT channel, user_id, chat_id FROM session_messages
                     UNION
-                    SELECT DISTINCT channel, user_id, chat_id FROM chat_persona
+                    SELECT DISTINCT channel, user_id, chat_id FROM chat_agent
                 ) AS c
-                LEFT JOIN chat_persona AS p
+                LEFT JOIN chat_agent AS p
                   ON p.channel = c.channel AND p.user_id = c.user_id
                   AND p.chat_id = c.chat_id
                 LEFT JOIN (
@@ -580,8 +589,8 @@ class ConversationHistory:
                 "channel": ch,
                 "user_id": uid,
                 "chat_id": cid,
-                "persona": persona or "",
+                "agent": agent or "",
                 "last_active": last_active or "",
             }
-            for ch, uid, cid, persona, last_active in rows
+            for ch, uid, cid, agent, last_active in rows
         ]

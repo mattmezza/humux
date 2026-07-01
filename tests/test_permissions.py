@@ -225,11 +225,11 @@ async def test_always_allow_button_never_creates_bare_rule(tmp_path) -> None:
     assert "run_command" not in engine.rules
 
 
-# ── Per-persona scoping (#100) ──────────────────────────────────────────────
+# ── Per-agent scoping (#100) ──────────────────────────────────────────────
 
 
 def test_scoped_rule_overrides_default() -> None:
-    # A persona rule wins over a default rule for the same action; other personae
+    # An agent rule wins over a default rule for the same action; other agents
     # and the default scope are unaffected.
     engine = PermissionEngine()
     assert engine.check("send_message", {}) == PermissionLevel.ASK  # default
@@ -240,7 +240,7 @@ def test_scoped_rule_overrides_default() -> None:
 
 
 def test_scoped_scope_falls_back_to_default() -> None:
-    # An action with no persona-specific rule resolves through the default set.
+    # An action with no agent-specific rule resolves through the default set.
     engine = PermissionEngine()
     engine.add_rule("send_message", PermissionLevel.ALWAYS, scope="coach")
     # web_search has no coach rule → default ALWAYS still applies in the scope.
@@ -291,7 +291,7 @@ def test_learn_always_rule_scoped_does_not_widen_default(tmp_path) -> None:
     assert engine.check("run_command", {"command": "customtool foo"}, scope="coach") == (
         PermissionLevel.ALWAYS
     )
-    # The default scope (and other personae) keep asking — the approval was scoped.
+    # The default scope (and other agents) keep asking — the approval was scoped.
     assert "run_command:customtool foo" not in engine.rules
     assert (
         engine.check("run_command", {"command": "customtool foo"}, scope="other")

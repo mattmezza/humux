@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS long_term (
     access_count INTEGER NOT NULL DEFAULT 0,
     archived INTEGER NOT NULL DEFAULT 0,
     -- Two-tier scoped memory (#42): '' = shared (owner-level, visible to every
-    -- persona + the default identity), '<persona>' = private to that persona.
+    -- agent + the default identity), '<agent>' = private to that agent.
     scope TEXT NOT NULL DEFAULT ''
 );
 

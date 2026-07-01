@@ -359,32 +359,32 @@ def _normalize_subject(subject: str) -> str:
     return (subject or "").strip().lower()
 
 
-def _extraction_scope_block(persona_scope: str) -> str:
+def _extraction_scope_block(agent_scope: str) -> str:
     """Scope instruction injected into the extraction prompt (#42).
 
-    Empty when no persona is active (everything is shared). When a persona is
+    Empty when no agent is active (everything is shared). When an agent is
     active, lets the model mark domain-specific facts private to it; the default
-    stays shared so owner-level facts reach every persona.
+    stays shared so owner-level facts reach every agent.
     """
-    if not persona_scope:
+    if not agent_scope:
         return ""
     return (
-        f'\nYou are extracting for the "{persona_scope}" persona. Add '
-        f'`"scope": "private"` to a fact ONLY if it is specific to this persona\'s '
+        f'\nYou are extracting for the "{agent_scope}" agent. Add '
+        f'`"scope": "private"` to a fact ONLY if it is specific to this agent\'s '
         f"domain and should NOT be shared with the owner's other assistants. "
         f"General facts about the owner (preferences, relationships, biography) are "
         f'shared — omit scope or use `"scope": "shared"`. When unsure, leave it shared.\n'
     )
 
 
-def _resolve_extracted_scope(mem: dict, persona_scope: str) -> str:
+def _resolve_extracted_scope(mem: dict, agent_scope: str) -> str:
     """Map an extracted item's scope hint to a stored scope key (#42).
 
-    Private only when a persona is active AND the model tagged it private;
+    Private only when an agent is active AND the model tagged it private;
     everything else is shared (``''``).
     """
-    if persona_scope and str(mem.get("scope", "")).strip().lower() == "private":
-        return persona_scope
+    if agent_scope and str(mem.get("scope", "")).strip().lower() == "private":
+        return agent_scope
     return ""
 
 
@@ -393,8 +393,8 @@ def _scope_filter(scope: str | None) -> tuple[str, tuple]:
 
     - ``None`` → no filter (every scope; for admin listing / owner-level jobs).
     - ``""``   → shared only (``scope = ''``); the default identity's view.
-    - ``"x"``  → shared + persona ``x`` (``scope IN ('', 'x')``); never another
-      persona's private memory.
+    - ``"x"``  → shared + agent ``x`` (``scope IN ('', 'x')``); never another
+      agent's private memory.
     """
     if scope is None:
         return "", ()
@@ -566,8 +566,8 @@ class MemoryStore:
         await db.commit()
 
     async def rename_scope(self, old: str, new: str) -> None:
-        """Move a persona's private memories to a new scope key after the persona
-        slug is renamed (#69). A persona's scope key is its slug (see #42)."""
+        """Move an agent's private memories to a new scope key after the agent
+        slug is renamed (#69). An agent's scope key is its slug (see #42)."""
         await self._ensure_schema()
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute("UPDATE long_term SET scope = ? WHERE scope = ?", (new, old))
@@ -663,8 +663,8 @@ class MemoryStore:
         unavailable or the query can't be embedded, so recall always works.
 
         ``scope`` filters per #42 (see :func:`_scope_filter`) exactly like the
-        injection readers, so a persona only recalls shared + its own private
-        memories, never another persona's; ``None`` = every scope.
+        injection readers, so an agent only recalls shared + its own private
+        memories, never another agent's; ``None`` = every scope.
         """
         query = (query or "").strip()
         if not query:
@@ -751,9 +751,9 @@ class MemoryStore:
         memories most relevant to the query are injected (relevance-ranked),
         instead of dumping the most recent ``long_term_limit`` rows (issue #5).
 
-        ``scope`` restricts to the active persona's view per #42: ``""`` =
-        shared only (default identity), ``"<persona>"`` = shared + that
-        persona's private memory, ``None`` = every scope.
+        ``scope`` restricts to the active agent's view per #42: ``""`` =
+        shared only (default identity), ``"<agent>"`` = shared + that
+        agent's private memory, ``None`` = every scope.
         """
         sections: list[str] = []
 
@@ -805,7 +805,7 @@ class MemoryStore:
         user_msg: str,
         agent_msg: str,
         cooldown_seconds: int = 120,
-        persona_scope: str = "",
+        agent_scope: str = "",
     ) -> int:
         """Extract facts from a conversation turn and store them.
 
@@ -815,10 +815,10 @@ class MemoryStore:
         If fewer than *cooldown_seconds* have elapsed since the last
         extraction call, the call is skipped entirely (returns 0).
 
-        ``persona_scope`` is the active persona's key (#42). When set, the
+        ``agent_scope`` is the active agent's key (#42). When set, the
         extraction LLM may tag a fact ``"scope": "private"`` to keep it inside
-        that persona; everything else is stored shared (``''``). With no active
-        persona it is ``""`` and every fact is shared.
+        that agent; everything else is stored shared (``''``). With no active
+        agent it is ``""`` and every fact is shared.
 
         Returns the number of memories stored.
         """
@@ -845,15 +845,15 @@ class MemoryStore:
         self._pending_turns = []
 
         # Build existing-memories block so the LLM can avoid duplicates — scoped
-        # to what this persona may see (shared + its own private).
-        existing_block = await self._existing_memories_block(persona_scope)
+        # to what this agent may see (shared + its own private).
+        existing_block = await self._existing_memories_block(agent_scope)
 
         prompt = _EXTRACTION_PROMPT.format(
             user_msg=user_msg,
             agent_msg=agent_msg,
             recent_turns_block=recent_turns_block,
             existing_memories_block=existing_block,
-            scope_block=_extraction_scope_block(persona_scope),
+            scope_block=_extraction_scope_block(agent_scope),
         )
 
         try:
@@ -870,7 +870,7 @@ class MemoryStore:
         stored = 0
         for mem in memories[: self._MAX_PER_TURN]:
             try:
-                scope = _resolve_extracted_scope(mem, persona_scope)
+                scope = _resolve_extracted_scope(mem, agent_scope)
                 tier = mem.get("tier", "").upper()
                 if tier == "LONG_TERM":
                     op = await self.update_memory(llm, model, mem, scope=scope)
@@ -921,7 +921,7 @@ class MemoryStore:
 
         ``scope`` (#42) tags an ADD and bounds the dedup/UPDATE/DELETE candidate
         set to shared + that scope, so a private fact never merges into or
-        deletes another persona's private memory.
+        deletes another agent's private memory.
 
         Returns the operation applied: ``"ADD"``, ``"UPDATE"``, ``"DELETE"``,
         or ``"NOOP"``.
@@ -933,7 +933,7 @@ class MemoryStore:
             return "NOOP"
 
         # Candidates restricted to shared + own scope: a private fact must not
-        # see — and therefore cannot UPDATE/DELETE — another persona's memory.
+        # see — and therefore cannot UPDATE/DELETE — another agent's memory.
         similar = await self._retrieve_similar_long_term(subject, content, scope or "")
         if not similar:
             await self._insert_long_term(category, subject, content, scope=scope)
@@ -1028,8 +1028,8 @@ class MemoryStore:
         otherwise pure token overlap. A matching subject adds a fixed boost.
         Cheap and dependency-free at <1k rows.
 
-        ``scope`` (#42) bounds the candidate set: ``""`` = shared only, a persona
-        key = shared + that persona, ``None`` = every scope."""
+        ``scope`` (#42) bounds the candidate set: ``""`` = shared only, an agent
+        key = shared + that agent, ``None`` = every scope."""
         await self._ensure_schema()
         clause, params = _scope_filter(scope)
         async with aiosqlite.connect(self.db_path) as db:
@@ -1180,7 +1180,7 @@ class MemoryStore:
             active_short_term = [dict(row) for row in await cursor.fetchall()]
 
         # Promote per scope (#42): each scope's short-term is reviewed and
-        # promoted into long-term of the same scope, never mixing two personas'
+        # promoted into long-term of the same scope, never mixing two agents'
         # private memory in one consolidation call.
         promoted = 0
         if active_short_term:
@@ -1264,7 +1264,7 @@ class MemoryStore:
             return 0
 
         # Cluster within a scope only (#42): merging must never collapse one
-        # persona's private memory into another's (or into shared).
+        # agent's private memory into another's (or into shared).
         by_scope: dict[str, list[dict]] = {}
         for row in rows:
             by_scope.setdefault(row.get("scope") or "", []).append(row)

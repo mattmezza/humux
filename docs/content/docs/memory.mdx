@@ -44,7 +44,7 @@ CREATE TABLE long_term (
     last_accessed DATETIME,
     access_count INTEGER NOT NULL DEFAULT 0,
     archived INTEGER NOT NULL DEFAULT 0,
-    scope TEXT NOT NULL DEFAULT ''  -- '' = shared, '<persona>' = private (#42)
+    scope TEXT NOT NULL DEFAULT ''  -- '' = shared, '<agent>' = private (#42)
 );
 
 CREATE TABLE short_term (
@@ -59,13 +59,13 @@ CREATE TABLE short_term (
 
 The Tier 2–4 columns (`embedding`, `importance`, `last_accessed`, `access_count`, `archived`) and `scope` are added to pre-existing databases by an in-place `ALTER TABLE` migration on startup — upgrading needs no manual steps.
 
-### Scoped memory — shared pool + per-persona private
+### Scoped memory — shared pool + per-agent private
 
-Memory is **two-tier by scope**, mirroring the [secrets vault](/docs/secrets)'s shared-infra/per-persona model. The `scope` column is `''` for **shared** owner-level facts (preferences, relationships, biography — visible to every persona and the default identity) and `'<persona>'` for facts **private** to one persona (so a fitness coach and a finance assistant don't read each other's domain memory).
+Memory is **two-tier by scope**, mirroring the [secrets vault](/docs/secrets)'s shared-infra/per-agent model. The `scope` column is `''` for **shared** owner-level facts (preferences, relationships, biography — visible to every agent and the default identity) and `'<agent>'` for facts **private** to one agent (so a fitness coach and a finance assistant don't read each other's domain memory).
 
-- **Retrieval** at each turn filters to `scope IN ('', <active persona>)`. The active persona is resolved from the per-chat binding / [bot-per-persona](/docs/personae) channel; the default identity (no persona) reads **shared only**.
-- **Extraction** is persona-aware: when a persona is active the extractor may tag a fact private to it, defaulting to **shared when unsure** — so the owner doesn't have to re-teach each persona the same general facts.
-- **Isolation is enforced at the store, not just the prompt:** dedup/update/delete candidates are bounded to shared + the writer's own scope, consolidation promotes per scope, and the hygiene pass clusters within a scope only — a private memory can never merge into or delete another persona's. Existing memories migrate to `''` (shared), the correct default.
+- **Retrieval** at each turn filters to `scope IN ('', <active agent>)`. The active agent is resolved from the per-chat binding / [bot-per-agent](/docs/agents) channel; the default identity (no agent) reads **shared only**.
+- **Extraction** is agent-aware: when an agent is active the extractor may tag a fact private to it, defaulting to **shared when unsure** — so the owner doesn't have to re-teach each agent the same general facts.
+- **Isolation is enforced at the store, not just the prompt:** dedup/update/delete candidates are bounded to shared + the writer's own scope, consolidation promotes per scope, and the hygiene pass clusters within a scope only — a private memory can never merge into or delete another agent's. Existing memories migrate to `''` (shared), the correct default.
 
 ### Long-term categories
 
@@ -139,9 +139,9 @@ Relevance-ranked injection is a small always-on top-k: great for the obvious fac
 - Searches the agent's **entire** long-term store — **including archived** memories that injection never sees — ranked purely by semantic relevance to the agent's query (lexical-overlap fallback when embeddings are off).
 - Returns up to `recall_top_k` (default 10) matches above a small relevance floor.
 - Recalling **revives** the matched rows: they're reinforced (`access_count` / `last_accessed`) and any archived one is un-archived — a fact the agent looked up and used is warm again.
-- **Scope-aware** (#42): recall is filtered to `scope IN ('', <active persona>)` exactly like injection, so a persona only ever recalls shared facts plus its own private ones — never another persona's. The default identity recalls shared only.
+- **Scope-aware** (#42): recall is filtered to `scope IN ('', <active agent>)` exactly like injection, so an agent only ever recalls shared facts plus its own private ones — never another agent's. The default identity recalls shared only.
 
-The tool is read-only (no approval prompt) and available to every persona (it can't surface anything injection couldn't already show that persona), alongside the sqlite CLI the memory skill teaches for exact-field queries and bulk edits.
+The tool is read-only (no approval prompt) and available to every agent (it can't surface anything injection couldn't already show that agent), alongside the sqlite CLI the memory skill teaches for exact-field queries and bulk edits.
 
 All of this is configurable live from the **admin Memory tab** (enable toggle, backend, model, top-k, plus Download / Test buttons).
 

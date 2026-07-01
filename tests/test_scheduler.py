@@ -107,8 +107,8 @@ async def test_run_agent_task_sends_to_owner() -> None:
 
 
 @pytest.mark.asyncio
-async def test_run_agent_task_persona_job_generates_as_persona() -> None:
-    # A "telegram:<persona>" job (#29) is generated AS that persona (persona_name
+async def test_run_agent_task_agent_job_generates_as_agent() -> None:
+    # A "telegram:<agent>" job (#29) is generated AS that agent (agent_name
     # forced) while keeping the "system" execution mode, and delivered via that
     # bot to its own owner (the bot's allowlist, not the global one).
     channel = AsyncMock()
@@ -126,14 +126,14 @@ async def test_run_agent_task_persona_job_generates_as_persona() -> None:
     await run_agent_task("ping", channel="telegram:coach")
 
     _, kwargs = agent.process.call_args
-    assert kwargs["persona_name"] == "coach"
+    assert kwargs["agent_name"] == "coach"
     assert kwargs["channel"] == "system"  # execution mode unchanged
     channel.send.assert_awaited_once_with(99, "done")  # coach bot → coach's owner
 
 
 @pytest.mark.asyncio
-async def test_run_agent_task_runs_as_origin_persona_and_chat() -> None:
-    # Issue #71: a job carrying an origin persona + chat runs AS that persona and
+async def test_run_agent_task_runs_as_origin_agent_and_chat() -> None:
+    # Issue #71: a job carrying an origin agent + chat runs AS that agent and
     # is delivered back to that chat — not the default identity in the owner DM.
     channel = AsyncMock()
     agent = SimpleNamespace(
@@ -147,11 +147,11 @@ async def test_run_agent_task_runs_as_origin_persona_and_chat() -> None:
     set_agent_context(agent)
 
     await run_agent_task(
-        "do thing", channel="telegram", persona="coach", origin_chat_id="-100200:7"
+        "do thing", channel="telegram", agent_name="coach", origin_chat_id="-100200:7"
     )
 
     _, kwargs = agent.process.call_args
-    assert kwargs["persona_name"] == "coach"  # not the default identity
+    assert kwargs["agent_name"] == "coach"  # not the default identity
     channel.send.assert_awaited_once_with("-100200:7", "done")  # origin chat, not owner 123
 
 

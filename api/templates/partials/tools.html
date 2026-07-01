@@ -107,11 +107,11 @@
     </div>
     <p class="text-muted text-xs mb-4">
       Let the assistant delegate a scoped subtask to a sub-loop (the
-      <code>spawn_subagent</code> tool) under a chosen persona, on demand or
+      <code>spawn_subagent</code> tool) under a chosen agent, on demand or
       scheduled. A child's tools/skills/secrets are a subset of the caller's —
       never wider. When disabled, the tool is hidden from the assistant (and from
-      the Personae tool scope). Assign it per persona in the
-      <strong>Personae</strong> editor; monitor and cancel runs in the
+      the Agents tool scope). Assign it per agent in the
+      <strong>Agents</strong> editor; monitor and cancel runs in the
       <strong>Jobs</strong> tab.
     </p>
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" x-show="enabled === 'true' || enabled === true">
@@ -197,7 +197,7 @@
       tool) and send them as native photos in chat. Pick a provider and model, add
       an API key (or reuse your LLM key for OpenRouter/OpenAI), and set an optional
       budget cap. When disabled, the tool is hidden from the assistant. Assign it
-      per persona in the <strong>Personae</strong> editor.
+      per agent in the <strong>Agents</strong> editor.
     </p>
 
     <div class="space-y-3" x-show="enabled">
@@ -355,8 +355,8 @@
     <p class="text-muted text-xs mb-4">
       Let the agent read and send WhatsApp via the local <code>wacli</code> CLI (run through
       <code>run_command</code>). Reads run without asking; sending asks for confirmation first.
-      When disabled, the tool is hidden from the assistant. Assign it per persona in the
-      <strong>Personae</strong> editor. Link your phone below — scan the QR in WhatsApp →
+      When disabled, the tool is hidden from the assistant. Assign it per agent in the
+      <strong>Agents</strong> editor. Link your phone below — scan the QR in WhatsApp →
       <em>Linked devices</em>.
     </p>
 
@@ -400,8 +400,8 @@
       Let the agent query and act on GitHub (issues, PRs, repos, <code>gh api</code>,
       search). Read operations run without asking; creating issues, PRs or releases
       ask for confirmation first. This identity is the <strong>system-wide default</strong> —
-      give a persona its own in the <strong>Personae</strong> editor (Tool identities),
-      which overrides it for that persona.
+      give an agent its own in the <strong>Agents</strong> editor (Tool identities),
+      which overrides it for that agent.
     </p>
 
     {# Auth mode — PAT (simple) vs GitHub App (bot identity, fine-grained, own rate limit) #}

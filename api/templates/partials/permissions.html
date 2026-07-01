@@ -5,13 +5,13 @@
             hx-vals='{"scope": {{ scope|tojson }} }'>
       Refresh
     </button>
-    {# Per-persona scope picker (#100). "" = the default ruleset every persona inherits. #}
+    {# Per-agent scope picker (#100). "" = the default ruleset every agent inherits. #}
     <div class="flex items-center gap-1.5 ml-auto">
       <label class="label mb-0">Editing rules for</label>
       <select class="select" name="scope" style="padding: 0.375rem 2rem 0.375rem 0.5rem; font-size: 0.75rem;"
               hx-get="/partials/permissions" hx-target="#tab-content" hx-swap="innerHTML" hx-trigger="change">
-        <option value="" {% if not scope %}selected{% endif %}>Default (all personae)</option>
-        {% for p in personae %}
+        <option value="" {% if not scope %}selected{% endif %}>Default (all agents)</option>
+        {% for p in agents %}
         <option value="{{ p }}" {% if p == scope %}selected{% endif %}>{{ p }}</option>
         {% endfor %}
       </select>

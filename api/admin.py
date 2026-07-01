@@ -56,8 +56,8 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-# A persona slug becomes part of a channel name (``telegram:<slug>``) and a URL
-# path (``/admin/personae/<slug>``), so it must avoid ':' , '/' and whitespace.
+# An agent slug becomes part of a channel name (``telegram:<slug>``) and a URL
+# path (``/admin/agents/<slug>``), so it must avoid ':' , '/' and whitespace.
 # Capped at 64 chars so it can't bloat every channel string it is embedded in.
 _VALID_SLUG = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 _SLUG_ERROR = "Slug must be 1-64 chars: letters, digits, '-' and '_' only (no spaces or ':')."
@@ -196,13 +196,13 @@ async def _wizard_step_context(step: str, config_store: ConfigStore) -> dict[str
             val = await config_store.get(key)
             if val:
                 ctx[var] = val
-    elif step == "persona":
-        store = await _persona_store_from_config(config_store)
+    elif step == "agent":
+        store = await _agent_store_from_config(config_store)
         # Plain dicts so the wizard template (Jinja) can read emoji/role/name.
-        ctx["personae"] = [  # type: ignore[assignment]
-            {"name": p.name, "role": p.role, "emoji": p.emoji} for p in await store.list_personae()
+        ctx["agents"] = [  # type: ignore[assignment]
+            {"name": p.name, "role": p.role, "emoji": p.emoji} for p in await store.list_agents()
         ]
-        ctx["active"] = (await config_store.get("agent.active_persona") or "").strip()
+        ctx["active"] = (await config_store.get("agent.active_agent") or "").strip()
     elif step == "email":
         raw = await config_store.get("email.providers")
         if raw:
@@ -377,7 +377,7 @@ async def _calendar_providers_context(config_store: ConfigStore) -> list[dict[st
 
 
 async def _email_account_names(config_store: ConfigStore) -> list[str]:
-    """Names of the configured email accounts, for persona-binding UIs (#110)."""
+    """Names of the configured email accounts, for agent-binding UIs (#110)."""
     raw = await config_store.get("email.providers")
     if not raw:
         return []
@@ -606,22 +606,22 @@ class SkillUpsertIn(BaseModel):
     content: str
 
 
-def _persona_public(persona) -> dict:
-    """Persona as JSON for read-only APIs, with the bot token redacted (#29).
+def _agent_public(agent) -> dict:
+    """Agent as JSON for read-only APIs, with the bot token redacted (#29).
 
     Mirrors how the global Telegram token is redacted in config reads — the token
     is a secret and must not leave the server in cleartext (exports, list views).
     """
     from dataclasses import asdict, replace
 
+    from core.agents import to_markdown
     from core.config_store import _redact
-    from core.personae import to_markdown
 
-    safe = replace(persona, bot_token=_redact(persona.bot_token))
+    safe = replace(agent, bot_token=_redact(agent.bot_token))
     return {**asdict(safe), "markdown": to_markdown(safe)}
 
 
-class PersonaUpsertIn(BaseModel):
+class AgentUpsertIn(BaseModel):
     name: str
     agent_name: str = ""
     role: str = ""
@@ -631,13 +631,13 @@ class PersonaUpsertIn(BaseModel):
     skills: list[str] = []
     tools: list[str] = []
     secrets: list[str] = []
-    bot_token: str = ""  # per-persona Telegram bot (#29); empty = no own bot
+    bot_token: str = ""  # per-agent Telegram bot (#29); empty = no own bot
     allowed_user_ids: str = ""  # comma/newline-separated; empty = inherit global
-    tool_config: dict = {}  # per-persona external-tool config (gh/browser) — #93
+    tool_config: dict = {}  # per-agent external-tool config (gh/browser) — #93
     email_accounts: list[dict] = []  # [{account, access_level, is_sender_identity}] — #110
     calendar_accounts: list[dict] = []  # [{account, access_level}] — #110
     contacts_accounts: list[dict] = []  # [{account, access_level}] — #110 (contacts)
-    gh_token: str = ""  # this persona's GitHub PAT → infra vault; empty = leave unchanged
+    gh_token: str = ""  # this agent's GitHub PAT → infra vault; empty = leave unchanged
     raw: str = ""  # when set, the markdown doc is parsed instead of the fields above
 
 
@@ -711,7 +711,7 @@ _bearer = HTTPBearer(auto_error=False)
 def _make_auth_dependency(config_store: ConfigStore, secret_store: SecretStore | None = None):
     """Return a FastAPI dependency that validates the admin API key.
 
-    On a successful auth, if the persona secrets vault is still locked, the
+    On a successful auth, if the agent secrets vault is still locked, the
     bearer password is used to unseal it (issue #19) — so the first admin page
     view after a boot caches the DEK for the agent runtime.
     """
@@ -734,12 +734,12 @@ def _make_auth_dependency(config_store: ConfigStore, secret_store: SecretStore |
         if not await config_store.verify_admin_password(credentials.credentials):
             raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
-        # Auth passed — unseal the persona vault if it isn't already.
-        if secret_store is not None and not secret_store.persona_unsealed():
+        # Auth passed — unseal the agent vault if it isn't already.
+        if secret_store is not None and not secret_store.agent_unsealed():
             try:
-                await secret_store.unseal_persona(credentials.credentials)
+                await secret_store.unseal_agent(credentials.credentials)
             except Exception:
-                log.exception("Failed to unseal persona vault on auth")
+                log.exception("Failed to unseal agent vault on auth")
 
     return _check_auth
 
@@ -1009,11 +1009,11 @@ def create_admin_app(
             is_new=False,
         )
 
-    async def _persona_editor_ctx() -> dict:
-        """Shared context for the persona editor: all skills + gateable tools.
+    async def _agent_editor_ctx() -> dict:
+        """Shared context for the agent editor: all skills + gateable tools.
 
         A globally-disabled feature (e.g. artifacts) is dropped so its tool is
-        hidden from the persona scope UI.
+        hidden from the agent scope UI.
         """
         from voice.pipeline import KOKORO_LANGUAGES, KOKORO_VOICES
 
@@ -1034,7 +1034,7 @@ def create_admin_app(
             ),
             "kokoro_voices": KOKORO_VOICES,
             "kokoro_languages": KOKORO_LANGUAGES,
-            # External CLI tools that support a per-persona identity (#93). Only the
+            # External CLI tools that support a per-agent identity (#93). Only the
             # system-wide enabled ones are offered, so the registry stays the
             # source of truth for what exists.
             "tool_specs": [
@@ -1043,15 +1043,15 @@ def create_admin_app(
                 if (await config_store.get(f"tools.{s.key}.enabled")) == "true"
             ],
             "infra_available": bool(secret_store and secret_store.infra.available),
-            # Existing infra-vault secret names a persona can reuse as its gh token
+            # Existing infra-vault secret names an agent can reuse as its gh token
             # instead of storing its own copy (#93). Infra vault only (boot-unsealed,
-            # so it resolves headless like the per-persona token does).
+            # so it resolves headless like the per-agent token does).
             "infra_names": (
                 [r["name"] for r in await secret_store.list_infra_names()]
                 if secret_store and secret_store.infra.available
                 else []
             ),
-            # Email/calendar accounts a persona can be bound to (#110). Names only —
+            # Email/calendar accounts an agent can be bound to (#110). Names only —
             # the account registry (Email/Calendar tabs) is the source of truth.
             "available_email_accounts": await _email_account_names(config_store),
             "available_calendar_accounts": [
@@ -1062,8 +1062,8 @@ def create_admin_app(
             ],
         }
 
-    async def _persona_gh_token_set(name: str) -> bool:
-        """Whether this persona already has a GitHub token in the infra vault (#93)."""
+    async def _agent_gh_token_set(name: str) -> bool:
+        """Whether this agent already has a GitHub token in the infra vault (#93)."""
         if not name or secret_store is None or not secret_store.infra.available:
             return False
         try:
@@ -1071,41 +1071,41 @@ def create_admin_app(
         except Exception:
             return False
 
-    @app.get("/admin/personae/new", response_model=None)
-    async def admin_persona_new() -> Response:
-        """New persona editor page."""
+    @app.get("/admin/agents/new", response_model=None)
+    async def admin_agent_new() -> Response:
+        """New agent editor page."""
         if not await config_store.is_setup_complete():
             return RedirectResponse("/setup", status_code=302)
-        from core.personae import Persona, to_markdown
+        from core.agents import Agent, to_markdown
 
-        ctx = await _persona_editor_ctx()
+        ctx = await _agent_editor_ctx()
         return _render(
-            "persona_editor.html",
+            "agent_editor.html",
             is_new=True,
-            persona=Persona(name=""),
-            raw=to_markdown(Persona(name="")),
+            agent=Agent(name=""),
+            raw=to_markdown(Agent(name="")),
             gh_token_set=False,
             **ctx,
         )
 
-    @app.get("/admin/personae/{name}", response_model=None)
-    async def admin_persona_editor(name: str) -> Response:
-        """Persona editor page."""
+    @app.get("/admin/agents/{name}", response_model=None)
+    async def admin_agent_editor(name: str) -> Response:
+        """Agent editor page."""
         if not await config_store.is_setup_complete():
             return RedirectResponse("/setup", status_code=302)
-        from core.personae import to_markdown
+        from core.agents import to_markdown
 
-        store = await _persona_store_from_config(config_store)
-        persona = await store.get(name)
-        if not persona:
-            raise HTTPException(404, f"Persona not found: {name}")
-        ctx = await _persona_editor_ctx()
+        store = await _agent_store_from_config(config_store)
+        agent = await store.get(name)
+        if not agent:
+            raise HTTPException(404, f"Agent not found: {name}")
+        ctx = await _agent_editor_ctx()
         return _render(
-            "persona_editor.html",
+            "agent_editor.html",
             is_new=False,
-            persona=persona,
-            raw=to_markdown(persona),
-            gh_token_set=await _persona_gh_token_set(name),
+            agent=agent,
+            raw=to_markdown(agent),
+            gh_token_set=await _agent_gh_token_set(name),
             **ctx,
         )
 
@@ -1142,49 +1142,49 @@ def create_admin_app(
             scheduler_jobs=scheduler_jobs,
         )
 
-    @app.get("/partials/identity", dependencies=[Depends(auth)])
-    async def partial_identity() -> HTMLResponse:
-        """Agent identity tab partial."""
-        from core.personae import _as_account_list
+    async def _identity_context() -> dict:
+        """Context for the default-agent identity fragment (identity.html).
+
+        Shared by the standalone ``/partials/identity`` route and the merged
+        Agents tab, which renders the default agent above the agent list (#115).
+        """
+        from core.agents import _as_account_list
         from voice.pipeline import KOKORO_LANGUAGES, KOKORO_VOICES
 
-        character = await config_store.get("agent.character") or ""
-        agent_name = await config_store.get("agent.name") or ""
-        stt_model = await config_store.get("voice.stt_model") or "base"
-        tts_voice = await config_store.get("voice.tts_voice") or "en-US-AvaNeural"
-        tts_enabled = await config_store.get("voice.tts_enabled") or "true"
-        backend = await config_store.get("voice.backend") or "edge-tts"
-        kokoro_voice = await config_store.get("voice.kokoro.default_voice") or "af_bella"
-        # Default-identity account bindings (#110): the registry accounts to pick
-        # from, plus what's currently bound to the default agent (no persona).
-        return _render_partial(
-            "partials/identity.html",
-            character=character,
-            agent_name=agent_name,
-            stt_model=stt_model,
-            tts_voice=tts_voice,
-            tts_enabled=tts_enabled,
-            backend=backend,
-            kokoro_voice=kokoro_voice,
-            kokoro_voices=KOKORO_VOICES,
-            kokoro_languages=KOKORO_LANGUAGES,
-            available_email_accounts=await _email_account_names(config_store),
-            available_calendar_accounts=[
+        return {
+            "character": await config_store.get("agent.character") or "",
+            "agent_name": await config_store.get("agent.name") or "",
+            "stt_model": await config_store.get("voice.stt_model") or "base",
+            "tts_voice": await config_store.get("voice.tts_voice") or "en-US-AvaNeural",
+            "tts_enabled": await config_store.get("voice.tts_enabled") or "true",
+            "backend": await config_store.get("voice.backend") or "edge-tts",
+            "kokoro_voice": await config_store.get("voice.kokoro.default_voice") or "af_bella",
+            "kokoro_voices": KOKORO_VOICES,
+            "kokoro_languages": KOKORO_LANGUAGES,
+            # Default-agent account bindings (#110): the registry accounts to pick
+            # from, plus what's currently bound to the default agent (no agent).
+            "available_email_accounts": await _email_account_names(config_store),
+            "available_calendar_accounts": [
                 p["name"] for p in await _calendar_providers_context(config_store) if p["name"]
             ],
-            available_contacts_accounts=[
+            "available_contacts_accounts": [
                 p["name"] for p in await _contact_providers_context(config_store) if p["name"]
             ],
-            default_email_accounts=_as_account_list(
+            "default_email_accounts": _as_account_list(
                 await config_store.get("agent.email_accounts") or "", sender=True
             ),
-            default_calendar_accounts=_as_account_list(
+            "default_calendar_accounts": _as_account_list(
                 await config_store.get("agent.calendar_accounts") or ""
             ),
-            default_contacts_accounts=_as_account_list(
+            "default_contacts_accounts": _as_account_list(
                 await config_store.get("agent.contacts_accounts") or ""
             ),
-        )
+        }
+
+    @app.get("/partials/identity", dependencies=[Depends(auth)])
+    async def partial_identity() -> HTMLResponse:
+        """Default-agent identity fragment (also embedded in the Agents tab)."""
+        return _render_partial("partials/identity.html", **await _identity_context())
 
     @app.get("/partials/you", dependencies=[Depends(auth)])
     async def partial_you() -> HTMLResponse:
@@ -1201,10 +1201,10 @@ def create_admin_app(
 
     async def _render_permissions(scope: str = "") -> HTMLResponse:
         """Render the permissions tab for one scope (#100): "" = global default,
-        else a persona slug whose own overrides are shown."""
+        else an agent slug whose own overrides are shown."""
         agent = agent_state.agent
-        store = await _persona_store_from_config(config_store)
-        personae = [p.name for p in await store.list_personae()]
+        store = await _agent_store_from_config(config_store)
+        agents = [p.name for p in await store.list_agents()]
         if agent:
             rules = agent.permissions.rules_for_scope(scope)
         elif scope:
@@ -1213,9 +1213,7 @@ def create_admin_app(
             from core.permissions import DEFAULT_RULES
 
             rules = dict(DEFAULT_RULES)
-        return _render_partial(
-            "partials/permissions.html", rules=rules, scope=scope, personae=personae
-        )
+        return _render_partial("partials/permissions.html", rules=rules, scope=scope, agents=agents)
 
     @app.get("/partials/permissions", dependencies=[Depends(auth)])
     async def partial_permissions(scope: str = "") -> HTMLResponse:
@@ -1229,13 +1227,19 @@ def create_admin_app(
         skills = await store.list_skills()
         return _render_partial("partials/skills.html", skills=skills)
 
-    @app.get("/partials/personae", dependencies=[Depends(auth)])
-    async def partial_personae() -> HTMLResponse:
-        """Personae tab partial — cards + active-persona selector."""
-        store = await _persona_store_from_config(config_store)
-        personae = await store.list_personae()
-        active = (await config_store.get("agent.active_persona") or "").strip()
-        return _render_partial("partials/personae.html", personae=personae, active=active)
+    @app.get("/partials/agents", dependencies=[Depends(auth)])
+    async def partial_agents() -> HTMLResponse:
+        """Agents tab partial — the default agent (identity.html) above the list
+        of custom agents + the active-agent selector (#115)."""
+        store = await _agent_store_from_config(config_store)
+        agents = await store.list_agents()
+        active = (await config_store.get("agent.active_agent") or "").strip()
+        return _render_partial(
+            "partials/agents.html",
+            agents=agents,
+            active=active,
+            **await _identity_context(),
+        )
 
     @app.get("/partials/channels", dependencies=[Depends(auth)])
     async def partial_channels() -> HTMLResponse:
@@ -1703,7 +1707,7 @@ def create_admin_app(
         if level not in ("ALWAYS", "ASK", "NEVER"):
             level = "ASK"
         # Global default scope on purpose: a per-domain browser trust toggle applies
-        # to every persona, not just one (#100 scoping is opt-in via the perms tab).
+        # to every agent, not just one (#100 scoping is opt-in via the perms tab).
         agent.permissions.add_rule(f"run_command:*browser.py act*{domain}*", level)
         return {"ok": True, "rules": _browser_rules()}
 
@@ -1881,7 +1885,7 @@ def create_admin_app(
                     "run_at": j.get("run_at", ""),
                     "description": j.get("description", ""),
                     "created_by": j.get("created_by", ""),
-                    "persona": j.get("persona", ""),
+                    "agent": j.get("agent", ""),
                 }
             )
         return jobs
@@ -1915,7 +1919,7 @@ def create_admin_app(
         task = str(body.get("task", "")).strip()
         channel = str(body.get("channel", "telegram")).strip()
         description = str(body.get("description", "")).strip()
-        persona = str(body.get("persona", "")).strip()
+        agent = str(body.get("agent", "")).strip()
 
         if not job_id:
             raise HTTPException(400, "Job ID is required")
@@ -1931,10 +1935,10 @@ def create_admin_app(
             raise HTTPException(400, f"Invalid job type: {job_type}")
         if job_type != "memory_consolidation" and not task:
             raise HTTPException(400, "Task is required for agent/system/subagent jobs")
-        # Persona scopes who an agent job runs as (#101); meaningless for a raw
+        # Agent scopes who an agent job runs as (#101); meaningless for a raw
         # system command or memory consolidation, so don't persist a stray value.
         if job_type in ("system", "memory_consolidation"):
-            persona = ""
+            agent = ""
 
         if schedule == "cron":
             from core.scheduler import _parse_cron
@@ -1963,7 +1967,7 @@ def create_admin_app(
             status="active",
             created_by="admin",
             description=description,
-            persona=persona,
+            agent=agent,
         )
 
         # Sync with APScheduler if the agent is running
@@ -2057,9 +2061,9 @@ def create_admin_app(
         task = job.get("task", "")
         channel_name = job.get("channel", "telegram")
 
-        # Restore the originating persona + chat (issue #71) so a manual run
+        # Restore the originating agent + chat (issue #71) so a manual run
         # behaves exactly like the scheduled one (empty for pre-#71/admin jobs).
-        persona = job.get("persona", "")
+        agent = job.get("agent", "")
         origin_user_id = job.get("origin_user_id", "")
         origin_chat_id = job.get("origin_chat_id", "")
 
@@ -2071,7 +2075,7 @@ def create_admin_app(
                     channel=channel_name,
                     job_id=job_id,
                     silent=silent,
-                    persona=persona,
+                    agent_name=agent,
                     origin_user_id=origin_user_id,
                     origin_chat_id=origin_chat_id,
                 )
@@ -2083,7 +2087,7 @@ def create_admin_app(
         elif job_type == "subagent":
             asyncio.create_task(
                 run_subagent_task(
-                    persona=persona,
+                    agent_name=agent,
                     task=task,
                     channel=channel_name,
                     job_id=job_id,
@@ -2186,8 +2190,8 @@ def create_admin_app(
             try:
                 new_config = await _resolved_config()
                 agent.config = new_config
-                # Rebuild the default-identity account bindings so a change on the
-                # Assistant tab applies live, no restart (#110).
+                # Rebuild the default-agent account bindings so a change on the
+                # Agents tab (default agent) applies live, no restart (#110).
                 agent._default_accounts = agent._build_default_accounts(new_config)
                 agent.llm = LLMClient.from_agent_config(new_config.agent)
                 agent.llm.temperature = new_config.agent.temperature  # #12: live temp update
@@ -2359,7 +2363,7 @@ def create_admin_app(
             return {"ok": False, "error": "Both current and new passwords are required."}
         if not await config_store.verify_admin_password(current):
             return {"ok": False, "error": "Current password is incorrect."}
-        # Re-wrap the persona vault DEK FIRST; only advance the admin password if
+        # Re-wrap the agent vault DEK FIRST; only advance the admin password if
         # it succeeds, so a rewrap failure can never orphan the vault (new auth
         # password but DEK still wrapped under the old one).
         if secret_store is not None:
@@ -2939,37 +2943,42 @@ def create_admin_app(
         skills = await store.list_skills()
         return _render_partial("partials/skills.html", skills=skills)
 
-    # ── Personae API ───────────────────────────────────────────────────
+    # ── Agents API ───────────────────────────────────────────────────
 
-    async def _personae_partial() -> HTMLResponse:
-        store = await _persona_store_from_config(config_store)
-        personae = await store.list_personae()
-        active = (await config_store.get("agent.active_persona") or "").strip()
-        return _render_partial("partials/personae.html", personae=personae, active=active)
+    async def _agents_partial() -> HTMLResponse:
+        store = await _agent_store_from_config(config_store)
+        agents = await store.list_agents()
+        active = (await config_store.get("agent.active_agent") or "").strip()
+        return _render_partial(
+            "partials/agents.html",
+            agents=agents,
+            active=active,
+            **await _identity_context(),
+        )
 
-    @app.get("/personae", dependencies=[Depends(auth)])
-    async def list_personae() -> dict:
-        store = await _persona_store_from_config(config_store)
-        personae = await store.list_personae()
-        active = (await config_store.get("agent.active_persona") or "").strip()
+    @app.get("/agents", dependencies=[Depends(auth)])
+    async def list_agents() -> dict:
+        store = await _agent_store_from_config(config_store)
+        agents = await store.list_agents()
+        active = (await config_store.get("agent.active_agent") or "").strip()
         return {
-            "count": len(personae),
+            "count": len(agents),
             "active": active,
-            "personae": [_persona_public(p) for p in personae],
+            "agents": [_agent_public(p) for p in agents],
         }
 
-    @app.get("/personae/{name}", dependencies=[Depends(auth)])
-    async def get_persona(name: str) -> dict:
-        store = await _persona_store_from_config(config_store)
-        persona = await store.get(name)
-        if not persona:
-            raise HTTPException(404, f"Persona not found: {name}")
-        return _persona_public(persona)
+    @app.get("/agents/{name}", dependencies=[Depends(auth)])
+    async def get_agent(name: str) -> dict:
+        store = await _agent_store_from_config(config_store)
+        agent = await store.get(name)
+        if not agent:
+            raise HTTPException(404, f"Agent not found: {name}")
+        return _agent_public(agent)
 
-    @app.post("/personae", dependencies=[Depends(auth)])
-    async def upsert_persona(body: PersonaUpsertIn) -> HTMLResponse:
-        from core.personae import (
-            Persona,
+    @app.post("/agents", dependencies=[Depends(auth)])
+    async def upsert_agent(body: AgentUpsertIn) -> HTMLResponse:
+        from core.agents import (
+            Agent,
             _as_account_list,
             _as_int_list,
             _as_tool_config,
@@ -2978,14 +2987,14 @@ def create_admin_app(
 
         name = body.name.strip()
         if not name:
-            raise HTTPException(400, "Persona name is required")
+            raise HTTPException(400, "Agent name is required")
         if not _VALID_SLUG.match(name):
             raise HTTPException(400, _SLUG_ERROR)
         # Raw markdown (power-user mode) wins over the structured fields.
         if body.raw.strip():
-            persona = parse_markdown(body.raw, name=name)
+            agent = parse_markdown(body.raw, name=name)
         else:
-            persona = Persona(
+            agent = Agent(
                 name=name,
                 agent_name=body.agent_name.strip(),
                 role=body.role.strip(),
@@ -3002,26 +3011,26 @@ def create_admin_app(
                 calendar_accounts=_as_account_list(body.calendar_accounts),
                 contacts_accounts=_as_account_list(body.contacts_accounts),
             )
-        # A per-persona GitHub token goes into the infra vault (machine-key,
-        # boot-unsealed so it works headless), namespaced per persona (#93). Empty
+        # A per-agent GitHub token goes into the infra vault (machine-key,
+        # boot-unsealed so it works headless), namespaced per agent (#93). Empty
         # = leave any existing token untouched.
         if body.gh_token.strip():
             if secret_store is None or not secret_store.infra.available:
                 raise HTTPException(
                     400,
-                    "Set a master key in the Secrets tab before storing per-persona tokens.",
+                    "Set a master key in the Secrets tab before storing per-agent tokens.",
                 )
             await secret_store.set_infra_secret(
                 gh_token_secret_name(name),
                 body.gh_token.strip(),
-                f"GitHub token for persona {name}",
+                f"GitHub token for agent {name}",
             )
-        store = await _persona_store_from_config(config_store)
-        await store.upsert(persona)
-        return await _personae_partial()
+        store = await _agent_store_from_config(config_store)
+        await store.upsert(agent)
+        return await _agents_partial()
 
-    @app.post("/personae/delete", dependencies=[Depends(auth)])
-    async def delete_persona(request: Request) -> HTMLResponse:
+    @app.post("/agents/delete", dependencies=[Depends(auth)])
+    async def delete_agent(request: Request) -> HTMLResponse:
         content_type = request.headers.get("content-type", "")
         if "application/x-www-form-urlencoded" in content_type:
             body = await request.form()
@@ -3030,29 +3039,29 @@ def create_admin_app(
         name = str(body.get("name", "")).strip()
         if not name:
             raise HTTPException(400, "Missing 'name' in request body")
-        store = await _persona_store_from_config(config_store)
+        store = await _agent_store_from_config(config_store)
         if not await store.delete(name):
-            raise HTTPException(404, f"Persona not found: {name}")
-        # If the deleted persona was active, fall back to the default identity.
-        if (await config_store.get("agent.active_persona") or "").strip() == name:
-            await _set_active_persona("")
-        return await _personae_partial()
+            raise HTTPException(404, f"Agent not found: {name}")
+        # If the deleted agent was active, fall back to the default identity.
+        if (await config_store.get("agent.active_agent") or "").strip() == name:
+            await _set_active_agent("")
+        return await _agents_partial()
 
-    async def _set_active_persona(name: str) -> None:
-        """Persist the active persona and hot-reload it into the running agent."""
-        await config_store.set("agent.active_persona", name)
+    async def _set_active_agent(name: str) -> None:
+        """Persist the active agent and hot-reload it into the running agent."""
+        await config_store.set("agent.active_agent", name)
         agent = agent_state.agent
         if agent:
-            agent.config.agent.active_persona = name
+            agent.config.agent.active_agent = name
 
-    @app.post("/personae/rename", dependencies=[Depends(auth)])
-    async def rename_persona(request: Request) -> HTMLResponse:
-        """Change a persona's slug, cascading it to every store that keys off it.
+    @app.post("/agents/rename", dependencies=[Depends(auth)])
+    async def rename_agent(request: Request) -> HTMLResponse:
+        """Change an agent's slug, cascading it to every store that keys off it.
 
         The slug is a foreign key without a DB constraint: per-chat bindings,
-        private memory scope, scheduled jobs, the active-persona selection and the
+        private memory scope, scheduled jobs, the active-agent selection and the
         ``telegram:<slug>`` bot channel all reference it by value, so each is
-        repointed here (#69). A persona with its own bot needs an agent restart for
+        repointed here (#69). An agent with its own bot needs an agent restart for
         the bot to re-register under the new slug.
         """
         content_type = request.headers.get("content-type", "")
@@ -3065,40 +3074,40 @@ def create_admin_app(
         if not old or not new:
             raise HTTPException(400, "Missing 'old' or 'new' in request body")
         if old == new:
-            return await _personae_partial()  # no-op
+            return await _agents_partial()  # no-op
         if not _VALID_SLUG.match(new):
             raise HTTPException(400, _SLUG_ERROR)
-        store = await _persona_store_from_config(config_store)
+        store = await _agent_store_from_config(config_store)
         if await store.get(old) is None:
-            raise HTTPException(404, f"Persona not found: {old}")
+            raise HTTPException(404, f"Agent not found: {old}")
         if await store.get(new) is not None:
-            raise HTTPException(409, f"A persona named '{new}' already exists")
+            raise HTTPException(409, f"An agent named '{new}' already exists")
         # ponytail: best-effort cascade across the separate SQLite DBs — no cross-DB
-        # transaction. The references are repointed first and the personae PK row is
+        # transaction. The references are repointed first and the agents PK row is
         # renamed LAST, so if any step fails the old slug still fully resolves and the
         # whole rename is safe to retry (the ref updates are idempotent no-ops once
         # moved). A missed ref only ever falls back to the default identity, never
         # corrupts data.
         history = await _history_from_config(config_store)
-        await history.rename_persona(old, new)
+        await history.rename_agent(old, new)
         from core.memory import MemoryStore
 
         memory_db = await config_store.get("memory.db_path") or "data/memory.db"
         await MemoryStore(db_path=memory_db).rename_scope(old, new)
-        await _get_job_store().rename_persona(old, new)
+        await _get_job_store().rename_agent(old, new)
         await store.rename(old, new)
-        if (await config_store.get("agent.active_persona") or "").strip() == old:
-            await _set_active_persona(new)
-        # Re-register live scheduler jobs so a renamed persona's cron/once jobs fire
+        if (await config_store.get("agent.active_agent") or "").strip() == old:
+            await _set_active_agent(new)
+        # Re-register live scheduler jobs so a renamed agent's cron/once jobs fire
         # under the new slug + channel immediately, not only after a restart. Bot
         # channels still need a restart (they are created at startup).
         agent = agent_state.agent
         if agent is not None:
             await agent.scheduler.load_jobs()
-        return await _personae_partial()
+        return await _agents_partial()
 
-    @app.post("/personae/activate", dependencies=[Depends(auth)])
-    async def activate_persona(request: Request) -> HTMLResponse:
+    @app.post("/agents/activate", dependencies=[Depends(auth)])
+    async def activate_agent(request: Request) -> HTMLResponse:
         content_type = request.headers.get("content-type", "")
         if "application/x-www-form-urlencoded" in content_type:
             body = await request.form()
@@ -3106,11 +3115,11 @@ def create_admin_app(
             body = await request.json()
         name = str(body.get("name", "")).strip()  # "" = default identity
         if name:
-            store = await _persona_store_from_config(config_store)
+            store = await _agent_store_from_config(config_store)
             if not await store.get(name):
-                raise HTTPException(404, f"Persona not found: {name}")
-        await _set_active_persona(name)
-        return await _personae_partial()
+                raise HTTPException(404, f"Agent not found: {name}")
+        await _set_active_agent(name)
+        return await _agents_partial()
 
     # ── Inspect API (active contexts + last-sent LLM payload) ──────────────
 
@@ -3479,13 +3488,13 @@ def create_admin_app(
             values = await _preserve_vault_refs(values)
             await config_store.set_many(values)
             log.info("Setup step %r: saved %d values", step, len(values))
-            # Initialise the persona vault DEK from the admin password set in the
+            # Initialise the agent vault DEK from the admin password set in the
             # wizard (the plaintext is available here, before it is hashed at boot).
             if secret_store is not None and values.get("admin.api_key"):
                 try:
                     await secret_store.ensure_wrapped_dek(values["admin.api_key"])
                 except Exception:
-                    log.exception("Failed to initialise persona vault DEK from wizard")
+                    log.exception("Failed to initialise agent vault DEK from wizard")
 
         if step not in SETUP_STEPS:
             raise HTTPException(400, f"Unknown step: {step}")
@@ -3580,7 +3589,7 @@ def create_admin_app(
         await config_store.set_many(values)
         log.info("Setup identity: saved %d values", len(values))
 
-        next_step = "persona"
+        next_step = "agent"
         await config_store.set_setup_step(next_step)
         ctx = await _wizard_step_context(next_step, config_store)
         return _render_wizard_step(next_step, SETUP_STEPS, ctx)
@@ -3740,30 +3749,30 @@ def create_admin_app(
             return f"{until.strip()}T23:59:59+00:00", None
         return None, None
 
-    async def _grant_personae(names: list[str], secret_name: str, grant: bool = True) -> None:
-        persona_store = await _persona_store_from_config(config_store)
+    async def _grant_agents(names: list[str], secret_name: str, grant: bool = True) -> None:
+        agent_store = await _agent_store_from_config(config_store)
         for pname in names:
             pname = pname.strip()
             if not pname:
                 continue
-            p = await persona_store.get(pname)
+            p = await agent_store.get(pname)
             if not p:
                 continue
             s = set(p.secrets)
             s.add(secret_name) if grant else s.discard(secret_name)
             p.secrets = sorted(s)
-            await persona_store.upsert(p)
+            await agent_store.upsert(p)
 
     async def _secrets_ctx() -> dict:
         from core.secret_store import INFRA_VAULT_KEYS
 
-        persona_store = await _persona_store_from_config(config_store)
-        personae = await persona_store.list_personae()
+        agent_store = await _agent_store_from_config(config_store)
+        agents = await agent_store.list_agents()
         meta = await secret_store.list_secret_meta()
         for m in meta:
-            holders = [p.name for p in personae if m["name"] in p.secrets]
+            holders = [p.name for p in agents if m["name"] in p.secrets]
             m["holders"] = holders
-            m["personae"] = "all" if m["shared"] else (", ".join(holders) if holders else "—")
+            m["agents"] = "all" if m["shared"] else (", ".join(holders) if holders else "—")
         # Credential keys still holding a plaintext value (migratable to the vault).
         migratable = []
         for cfg_key in INFRA_VAULT_KEYS:
@@ -3772,11 +3781,11 @@ def create_admin_app(
                 migratable.append(cfg_key)
         return {
             "configured": True,
-            "unsealed": secret_store.persona_unsealed(),
+            "unsealed": secret_store.agent_unsealed(),
             "infra_available": secret_store.infra.available,
             "secrets": meta,
             "infra": await secret_store.list_infra_names(),
-            "personae": [p.name for p in personae],
+            "agents": [p.name for p in agents],
             "migratable": migratable,
         }
 
@@ -3827,12 +3836,12 @@ def create_admin_app(
             ctx = await _secrets_ctx()
             ctx["error"] = "Invalid name — use letters, digits, _ - : only."
             return _render_partial("partials/secrets.html", **ctx)
-        if not secret_store.persona_unsealed():
+        if not secret_store.agent_unsealed():
             ctx = await _secrets_ctx()
             ctx["error"] = "Vault is locked — reload the page to unlock it with your password."
             return _render_partial("partials/secrets.html", **ctx)
         scope = str(form.get("scope", "this"))
-        personae = str(form.get("personae", "")).replace("\n", ",").split(",")
+        agents = str(form.get("agents", "")).replace("\n", ",").split(",")
         expires_at, max_uses = _duration_fields(
             str(form.get("duration", "forever")), str(form.get("until", ""))
         )
@@ -3844,8 +3853,8 @@ def create_admin_app(
             expires_at=expires_at,
             max_uses=max_uses,
         )
-        if scope == "personae":
-            await _grant_personae(personae, name)
+        if scope == "agents":
+            await _grant_agents(agents, name)
         return _render_partial("partials/secrets.html", **(await _secrets_ctx()))
 
     @app.post("/admin/secrets/delete", response_class=HTMLResponse, dependencies=[Depends(auth)])
@@ -3855,7 +3864,7 @@ def create_admin_app(
         form = await request.form()
         name = str(form.get("name", "")).strip()
         if await secret_store.delete_secret(name):
-            log.info("Persona secret %r deleted via admin", name)
+            log.info("Agent secret %r deleted via admin", name)
         return _render_partial("partials/secrets.html", **(await _secrets_ctx()))
 
     @app.post("/admin/secrets/grant", response_class=HTMLResponse, dependencies=[Depends(auth)])
@@ -3864,9 +3873,9 @@ def create_admin_app(
             return _no_vault_partial()
         form = await request.form()
         name = str(form.get("name", "")).strip()
-        persona = str(form.get("persona", "")).strip()
+        agent = str(form.get("agent", "")).strip()
         grant = str(form.get("grant", "true")) == "true"
-        await _grant_personae([persona], name, grant=grant)
+        await _grant_agents([agent], name, grant=grant)
         return _render_partial("partials/secrets.html", **(await _secrets_ctx()))
 
     @app.post("/admin/secrets/infra", response_class=HTMLResponse, dependencies=[Depends(auth)])
@@ -3913,7 +3922,7 @@ def create_admin_app(
         return {
             "name": req["name"],
             "reason": req["reason"],
-            "persona": req["persona"],
+            "agent": req["agent"],
             "suggested_scope": req["suggested_scope"],
         }
 
@@ -3930,7 +3939,7 @@ def create_admin_app(
         req = await secret_store.get_request(token)
         if not req:
             raise HTTPException(404, "Request not found or expired")
-        if not secret_store.persona_unsealed():
+        if not secret_store.agent_unsealed():
             return {"ok": False, "error": "Vault is locked."}
         form = await request.form()
         name = req["name"]
@@ -3947,27 +3956,27 @@ def create_admin_app(
         else:
             value = bare or fields.get("password", "")
         scope = str(form.get("scope", "this"))
-        personae = str(form.get("personae", "")).replace("\n", ",").split(",")
+        agents = str(form.get("agents", "")).replace("\n", ",").split(",")
         expires_at, max_uses = _duration_fields(
             str(form.get("duration", "forever")), str(form.get("until", ""))
         )
-        # "This persona only" with no requesting persona (base agent) is incoherent —
+        # "This agent only" with no requesting agent (base agent) is incoherent —
         # it would orphan the secret (no owner, no grant, not shared → never resolvable).
         # Treat it as global so the agent that asked can actually use it.
-        shared = scope == "all" or (scope == "this" and not req["persona"])
+        shared = scope == "all" or (scope == "this" and not req["agent"])
         await secret_store.set_secret(
             name,
             value,
             shared=shared,
-            owner=f"persona:{req['persona']}" if req["persona"] else "",
+            owner=f"agent:{req['agent']}" if req["agent"] else "",
             description=req["reason"][:200],
             expires_at=expires_at,
             max_uses=max_uses,
         )
-        if scope == "personae":
-            await _grant_personae(personae, name)
-        elif scope == "this" and req["persona"]:
-            await _grant_personae([req["persona"]], name)
+        if scope == "agents":
+            await _grant_agents(agents, name)
+        elif scope == "this" and req["agent"]:
+            await _grant_agents([req["agent"]], name)
         await secret_store.resolve_request(token)
         return {"ok": True, "name": name}
 
@@ -3990,11 +3999,11 @@ def create_admin_app(
             ctx = await _secrets_ctx()
             ctx["error"] = f"Could not parse export: {exc}"
             return _render_partial("partials/secrets.html", **ctx)
-        persona_store = await _persona_store_from_config(config_store)
+        agent_store = await _agent_store_from_config(config_store)
         return _render_partial(
             "partials/secrets_import.html",
             items=items,
-            personae=[p.name for p in await persona_store.list_personae()],
+            agents=[p.name for p in await agent_store.list_agents()],
         )
 
     @app.post(
@@ -4003,14 +4012,14 @@ def create_admin_app(
     async def import_commit(request: Request) -> HTMLResponse:
         if secret_store is None:
             return _no_vault_partial()
-        if not secret_store.persona_unsealed():
+        if not secret_store.agent_unsealed():
             ctx = await _secrets_ctx()
             ctx["error"] = "Vault is locked."
             return _render_partial("partials/secrets.html", **ctx)
         form = await request.form()
         selected = form.getlist("selected")
         scope = str(form.get("scope", "this"))
-        personae = str(form.get("personae", "")).replace("\n", ",").split(",")
+        agents = str(form.get("agents", "")).replace("\n", ",").split(",")
         count = 0
         for name in selected:
             value = {
@@ -4024,8 +4033,8 @@ def create_admin_app(
                 continue
             store_val = value if len(value) > 1 else next(iter(value.values()))
             await secret_store.set_secret(name, store_val, shared=(scope == "all"))
-            if scope == "personae":
-                await _grant_personae(personae, name)
+            if scope == "agents":
+                await _grant_agents(agents, name)
             count += 1
         ctx = await _secrets_ctx()
         ctx["flash"] = f"Imported {count} secret(s)."
@@ -4065,12 +4074,12 @@ async def _skills_store_from_config(config_store: ConfigStore) -> SkillsStore:
     return SkillsStore(db_path=skills_db_path, seed_dir=skills_dir)
 
 
-async def _persona_store_from_config(config_store: ConfigStore):
-    from core.personae import PersonaStore
+async def _agent_store_from_config(config_store: ConfigStore):
+    from core.agents import AgentStore
 
-    db_path = await config_store.get("agent.personae_db_path") or "data/personae.db"
-    seed_dir = await config_store.get("agent.personae_dir") or "personae/"
-    return PersonaStore(db_path=db_path, seed_dir=seed_dir)
+    db_path = await config_store.get("agent.agents_db_path") or "data/agents.db"
+    seed_dir = await config_store.get("agent.agents_dir") or "agents/"
+    return AgentStore(db_path=db_path, seed_dir=seed_dir)
 
 
 async def _history_from_config(config_store: ConfigStore):
@@ -4091,11 +4100,11 @@ def _config_requires_restart(values: dict) -> bool:
     return any(key == "history.max_turns" or key.startswith("voice.") for key in values)
 
 
-# Function-tools that a persona may scope. ``load_skill`` is intentionally
-# excluded — it is always available (the core mechanic personae use to read
+# Function-tools that an agent may scope. ``load_skill`` is intentionally
+# excluded — it is always available (the core mechanic agents use to read
 # their allowlisted skills); so are ``search_skills``/``list_skills`` (its
 # on-demand discovery counterparts — #50), the vault tools, and ``recall_memory``
-# (memory is injected for every persona, scope-filtered, so its on-demand
+# (memory is injected for every agent, scope-filtered, so its on-demand
 # counterpart is always available too). Kept here (not imported from core.agent)
 # to avoid pulling the agent's heavy import graph into the admin app.
 GATEABLE_TOOLS = [

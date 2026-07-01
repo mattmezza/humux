@@ -543,9 +543,9 @@ class TestSetupWizard:
         assert store._data.get("agent.timezone") == "Europe/Rome"
         # Should have seeded character
         assert "Alice" in store._data.get("agent.character", "")
-        # Should have advanced to the persona step
-        assert store._step == "persona"
-        assert "starting persona" in resp.text.lower()
+        # Should have advanced to the agent step
+        assert store._step == "agent"
+        assert "starting agent" in resp.text.lower()
 
     def test_setup_calendar_step(self):
         store = _ConfigStoreStub(setup_complete=False, step="calendar")
@@ -1034,8 +1034,8 @@ class TestWizardPrePopulation:
         assert resp.status_code == 200
         assert "sk-ant-initial" in resp.text
 
-    def test_identity_forward_shows_persona_step(self):
-        """Submitting identity should advance to the (skippable) persona step."""
+    def test_identity_forward_shows_agent_step(self):
+        """Submitting identity should advance to the (skippable) agent step."""
         store = _ConfigStoreStub(setup_complete=False, step="identity")
         agent_state = AgentState(agent=None)
         app, _ = create_admin_app(agent_state, cast(ConfigStore, store))
@@ -1046,8 +1046,8 @@ class TestWizardPrePopulation:
             data={"agent_name": "Test", "owner_name": "Owner", "timezone": "UTC"},
         )
         assert resp.status_code == 200
-        # Persona step offers the default + a Skip path.
-        assert "starting persona" in resp.text.lower()
+        # Agent step offers the default + a Skip path.
+        assert "starting agent" in resp.text.lower()
         assert "Default" in resp.text
 
     def test_calendar_forward_pre_populates_search(self):

@@ -125,12 +125,12 @@ silently override a PAT you later select:
   stays as a fallback. The **Test connection** button confirms the identity and lists the
   repos the installation can reach.
 
-Per-persona: in the **Personae** editor under *Tool identities*, choose each persona's
+Per-agent: in the **Agents** editor under *Tool identities*, choose each agent's
 **GitHub identity** explicitly — **Personal Access Token** (its own token or a reused vault
-secret) or **GitHub App**. In App mode a persona can carry its **own** app (App ID +
+secret) or **GitHub App**. In App mode an agent can carry its **own** app (App ID +
 Installation ID + a vault-referenced PEM) and run as a distinct `<app>[bot]`, or leave those
-blank to use the system-wide App bot. So you can run **multiple apps — one per persona** —
-freely mixed with PAT personae; a persona never borrows the owner's PAT. Optionally add an
+blank to use the system-wide App bot. So you can run **multiple apps — one per agent** —
+freely mixed with PAT agents; an agent never borrows the owner's PAT. Optionally add an
 **allowed repos** list — a best-effort `--repo` gate on top of the app installation's own
 repo selection (the real, server-enforced boundary). Subagents inherit that repo scope and
 can only narrow it, never widen it.

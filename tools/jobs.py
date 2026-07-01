@@ -134,7 +134,7 @@ def cmd_create(args) -> None:
         status="active",
         created_by=args.created_by,
         description=args.description or "",
-        persona=args.persona or "",
+        agent=args.agent or "",
     )
     _output(job, args.output)
 
@@ -174,8 +174,8 @@ def cmd_edit(args) -> None:
         updates["status"] = args.status
     if args.description is not None:
         updates["description"] = args.description
-    if args.persona is not None:
-        updates["persona"] = args.persona
+    if args.agent is not None:
+        updates["agent"] = args.agent
 
     if not updates:
         print(json.dumps({"error": "No updates specified"}))
@@ -192,7 +192,7 @@ def cmd_edit(args) -> None:
         "status": updates.get("status", existing["status"]),
         "created_by": existing["created_by"],
         "description": updates.get("description", existing["description"]),
-        "persona": updates.get("persona", existing.get("persona", "")),
+        "agent": updates.get("agent", existing.get("agent", "")),
     }
 
     job = store.upsert_job_sync(job_id=args.job_id, **merged)
@@ -274,7 +274,7 @@ def main() -> None:
         "--channel", default="telegram", help="Delivery channel (default: telegram)"
     )
     p_create.add_argument("--description", help="Human-readable description of the job")
-    p_create.add_argument("--persona", help="Persona this job runs as (blank = default identity)")
+    p_create.add_argument("--agent", help="Agent this job runs as (blank = default identity)")
     p_create.add_argument("--created-by", default="agent", help="Who created this job")
     p_create.set_defaults(func=cmd_create)
 
@@ -288,7 +288,7 @@ def main() -> None:
     p_edit.add_argument("--channel", help="New delivery channel")
     p_edit.add_argument("--status", choices=list(VALID_STATUSES), help="New status")
     p_edit.add_argument("--description", help="New description")
-    p_edit.add_argument("--persona", help="New persona this job runs as")
+    p_edit.add_argument("--agent", help="New agent this job runs as")
     p_edit.set_defaults(func=cmd_edit)
 
     # -- remove --

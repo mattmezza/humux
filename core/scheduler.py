@@ -9,7 +9,7 @@ Job types:
   - "system": raw CLI command -> executor.run_command_trusted()
   - "memory_consolidation": review short-term memories, promote worthy ones
     to long-term, delete expired entries (uses a lightweight LLM call)
-  - "subagent": run agent.run_subagent() under a persona -> send result to channel (issue #15)
+  - "subagent": run agent.run_subagent() under an agent -> send result to channel (issue #15)
 """
 
 from __future__ import annotations
@@ -45,16 +45,16 @@ async def run_agent_task(
     channel: str = "telegram",
     job_id: str | None = None,
     silent: bool = False,
-    persona: str = "",
+    agent_name: str = "",
     origin_user_id: str = "",
     origin_chat_id: str = "",
 ) -> None:
     """Execute a natural-language task through the agent and deliver the result.
 
-    ``persona`` / ``origin_chat_id`` carry the originating context (issue #71):
-    the job runs as the persona that scheduled it and is delivered back to the
-    chat it was scheduled in. Both fall back to the legacy behaviour (persona
-    derived from a ``telegram:<persona>`` channel suffix; delivery to the owner
+    ``agent_name`` / ``origin_chat_id`` carry the originating context (issue #71):
+    the job runs as the agent that scheduled it and is delivered back to the
+    chat it was scheduled in. Both fall back to the legacy behaviour (agent
+    derived from a ``telegram:<agent>`` channel suffix; delivery to the owner
     DM) when empty, so jobs created before #71 are unaffected.
     """
     agent = _get_agent_context()
@@ -75,17 +75,17 @@ async def run_agent_task(
         )
 
     log.info("Scheduler running agent task: %s", task[:100])
-    # A "telegram:<persona>" job is generated AS that persona (#29) so the bot
+    # A "telegram:<agent>" job is generated AS that agent (#29) so the bot
     # that delivers it also writes it — while keeping the "system" execution mode
     # (auto-approved writes, no memory/reflection). Bare channels keep the default.
-    gen_persona = channel.split(":", 1)[1] if channel.startswith("telegram:") else None
+    gen_agent = channel.split(":", 1)[1] if channel.startswith("telegram:") else None
     try:
         response = await agent.process(
             message=task,
             channel="system",
             user_id="scheduler",
             chat_id="scheduler",
-            persona_name=persona or gen_persona,
+            agent_name=agent_name or gen_agent,
         )
 
         # Deliver the response to the target channel
@@ -117,7 +117,7 @@ async def run_agent_task(
 
 
 async def run_subagent_task(
-    persona: str,
+    agent_name: str,
     task: str,
     channel: str = "telegram",
     job_id: str | None = None,
@@ -136,11 +136,11 @@ async def run_subagent_task(
 
     owner = _get_owner_chat_id(agent, channel)
     target = origin_chat_id or owner
-    log.info("Scheduler running subagent (persona=%s): %s", persona or "default", task[:100])
+    log.info("Scheduler running subagent (agent=%s): %s", agent_name or "default", task[:100])
     try:
         result = await agent.run_subagent(
             task=task,
-            persona_name=persona or "",
+            agent_name=agent_name or "",
             origin_channel=channel,
             origin_user_id=str(origin_user_id or owner or "scheduler"),
             origin_chat_id=str(target or ""),
@@ -215,13 +215,13 @@ async def run_memory_consolidation() -> None:
 def _get_owner_chat_id(agent: AgentCore, channel: str) -> int | str | None:
     """Get the owner's chat ID for proactive messages.
 
-    Works for the default ``telegram`` bot and every per-persona ``telegram:<persona>``
-    bot (#29): each registered channel carries its own allowlist (a persona bot
+    Works for the default ``telegram`` bot and every per-agent ``telegram:<agent>``
+    bot (#29): each registered channel carries its own allowlist (an agent bot
     inherits the global one when unset), so the owner is its first allowed user.
     """
     if channel != "telegram" and not channel.startswith("telegram:"):
         return None
-    # Persona bots carry their own allowlist (inheriting global when unset).
+    # Agent bots carry their own allowlist (inheriting global when unset).
     if channel.startswith("telegram:"):
         ch = agent.channels.get(channel)
         ids = getattr(getattr(ch, "config", None), "allowed_user_ids", None)
@@ -310,7 +310,7 @@ class AgentScheduler:
         schedule = job.get("schedule", "cron")
         task = job.get("task", "")
         channel = job.get("channel", "telegram")
-        persona = job.get("persona", "")
+        agent = job.get("agent", "")
         origin_user_id = job.get("origin_user_id", "")
         origin_chat_id = job.get("origin_chat_id", "")
         silent = job_type == "agent_silent"
@@ -350,7 +350,7 @@ class AgentScheduler:
                         id=job_id,
                         run_date=run_at,
                         kwargs={
-                            "persona": persona,
+                            "agent_name": agent,
                             "task": task,
                             "channel": channel,
                             "job_id": job_id,
@@ -370,7 +370,7 @@ class AgentScheduler:
                             "channel": channel,
                             "job_id": job_id,
                             "silent": silent,
-                            "persona": persona,
+                            "agent_name": agent,
                             "origin_user_id": origin_user_id,
                             "origin_chat_id": origin_chat_id,
                         },
@@ -407,7 +407,7 @@ class AgentScheduler:
                         "cron",
                         id=job_id,
                         kwargs={
-                            "persona": persona,
+                            "agent_name": agent,
                             "task": task,
                             "channel": channel,
                             "job_id": job_id,
@@ -427,7 +427,7 @@ class AgentScheduler:
                             "channel": channel,
                             "job_id": job_id,
                             "silent": silent,
-                            "persona": persona,
+                            "agent_name": agent,
                             "origin_user_id": origin_user_id,
                             "origin_chat_id": origin_chat_id,
                         },

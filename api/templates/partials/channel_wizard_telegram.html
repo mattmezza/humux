@@ -24,11 +24,11 @@
 
   <label class="flex items-center gap-2 mt-3 text-sm">
     <input type="checkbox" id="ch-tg-topics" {% if topics_enabled %}checked{% endif %}>
-    Separate persona per forum topic
+    Separate agent per forum topic
   </label>
   <div class="hint">
     Each topic in a group with Topics enabled becomes its own context. Name a
-    topic after a persona to auto-bind it; rebind any chat on the Chats tab.
+    topic after an agent to auto-bind it; rebind any chat on the Chats tab.
   </div>
 
   <label class="flex items-center gap-2 mt-3 text-sm">
@@ -36,10 +36,10 @@
     Group multi-agent rooms
   </label>
   <div class="hint">
-    Let several persona-bots share one group: each replies only when addressed,
+    Let several agent-bots share one group: each replies only when addressed,
     ignores other bots, and tags who said what. Requires each bot's Telegram
     privacy mode to be <strong>off</strong> (@BotFather → /setprivacy) to see the
-    wider conversation. Inherited by per-persona bots.
+    wider conversation. Inherited by per-agent bots.
   </div>
   <div class="ml-5 mt-1 space-y-1">
     <label class="flex items-center gap-2 text-sm">

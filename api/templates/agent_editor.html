@@ -1,13 +1,13 @@
 {% extends "base.html" %}
-{% block title %}{% if is_new %}New Persona{% else %}Edit Persona{% endif %} — Agent Admin{% endblock %}
+{% block title %}{% if is_new %}New Agent{% else %}Edit Agent{% endif %} — Agent Admin{% endblock %}
 
 {% block body %}
-<div x-data="personaEditor()">
-  <a class="text-xs text-muted hover:text-accent inline-flex items-center gap-1 mb-2" href="/admin?tab=personae">← Back to Personae</a>
+<div x-data="agentEditor()">
+  <a class="text-xs text-muted hover:text-accent inline-flex items-center gap-1 mb-2" href="/admin?tab=agents">← Back to Agents</a>
   <div class="flex items-center justify-between gap-2 mb-4 flex-wrap">
     <div>
-      <h1 class="text-xl text-accent">{% if is_new %}New Persona{% else %}Edit Persona{% endif %}</h1>
-      <p class="text-muted text-xs mt-1">A persona is a swappable identity: its own character, the skills and tools it may use, and its voice.</p>
+      <h1 class="text-xl text-accent">{% if is_new %}New Agent{% else %}Edit Agent{% endif %}</h1>
+      <p class="text-muted text-xs mt-1">An agent is a swappable identity: its own character, the skills and tools it may use, and its voice.</p>
     </div>
     <div class="flex items-center gap-1 text-xs">
       <button class="btn btn-sm" :class="mode === 'guided' && 'btn-primary'" @click="mode = 'guided'">Guided</button>
@@ -24,7 +24,7 @@
             <label class="label">Name (slug)</label>
             <input class="input-sm" x-model="name" placeholder="fitness-coach">
             {% if not is_new %}
-            <p class="hint" x-show="name.trim() !== originalName">Renaming moves this persona's chat bindings, private memories and scheduled jobs to the new slug. A persona with its own bot needs an agent restart afterwards.</p>
+            <p class="hint" x-show="name.trim() !== originalName">Renaming moves this agent's chat bindings, private memories and scheduled jobs to the new slug. An agent with its own bot needs an agent restart afterwards.</p>
             {% endif %}
           </div>
           <div>
@@ -75,7 +75,7 @@
 
       <div class="card space-y-3">
         <h3 class="text-xs text-muted uppercase tracking-wider">Own Telegram bot <span class="text-muted normal-case tracking-normal">— optional</span></h3>
-        <p class="text-xs text-muted">Give this persona its own bot token and it becomes a separate Telegram contact. Leave blank to keep it reachable only via the default bot. Restart the agent after changing.</p>
+        <p class="text-xs text-muted">Give this agent its own bot token and it becomes a separate Telegram contact. Leave blank to keep it reachable only via the default bot. Restart the agent after changing.</p>
         <div>
           <label class="label">Bot token <span class="text-muted">(from @BotFather)</span></label>
           <input class="input-sm" type="password" x-model="bot_token" autocomplete="off" placeholder="123456:ABC-DEF…">
@@ -125,14 +125,14 @@
         <h3 class="text-xs text-muted uppercase tracking-wider mb-2">Secret scope</h3>
         <p class="text-xs text-muted mb-2">Vault namespaces (one per line). Stored now; enforced once the secrets vault lands.</p>
         <textarea class="textarea" x-model="secretsText" style="min-height:64px; font-size:0.75rem"
-                  placeholder="persona:fitness-coach:*"></textarea>
+                  placeholder="agent:fitness-coach:*"></textarea>
       </div>
 
       {# ── Email, calendar & contacts accounts (#110) ── #}
       <div class="card">
         <h3 class="text-xs text-muted uppercase tracking-wider mb-2">Email, calendar &amp; contacts accounts</h3>
         <p class="text-xs text-muted mb-3">
-          Which accounts this persona may use, and at what level. <strong>None</strong> = no access
+          Which accounts this agent may use, and at what level. <strong>None</strong> = no access
           (safe default). <strong>Read</strong> = read only. <strong>Read &amp; write</strong> = also
           send / create events / add contacts. Pick one email account as the <strong>sender</strong>
           identity. Add or edit the accounts in the <strong>Email</strong> / <strong>Calendar</strong> /
@@ -207,11 +207,11 @@
       <div class="card">
         <h3 class="text-xs text-muted uppercase tracking-wider mb-2">Tool identities</h3>
         <p class="text-xs text-muted mb-3">
-          Give this persona its own credentials for the external CLI tools, so it acts
+          Give this agent its own credentials for the external CLI tools, so it acts
           as a distinct identity. <strong>Inherit</strong> = use the system-wide config
-          (shared with the owner). <strong>Enabled</strong> = use this persona's own
+          (shared with the owner). <strong>Enabled</strong> = use this agent's own
           token/profile below. <strong>Disabled</strong> = the tool is hidden from this
-          persona's prompt and its credentials are withheld (so it can't act as the owner).
+          agent's prompt and its credentials are withheld (so it can't act as the owner).
         </p>
         {% for spec in tool_specs %}
         <div class="mb-3 pb-3 border-b border-border last:border-0 last:mb-0 last:pb-0">
@@ -226,7 +226,7 @@
           {% if spec.key == "gh" %}
           <div x-show="modes['gh'] === 'on'" class="mt-2 space-y-2">
             <template x-if="!infraAvailable">
-              <p class="text-xs text-warn">Set a master key in the <strong>Secrets</strong> tab to give this persona its own token.</p>
+              <p class="text-xs text-warn">Set a master key in the <strong>Secrets</strong> tab to give this agent its own token.</p>
             </template>
             <template x-if="infraAvailable">
               <div class="space-y-2">
@@ -255,18 +255,18 @@
                       <input type="password" class="input-sm" autocomplete="new-password"
                              x-model="ghToken" placeholder="ghp_… (leave blank to keep current)">
                       <p class="text-xs text-muted mt-1">
-                        <span x-show="ghTokenSet">🔒 A token is stored for this persona — type a new one to replace it.</span>
-                        <span x-show="!ghTokenSet">Stored encrypted in the infra vault; injected as this persona's <code>GH_TOKEN</code>.</span>
+                        <span x-show="ghTokenSet">🔒 A token is stored for this agent — type a new one to replace it.</span>
+                        <span x-show="!ghTokenSet">Stored encrypted in the infra vault; injected as this agent's <code>GH_TOKEN</code>.</span>
                       </p>
                     </div>
                     <p class="text-xs text-muted" x-show="ghTokenSecret">
-                      Reuses the vault secret <code x-text="ghTokenSecret"></code> as this persona's
+                      Reuses the vault secret <code x-text="ghTokenSecret"></code> as this agent's
                       <code>GH_TOKEN</code> — no separate copy is stored.
                     </p>
                   </div>
                 </template>
 
-                {# ── GitHub App mode (per-persona app, #111) ── #}
+                {# ── GitHub App mode (per-agent app, #111) ── #}
                 <template x-if="ghAuth === 'app'">
                   <div class="space-y-2">
                     <div class="grid gap-2" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr))">
@@ -291,7 +291,7 @@
                       </select>
                       <p class="text-xs text-muted mt-1">
                         Paste this app's PEM as an infra secret in the <strong>Secrets</strong> tab,
-                        then pick it here — gives the persona its <strong>own</strong> bot identity.
+                        then pick it here — gives the agent its <strong>own</strong> bot identity.
                         Leave blank (or clear App ID) to use the system-wide App bot. App ID and
                         Installation ID are not secret.
                       </p>
@@ -299,13 +299,13 @@
                   </div>
                 </template>
 
-                {# Per-persona repo allowlist (#111) — applies to either identity. #}
+                {# Per-agent repo allowlist (#111) — applies to either identity. #}
                 <div>
                   <label class="label">Allowed repos <span class="text-muted">(optional)</span></label>
                   <input type="text" class="input-sm" x-model="ghRepos"
                          placeholder="owner/repo, owner/other  — blank = no restriction">
                   <p class="text-xs text-muted mt-1">
-                    Comma-separated. When set, this persona may only pass these repos to
+                    Comma-separated. When set, this agent may only pass these repos to
                     <code>gh --repo</code>. Best-effort — the real boundary is the GitHub App
                     installation's own repo selection.
                   </p>
@@ -317,7 +317,7 @@
           <div x-show="modes['browser'] === 'on'" class="mt-2">
             <input type="text" class="input-sm" x-model="profiles['browser']"
                    :placeholder="name.trim() || 'profile'">
-            <p class="text-xs text-muted mt-1">Isolated browser profile (cookies/sessions). Blank = the persona slug.</p>
+            <p class="text-xs text-muted mt-1">Isolated browser profile (cookies/sessions). Blank = the agent slug.</p>
           </div>
           {% endif %}
         </div>
@@ -342,30 +342,30 @@
 </div>
 
 <script>
-  function personaEditor() {
+  function agentEditor() {
     return {
       mode: 'guided',
       isNew: {{ is_new|tojson }},
-      originalName: {{ persona.name|tojson }},
-      name: {{ persona.name|tojson }},
-      agent_name: {{ persona.agent_name|tojson }},
-      role: {{ persona.role|tojson }},
-      emoji: {{ persona.emoji|tojson }},
-      voice: {{ persona.voice|tojson }},
+      originalName: {{ agent.name|tojson }},
+      name: {{ agent.name|tojson }},
+      agent_name: {{ agent.agent_name|tojson }},
+      role: {{ agent.role|tojson }},
+      emoji: {{ agent.emoji|tojson }},
+      voice: {{ agent.voice|tojson }},
       previewText: '',
       previewLang: '',
-      bot_token: {{ persona.bot_token|tojson }},
-      allowedUserIds: {{ (persona.allowed_user_ids|join(', '))|tojson }},
-      character: {{ persona.character|tojson }},
-      skills: {{ persona.skills|tojson }},
-      tools: {{ persona.tools|tojson }},
-      secretsText: {{ (persona.secrets|join('\n'))|tojson }},
+      bot_token: {{ agent.bot_token|tojson }},
+      allowedUserIds: {{ (agent.allowed_user_ids|join(', '))|tojson }},
+      character: {{ agent.character|tojson }},
+      skills: {{ agent.skills|tojson }},
+      tools: {{ agent.tools|tojson }},
+      secretsText: {{ (agent.secrets|join('\n'))|tojson }},
       raw: {{ raw|tojson }},
       result: '',
       ok: false,
 
-      // Per-persona tool identities (#93).
-      toolConfig: {{ persona.tool_config|tojson }},
+      // Per-agent tool identities (#93).
+      toolConfig: {{ agent.tool_config|tojson }},
       toolKeys: {{ tool_specs|map(attribute='key')|list|tojson }},
       ghToken: '',
       ghTokenSet: {{ gh_token_set|tojson }},
@@ -380,13 +380,13 @@
       modes: {},
       profiles: {},
 
-      // Per-persona email/calendar/contacts account bindings (#110).
+      // Per-agent email/calendar/contacts account bindings (#110).
       availableEmail: {{ available_email_accounts|tojson }},
       availableCalendar: {{ available_calendar_accounts|tojson }},
       availableContacts: {{ available_contacts_accounts|tojson }},
-      emailBindings: {{ persona.email_accounts|tojson }},
-      calendarBindings: {{ persona.calendar_accounts|tojson }},
-      contactsBindings: {{ persona.contacts_accounts|tojson }},
+      emailBindings: {{ agent.email_accounts|tojson }},
+      calendarBindings: {{ agent.calendar_accounts|tojson }},
+      contactsBindings: {{ agent.contacts_accounts|tojson }},
       emailAccess: {},
       calAccess: {},
       contactsAccess: {},
@@ -460,7 +460,7 @@
       },
 
       // Only configured tools get an entry; 'inherit' leaves them out so the
-      // persona keeps using the system-wide config (migration-safe).
+      // agent keeps using the system-wide config (migration-safe).
       buildToolConfig() {
         const tc = {};
         for (const k of this.toolKeys) {
@@ -480,7 +480,7 @@
               // A chosen vault secret is referenced instead of storing a copy.
               e.token_secret = this.ghTokenSecret;
             }
-            // Per-persona repo allowlist. Blank = no restriction.
+            // Per-agent repo allowlist. Blank = no restriction.
             const repos = this.ghRepos.split(',').map(s => s.trim()).filter(Boolean);
             if (repos.length) e.repos = repos;
           }
@@ -538,13 +538,13 @@
               calendar_accounts: this.buildCalendarAccounts(),
               contacts_accounts: this.buildContactsAccounts(),
             };
-        fetch('/personae', { method: 'POST', headers: this._headers(), body: JSON.stringify(body) })
+        fetch('/agents', { method: 'POST', headers: this._headers(), body: JSON.stringify(body) })
           .then(r => { this.ok = r.ok; return r.text().then(t => ({ ok: r.ok, t })); })
           .then(({ ok, t }) => {
             this.result = ok ? 'Saved.' : ('Error: ' + t.slice(0, 200));
             if (ok) {
               if (this.ghToken.trim()) { this.ghTokenSet = true; this.ghToken = ''; }
-              if (window.showToast) window.showToast('Persona saved');
+              if (window.showToast) window.showToast('Agent saved');
             }
           })
           .catch(e => { this.ok = false; this.result = e.message; });
@@ -553,10 +553,10 @@
       save() {
         const name = (this.name || '').trim();
         if (!name) { this.ok = false; this.result = 'Name is required.'; return; }
-        // Existing persona whose slug changed: rename first (cascades bindings,
+        // Existing agent whose slug changed: rename first (cascades bindings,
         // memories, jobs), then save the rest of the fields under the new slug.
         if (!this.isNew && this.originalName && name !== this.originalName) {
-          fetch('/personae/rename', {
+          fetch('/agents/rename', {
             method: 'POST',
             headers: this._headers(),
             body: JSON.stringify({ old: this.originalName, new: name }),
