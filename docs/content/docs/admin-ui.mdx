@@ -44,16 +44,16 @@ Edit agent settings without touching config files:
     - **Inference** — pick the provider and model for each inference and its parameters (main model, max output tokens, temperature, thinking level) plus the background models for memory, goal decomposition, task reflection, reply decision, **history compaction** (summarizes old conversation turns — see the History tab for the trigger threshold), and vision fallback. The model field is free-text (enter any model id the provider supports)
     - **Providers** — per-provider access: API key and optional base URL, with **Test connection**, **Fetch models** (loads the live model list into each field's autocomplete), and **Copy list**. Saving a provider API key stores it in the [secrets vault](/docs/secrets) and keeps only a `${vault:NAME}` reference in config — the raw key is never written to plaintext config. If no vault machine key is configured, it falls back to plaintext
 - **Channels** — enable/disable Telegram and WhatsApp
-- **Search** — Tavily API configuration
-- **Tools** — enable optional external CLI tools the agent can use
+- **Tools** — enable/disable and configure the agent's optional tools, including **Web search** (Tavily)
 - **Accounts** — external accounts, grouped into three sub-tabs: **Email** (Himalaya configuration), **Calendars** (CalDAV providers), and **Contacts** (contact providers)
 - **Vaults** — the [secrets vault](/docs/secrets), split into **Agents** (per-persona / login secrets), **Infra** (machine-key-encrypted infrastructure secrets + migrate plaintext credentials into the vault), and **Import** (Bitwarden import)
 - **Voice** — STT/TTS settings, including the **TTS backend** (Edge TTS or offline Kokoro), the default voice, and a **Preview** button to hear a voice before saving
 
 ### Tools
 
-Enable optional external CLI tools. When a tool is enabled it is authenticated and advertised to the assistant in its system prompt; when disabled it stays hidden, keeping the prompt lean.
+Enable optional tools. When a tool is enabled it is authenticated and advertised to the assistant in its system prompt; when disabled it stays hidden, keeping the prompt lean. Each tool honours the same per-persona whitelist and permission rules as any other tool.
 
+- **Web search** — let the agent look things up online via the `web_search` tool (currently Tavily). Toggle enabled, paste the API key (stored in the [vault](/docs/secrets)), pick max results, and **Test connection**. When disabled the tool is hidden from the model entirely.
 - **GitHub CLI (`gh`)** — let the agent query and act on GitHub (issues, PRs, repos, `gh api`, search). Authenticate with a **Personal Access Token** (simple; actions appear as you) or a **[GitHub App](/docs/extending#authenticating-pat-or-github-app)** (recommended — its own bot identity `<app>[bot]`, fine-grained per-repo permissions, and its own rate limit). For a PAT, paste a [token](https://github.com/settings/tokens); for an App, paste the **App ID**, **Installation ID**, and **private key** (PEM — pasting works on mobile, stored in the vault). Either way it is injected as `GH_TOKEN`; the App takes precedence, with the PAT as a fallback. Read operations (`list`/`view`/`status`/`api`/`search`) run without asking; creating issues, PRs, or releases ask for confirmation first. **Test connection** verifies the credentials and shows the authenticated identity (and, for an App, the accessible repos). The whole setup is completable at phone width. In session history mode, a newly enabled tool is advertised starting from the next `/new` conversation.
 
 ### Skills

@@ -942,6 +942,7 @@ def apply_feature_gates(
     subagents_enabled: bool = True,
     imagegen_enabled: bool = False,
     workspace_enabled: bool = False,
+    search_enabled: bool = False,
 ) -> list[dict]:
     """Drop tools whose backing feature is unavailable/disabled, so the model is
     never offered a capability it can't use (defence in depth — the tool handlers
@@ -957,6 +958,8 @@ def apply_feature_gates(
         out = [t for t in out if t["name"] != "spawn_subagent"]
     if not imagegen_enabled:
         out = [t for t in out if t["name"] != "generate_image"]
+    if not search_enabled:
+        out = [t for t in out if t["name"] != "web_search"]
     if not workspace_enabled:
         out = [
             t
@@ -1366,6 +1369,7 @@ class AgentCore:
             imagegen_enabled=self.config.tools.imagegen.enabled,
             workspace_enabled=self.config.workspace.enabled
             and bool(self.config.workspace.directory.strip()),
+            search_enabled=self.search_client is not None,
         )
 
     async def _turn_preamble(

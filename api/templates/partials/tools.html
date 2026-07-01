@@ -274,6 +274,65 @@
     </template>
   </div>
 
+  {# Web search — the web_search tool, gated + whitelisted like every other tool #}
+  <div class="card" x-data="searchTool(
+    {{ search_enabled|default('false', true)|tojson|forceescape }},
+    {{ search_provider|default('tavily', true)|tojson|forceescape }},
+    {{ search_api_key|default('', true)|tojson|forceescape }},
+    {{ search_max_results|default('5', true)|tojson|forceescape }}
+  )">
+    <div class="flex items-center justify-between gap-3 mb-1">
+      <h3 class="text-sm text-accent">Web search</h3>
+      <label class="inline-flex items-center gap-2 text-xs">
+        <input type="checkbox" x-model="enabled" :checked="enabled === 'true' || enabled === true">
+        Enabled
+      </label>
+    </div>
+    <p class="text-muted text-xs mb-3">Lets the agent look things up online via the <code>web_search</code> tool. Currently supports Tavily. When disabled the tool is hidden from the model.</p>
+
+    <div class="space-y-3" x-show="enabled === 'true' || enabled === true">
+      <div>
+        <label class="label">Provider</label>
+        <select class="input-sm" style="max-width:300px" x-model="provider">
+          <option value="tavily">Tavily</option>
+        </select>
+      </div>
+
+      <div>
+        <label class="label">API Key</label>
+        {% if search_vaulted %}
+        <div class="text-xs text-muted py-1" style="max-width:500px">🔒 Stored in the vault as <code>${vault:TAVILY_API_KEY}</code> — manage it from the <button type="button" class="text-accent hover:underline" @click="$dispatch('switch-tab', 'secrets')">Vaults</button> tab.</div>
+        {% else %}
+        <input type="text" class="input-sm" style="max-width:500px; display:none"
+               autocomplete="username" aria-hidden="true" tabindex="-1">
+        <input type="password" class="input-sm" style="max-width:500px"
+               autocomplete="new-password" x-model="apiKey" placeholder="tvly-...">
+        {% endif %}
+      </div>
+
+      <div>
+        <label class="label">Max results</label>
+        <input type="number" class="input-sm" style="max-width:120px" x-model="maxResults" min="1" max="20">
+        <p class="text-muted text-xs mt-1">Number of search results returned per query.</p>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-2 mt-4">
+      <button class="btn-primary btn-sm" @click="save()">Save</button>
+      <button class="btn btn-sm" :disabled="testing || !apiKey" x-show="enabled === 'true' || enabled === true" @click="test()">
+        <span x-show="!testing">Test connection</span>
+        <span x-show="testing">Testing…</span>
+      </button>
+    </div>
+
+    <template x-if="result">
+      <div :class="resultOk ? 'alert-success' : 'alert-error'" class="mt-2" x-text="result"></div>
+    </template>
+    <template x-if="testResult">
+      <div :class="testResult.startsWith('Connection') ? 'alert-success' : 'alert-error'" class="mt-2 text-xs" x-text="testResult"></div>
+    </template>
+  </div>
+
   {# WhatsApp via the local wacli CLI (issue #97) — a tool, not a channel #}
   <div class="card" x-data="whatsappTool(
     {{ whatsapp_enabled|default('false', true)|tojson|forceescape }},

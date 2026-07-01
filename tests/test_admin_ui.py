@@ -352,6 +352,16 @@ class TestVoicePreview:
             assert f"select('{s}')" in resp.text
         assert 'id="accounts-sub"' in resp.text
 
+    def test_tools_partial_has_web_search(self):
+        # Web search now lives under the Tools tab as a normal tool card, wired to
+        # the search.* config (no more standalone Search tab).
+        client = _client(setup_complete=True)
+        resp = client.get("/partials/tools", headers=AUTH)
+        assert resp.status_code == 200
+        assert "Web search" in resp.text
+        assert "searchTool(" in resp.text  # the tool card's Alpine component
+        assert "web_search" in resp.text  # references the actual tool
+
     def test_inspect_tabs_wrapper(self):
         # Inspect tab wraps Context + Logs sub-tabs, lazy-loaded via htmx, with
         # the active sub-tab mirrored in the URL (?inspectsub=).

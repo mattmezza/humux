@@ -1459,6 +1459,16 @@ def create_admin_app(
         except Exception:
             browser_profiles = []
 
+        # Web search (issue: fold into the Tools tab). Config stays under the
+        # search.* namespace — like artifacts.* / subagents.* which also live in
+        # this tab — so no data migration; only the UI moved here.
+        search_enabled = await config_store.get("search.enabled")
+        search_enabled = search_enabled if search_enabled is not None else "false"
+        search_provider = await config_store.get("search.provider") or "tavily"
+        search_api_key = await config_store.get("search.api_key") or ""
+        search_vaulted = _is_vault_ref(search_api_key)
+        search_max_results = await config_store.get("search.max_results") or "5"
+
         # Web artifacts (issue #82) — only the public-serving toggle remains; the
         # files live under the workspace. Key may be absent on an old store.
         artifacts_enabled = await config_store.get("artifacts.enabled")
@@ -1537,6 +1547,11 @@ def create_admin_app(
             imagegen_key_vaulted=ig_key_vaulted,
             imagegen_daily_budget=ig_daily,
             imagegen_monthly_budget=ig_monthly,
+            search_enabled=search_enabled,
+            search_provider=search_provider,
+            search_api_key="" if search_vaulted else search_api_key,
+            search_vaulted=search_vaulted,
+            search_max_results=search_max_results,
         )
 
     @app.get("/partials/workspace", dependencies=[Depends(auth)])
@@ -1700,23 +1715,6 @@ def create_admin_app(
         if pattern:
             agent.permissions.remove_rule(pattern)
         return {"ok": True, "rules": _browser_rules()}
-
-    @app.get("/partials/search", dependencies=[Depends(auth)])
-    async def partial_search() -> HTMLResponse:
-        """Search tab partial."""
-        enabled = await config_store.get("search.enabled") or "false"
-        provider = await config_store.get("search.provider") or "tavily"
-        api_key = await config_store.get("search.api_key") or ""
-        api_key_vaulted = _is_vault_ref(api_key)
-        max_results = await config_store.get("search.max_results") or "5"
-        return _render_partial(
-            "partials/search.html",
-            enabled=enabled,
-            provider=provider,
-            api_key="" if api_key_vaulted else api_key,
-            api_key_vaulted=api_key_vaulted,
-            max_results=max_results,
-        )
 
     async def _render_memory_partial() -> HTMLResponse:
         """Build the Memory tab partial (config + stored memories).

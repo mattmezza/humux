@@ -639,7 +639,9 @@
     }
     window.llmTab = llmTab;
 
-    function searchTab(enabled, provider, apiKey, maxResults) {
+    // Web search tool (lives in the Tools tab). save() writes the search.*
+    // config; test() checks the Tavily key via the shared test-connection route.
+    function searchTool(enabled, provider, apiKey, maxResults) {
       return {
         enabled: enabled ?? 'false',
         provider: provider || 'tavily',
@@ -648,10 +650,47 @@
         result: '',
         resultOk: false,
         testing: false,
-        testResult: ''
+        testResult: '',
+        save() {
+          const vals = {
+            'search.enabled': String(this.enabled === true || this.enabled === 'true'),
+            'search.provider': this.provider,
+            'search.api_key': this.apiKey,
+            'search.max_results': String(this.maxResults)
+          };
+          fetch('/config', {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ' + (localStorage.getItem('admin_api_key') || '')
+            },
+            body: JSON.stringify({values: vals})
+          })
+            .then(r => { this.resultOk = r.ok; return r.json(); })
+            .then(d => {
+              this.result = this.resultOk ? 'Web search settings saved' : (d.detail || 'Error');
+              if (this.resultOk && window.showToast) { window.showToast('Web search settings saved'); }
+            })
+            .catch(e => { this.resultOk = false; this.result = e.message; });
+        },
+        test() {
+          this.testing = true; this.testResult = '';
+          fetch('/setup/test-connection', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ' + (localStorage.getItem('admin_api_key') || '')
+            },
+            body: JSON.stringify({service: 'tavily', api_key: this.apiKey})
+          })
+            .then(r => r.json())
+            .then(d => { this.testResult = d.ok ? 'Connection OK' : ('Failed: ' + (d.error || 'unknown')); })
+            .catch(e => { this.testResult = 'Error: ' + e.message; })
+            .finally(() => { this.testing = false; });
+        }
       };
     }
-    window.searchTab = searchTab;
+    window.searchTool = searchTool;
 
     function calendarTab(providers, googleConnected, googleClientId, hasOAuthCreds) {
       const list = Array.isArray(providers) ? providers : [];

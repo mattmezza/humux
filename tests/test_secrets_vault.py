@@ -558,11 +558,13 @@ async def test_tools_and_search_collapse_vaulted(admin_client) -> None:
     client, _s, cs = admin_client
     await cs.set("tools.gh.token", "${vault:GH_TOKEN}")
     await cs.set("search.api_key", "${vault:TAVILY_API_KEY}")
+    # Both the gh token and the (now Tools-tab) web-search key collapse to a
+    # read-only vault note; the raw key value is never shipped to the browser.
     tools = client.get("/partials/tools", headers=_auth()).text
     assert "Stored in the" in tools and "${vault:GH_TOKEN}" not in tools
-    assert 'x-model="ghToken"' not in tools  # input replaced by the note
-    search = client.get("/partials/search", headers=_auth()).text
-    assert "Stored in the" in search and "${vault:TAVILY_API_KEY}" not in search
+    assert 'x-model="ghToken"' not in tools  # gh input replaced by the note
+    assert "tvly-..." not in tools  # search key input replaced by the note
+    assert "${vault:TAVILY_API_KEY}" in tools  # note names the ref for reuse
 
 
 async def test_wizard_context_skips_vault_refs(tmp_path) -> None:

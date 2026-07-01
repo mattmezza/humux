@@ -94,10 +94,6 @@
             @click="select('channels')">
       Channels
     </button>
-    <button class="tab-link" :class="tab === 'search' && 'tab-link-active'"
-            @click="select('search')">
-      Search
-    </button>
     <button class="tab-link" :class="tab === 'tools' && 'tab-link-active'"
             @click="select('tools')">
       Tools
@@ -687,7 +683,6 @@
       memory: '/partials/memory',
       history: '/partials/history',
       channels: '/partials/channels',
-      search: '/partials/search',
       tools: '/partials/tools',
       workspace: '/partials/workspace',
       permissions: '/partials/permissions',
@@ -711,12 +706,13 @@
           calendars: ['accounts', 'accountsub', 'calendars'],
           contacts: ['accounts', 'accountsub', 'contacts'],
           email: ['accounts', 'accountsub', 'email'],
+          search: ['tools', null, null],  // Web search folded into the Tools tab
         };
         if (moved[urlTab]) {
           const [top, subParam, subVal] = moved[urlTab];
           const u = new URL(window.location.href);
           u.searchParams.set('tab', top);
-          u.searchParams.set(subParam, subVal);
+          if (subParam) { u.searchParams.set(subParam, subVal); }
           history.replaceState(history.state, '', u);
           urlTab = top;
         }

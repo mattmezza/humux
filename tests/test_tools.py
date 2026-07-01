@@ -410,6 +410,23 @@ async def test_on_demand_pointer_resent_only_when_missing(agent) -> None:
     assert "<available_skills>" not in second  # already in history → not re-sent
 
 
+def test_feature_gate_drops_web_search_when_disabled() -> None:
+    # web_search is gated like every other optional tool: hidden from the model
+    # unless search is enabled (an api key is configured).
+    from core.agent import TOOLS, apply_feature_gates
+
+    def names(search_enabled):
+        return {
+            t["name"]
+            for t in apply_feature_gates(
+                TOOLS, secrets_available=True, search_enabled=search_enabled
+            )
+        }
+
+    assert "web_search" not in names(False)
+    assert "web_search" in names(True)
+
+
 def test_feature_gate_offers_discovery_tools_only_on_demand() -> None:
     from core.agent import TOOLS, apply_feature_gates
 
