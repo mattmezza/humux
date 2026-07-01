@@ -3,13 +3,11 @@
 
 {% block body %}
 <div>
+  <a class="text-xs text-muted hover:text-accent inline-flex items-center gap-1 mb-2" href="/admin?tab=skills">← Back to Skills</a>
   <div class="flex items-center justify-between gap-2 mb-4 flex-wrap">
     <div>
       <h1 class="text-xl text-accent">{% if is_new %}New Skill{% else %}Edit Skill{% endif %}</h1>
       <p class="text-muted text-xs mt-1">Skills teach the agent how to use tools safely and correctly.</p>
-    </div>
-    <div class="flex items-center gap-2">
-      <a class="btn btn-sm" href="/admin?tab=skills">Back to Skills</a>
     </div>
   </div>
 
