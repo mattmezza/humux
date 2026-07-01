@@ -146,26 +146,17 @@ snapshotted identity until you send `/new`.
 You can bind an agent to a single conversation so it answers **only there**, overriding the
 default. Resolution runs a ladder in `AgentCore._resolve_agent(channel, user_id, chat_id)`:
 
-0. a **per-agent bot** — a `telegram:<agent>` channel binds straight to that agent
+0. a **per-agent bot** — a `telegram:<slug>` channel binds straight to that agent
    (see [Bot-per-agent](#bot-per-agent)),
 1. the per-chat binding for `(channel, user_id, chat_id)`,
 2. the agent flagged as the default (`is_default`) — or `None` (the config base) if none is.
 
 Bindings live in the `chat_agent` table and work on **any** channel (Telegram, WhatsApp,
-REPL). They are set programmatically — by **bot-per-agent** routing and by Telegram
-**topic auto-bind** (below) — rather than hand-picked per chat; the project is moving toward
-**one agent = one agent** (a dedicated `telegram:<agent>` bot per identity), so the admin
-UI no longer offers a per-chat agent dropdown. A binding applies on the next turn; the open
-chat keeps its current identity until then (its messages are preserved).
-
-### Telegram forum topics (optional)
-
-Set `channels.telegram.topics_enabled: true` (or tick *Separate agent per forum topic* in
-the Telegram channel setup) to treat each forum topic in a group as its own context. The
-topic's `message_thread_id` is folded into the `chat_id`, so every topic gets isolated
-history and its own agent binding; the group's General topic maps to the default context.
-Name a topic after an agent (its name, agent name, or role) and it auto-binds when the topic
-is created or renamed.
+REPL). They are set programmatically — by **bot-per-agent** routing — rather than
+hand-picked per chat; the project is built around **one agent = one bot** (a dedicated
+`telegram:<slug>` bot per identity), so the admin UI no longer offers a per-chat agent
+dropdown. A binding applies on the next turn; the open chat keeps its current identity
+until then (its messages are preserved).
 
 ## Tool identities
 
@@ -296,24 +287,30 @@ reach only accounts its parent identity holds, at an equal or lower level.
 
 ## Bot-per-agent
 
-Give an agent its own Telegram **bot token** and it becomes a separate contact in your
+Each agent carries its own Telegram **bot token**, so it's a separate contact in your
 address book — its own name, emoji, and voice — addressable independently of every other
-agent ([#29](https://github.com/mattmezza/mpa/issues/29)). Set it on the agent, not the
-channel: the bot is part of the agent's identity.
+agent ([#29](https://github.com/mattmezza/mpa/issues/29)). The bot is part of the agent's
+identity, configured on the agent, not on any channel.
 
-- **Configure** — open the agent in the admin UI and fill in *Own Telegram bot* (token from
-  [@BotFather](https://t.me/botfather), plus optional allowed user IDs — blank inherits the
-  global Telegram allowlist). In raw markdown, the frontmatter keys are `bot_token` and
-  `allowed_user_ids`. Leave the token blank and the agent stays reachable only through the
-  default bot. **Restart the agent** after adding or changing a token.
-- **How it routes** — each agent-bot registers as the channel `telegram:<agent>` and runs
+- **Configure** — open the agent in the admin UI and fill in the **Telegram bot** section:
+  **Bot token** (from [@BotFather](https://t.me/botfather)) and **Allowed user IDs**
+  (comma-separated bot ACL; blank = anyone). In raw markdown, the frontmatter keys are
+  `bot_token` and `allowed_user_ids`. Leave the token blank and the agent isn't reachable on
+  Telegram directly. **Restart the agent** after adding or changing a token. The default
+  agent's bot can be seeded once from `config.yml` — see [Configuration](/docs/configuration#channels).
+- **How it routes** — each agent-bot registers as the channel `telegram:<slug>` and runs
   in the same process. That one composite name does three jobs: it **isolates history** (a
   Telegram DM has `chat_id == user_id` for every bot, so without it two bots' DMs with you
   would collide), it **routes approvals and proactive messages** back through the bot that
-  fired them, and it **resolves the agent** with no lookup (rung 0 above). The default bot
-  stays the bare `telegram` channel.
-- **Scheduled jobs** — a job's `channel` accepts `telegram:<agent>` to deliver through that
-  bot; bare `telegram` still targets the default bot, so existing jobs are unchanged.
+  fired them, and it **resolves the agent** with no lookup (rung 0 above). The **default**
+  agent's bot is the bare `telegram` channel. Routing overall is: bot-per-agent → per-chat
+  binding → default agent.
+- **Group multi-agent rooms** — the same **Telegram bot** section carries the group
+  turn-taking toggles (`group_chat`: enabled / reply_when_addressed_only / ignore_bots), a
+  per-agent setting; see [Channels → Group rooms](/docs/channels#group-rooms-multi-agent-turn-taking).
+  Requires the bot's Telegram privacy mode OFF (@BotFather → `/setprivacy`). Off by default.
+- **Scheduled jobs** — a job's `channel` accepts `telegram:<slug>` to deliver through that
+  bot; bare `telegram` targets the default agent's bot, so existing jobs are unchanged.
 
 Same process, N bots today; a separate deployment per agent (one token each) is a later
 step that needs no further code.

@@ -55,21 +55,22 @@ async def test_embedding_config_roundtrips_to_nested_model(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_group_chat_config_roundtrips_to_nested_model(tmp_path) -> None:
-    """UI-saved flat channels.telegram.group_chat.* keys reconstruct GroupChatConfig (#30)."""
-    store = ConfigStore(db_path=str(tmp_path / "config.db"))
-    await store.set_many(
-        {
-            "channels.telegram.group_chat.enabled": "true",
-            "channels.telegram.group_chat.reply_when_addressed_only": "false",
-            "channels.telegram.group_chat.ignore_bots": "true",
-        }
+async def test_seed_preserves_channel_telegram_keys(tmp_path) -> None:
+    # #133: `Config` no longer models `channels`, so Config validation would drop
+    # config.yml's channels.telegram.* — but they must still seed the store (the
+    # one-time seed for the default agent's bot). Regression guard for that path.
+    cfg = tmp_path / "config.yml"
+    cfg.write_text(
+        "agent:\n  name: Test\n"
+        "channels:\n"
+        "  telegram:\n"
+        "    bot_token: '123:ABC'\n"
+        "    allowed_user_ids: '111,222'\n"
     )
-    config = await store.export_to_config()
-    gc = config.channels.telegram.group_chat
-    assert gc.enabled is True
-    assert gc.reply_when_addressed_only is False
-    assert gc.ignore_bots is True
+    store = ConfigStore(db_path=str(tmp_path / "config.db"))
+    await store.seed_if_empty(str(cfg))
+    assert await store.get("channels.telegram.bot_token") == "123:ABC"
+    assert await store.get("channels.telegram.allowed_user_ids") == "111,222"
 
 
 @pytest.mark.asyncio

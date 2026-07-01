@@ -118,7 +118,7 @@ scheduler:
 | `id` | Yes | Unique job identifier |
 | `cron` | Yes | Cron expression for schedule |
 | `task` | Yes | Natural language task or CLI command |
-| `channel` | No | Delivery channel for agent jobs (default: telegram) |
+| `channel` | No | Delivery channel for agent jobs: `telegram` (default agent's bot) or `telegram:<agent>` (a specific agent's bot) |
 | `type` | No | Job type: `agent` (default), `system`, or `memory_consolidation` |
 
 ## Job persistence

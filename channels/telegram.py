@@ -147,50 +147,23 @@ class TelegramChannel:
         self.app.add_handler(MessageHandler(filters.TEXT, self._on_text))
         self.app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, self._on_voice))
         self.app.add_handler(MessageHandler(filters.PHOTO | filters.Document.IMAGE, self._on_photo))
-        # Topic→agent auto-bind only makes sense on the default bot: an agent
-        # bot resolves straight to its own agent (rung 0), so a per-topic binding
-        # would be ignored. Topic *folding* (history isolation) still applies below.
-        if config.topics_enabled and channel_name == "telegram":
-            self.app.add_handler(
-                MessageHandler(
-                    filters.StatusUpdate.FORUM_TOPIC_CREATED
-                    | filters.StatusUpdate.FORUM_TOPIC_EDITED,
-                    self._on_forum_topic,
-                )
-            )
         self.app.add_handler(CallbackQueryHandler(self._on_approval_callback))
 
-    # -- Topic folding helpers -----------------------------------------------
+    # -- Context id helpers --------------------------------------------------
 
-    def _fold(self, chat, message) -> int | str | None:
-        """Derive the context id for a message.
-
-        With ``topics_enabled``, a forum-topic message folds its
-        ``message_thread_id`` into the chat id as ``"<chat>:<thread>"`` so each
-        topic is a separate context. The forum's General topic carries no thread
-        id, so it maps to the bare chat (the default context). Returns ``None``
-        when there is no chat (caller falls back to the user id).
-        """
-        if not chat:
-            return None
-        if not self.config.topics_enabled:
-            return chat.id
-        # message_thread_id is also set on reply-chains in non-forum groups and on
-        # linked-discussion comments (there it is just the root message id), so it
-        # alone would fragment an ordinary chat. is_topic_message marks a genuine
-        # forum topic and is False for the General topic — gate on it.
-        thread = getattr(message, "message_thread_id", None)
-        if thread and getattr(message, "is_topic_message", False):
-            return f"{chat.id}:{thread}"
-        return chat.id
+    def _fold(self, chat) -> int | str | None:
+        """The context id for a chat — its id, or ``None`` when there is no chat
+        (the caller falls back to the sender's user id)."""
+        return chat.id if chat else None
 
     @staticmethod
     def _route(chat_id: int | str) -> tuple[int | str, dict]:
-        """Split a folded ``"<chat>:<thread>"`` id for the Bot API.
+        """Split a legacy folded ``"<chat>:<thread>"`` id for the Bot API.
 
-        Returns ``(chat_id, kwargs)`` where kwargs carries ``message_thread_id``
-        when a topic is encoded, and is empty otherwise — so non-topic calls are
-        unchanged.
+        Forum topics were dropped (#133), so new ids are never folded — but a chat
+        id stored while topics were on can still be ``"<chat>:<thread>"``, so this
+        stays to route it. Returns ``(chat_id, kwargs)`` where kwargs carries
+        ``message_thread_id`` when a thread is encoded, else empty (unchanged).
         """
         base, sep, thread = str(chat_id).partition(":")
         if sep and thread.isdigit() and base.lstrip("-").isdigit():
@@ -231,38 +204,23 @@ class TelegramChannel:
 
     # -- Group multi-agent rooms (#30) ---------------------------------------
 
-    def _is_group(self, chat, message=None) -> bool:
-        """True for a Telegram group/supergroup with group-room behaviour on.
-
-        A genuine forum topic under ``topics_enabled`` is exempt: a topic is its
-        own agent-bound 1:1-style context (#14), so group turn-taking would
-        wrongly silence its bound agent. Group rooms (#30) apply to the rest of
-        the group/supergroup.
-        """
-        if not (
+    def _is_group(self, chat) -> bool:
+        """True for a Telegram group/supergroup with group-room behaviour on."""
+        return bool(
             chat
             and getattr(chat, "type", "") in ("group", "supergroup")
             and self.config.group_chat.enabled
-        ):
-            return False
-        if (
-            self.config.topics_enabled
-            and message is not None
-            and getattr(message, "is_topic_message", False)
-        ):
-            return False
-        return True
+        )
 
-    def _convo_user_id(self, chat, sender_id: int, message=None) -> str:
+    def _convo_user_id(self, chat, sender_id: int) -> str:
         """The ``user_id`` key the agent stores history/bindings under.
 
         In a group room every participant shares one conversation per bot, so the
         group itself is the key — that is what lets a bot see other people's (and
-        other bots') messages as inbound turns. In a 1:1 DM (or an exempt forum
-        topic) it stays the sender (where ``chat_id == user_id`` anyway), so the
-        plain flow is unchanged.
+        other bots') messages as inbound turns. In a 1:1 DM it stays the sender
+        (where ``chat_id == user_id`` anyway), so the plain flow is unchanged.
         """
-        if self._is_group(chat, message):
+        if self._is_group(chat):
             return str(chat.id)
         return str(sender_id)
 
@@ -368,7 +326,7 @@ class TelegramChannel:
         user = update.effective_user
         chat = update.effective_chat
         sender_id = user.id if user else 0
-        if not self._is_group(chat, message):
+        if not self._is_group(chat):
             return {
                 "user_id": str(sender_id),
                 "speaker_tag": "",
@@ -412,7 +370,7 @@ class TelegramChannel:
         if not user or not message:
             return
         sender_id = user.id
-        folded = self._fold(chat, message)
+        folded = self._fold(chat)
         routing = self._turn_routing(update, message, context)
         convo_user = routing["user_id"]
         self._remember_chat(convo_user, folded)
@@ -460,7 +418,7 @@ class TelegramChannel:
         if not user or not message:
             return
         sender_id = user.id
-        folded = self._fold(chat, message)
+        folded = self._fold(chat)
         routing = self._turn_routing(update, message, context)
         convo_user = routing["user_id"]
         self._remember_chat(convo_user, folded)
@@ -517,7 +475,7 @@ class TelegramChannel:
         if not user or not message:
             return
         sender_id = user.id
-        folded = self._fold(chat, message)
+        folded = self._fold(chat)
         routing = self._turn_routing(update, message, context)
         convo_user = routing["user_id"]
         self._remember_chat(convo_user, folded)
@@ -606,14 +564,13 @@ class TelegramChannel:
         await query.answer()  # Acknowledge the button press
 
         user_id = user.id
-        message = getattr(query, "message", None)
-        folded = self._fold(chat, message)
+        folded = self._fold(chat)
         if folded is not None:
             self._last_chat_for_user[user_id] = folded
         # Same gate as an inbound turn (#129): a button press (approve/deny/cancel)
         # is an action in this chat, so a user the resolved agent bars here can't
         # drive it either. Resolve with the turn's own (convo_user, chat_id) keys.
-        convo_user = self._convo_user_id(chat, user_id, message)
+        convo_user = self._convo_user_id(chat, user_id)
         chat_id = folded if folded is not None else user_id
         if not await self._may_act(user_id, convo_user, str(chat_id)):
             return
@@ -640,40 +597,6 @@ class TelegramChannel:
             ok = self.agent.subagents.cancel(run_id)
             label = "Cancelled" if ok else "Already finished / not found"
             await self._finalize_approval_response(query, True, label)
-
-    async def _on_forum_topic(self, update: Update, context) -> None:
-        """Auto-bind a freshly created/renamed forum topic to a matching agent.
-
-        The topic name is only carried on these service messages (not on ordinary
-        messages), so this is the one place a topic→agent name match can happen
-        without a web round-trip. Binding is skipped when the topic is already
-        bound, so a manual rebind is never clobbered.
-        """
-        message = update.message
-        chat = update.effective_chat
-        user = update.effective_user
-        if not message or not chat:
-            return
-        created = getattr(message, "forum_topic_created", None)
-        edited = getattr(message, "forum_topic_edited", None)
-        name = getattr(created or edited, "name", None)
-        thread = getattr(message, "message_thread_id", None)
-        if not name or not thread:
-            return
-        user_id = user.id if user else None
-        if user_id is None or not self._is_allowed(user_id):
-            return
-        chat_id = f"{chat.id}:{thread}"
-        # Bind under the same conversational id messages resolve with. A forum
-        # topic under topics_enabled is exempt from group rooms (#30), so this
-        # resolves to the sender id — matching how messages in the topic key,
-        # keeping the per-topic agent binding intact.
-        convo_user = self._convo_user_id(chat, user_id, message)
-        bound = await self.agent.bind_chat_agent_by_label(
-            self.channel_name, convo_user, chat_id, name
-        )
-        if bound:
-            await self.send(chat_id, f"Bound this topic to {bound}.")
 
     # -- Outgoing ------------------------------------------------------------
 

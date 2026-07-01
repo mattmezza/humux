@@ -64,8 +64,8 @@ On first boot, the admin UI presents a step-by-step wizard:
 1. **Welcome** — overview and getting started
 2. **Identity** — agent name and owner name
 3. **LLM** — provider and API key configuration
-4. **Telegram** — bot token and allowed user IDs
-5. **WhatsApp** — optional WhatsApp channel setup
+4. **Telegram** — bot token and allowed user IDs for the default agent's bot (each agent's bot is later configured per-agent on the Agents tab)
+5. **WhatsApp** — optional WhatsApp tool setup
 6. **Email** — Himalaya configuration for email accounts
 7. **Calendar** — CalDAV provider setup
 8. **Search** — Tavily API key for web search
@@ -88,4 +88,4 @@ After setup, all configuration is managed through the admin UI or `config.yml`.
 - [Architecture](/docs/architecture) — understand how MPA works under the hood
 - [Configuration](/docs/configuration) — detailed config reference
 - [Skills](/docs/skills) — learn how the skills system works
-- [Channels](/docs/channels) — set up Telegram and WhatsApp
+- [Channels](/docs/channels) — set up per-agent Telegram bots (WhatsApp is a tool)

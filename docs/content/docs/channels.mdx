@@ -1,35 +1,36 @@
 ---
 title: Channels
-description: Configure the Telegram channel (WhatsApp is a tool, see below).
+description: Telegram, configured per-agent (WhatsApp is a tool, see below).
 ---
 
 # Channels
 
-MPA supports multiple messaging channels. Each channel runs independently and connects to the same agent core.
+MPA talks over Telegram, and **each agent runs its own Telegram bot**. There is no
+separate "channel" to set up: a bot belongs to an agent, and you configure it on the
+**agent edit screen** (admin UI → **Agents** → edit an agent → the **Telegram bot**
+section). The **default** agent's bot is the bare `telegram` channel; every other
+agent's is `telegram:<slug>`.
 
 ## Telegram
 
-The primary channel. Telegram bots are free, have excellent API support, and handle text, voice, files, and inline keyboards natively.
+Telegram bots are free, have excellent API support, and handle text, voice, files, and
+inline keyboards natively.
 
 ### Setup
 
-1. Create a bot via [BotFather](https://core.telegram.org/bots#botfather)
-2. Copy the bot token
-3. Get your Telegram user ID (message [@userinfobot](https://t.me/userinfobot))
-4. Add to your configuration:
+1. Create a bot via [BotFather](https://core.telegram.org/bots#botfather) and copy the bot token
+2. Get your Telegram user ID (message [@userinfobot](https://t.me/userinfobot))
+3. In the admin UI open **Agents**, edit the agent, and fill in the **Telegram bot** section:
+   - **Bot token** — from @BotFather
+   - **Allowed user IDs** — comma-separated bot ACL; blank = anyone
+   - **Group multi-agent rooms** and **per-chat trigger/DM permissions** (below)
+4. **Restart the agent** after adding or changing a token
 
-```yaml
-channels:
-  telegram:
-    enabled: true
-    bot_token: "${TELEGRAM_BOT_TOKEN}"
-    allowed_user_ids: "${TELEGRAM_ALLOWED_USER_IDS}"
-    topics_enabled: false   # opt-in: one agent-bound context per forum topic
-    group_chat:             # opt-in: multi-agent group rooms (turn-taking + loop guard)
-      enabled: false
-      reply_when_addressed_only: true
-      ignore_bots: true
-```
+The default agent's bot can instead be seeded once from `config.yml` (the
+`channels.telegram.*` keys); on first boot those values are folded onto the default
+agent's row, after which every bot is configured per-agent. See
+[Configuration](/docs/configuration#channels) and
+[Bot-per-agent](/docs/agents#bot-per-agent).
 
 ### Features
 
@@ -37,37 +38,35 @@ channels:
 - **Voice messages** — automatically transcribed via Whisper, agent can respond with synthesized voice
 - **Inline keyboards** — used for permission approval flow (Approve / Edit / Deny)
 - **User ID whitelist** — only allowed users can interact with the bot
-- **Forum topics** (opt-in) — with `topics_enabled`, each topic in a group becomes its own context with its own bound agent; see [Per-chat agents](/docs/agents#per-chat-agents)
-- **Bot-per-agent** (opt-in) — give an agent its own bot token and it becomes a separate Telegram contact, running alongside the default bot in the same process; see below
+- **Bot-per-agent** — every agent has its own bot token, so it's a separate Telegram contact, all running in one process; see below
 - **Group rooms** — several agent-bots share one group sanely: each replies only when addressed, ignores other bots, and tags who said what; see below
 
 ### Bot-per-agent
 
-The `bot_token` above configures the **default** bot. Any agent can additionally carry its
-own token (set on the agent, not here), turning it into an independently-addressable
-contact. Each agent-bot registers as the channel `telegram:<agent>`, isolating its
-history, approvals, and scheduled jobs from the default bot and from every other agent.
-Configure it on the agent and restart the agent — see
-[Bot-per-agent](/docs/agents#bot-per-agent).
+Each agent carries its **own** bot token, set on the agent (the **Telegram bot** section
+of the agent editor), so the bot is part of the agent's identity. Each agent-bot
+registers as the channel `telegram:<slug>` — the default agent's is the bare `telegram` —
+isolating its history, approvals, and scheduled jobs from every other agent. Restart the
+agent after adding or changing a token. See [Bot-per-agent](/docs/agents#bot-per-agent).
 
 ### Group rooms (multi-agent turn-taking)
 
-Once each agent is its own bot, adding several to one Telegram group is natural —
-but the raw behaviour is wrong: every bot would answer every message, and two bots
-would loop replying to each other forever. The `group_chat` block fixes the turn-taking:
+Since each agent is its own bot, adding several to one Telegram group is natural — but the
+raw behaviour is wrong: every bot would answer every message, and two bots would loop
+replying to each other forever. **Group multi-agent rooms** fix the turn-taking. It's a
+**per-agent** setting (toggles in the **Telegram bot** section of the agent editor, not a
+global config), with three controls — mirrored in raw frontmatter as `group_chat`:
 
 ```yaml
-channels:
-  telegram:
-    group_chat:
-      enabled: false                   # opt-in; off by default
-      reply_when_addressed_only: true  # reply only when @mentioned or replied-to
-      ignore_bots: true                # never reply to another bot (loop guard)
+group_chat:
+  enabled: false                   # opt-in; off by default
+  reply_when_addressed_only: true  # reply only when @mentioned or replied-to
+  ignore_bots: true                # never reply to another bot (loop guard)
 ```
 
-Group rooms are **off by default** (like `topics_enabled`), so existing single-bot
-groups are unchanged on upgrade. Turn it on for a group where you've added several
-agent-bots. In a group or supergroup each bot then:
+Group rooms are **off by default**, so existing single-bot groups are unchanged on
+upgrade. Turn it on (per agent) for a group where you've added several agent-bots. In a
+group or supergroup each bot then:
 
 - **replies only when addressed** — @mentioned, or you reply to one of its messages.
   Otherwise it stays silent but still records the message, so it has the full
@@ -100,9 +99,6 @@ A few details worth knowing:
   address a specific bot with `/yolo-on@botname`, and the grant applies only in that chat
   (a bare `/yolo-on`, addressed to no bot, toggles nothing). The setting persists across
   restarts until you turn it off.
-- **Forum topics** — if you also use `topics_enabled`, genuine forum-topic messages keep
-  their per-topic 1:1 behaviour (the bound agent replies without an @mention); group
-  turn-taking applies to the rest of the group.
 - **Upgrade note** — enabling group rooms re-keys a group's history from per-sender to
   per-group, so a previously-active group starts fresh (old per-sender history is left in
   place, just not carried forward).

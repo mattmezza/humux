@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS agents (
     calendar_accounts TEXT DEFAULT '',
     contacts_accounts TEXT DEFAULT '',
     chat_settings TEXT DEFAULT '',
+    group_chat TEXT DEFAULT '',
     is_default INTEGER NOT NULL DEFAULT 0,
     enabled INTEGER NOT NULL DEFAULT 1,
     created_at DATETIME DEFAULT (datetime('now')),
@@ -77,6 +78,7 @@ _MIGRATIONS = (
     "ALTER TABLE agents ADD COLUMN calendar_accounts TEXT DEFAULT ''",  # #110
     "ALTER TABLE agents ADD COLUMN contacts_accounts TEXT DEFAULT ''",  # #110 (contacts)
     "ALTER TABLE agents ADD COLUMN chat_settings TEXT DEFAULT ''",  # #129
+    "ALTER TABLE agents ADD COLUMN group_chat TEXT DEFAULT ''",  # #133 (per-agent group rooms)
     "ALTER TABLE agents ADD COLUMN is_default INTEGER NOT NULL DEFAULT 0",  # #115 flw
     "ALTER TABLE agents ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1",  # #115 flw kill-switch
     # #98: personalia merged into character. Prepend any existing personalia to
@@ -110,8 +112,10 @@ class Agent:
     skills: list[str] = field(default_factory=list)  # allowlist; [] = all
     tools: list[str] = field(default_factory=list)  # allowlist; [] = all
     secrets: list[str] = field(default_factory=list)  # vault scope; stored only (#19)
-    bot_token: str = ""  # own Telegram bot; empty = reachable only via the default bot (#29)
-    allowed_user_ids: list[int] = field(default_factory=list)  # bot ACL; [] = inherit global
+    # Own Telegram bot token; empty = no bot. The default agent's bot runs as the
+    # bare "telegram" channel, every other agent's as "telegram:<slug>" (#29/#133).
+    bot_token: str = ""
+    allowed_user_ids: list[int] = field(default_factory=list)  # bot ACL; [] = allow any user
     # Per-agent config for the optional external CLI tools (gh, browser) — #93.
     # Shape: {tool_key: {"enabled": bool, **tool-specific cfg}}. Empty = inherit
     # the system-wide tool config (own credentials/profile fall back to shared).
@@ -131,6 +135,11 @@ class Agent:
     # {"mode": "everyone"|"nobody"|"users", "users": [int]}. A chat with no entry
     # (or mode "everyone") is unrestricted — so the default is unchanged.
     chat_settings: dict = field(default_factory=dict)
+    # This agent's Telegram group-room behaviour (#30, moved per-agent in #133).
+    # Shape: {"enabled": bool, "reply_when_addressed_only": bool, "ignore_bots": bool}.
+    # Empty = group rooms off (the GroupChatConfig defaults). Built into a
+    # TelegramConfig for this agent's bot in ``core.main``.
+    group_chat: dict = field(default_factory=dict)
     # The fallback agent flag (#115 flw): exactly one agent is the default the
     # resolution ladder lands on when nothing else is selected. Store-managed via
     # ``set_default`` — NOT written by ``upsert`` (editing an agent keeps its flag).
@@ -264,6 +273,28 @@ def _as_chat_settings(value: object) -> dict:
     return out
 
 
+def _as_group_chat(value: object) -> dict:
+    """Coerce a frontmatter / form / DB-column value into group-room settings (#133).
+
+    Shape: ``{"enabled": bool, "reply_when_addressed_only": bool, "ignore_bots": bool}``.
+    Accepts a parsed dict or a JSON string. Returns ``{}`` when group rooms are off
+    (the default), so the stored value stays empty for the common case; only an
+    enabled config is persisted. A malformed value never breaks load.
+    """
+    if isinstance(value, str) and value.strip():
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError, ValueError:
+            return {}
+    if not isinstance(value, dict) or not value.get("enabled"):
+        return {}
+    return {
+        "enabled": True,
+        "reply_when_addressed_only": bool(value.get("reply_when_addressed_only", True)),
+        "ignore_bots": bool(value.get("ignore_bots", True)),
+    }
+
+
 _ACCESS_LEVELS = ("read", "read_write")
 
 
@@ -375,6 +406,7 @@ def parse_markdown(text: str, *, name: str) -> Agent:
         calendar_accounts=_as_account_list(fm.get("calendar_accounts")),
         contacts_accounts=_as_account_list(fm.get("contacts_accounts")),
         chat_settings=_as_chat_settings(fm.get("chat_settings")),
+        group_chat=_as_group_chat(fm.get("group_chat")),
     )
 
 
@@ -395,6 +427,7 @@ def to_markdown(a: Agent) -> str:
         "calendar_accounts": a.calendar_accounts,
         "contacts_accounts": a.contacts_accounts,
         "chat_settings": a.chat_settings,
+        "group_chat": a.group_chat,
         "character": a.character,
     }
     dumped = yaml.safe_dump(fm, sort_keys=False, allow_unicode=True, default_flow_style=False)
@@ -574,8 +607,8 @@ class AgentStore:
             "INSERT INTO agents "
             "(name, agent_name, role, emoji, voice, character, skills, tools, "
             "secrets, bot_token, allowed_user_ids, tool_config, "
-            "email_accounts, calendar_accounts, contacts_accounts, chat_settings) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "email_accounts, calendar_accounts, contacts_accounts, chat_settings, group_chat) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(name) DO UPDATE SET "
             "agent_name=excluded.agent_name, role=excluded.role, emoji=excluded.emoji, "
             "voice=excluded.voice, character=excluded.character, "
@@ -584,7 +617,8 @@ class AgentStore:
             "tool_config=excluded.tool_config, email_accounts=excluded.email_accounts, "
             "calendar_accounts=excluded.calendar_accounts, "
             "contacts_accounts=excluded.contacts_accounts, "
-            "chat_settings=excluded.chat_settings, updated_at=datetime('now')",
+            "chat_settings=excluded.chat_settings, group_chat=excluded.group_chat, "
+            "updated_at=datetime('now')",
             (
                 a.name,
                 a.agent_name,
@@ -602,6 +636,7 @@ class AgentStore:
                 json.dumps(a.calendar_accounts) if a.calendar_accounts else "",
                 json.dumps(a.contacts_accounts) if a.contacts_accounts else "",
                 json.dumps(a.chat_settings) if a.chat_settings else "",
+                json.dumps(a.group_chat) if a.group_chat else "",
             ),
         )
 
@@ -634,6 +669,7 @@ class AgentStore:
             chat_settings=_as_chat_settings(
                 row["chat_settings"] if "chat_settings" in row.keys() else ""
             ),
+            group_chat=_as_group_chat(row["group_chat"] if "group_chat" in row.keys() else ""),
             is_default=bool(row["is_default"]) if "is_default" in row.keys() else False,
             enabled=bool(row["enabled"]) if "enabled" in row.keys() else True,
         )
@@ -753,6 +789,9 @@ tools:
 secrets: []
 bot_token: "123:ABC"
 allowed_user_ids: [111, 222]
+group_chat:
+  enabled: true
+  reply_when_addressed_only: false
 tool_config:
   gh:
     enabled: true
@@ -788,6 +827,15 @@ Extra prose in the body.
     assert a.tools == ["run_command", "send_message"], a.tools
     assert a.bot_token == "123:ABC", a.bot_token
     assert a.allowed_user_ids == [111, 222], a.allowed_user_ids
+    # #133: per-agent group-room settings; enabled kept, ignore_bots defaults to True.
+    assert a.group_chat == {
+        "enabled": True,
+        "reply_when_addressed_only": False,
+        "ignore_bots": True,
+    }, a.group_chat
+    # A disabled/absent group_chat normalises to {} (the off default).
+    assert _as_group_chat({"enabled": False}) == {}
+    assert _as_group_chat("") == {}
     # #98: legacy personalia folded into character (prepended), body still appended.
     assert "Forge" in a.character and "motivating" in a.character and "Extra prose" in a.character
     assert a.character.index("Forge") < a.character.index("motivating")  # personalia first

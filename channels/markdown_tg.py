@@ -57,7 +57,7 @@ def _strip_tables(text: str) -> str:
                 j += 1
             sep_idx = next((k for k, r in enumerate(rows) if _TABLE_SEP_RE.match(r)), None)
             # Include header row (before separator) as first bullet, then data rows
-            data_rows = rows[:sep_idx] + rows[sep_idx + 1:] if sep_idx is not None else rows
+            data_rows = rows[:sep_idx] + rows[sep_idx + 1 :] if sep_idx is not None else rows
             if data_rows:
                 for row in data_rows:
                     cells = [c.strip() for c in row.strip(" \t|").split("|")]

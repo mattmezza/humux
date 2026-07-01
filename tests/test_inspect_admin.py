@@ -202,27 +202,6 @@ def test_inspect_payload_empty_for_uncaptured_context(tmp_path) -> None:
     assert "No payload captured yet" in r.text
 
 
-def _wizard(tmp_path, **preset) -> str:
-    store = _Store(tmp_path)
-    store._data.update(preset)
-    app, _ = create_admin_app(AgentState(agent=None), cast(ConfigStore, store))
-    r = TestClient(app).get("/channels/wizard", params={"channel": "telegram"}, headers=AUTH)
-    assert r.status_code == 200
-    return r.text
-
-
-def test_topics_checkbox_reflects_stored_value(tmp_path) -> None:
-    # Regression: the Channels-tab Telegram editor must prefill topics_enabled from
-    # the stored value, else re-saving the channel silently disables topic mode.
-    on = _wizard(tmp_path, **{"channels.telegram.topics_enabled": "true"})
-    assert 'id="ch-tg-topics" checked' in on
-    assert "after an agent restart" in on  # restart note shown on the channel editor
-
-    off = _wizard(tmp_path)  # key absent → unchecked
-    assert 'id="ch-tg-topics" checked' not in off
-    assert "ch-tg-topics" in off  # the checkbox itself is present
-
-
 def test_config_requires_restart_flags_startup_only_keys() -> None:
     from api.admin import _config_requires_restart
 

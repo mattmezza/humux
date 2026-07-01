@@ -583,33 +583,6 @@ async def test_wizard_context_skips_vault_refs(tmp_path) -> None:
     assert "tavily_key" not in await _wizard_step_context("search", cs)
 
 
-async def test_telegram_editor_and_save_preserve_vaulted_token(admin_client) -> None:
-    client, _s, cs = admin_client
-    await cs.set("channels.telegram.bot_token", "${vault:TELEGRAM_BOT_TOKEN}")
-    editor = client.get("/channels/wizard?channel=telegram", headers=_auth()).text
-    assert "Secrets" in editor and "${vault:TELEGRAM_BOT_TOKEN}" not in editor
-    # Saving with an empty token field must NOT 400 and must keep the ref.
-    resp = client.post(
-        "/channels/telegram",
-        json={"bot_token": "", "user_ids": "42", "enabled": "true"},
-        headers=_auth(),
-    )
-    assert resp.status_code == 200
-    assert await cs.get("channels.telegram.bot_token") == "${vault:TELEGRAM_BOT_TOKEN}"
-    assert await cs.get("channels.telegram.allowed_user_ids") == "42"
-
-
-async def test_delete_channel_preserves_vaulted_token(admin_client) -> None:
-    # Disabling a channel must not orphan its vault-managed token.
-    client, _s, cs = admin_client
-    await cs.set("channels.telegram.bot_token", "${vault:TELEGRAM_BOT_TOKEN}")
-    await cs.set("channels.telegram.enabled", "true")
-    resp = client.delete("/channels/telegram", headers=_auth())
-    assert resp.status_code == 200
-    assert await cs.get("channels.telegram.bot_token") == "${vault:TELEGRAM_BOT_TOKEN}"
-    assert await cs.get("channels.telegram.enabled") == "false"  # still disabled
-
-
 async def test_llm_provider_key_autovaults_on_save(tmp_path) -> None:
     """A freshly-typed LLM provider key is vaulted, never stored plaintext (#114)."""
     db = str(tmp_path / "config.db")

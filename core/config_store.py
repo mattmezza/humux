@@ -304,7 +304,33 @@ class ConfigStore:
     async def import_from_yaml(self, yaml_path: str = "config.yml") -> int:
         """Load config.yml + .env, then import into the store."""
         config = load_config(yaml_path)
-        return await self.import_from_config(config)
+        n = await self.import_from_config(config)
+        # `Config` no longer models `channels` (#133), so Config validation drops
+        # any `channels.telegram.*` from config.yml. Those keys are still a valid
+        # one-time seed for the default agent's bot (folded on at boot by
+        # _migrate_telegram_to_default_agent), so copy them into the store verbatim.
+        n += await self._seed_channel_keys(yaml_path)
+        return n
+
+    async def _seed_channel_keys(self, yaml_path: str) -> int:
+        """Seed raw ``channels.telegram.*`` keys from config.yml (env vars resolved)."""
+        import yaml
+
+        from core.config import _resolve_env_vars
+
+        path = Path(yaml_path)
+        if not path.exists():
+            return 0
+        raw = yaml.safe_load(path.read_text()) or {}
+        resolved = _resolve_env_vars(raw)
+        channels = resolved.get("channels") if isinstance(resolved, dict) else None
+        telegram = channels.get("telegram") if isinstance(channels, dict) else None
+        if not isinstance(telegram, dict) or not telegram:
+            return 0
+        flat = _flatten({"channels": {"telegram": telegram}})
+        if flat:
+            await self.set_many(flat)
+        return len(flat)
 
     async def export_to_config(self, vault_resolve=None) -> Config:
         """Reconstruct a Config object from the store.

@@ -479,12 +479,11 @@ async def test_run_subagent_task_delivers_to_owner() -> None:
     from core.scheduler import run_subagent_task, set_agent_context
 
     channel = AsyncMock()
+    channel.config = SimpleNamespace(allowed_user_ids=[7])
     agent = SimpleNamespace(
         channels={"telegram": channel},
         run_subagent=AsyncMock(return_value={"ok": True, "result": "scheduled out"}),
-        config=SimpleNamespace(
-            channels=SimpleNamespace(telegram=SimpleNamespace(allowed_user_ids=[7]))
-        ),
+        config=SimpleNamespace(),
         job_store=None,
     )
     set_agent_context(agent)

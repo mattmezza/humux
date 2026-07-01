@@ -67,14 +67,9 @@ agent:
   agents_dir: "agents/"
 
 channels:
-  telegram:
-    enabled: true
+  telegram:                                        # one-time seed for the DEFAULT agent's bot
     bot_token: "${TELEGRAM_BOT_TOKEN}"
     allowed_user_ids: "${TELEGRAM_ALLOWED_USER_IDS}"
-  whatsapp:
-    enabled: false
-    bridge_url: "local-wacli"
-    allowed_numbers: "${WHATSAPP_ALLOWED_NUMBERS}"
 
 calendar:
   providers:
@@ -144,7 +139,12 @@ Core agent settings including name, owner, LLM provider, model, and timezone. Th
 
 #### `channels`
 
-Messaging channel configuration. Each channel can be independently enabled/disabled. See [Channels](/docs/channels) for details.
+A **one-time seed** for the **default agent's** Telegram bot. Telegram is configured
+**per-agent** (each agent runs its own bot, set on the agent edit screen); `channels.telegram`
+here — `bot_token`, `allowed_user_ids`, and the optional `group_chat` block — is folded onto
+the default agent's row on **first boot**, after which every bot is managed per-agent. There
+is no `topics_enabled` key, and WhatsApp is a **tool** (`tools.whatsapp`), not a channel. See
+[Channels](/docs/channels) and [Bot-per-agent](/docs/agents#bot-per-agent) for details.
 
 #### `calendar`
 

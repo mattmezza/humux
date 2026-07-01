@@ -74,15 +74,41 @@
       </div>
 
       <div class="card space-y-3">
-        <h3 class="text-xs text-muted uppercase tracking-wider">Own Telegram bot <span class="text-muted normal-case tracking-normal">— optional</span></h3>
-        <p class="text-xs text-muted">Give this agent its own bot token and it becomes a separate Telegram contact. Leave blank to keep it reachable only via the default bot. Restart the agent after changing.</p>
+        <h3 class="text-xs text-muted uppercase tracking-wider">Telegram bot</h3>
+        <p class="text-xs text-muted">Each agent talks to Telegram through its own bot. Paste a token to bring this agent online; leave it blank and the agent has no bot of its own. The <strong>default</strong> agent's bot is the one people reach when no other bot or per-chat binding matches. Restart the agent after changing a token.</p>
+        <details class="text-xs text-muted">
+          <summary class="cursor-pointer select-none hover:text-accent">How do I get a token / find IDs?</summary>
+          <ul class="list-disc ml-5 mt-1 space-y-1">
+            <li><strong>Bot token</strong> — message <a href="https://t.me/BotFather" target="_blank">@BotFather</a>, send <code>/newbot</code>, follow the prompts, copy the token it gives you.</li>
+            <li><strong>User ID</strong> — message <a href="https://t.me/userinfobot" target="_blank">@userinfobot</a>; it replies with your numeric ID.</li>
+            <li><strong>Chat / group ID</strong> — add the bot to the group and send a message; the chat shows up under <em>Telegram chat settings</em> below once it is active.</li>
+          </ul>
+        </details>
         <div>
           <label class="label">Bot token <span class="text-muted">(from @BotFather)</span></label>
           <input class="input-sm" type="password" x-model="bot_token" autocomplete="off" placeholder="123456:ABC-DEF…">
         </div>
         <div>
-          <label class="label">Allowed user IDs <span class="text-muted">(comma-separated; blank = inherit global)</span></label>
+          <label class="label">Allowed user IDs <span class="text-muted">(comma-separated; blank = anyone)</span></label>
           <input class="input-sm" x-model="allowedUserIds" placeholder="111111111, 222222222">
+          <p class="text-xs text-muted mt-1">Only these Telegram users can make this bot reply. Blank = no restriction — set your own ID to lock the bot to you.</p>
+        </div>
+        <div class="pt-1 border-t border-border">
+          <label class="flex items-center gap-2 text-sm mt-2">
+            <input type="checkbox" x-model="groupChat.enabled">
+            Group multi-agent rooms
+          </label>
+          <p class="text-xs text-muted mt-1">Let this bot share a Telegram group with other agent-bots without them talking over each other. Requires the bot's privacy mode <strong>off</strong> (@BotFather → <code>/setprivacy</code>) so it can see the whole conversation.</p>
+          <div class="ml-5 mt-1 space-y-1" x-show="groupChat.enabled">
+            <label class="flex items-center gap-2 text-sm">
+              <input type="checkbox" x-model="groupChat.reply_when_addressed_only">
+              Reply only when addressed (@mention or reply-to)
+            </label>
+            <label class="flex items-center gap-2 text-sm">
+              <input type="checkbox" x-model="groupChat.ignore_bots">
+              Never reply to other bots (loop guard)
+            </label>
+          </div>
         </div>
       </div>
 
@@ -357,7 +383,7 @@
   <div x-show="mode === 'raw'" class="card">
     <label class="label">Markdown (YAML frontmatter)</label>
     <textarea class="textarea" x-model="raw" style="min-height:460px; font-size:0.8rem; line-height:1.5; tab-size:2"></textarea>
-    <p class="hint">Saving in raw mode parses this document directly — frontmatter keys (role, emoji, voice, bot_token, allowed_user_ids, skills, tools, secrets, email_accounts, calendar_accounts, contacts_accounts, chat_settings, character).</p>
+    <p class="hint">Saving in raw mode parses this document directly — frontmatter keys (role, emoji, voice, bot_token, allowed_user_ids, group_chat, skills, tools, secrets, email_accounts, calendar_accounts, contacts_accounts, chat_settings, character).</p>
   </div>
 
   <div class="flex items-center gap-2 mt-3">
@@ -423,6 +449,13 @@
       chatMode: {},
       chatUsers: {},
 
+      // Per-agent Telegram group-room behaviour (#133). Defaults win when the
+      // stored value is empty (group rooms off).
+      groupChat: Object.assign(
+        { enabled: false, reply_when_addressed_only: true, ignore_bots: true },
+        {{ agent.group_chat|tojson }}
+      ),
+
       init() {
         for (const k of this.toolKeys) {
           const e = this.toolConfig[k];
@@ -483,6 +516,16 @@
           out[c.chat_id] = { mode, users };
         }
         return out;
+      },
+
+      // Emit group-room settings only when enabled ({} = off, the default).
+      buildGroupChat() {
+        if (!this.groupChat.enabled) return {};
+        return {
+          enabled: true,
+          reply_when_addressed_only: !!this.groupChat.reply_when_addressed_only,
+          ignore_bots: !!this.groupChat.ignore_bots,
+        };
       },
 
       // Emit the account bindings the API expects; skip 'none'. The sender
@@ -568,6 +611,7 @@
           'calendar_accounts: ' + JSON.stringify(this.buildCalendarAccounts()) + '\n' +
           'contacts_accounts: ' + JSON.stringify(this.buildContactsAccounts()) + '\n' +
           'chat_settings: ' + JSON.stringify(this.buildChatSettings()) + '\n' +
+          'group_chat: ' + JSON.stringify(this.buildGroupChat()) + '\n' +
           'character: |\n  ' + esc(this.character) + '\n' +
           '---\n';
       },
@@ -596,6 +640,7 @@
               calendar_accounts: this.buildCalendarAccounts(),
               contacts_accounts: this.buildContactsAccounts(),
               chat_settings: this.buildChatSettings(),
+              group_chat: this.buildGroupChat(),
             };
         fetch('/agents', { method: 'POST', headers: this._headers(), body: JSON.stringify(body) })
           .then(r => { this.ok = r.ok; return r.text().then(t => ({ ok: r.ok, t })); })

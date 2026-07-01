@@ -215,19 +215,14 @@ async def run_memory_consolidation() -> None:
 def _get_owner_chat_id(agent: AgentCore, channel: str) -> int | str | None:
     """Get the owner's chat ID for proactive messages.
 
-    Works for the default ``telegram`` bot and every per-agent ``telegram:<agent>``
-    bot (#29): each registered channel carries its own allowlist (an agent bot
-    inherits the global one when unset), so the owner is its first allowed user.
+    Works for the default agent's ``telegram`` bot and every other agent's
+    ``telegram:<agent>`` bot (#29/#133): each running channel carries its own
+    allowlist, so the owner is its first allowed user (None if it allows anyone).
     """
     if channel != "telegram" and not channel.startswith("telegram:"):
         return None
-    # Agent bots carry their own allowlist (inheriting global when unset).
-    if channel.startswith("telegram:"):
-        ch = agent.channels.get(channel)
-        ids = getattr(getattr(ch, "config", None), "allowed_user_ids", None)
-        if ids:
-            return ids[0]
-    ids = agent.config.channels.telegram.allowed_user_ids
+    ch = agent.channels.get(channel)
+    ids = getattr(getattr(ch, "config", None), "allowed_user_ids", None)
     return ids[0] if ids else None
 
 

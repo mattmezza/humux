@@ -165,6 +165,10 @@ class TestPageRoutes:
         resp = client.get("/admin")
         assert resp.status_code == 200
         assert "text/html" in resp.headers["content-type"]
+        # #133: the Channels tab is gone (Telegram config moved onto agents).
+        assert "select('channels')" not in resp.text  # no tab button
+        assert "openChannelWizard" not in resp.text  # no wizard JS
+        assert "/partials/channels" not in resp.text  # no nav-map entry
 
     def test_admin_page_redirects_to_setup_when_not_complete(self):
         client = _client(setup_complete=False)
@@ -318,42 +322,6 @@ class TestVoicePreview:
         assert "OpenRouter" in resp.text
         assert "agent.openrouter_api_key" in resp.text  # save button wiring
         assert "openrouter.ai/docs" in resp.text  # info text / docs link
-
-    def test_telegram_wizard_has_group_chat(self):
-        client = _client(setup_complete=True)
-        resp = client.get("/channels/wizard?channel=telegram", headers=AUTH)
-        assert resp.status_code == 200
-        assert "Group multi-agent rooms" in resp.text
-        # All three toggles are wired so the save can POST them.
-        assert "ch-tg-group" in resp.text
-        assert "ch-tg-group-addressed" in resp.text
-        assert "ch-tg-group-ignorebots" in resp.text
-
-    def test_save_telegram_vaulted_token_allows_group_chat(self):
-        """A vault-managed token (empty readonly field) must not block saving the
-        group_chat / topics toggles (#30)."""
-        store = _ConfigStoreStub(setup_complete=True)
-        store._data["channels.telegram.bot_token"] = "${vault:TELEGRAM_BOT_TOKEN}"
-        agent_state = AgentState(agent=cast(Any, _AgentStub()))
-        app, _ = create_admin_app(agent_state, cast(ConfigStore, store))
-        client = TestClient(app, follow_redirects=False)
-        resp = client.post(
-            "/channels/telegram",
-            headers=AUTH,
-            json={
-                "bot_token": "",  # vaulted → field is empty
-                "user_ids": "1",
-                "enabled": True,
-                "group_chat_enabled": True,
-                "group_reply_addressed_only": False,
-                "group_ignore_bots": True,
-            },
-        )
-        assert resp.status_code == 200  # not 400, despite the empty token
-        assert store._data["channels.telegram.group_chat.enabled"] == "true"
-        assert store._data["channels.telegram.group_chat.reply_when_addressed_only"] == "false"
-        # The vault ref is left untouched (not overwritten with an empty token).
-        assert store._data["channels.telegram.bot_token"] == "${vault:TELEGRAM_BOT_TOKEN}"
 
     def test_accounts_tabs_wrapper(self):
         # Accounts tab wraps Email + Calendars + Contacts sub-tabs, lazy-loaded

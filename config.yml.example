@@ -19,19 +19,18 @@ agent:
   skills_dir: "skills/"
   agents_dir: "agents/"        # optional seed dir — drop agent .md files here to auto-seed (empty by default)
 
+# Telegram — each agent runs its own bot (#133); there is no global "channel".
+# The keys below are a ONE-TIME SEED for the DEFAULT agent's bot: on first boot
+# they are folded onto the default agent's row, after which you configure Telegram
+# per-agent (admin UI → Agents, or a bot_token / allowed_user_ids / group_chat in
+# an agent's seed .md). WhatsApp is a tool now (tools.whatsapp), not a channel.
 channels:
   telegram:
-    enabled: true
     bot_token: "${TELEGRAM_BOT_TOKEN}"
-    allowed_user_ids: "${TELEGRAM_ALLOWED_USER_IDS}"
-    # Opt-in: treat each forum topic as its own agent-bound context (#14).
-    topics_enabled: false
-    # Multi-agent group rooms (#30) — turn-taking + loop guard + speaker tags.
-    # Lets several agent-bots share one group without all answering every
-    # message or looping replies at each other. Inherited by per-agent bots.
-    # Opt-in (off by default): enabling it makes a bot reply only when addressed
-    # and re-keys group history from per-sender to per-group (no migration; prior
-    # group history is not carried forward).
+    allowed_user_ids: "${TELEGRAM_ALLOWED_USER_IDS}"  # comma-separated; blank = anyone
+    # Multi-agent group rooms (#30) — turn-taking + loop guard + speaker tags. Lets
+    # this bot share a group with other agent-bots without all answering every
+    # message or looping replies at each other. Off by default.
     # NOTE: a bot only receives *unaddressed* group messages (the shared context)
     # when its Telegram privacy mode is OFF (set via @BotFather → /setprivacy).
     group_chat:
@@ -41,10 +40,6 @@ channels:
       reply_when_addressed_only: true
       # Never reply to another bot's messages (still recorded for context).
       ignore_bots: true
-  whatsapp:
-    enabled: false
-    bridge_url: "local-wacli"
-    allowed_numbers: "${WHATSAPP_ALLOWED_NUMBERS}"
 
 # Each account below is a registry entry. Agents (and the default agent, on the
 # Assistant tab) bind to accounts by name with a read / read_write access level

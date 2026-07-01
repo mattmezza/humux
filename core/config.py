@@ -131,7 +131,7 @@ class GroupChatConfig(BaseModel):
     gate is moot and no shared context accumulates. Telegram-only: WhatsApp uses a
     single number, so multi-bot rooms don't apply there.
 
-    Off by default (like ``topics_enabled``) so existing single-bot group flows
+    Off by default so existing single-bot group flows
     are unchanged on upgrade: enabling it makes a bot reply only when addressed
     and re-keys a group's history from per-sender to per-group (no migration —
     prior group history is simply not carried forward).
@@ -146,13 +146,18 @@ class GroupChatConfig(BaseModel):
 
 
 class TelegramConfig(BaseModel):
+    """A single Telegram bot's runtime config.
+
+    Not a global "channel" anymore (#133): each agent runs its own bot, and this
+    is built per-agent from the agent row (``bot_token`` / ``allowed_user_ids`` /
+    ``group_chat``) in ``core.main``. Kept as a plain carrier the TelegramChannel
+    consumes.
+    """
+
     enabled: bool = False
     bot_token: str = ""
     allowed_user_ids: list[int] = Field(default_factory=list)
-    # Opt-in: fold forum topics into separate contexts (one agent per topic).
-    # Off by default so the plain 1:1 DM flow is unchanged.
-    topics_enabled: bool = False
-    # Group multi-agent room behaviour (#30); inherited by per-agent bots.
+    # Group multi-agent room behaviour (#30).
     group_chat: GroupChatConfig = Field(default_factory=GroupChatConfig)
 
     @field_validator("allowed_user_ids", mode="before")
@@ -162,10 +167,6 @@ class TelegramConfig(BaseModel):
             v = v.strip()
             return [int(x.strip()) for x in v.split(",") if x.strip()] if v else []
         return v
-
-
-class ChannelsConfig(BaseModel):
-    telegram: TelegramConfig = TelegramConfig()
 
 
 class CalendarProvider(BaseModel):
@@ -482,7 +483,6 @@ class SubagentSummaryConfig(BaseModel):
 
 class Config(BaseModel):
     agent: AgentConfig = AgentConfig()
-    channels: ChannelsConfig = ChannelsConfig()
     calendar: CalendarConfig = CalendarConfig()
     voice: VoiceConfig = VoiceConfig()
     scheduler: SchedulerConfig = SchedulerConfig()

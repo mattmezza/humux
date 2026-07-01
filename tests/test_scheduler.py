@@ -89,13 +89,14 @@ async def test_run_memory_consolidation_calls_store(monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_run_agent_task_sends_to_owner() -> None:
+    # The default agent's bot is the bare "telegram" channel and carries its own
+    # allowlist (#133); the owner is its first allowed user.
     channel = AsyncMock()
+    channel.config = SimpleNamespace(allowed_user_ids=[123])
     agent = SimpleNamespace(
         channels={"telegram": channel},
         process=AsyncMock(return_value=SimpleNamespace(text="done")),
-        config=SimpleNamespace(
-            channels=SimpleNamespace(telegram=SimpleNamespace(allowed_user_ids=[123]))
-        ),
+        config=SimpleNamespace(),
         job_store=None,
     )
     set_agent_context(agent)

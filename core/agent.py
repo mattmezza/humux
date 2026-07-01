@@ -1415,33 +1415,6 @@ class AgentCore:
         """
         await self.history.bind_chat_agent(channel, user_id, chat_id, agent_name)
 
-    async def bind_chat_agent_by_label(
-        self, channel: str, user_id: str, chat_id: str, label: str
-    ) -> str | None:
-        """Auto-bind a chat to the agent matching ``label`` (case-insensitive).
-
-        Matches the label against each agent's ``name``, ``agent_name`` and
-        ``role``. Only binds when the chat is not already bound, so a manual
-        rebind is never clobbered. Returns the bound agent name, or ``None``.
-        """
-        label = (label or "").strip()
-        if not label:
-            return None
-        if await self.history.get_chat_agent(channel, user_id, chat_id):
-            return None  # already bound — don't override a manual choice
-        target = label.lower()
-        try:
-            agents = await self.agents.list_agents()
-        except Exception:
-            log.exception("Failed to list agents for topic auto-bind")
-            return None
-        for p in agents:
-            labels = {p.name.lower(), (p.agent_name or "").lower(), (p.role or "").lower()}
-            if target in labels - {""}:
-                await self.bind_chat_agent(channel, user_id, chat_id, p.name)
-                return p.name
-        return None
-
     def _tools_for_turn(self, agent: Agent | None) -> list[dict]:
         """The function-tool schemas offered to the model this turn: the agent's
         tool scope, with feature-gated tools dropped — including the skill-discovery

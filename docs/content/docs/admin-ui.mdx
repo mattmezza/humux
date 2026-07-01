@@ -25,12 +25,12 @@ Overview of agent status, active channels, and quick stats. The status badge (to
 shows `RUNNING`/`STOPPED`/etc. and is clickable — it opens Agent Control to start, stop, or
 restart the agent.
 
-Most settings apply live. A few are read only when the agent starts — **channels** (Telegram/
-WhatsApp, including forum-topic mode), **voice** (STT/TTS), and **history → max turns** — so
-saving them shows a **"Restart required"** banner with a **Restart now** button (which also
-updates the status badge). Those sections also carry an inline ⟳ note. Everything else (LLM,
-vision, memory, compaction, search, agents, permissions, jobs, calendars/contacts/email,
-identity) takes effect immediately.
+Most settings apply live. A few are read only when the agent starts — an agent's
+**Telegram bot** (token, allowed users, group rooms; set on the agent editor), **voice**
+(STT/TTS), and **history → max turns** — so saving them shows a **"Restart required"** banner
+with a **Restart now** button (which also updates the status badge). Those sections also carry
+an inline ⟳ note. Everything else (LLM, vision, memory, compaction, search, agents,
+permissions, jobs, calendars/contacts/email, identity) takes effect immediately.
 
 ### Configuration
 
@@ -43,8 +43,7 @@ Edit agent settings without touching config files:
     - **Inference** — pick the provider and model for each inference and its parameters (main model, max output tokens, temperature, thinking level) plus the background models for memory, goal decomposition, task reflection, reply decision, **history compaction** (summarizes old conversation turns — see the History sub-tab for the trigger threshold), and vision fallback. The model field is free-text (enter any model id the provider supports)
     - **Providers** — per-provider access: API key and optional base URL, with **Test connection**, **Fetch models** (loads the live model list into each field's autocomplete), and **Copy list**. Saving a provider API key stores it in the [secrets vault](/docs/secrets) and keeps only a `${vault:NAME}` reference in config — the raw key is never written to plaintext config. If no vault machine key is configured, it falls back to plaintext
     - **History** — conversation-history mode + window and the context-compaction trigger threshold (see below)
-- **Channels** — enable/disable Telegram and WhatsApp
-- **Tools** — enable/disable and configure the agent's optional tools, including **Web search** (Tavily)
+- **Tools** — enable/disable and configure the agent's optional tools, including **Web search** (Tavily). Each agent's **Telegram bot** (token, allowed users, group rooms, per-chat permissions) lives on the **Agents** tab, per agent
 - **Accounts** — external accounts, grouped into three sub-tabs: **Email** (Himalaya configuration), **Calendars** (CalDAV providers), and **Contacts** (contact providers)
 - **Vaults** — the [secrets vault](/docs/secrets), split into **Agents** (per-agent / login secrets), **Infra** (machine-key-encrypted infrastructure secrets + migrate plaintext credentials into the vault), and **Import** (Bitwarden import)
 - **Voice** — STT/TTS settings, including the **TTS backend** (Edge TTS or offline Kokoro), the default voice, and a **Preview** button to hear a voice before saving
@@ -70,7 +69,7 @@ The last tab — a developer view of every active context, laid out **master/det
 
 The detail pane shows the **exact payload the agent last sent to the model** for that context — the assembled system prompt/identity, the full tool definitions, and the history window rendered as a transcript (user / assistant / tool-use / tool-result blocks), plus the model and `max_tokens`. A **Context usage** meter shows the real prompt size the provider reported for that request against the model's context window — e.g. `12,480 / 200,000 tokens — 6.2% of context window` — so you can see how close a conversation is to its limit at a glance (the bar turns amber past 70% and red past 90%). The window comes from the same per-model map that drives compaction; unknown models fall back to the compaction context-window setting. A **Raw JSON** section gives the verbatim serialized request for power users (base64 image bytes are elided so the view stays light).
 
-This is the real inference payload, captured in memory at send time, so it shows exactly what ran — no guessing. It is empty until a context has had a turn since the agent started, and reselecting a context refreshes to the latest. Subagent turns are not captured here, only the conversation's own requests. The view is admin-only and shows the payload verbatim; the assembled prompt references secrets by name, not value. With Telegram `topics_enabled`, each forum topic appears as its own `chat:topic` context. The page is responsive at phone width.
+This is the real inference payload, captured in memory at send time, so it shows exactly what ran — no guessing. It is empty until a context has had a turn since the agent started, and reselecting a context refreshes to the latest. Subagent turns are not captured here, only the conversation's own requests. The view is admin-only and shows the payload verbatim; the assembled prompt references secrets by name, not value. The page is responsive at phone width.
 
 ### Memory
 

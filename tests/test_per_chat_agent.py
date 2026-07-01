@@ -1,4 +1,4 @@
-"""Per-chat agent binding (#14): store layer, resolution ladder, topic folding."""
+"""Per-chat agent binding (#14): store layer, resolution ladder, chat id folding."""
 
 from __future__ import annotations
 
@@ -91,7 +91,6 @@ def _fake_agent(history: ConversationHistory, agents: AgentStore):
         "_load_agent",
         "_resolve_agent",
         "bind_chat_agent",
-        "bind_chat_agent_by_label",
     ):
         setattr(fa, name, types.MethodType(getattr(AgentCore, name), fa))
     return fa
@@ -159,28 +158,6 @@ async def test_resolve_agent_missing_binding_falls_through(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_bind_by_label_matches_name_agentname_role(tmp_path) -> None:
-    h = ConversationHistory(db_path=str(tmp_path / "h.db"))
-    store = await _seed_agents(tmp_path)
-    fa = _fake_agent(h, store)
-
-    # Match by agent_name ("Forge"), case-insensitive.
-    assert await fa.bind_chat_agent_by_label("telegram", "u1", "c1", "forge") == "coach"
-    assert await h.get_chat_agent("telegram", "u1", "c1") == "coach"
-
-    # Already bound → does not override a manual/earlier choice.
-    assert await fa.bind_chat_agent_by_label("telegram", "u1", "c1", "Writer") is None
-    assert await h.get_chat_agent("telegram", "u1", "c1") == "coach"
-
-    # No match → None, no binding.
-    assert await fa.bind_chat_agent_by_label("telegram", "u1", "c9", "nope") is None
-    assert await h.get_chat_agent("telegram", "u1", "c9") is None
-
-    # Match by role.
-    assert await fa.bind_chat_agent_by_label("telegram", "u1", "c2", "writer") == "writer"
-
-
-@pytest.mark.asyncio
 async def test_bind_chat_agent_clears_session_system(tmp_path) -> None:
     h = ConversationHistory(db_path=str(tmp_path / "h.db"))
     store = await _seed_agents(tmp_path)
@@ -193,46 +170,25 @@ async def test_bind_chat_agent_clears_session_system(tmp_path) -> None:
     assert await h.get_chat_agent("telegram", "u1", "c1") is None
 
 
-# ---- Telegram topic folding ------------------------------------------------
+# ---- Telegram chat id folding ----------------------------------------------
 
 
-def _fold(topics_enabled: bool, chat, message):
-    fake = types.SimpleNamespace(config=types.SimpleNamespace(topics_enabled=topics_enabled))
-    return TelegramChannel._fold(fake, chat, message)
+def _fold(chat):
+    return TelegramChannel._fold(types.SimpleNamespace(), chat)
 
 
-def test_fold_off_by_default() -> None:
-    chat = types.SimpleNamespace(id=-100123)
-    msg = types.SimpleNamespace(message_thread_id=45, is_topic_message=True)
-    assert _fold(False, chat, msg) == -100123  # no folding when disabled
-
-
-def test_fold_topic_message() -> None:
-    chat = types.SimpleNamespace(id=-100123)
-    msg = types.SimpleNamespace(message_thread_id=45, is_topic_message=True)
-    assert _fold(True, chat, msg) == "-100123:45"
-
-
-def test_fold_reply_chain_is_not_a_topic() -> None:
-    # Non-forum reply-chains / discussion comments carry message_thread_id too,
-    # but is_topic_message is False — they must NOT fold into a separate context.
-    chat = types.SimpleNamespace(id=-100555)
-    msg = types.SimpleNamespace(message_thread_id=789, is_topic_message=False)
-    assert _fold(True, chat, msg) == -100555
-
-
-def test_fold_general_topic_is_bare_chat() -> None:
-    chat = types.SimpleNamespace(id=-100123)
-    msg = types.SimpleNamespace(message_thread_id=None, is_topic_message=False)
-    assert _fold(True, chat, msg) == -100123
+def test_fold_uses_chat_id() -> None:
+    # Forum topics were dropped (#133): a message's context is just its chat id.
+    assert _fold(types.SimpleNamespace(id=-100123)) == -100123
 
 
 def test_fold_no_chat_returns_none() -> None:
-    msg = types.SimpleNamespace(message_thread_id=None, is_topic_message=False)
-    assert _fold(True, None, msg) is None
+    assert _fold(None) is None
 
 
 def test_route_roundtrip() -> None:
+    # _route still splits a legacy folded "<chat>:<thread>" id stored while topics
+    # were enabled, so outgoing calls to those chats keep working.
     assert TelegramChannel._route("-100123:45") == (-100123, {"message_thread_id": 45})
     assert TelegramChannel._route(-100123) == (-100123, {})
     assert TelegramChannel._route("12345") == ("12345", {})  # bare numeric string, no thread

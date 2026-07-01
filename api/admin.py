@@ -289,72 +289,6 @@ async def _wizard_step_context(step: str, config_store: ConfigStore) -> dict[str
     return ctx
 
 
-async def _channel_list_context(
-    config_store: ConfigStore,
-    wacli: WacliManager | None = None,
-) -> dict[str, list[dict[str, object]]]:
-    channels: list[dict[str, object]] = []
-
-    tg_enabled_raw = await config_store.get("channels.telegram.enabled")
-    tg_enabled = str(tg_enabled_raw).lower() == "true"
-    tg_token = await config_store.get("channels.telegram.bot_token")
-    tg_users = await config_store.get("channels.telegram.allowed_user_ids")
-    tg_configured = bool(tg_token or tg_users or tg_enabled)
-    if tg_configured:
-        tg_detail = "Not configured"
-        if tg_token:
-            tg_detail = "Bot token set"
-            if tg_users:
-                tg_detail = f"Bot token set · Users: {tg_users}"
-        channels.append(
-            {
-                "key": "telegram",
-                "label": "Telegram",
-                "enabled": tg_enabled,
-                "detail": tg_detail,
-            }
-        )
-
-    # WhatsApp is a tool now (#97), not a channel — its enable toggle and wacli
-    # linking live on the Tools tab.
-
-    return {"channels": channels}
-
-
-async def _channel_wizard_context(
-    config_store: ConfigStore,
-    channel: str,
-) -> dict[str, str]:
-    ctx: dict[str, str] = {}
-    if channel == "telegram":
-        bot_token = await config_store.get("channels.telegram.bot_token")
-        user_ids = await config_store.get("channels.telegram.allowed_user_ids")
-        # Vault-managed token (issue #35): mark it so the editor shows a read-only
-        # note instead of the input, and never ship the ref to the browser.
-        bot_token_vaulted = _is_vault_ref(bot_token)
-        ctx["bot_token_vaulted"] = bot_token_vaulted  # type: ignore[assignment]
-        if bot_token and not bot_token_vaulted:
-            ctx["bot_token"] = bot_token
-        if user_ids:
-            ctx["user_ids"] = user_ids
-        ctx["topics_enabled"] = (
-            str(await config_store.get("channels.telegram.topics_enabled")).lower() == "true"
-        )
-        # Group multi-agent rooms (#30). Absent keys fall back to the model
-        # defaults: enabled off, the two sub-options on.
-        g_enabled = await config_store.get("channels.telegram.group_chat.enabled")
-        g_addressed = await config_store.get(
-            "channels.telegram.group_chat.reply_when_addressed_only"
-        )
-        g_ignore = await config_store.get("channels.telegram.group_chat.ignore_bots")
-        ctx["group_chat_enabled"] = str(g_enabled).lower() == "true"  # default off
-        ctx["group_reply_addressed_only"] = (
-            g_addressed is None or str(g_addressed).lower() == "true"
-        )
-        ctx["group_ignore_bots"] = g_ignore is None or str(g_ignore).lower() == "true"
-    return ctx
-
-
 async def _calendar_providers_context(config_store: ConfigStore) -> list[dict[str, str]]:
     raw = await config_store.get("calendar.providers")
     if not raw:
@@ -642,6 +576,7 @@ class AgentUpsertIn(BaseModel):
     calendar_accounts: list[dict] = []  # [{account, access_level}] — #110
     contacts_accounts: list[dict] = []  # [{account, access_level}] — #110 (contacts)
     chat_settings: dict = {}  # {chat_id: {mode, users}} per-chat trigger/DM gate — #129
+    group_chat: dict = {}  # {enabled, reply_when_addressed_only, ignore_bots} group rooms — #133
     gh_token: str = ""  # this agent's GitHub PAT → infra vault; empty = leave unchanged
     raw: str = ""  # when set, the markdown doc is parsed instead of the fields above
 
@@ -1261,12 +1196,6 @@ def create_admin_app(
         """Agents tab partial — the default agent pinned above the custom agents,
         the active-agent selector, and the global voice card (#115 flw)."""
         return _render_partial("partials/agents.html", **await _agents_context())
-
-    @app.get("/partials/channels", dependencies=[Depends(auth)])
-    async def partial_channels() -> HTMLResponse:
-        """Channels tab partial."""
-        channel_data = await _channel_list_context(config_store, wacli)
-        return _render_partial("partials/channels.html", **channel_data)
 
     @app.get("/partials/accounts-tabs", dependencies=[Depends(auth)])
     async def partial_accounts_tabs() -> HTMLResponse:
@@ -2825,46 +2754,6 @@ def create_admin_app(
             raise HTTPException(404, f"Skill not found: {name}")
         return skill
 
-    # ── Channels API ──────────────────────────────────────────────────────
-
-    @app.get("/channels/wizard", dependencies=[Depends(auth)])
-    async def channel_wizard(channel: str = "telegram") -> HTMLResponse:
-        key = channel.strip().lower()
-        if key == "telegram":
-            ctx = await _channel_wizard_context(config_store, "telegram")
-            return _render_partial("partials/channel_wizard_telegram.html", **ctx)
-        raise HTTPException(400, f"Unknown channel: {channel}")
-
-    @app.post("/channels/telegram", dependencies=[Depends(auth)])
-    async def save_channel_telegram(request: Request) -> HTMLResponse:
-        body = await request.json()
-        bot_token = str(body.get("bot_token", "")).strip()
-        user_ids = str(body.get("user_ids", "")).strip()
-        enabled = str(body.get("enabled", "true")).lower() == "true"
-        topics_enabled = bool(body.get("topics_enabled", False))
-        # Group multi-agent rooms (#30). Sub-options default on; whole feature off.
-        group_enabled = bool(body.get("group_chat_enabled", False))
-        group_addressed = bool(body.get("group_reply_addressed_only", True))
-        group_ignore_bots = bool(body.get("group_ignore_bots", True))
-        # When the token lives in the vault the editor submits an empty field —
-        # treat the existing ${vault:} ref as "present" and leave it untouched.
-        token_is_vaulted = _is_vault_ref(await config_store.get("channels.telegram.bot_token"))
-        if not bot_token and not token_is_vaulted:
-            raise HTTPException(400, "Bot token is required")
-        values = {
-            "channels.telegram.enabled": str(enabled).lower(),
-            "channels.telegram.allowed_user_ids": user_ids,
-            "channels.telegram.topics_enabled": str(topics_enabled).lower(),
-            "channels.telegram.group_chat.enabled": str(group_enabled).lower(),
-            "channels.telegram.group_chat.reply_when_addressed_only": str(group_addressed).lower(),
-            "channels.telegram.group_chat.ignore_bots": str(group_ignore_bots).lower(),
-        }
-        if bot_token:  # only overwrite when a real new token was typed
-            values["channels.telegram.bot_token"] = bot_token
-        await config_store.set_many(values)
-        channel_data = await _channel_list_context(config_store, wacli)
-        return _render_partial("partials/channels.html", **channel_data)
-
     # WhatsApp wacli linking (#97): the tool's enable flag is `tools.whatsapp.enabled`
     # (saved via /config like the other tools); the routes below drive device auth and
     # sync from the Tools tab. WhatsApp is a tool now, not a channel.
@@ -2919,26 +2808,6 @@ def create_admin_app(
     async def whatsapp_sync() -> dict:
         res = await wacli.sync_once()
         return {"ok": res.get("success") is True, "response": res}
-
-    @app.delete("/channels/{channel}", dependencies=[Depends(auth)])
-    async def delete_channel(channel: str) -> HTMLResponse:
-        key = channel.strip().lower()
-        values: dict[str, str] = {}
-        if key == "telegram":
-            values = {
-                "channels.telegram.enabled": "false",
-                "channels.telegram.bot_token": "",
-                "channels.telegram.allowed_user_ids": "",
-            }
-        else:
-            raise HTTPException(400, f"Unknown channel: {channel}")
-
-        # Disabling the channel must not blank a vault-managed token — that would
-        # orphan the secret (issue #35). Lifecycle of vaulted secrets lives on the
-        # Secrets tab; here we just disable + clear the non-secret fields.
-        await config_store.set_many(await _preserve_vault_refs(values))
-        channel_data = await _channel_list_context(config_store, wacli)
-        return _render_partial("partials/channels.html", **channel_data)
 
     @app.post("/skills", dependencies=[Depends(auth)])
     async def upsert_skill(body: SkillUpsertIn) -> HTMLResponse:
@@ -2998,6 +2867,7 @@ def create_admin_app(
             Agent,
             _as_account_list,
             _as_chat_settings,
+            _as_group_chat,
             _as_int_list,
             _as_tool_config,
             parse_markdown,
@@ -3029,6 +2899,7 @@ def create_admin_app(
                 calendar_accounts=_as_account_list(body.calendar_accounts),
                 contacts_accounts=_as_account_list(body.contacts_accounts),
                 chat_settings=_as_chat_settings(body.chat_settings),
+                group_chat=_as_group_chat(body.group_chat),
             )
         # A per-agent GitHub token goes into the infra vault (machine-key,
         # boot-unsealed so it works headless), namespaced per agent (#93). Empty

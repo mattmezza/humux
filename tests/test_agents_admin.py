@@ -163,6 +163,21 @@ def test_agent_editor_lists_available_accounts(tmp_path) -> None:
     assert "coach-agent" in page and "google" in page  # available accounts injected
 
 
+def test_agent_editor_has_telegram_section(tmp_path) -> None:
+    # #133: all Telegram config lives on the agent editor now (no Channels tab),
+    # and the forum-topics concept is gone.
+    client, _ = _client(tmp_path)
+    client.post("/agents", json={"name": "coach"}, headers=AUTH)
+    page = client.get("/admin/agents/coach", headers=AUTH).text
+    assert "Telegram bot" in page
+    assert "Bot token" in page
+    assert "Group multi-agent rooms" in page  # per-agent group-room toggles
+    assert "groupChat" in page  # wired into the save/raw payload
+    assert "Telegram chat settings" in page  # #129 per-chat permissions
+    # No trace of the removed forum-topics feature.
+    assert "forum" not in page.lower() and "topics_enabled" not in page
+
+
 def test_agent_raw_markdown_upsert(tmp_path) -> None:
     client, _ = _client(tmp_path)
     # A legacy `personalia:` key still parses — folded into character (#98).
@@ -197,6 +212,35 @@ def test_agent_bot_fields_persist(tmp_path) -> None:
     assert got["bot_token"] != "123456:ABC-DEF"
     assert "123456:ABC-DEF" not in got["markdown"]  # not leaked via the raw view either
     assert got["allowed_user_ids"] == [111, 222]
+
+
+def test_agent_group_chat_persists(tmp_path) -> None:
+    # #133: per-agent group-room settings round-trip; missing sub-flags default on,
+    # and a disabled config is normalised back to {} (the off default).
+    client, _ = _client(tmp_path)
+    r = client.post(
+        "/agents",
+        json={
+            "name": "coach",
+            "role": "Coach",
+            "group_chat": {"enabled": True, "reply_when_addressed_only": False},
+        },
+        headers=AUTH,
+    )
+    assert r.status_code == 200
+    got = client.get("/agents/coach", headers=AUTH).json()
+    assert got["group_chat"] == {
+        "enabled": True,
+        "reply_when_addressed_only": False,
+        "ignore_bots": True,
+    }
+
+    client.post(
+        "/agents",
+        json={"name": "coach", "role": "Coach", "group_chat": {"enabled": False}},
+        headers=AUTH,
+    )
+    assert client.get("/agents/coach", headers=AUTH).json()["group_chat"] == {}
 
 
 def test_agent_tool_config_persists(tmp_path) -> None:

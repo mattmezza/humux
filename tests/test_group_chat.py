@@ -230,14 +230,12 @@ def _channel(
     group_chat: GroupChatConfig | None = None,
     channel_name: str = "telegram",
     *,
-    topics_enabled: bool = False,
     allowed_user_ids=None,
 ):
     # group_chat defaults OFF (opt-in); the tests want it ON to exercise the path.
     cfg = TelegramConfig(
         enabled=True,
         bot_token="123456:TESTTOKEN",
-        topics_enabled=topics_enabled,
         allowed_user_ids=allowed_user_ids or [],
         group_chat=group_chat or GroupChatConfig(enabled=True),
     )
@@ -468,19 +466,6 @@ def test_routing_keep_bots_when_ignore_disabled() -> None:
     msg = _msg("@coachbot hi", entities=[_ent("mention", "@coachbot")])
     r = _route(ch, user=chef, message=msg)
     assert r["respond"] is True  # addressed bot reply allowed when ignore_bots off
-
-
-def test_routing_forum_topic_exempt_from_group_gate() -> None:
-    """A genuine forum-topic message under topics_enabled keeps 1:1 behaviour."""
-    ch = _channel(topics_enabled=True)
-    msg = _msg("just chatting", is_topic_message=True)
-    r = _route(ch, user=_user(uid=7, name="Bob"), message=msg)
-    # No group gate: replies, no speaker tag, keyed by the sender (per-topic).
-    assert r == {"user_id": "7", "speaker_tag": "", "respond": True, "addressed": True}
-    # A non-topic message in the same supergroup still gets group treatment.
-    r2 = _route(ch, user=_user(name="Bob"), message=_msg("hi"))
-    assert r2["respond"] is False
-    assert r2["user_id"] == "-100"
 
 
 # ---------------------------------------------------------------------------

@@ -82,10 +82,6 @@
             @click="select('memory')">
       Memory
     </button>
-    <button class="tab-link" :class="tab === 'channels' && 'tab-link-active'"
-            @click="select('channels')">
-      Channels
-    </button>
     <button class="tab-link" :class="tab === 'tools' && 'tab-link-active'"
             @click="select('tools')">
       Tools
@@ -262,138 +258,7 @@
     if (agentModal && agentModal.style.display === 'flex') {
       closeAgentModal();
     }
-    const channelModal = document.getElementById('channel-modal');
-    if (channelModal && channelModal.style.display === 'flex') {
-      closeChannelWizard();
-    }
   });
-
-  function openChannelWizard(channelKey) {
-    const modal = document.getElementById('channel-modal');
-    if (!modal) return;
-    resetChannelWizard();
-    modal.style.display = 'flex';
-    if (channelKey) {
-      loadChannelWizard(channelKey);
-    }
-  }
-
-  function closeChannelWizard() {
-    const modal = document.getElementById('channel-modal');
-    if (!modal) return;
-    modal.style.display = 'none';
-    resetChannelWizard();
-  }
-
-  function resetChannelWizard() {
-    const body = document.getElementById('channel-wizard-body');
-    const selector = document.getElementById('channel-wizard-selector');
-    if (!body || !selector) return;
-    body.innerHTML = selector.innerHTML;
-  }
-
-  function loadChannelWizard(channelKey) {
-    const body = document.getElementById('channel-wizard-body');
-    if (!body) return;
-    body.innerHTML = '<span class="text-muted text-xs">Loading...</span>';
-    fetch('/channels/wizard?channel=' + encodeURIComponent(channelKey), {
-      headers: {
-        'Authorization': 'Bearer ' + (localStorage.getItem('admin_api_key') || '')
-      }
-    })
-      .then(r => r.text())
-      .then(html => { body.innerHTML = html; })
-      .catch(e => { body.innerHTML = '<div class="alert-error">' + e.message + '</div>'; });
-  }
-
-  function removeChannel(channelKey) {
-    if (!confirm('Remove ' + channelKey + ' channel configuration?')) return;
-    fetch('/channels/' + encodeURIComponent(channelKey), {
-      method: 'DELETE',
-      headers: {
-        'Authorization': 'Bearer ' + (localStorage.getItem('admin_api_key') || '')
-      }
-    })
-      .then(r => r.text())
-      .then(html => {
-        document.getElementById('tab-content').innerHTML = html;
-      })
-      .catch(e => alert(e.message));
-  }
-
-  function testTelegram() {
-    const result = document.getElementById('channel-wizard-result');
-    const tokenInput = document.getElementById('ch-tg-token');
-    if (!result || !tokenInput) return;
-    const token = tokenInput.value.trim();
-    result.textContent = 'Testing...';
-    result.className = 'alert-info';
-    fetch('/setup/test-connection', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + (localStorage.getItem('admin_api_key') || '')
-      },
-      body: JSON.stringify({service: 'telegram', bot_token: token})
-    })
-      .then(r => r.json())
-      .then(d => {
-        result.textContent = d.ok ? 'Connected to @' + (d.bot_username || '') : d.error;
-        result.className = d.ok ? 'alert-success' : 'alert-error';
-      })
-      .catch(e => {
-        result.textContent = e.message;
-        result.className = 'alert-error';
-      });
-  }
-
-  function saveTelegram() {
-    const result = document.getElementById('channel-wizard-result');
-    const tokenInput = document.getElementById('ch-tg-token');
-    const usersInput = document.getElementById('ch-tg-users');
-    if (!result || !tokenInput || !usersInput) return;
-    const token = tokenInput.value.trim();
-    const users = usersInput.value.trim();
-    const topicsInput = document.getElementById('ch-tg-topics');
-    const topics = topicsInput ? topicsInput.checked : false;
-    const groupInput = document.getElementById('ch-tg-group');
-    const group = groupInput ? groupInput.checked : false;
-    const groupAddressedInput = document.getElementById('ch-tg-group-addressed');
-    const groupAddressed = groupAddressedInput ? groupAddressedInput.checked : true;
-    const groupIgnoreBotsInput = document.getElementById('ch-tg-group-ignorebots');
-    const groupIgnoreBots = groupIgnoreBotsInput ? groupIgnoreBotsInput.checked : true;
-    // A vault-managed token renders the field readonly+empty; the backend keeps
-    // the existing ${vault:} ref, so don't demand a typed token there (otherwise
-    // toggling topics/group rooms is impossible once the token is vaulted).
-    if (!token && !tokenInput.readOnly) {
-      result.textContent = 'Bot token is required.';
-      result.className = 'alert-error';
-      return;
-    }
-    fetch('/channels/telegram', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + (localStorage.getItem('admin_api_key') || '')
-      },
-      body: JSON.stringify({
-        bot_token: token, user_ids: users, enabled: true, topics_enabled: topics,
-        group_chat_enabled: group, group_reply_addressed_only: groupAddressed,
-        group_ignore_bots: groupIgnoreBots
-      })
-    })
-      .then(r => r.text())
-      .then(html => {
-        document.getElementById('tab-content').innerHTML = html;
-        closeChannelWizard();
-        if (window.showToast) { window.showToast('Telegram channel saved'); }
-        if (window.notifyRestartRequired) { notifyRestartRequired(); }
-      })
-      .catch(e => {
-        result.textContent = e.message;
-        result.className = 'alert-error';
-      });
-  }
 
   function testWhatsApp() {
     const result = document.getElementById('channel-wizard-result');
@@ -657,22 +522,12 @@
   }
 
 
-  document.addEventListener('click', (event) => {
-    const modal = document.getElementById('channel-modal');
-    if (!modal || modal.style.display !== 'flex') return;
-    if (event.target === modal) {
-      closeChannelWizard();
-    }
-  });
-
-
   function adminTabs() {
     const tabs = {
       you: '/partials/you',
       agents: '/partials/agents',
       llm: '/partials/llm',
       memory: '/partials/memory',
-      channels: '/partials/channels',
       tools: '/partials/tools',
       workspace: '/partials/workspace',
       permissions: '/partials/permissions',
