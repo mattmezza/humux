@@ -205,6 +205,11 @@ async def _lifespan(application):  # noqa: ANN001
     seed_pw = environ.get("ADMIN_PASSWORD") or environ.get("ADMIN_API_KEY")
     if seed_pw:
         await _secret_store.ensure_wrapped_dek(seed_pw)
+    # Load the infra-vault cache and attach its resolver to the config store so the
+    # Himalaya materialisation below can expand ${vault:NAME} email passwords (#110).
+    # Safe with no master key: the cache is empty and infra_resolve falls back to env.
+    await _secret_store.load_infra_cache()
+    _config_store.vault_resolve = _secret_store.infra_resolve
     await materialize_himalaya_config(_config_store)
 
     setup_complete = await _config_store.is_setup_complete()

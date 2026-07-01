@@ -34,7 +34,7 @@ def _quote(value: str) -> str:
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
-def _provider_to_toml(provider: dict, *, is_default: bool = False) -> str:
+def _provider_to_toml(provider: dict, *, is_default: bool = False, resolve=None) -> str:
     """Convert a single provider dict to a Himalaya TOML account section.
 
     Expected provider keys:
@@ -46,8 +46,18 @@ def _provider_to_toml(provider: dict, *, is_default: bool = False) -> str:
         smtp_host    – SMTP server hostname
         smtp_port    – SMTP server port (default 465)
         login        – login username (defaults to email)
-        password     – app password / secret
+        password     – app password / secret; may be a ``${vault:NAME}`` reference
+
+    ``resolve`` (name -> str | None), when given, expands ``${vault:NAME}``
+    references from the infra vault so the account password never sits in the
+    stored config as plaintext (#110). The resolved secret is written only into
+    the Himalaya config file (0600, /tmp) that the CLI reads — it never returns
+    to the model's context or the logs.
     """
+    if resolve is not None:
+        from core.config import resolve_vault_vars
+
+        provider = resolve_vault_vars(provider, resolve)
     name = provider.get("name", "default").strip()
     email = provider.get("email", "").strip()
     display_name = provider.get("display_name", "").strip()
@@ -90,13 +100,16 @@ def _provider_to_toml(provider: dict, *, is_default: bool = False) -> str:
     return "\n".join(lines)
 
 
-def providers_to_toml(providers: list[dict]) -> str:
-    """Generate a complete Himalaya TOML config from a list of providers."""
+def providers_to_toml(providers: list[dict], resolve=None) -> str:
+    """Generate a complete Himalaya TOML config from a list of providers.
+
+    ``resolve`` is threaded to :func:`_provider_to_toml` to expand
+    ``${vault:NAME}`` credential references (#110)."""
     if not providers:
         return ""
     sections: list[str] = []
     for idx, provider in enumerate(providers):
-        sections.append(_provider_to_toml(provider, is_default=(idx == 0)))
+        sections.append(_provider_to_toml(provider, is_default=(idx == 0), resolve=resolve))
     return "\n\n".join(sections) + "\n"
 
 
@@ -131,7 +144,11 @@ async def materialize_himalaya_config(config_store) -> bool:
             removed = True
         return removed
 
-    content = providers_to_toml(providers)
+    # Expand ${vault:NAME} credential references, if a resolver was attached to
+    # the config store (main.py wires config_store.vault_resolve after the infra
+    # vault cache loads). Absent = literal values, preserving prior behaviour (#110).
+    resolve = getattr(config_store, "vault_resolve", None)
+    content = providers_to_toml(providers, resolve)
 
     HIMALAYA_CONFIG_PATH.write_text(content)
     HIMALAYA_XDG_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -140,3 +157,24 @@ async def materialize_himalaya_config(config_store) -> bool:
         "Materialized Himalaya config (%d accounts) to %s", len(providers), HIMALAYA_CONFIG_PATH
     )
     return True
+
+
+if __name__ == "__main__":
+    # ponytail: one runnable check — TOML build + ${vault:} password resolution (#110).
+    prov = {
+        "name": "fitness",
+        "email": "fitness@agent.example.com",
+        "imap_host": "imap.example.com",
+        "smtp_host": "smtp.example.com",
+        "password": "${vault:IMAP_PW_FITNESS}",
+    }
+    plain = _provider_to_toml(prov)
+    assert "${vault:IMAP_PW_FITNESS}" in plain  # unresolved without a resolver
+    resolved = _provider_to_toml(
+        prov, resolve=lambda n: "s3cret" if n == "IMAP_PW_FITNESS" else None
+    )
+    assert "${vault:" not in resolved and "echo -n s3cret" in resolved, resolved
+    # A vault miss leaves the reference literal rather than blanking the field.
+    miss = _provider_to_toml(prov, resolve=lambda n: None)
+    assert "${vault:IMAP_PW_FITNESS}" in miss
+    print("email_config.py self-check OK")

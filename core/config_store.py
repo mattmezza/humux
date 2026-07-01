@@ -192,6 +192,9 @@ class ConfigStore:
     def __init__(self, db_path: str = "data/config.db"):
         self.db_path = db_path
         self._ready = False
+        # Optional infra-vault resolver (name -> str | None), attached at boot so
+        # Himalaya materialisation can expand ${vault:NAME} email passwords (#110).
+        self.vault_resolve = None
 
     async def _ensure_schema(self) -> None:
         if self._ready:

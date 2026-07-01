@@ -100,6 +100,40 @@ def narrow_scope(parent: list[str] | None, child: list[str] | None) -> list[str]
     return [x for x in c if x in p]
 
 
+def narrow_accounts(parent: list[dict] | None, child: list[dict] | None) -> list[dict]:
+    """Intersect a child's email/calendar account bindings with the parent's (#110).
+
+    Unlike :func:`narrow_scope`, account bindings are a *grant* list, not an
+    allowlist: an empty list means *no access*, not *all*. So the semantics are:
+
+    * ``parent is None`` — no parent persona (the spawning turn ran unscoped, i.e.
+      the owner's own full access) → the child keeps its own bindings.
+    * ``parent == []`` — a persona with no account access → the child gets none.
+    * otherwise — keep only accounts the parent also has, at the *lower* of the two
+      access levels, and drop a send identity the parent can't itself write to
+      (inherit-never-widen).
+    """
+    if parent is None:
+        return [dict(e) for e in (child or [])]
+    pmap = {e["account"]: e for e in parent if e.get("account")}
+    out: list[dict] = []
+    for e in child or []:
+        pe = pmap.get(e.get("account"))
+        if not pe:
+            continue  # parent lacks this account → child cannot have it
+        # read_write only if BOTH grant it; otherwise the safer read.
+        level = (
+            "read_write"
+            if pe.get("access_level") == "read_write" and e.get("access_level") == "read_write"
+            else "read"
+        )
+        entry = {**e, "access_level": level}
+        if entry.get("is_sender_identity") and level != "read_write":
+            entry["is_sender_identity"] = False
+        out.append(entry)
+    return out
+
+
 @dataclass(slots=True)
 class SubagentRun:
     """One subagent execution and its live status."""
@@ -282,6 +316,28 @@ def _parse_summary(raw: str) -> tuple[str, str]:
     return notif, digest
 
 
+def _selfcheck() -> None:
+    # ponytail: one runnable check for the scope/account narrowing (#15, #110).
+    assert narrow_scope([], ["a"]) == ["a"]  # empty parent = no restriction
+    assert narrow_scope(["a", "b"], []) == ["a", "b"]  # empty child inherits
+    assert narrow_scope(["a", "b"], ["b", "c"]) == ["b"]  # intersection, never widen
+
+    rw = {"account": "x", "access_level": "read_write", "is_sender_identity": True}
+    ro = {"account": "x", "access_level": "read", "is_sender_identity": False}
+    # No parent persona (unscoped owner) → child keeps its own bindings.
+    assert narrow_accounts(None, [rw]) == [rw]
+    # Parent with no access → child gets nothing.
+    assert narrow_accounts([], [rw]) == []
+    # Parent read-only downgrades the child and strips its send identity.
+    got = narrow_accounts([ro], [rw])
+    assert got == [{"account": "x", "access_level": "read", "is_sender_identity": False}], got
+    # Parent lacks the account entirely → dropped.
+    assert narrow_accounts([{"account": "y", "access_level": "read_write"}], [rw]) == []
+    # Both read_write → preserved.
+    assert narrow_accounts([rw], [rw]) == [rw]
+    print("subagents.py self-check OK")
+
+
 async def summarize_batch(llm, model: str, items: list[SummaryItem]) -> tuple[str, str]:
     """LLM-distil a finished background batch into (notification, digest).
 
@@ -295,3 +351,7 @@ async def summarize_batch(llm, model: str, items: list[SummaryItem]) -> tuple[st
     if not notif:
         return fallback_summary(items)
     return notif, digest or notif
+
+
+if __name__ == "__main__":
+    _selfcheck()

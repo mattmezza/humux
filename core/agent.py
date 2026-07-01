@@ -51,6 +51,7 @@ from core.subagents import (
     SubagentRegistry,
     SubagentRun,
     fallback_summary,
+    narrow_accounts,
     narrow_scope,
     normalize_effort,
     resolve_cap,
@@ -242,7 +243,9 @@ TOOLS = [
             "properties": {
                 "account": {
                     "type": "string",
-                    "description": "Email account name (e.g. 'personal', 'work')",
+                    "description": "Email account name (e.g. 'personal', 'work'). Optional — "
+                    "defaults to the active persona's sender identity. Only accounts the "
+                    "persona is allowed to send from may be used.",
                 },
                 "from": {
                     "type": "string",
@@ -257,7 +260,7 @@ TOOLS = [
                 "subject": {"type": "string"},
                 "body": {"type": "string"},
             },
-            "required": ["account", "to", "subject", "body"],
+            "required": ["to", "subject", "body"],
         },
     },
     {
@@ -268,7 +271,8 @@ TOOLS = [
             "properties": {
                 "account": {
                     "type": "string",
-                    "description": "Email account name (e.g. 'personal', 'work')",
+                    "description": "Email account name (e.g. 'personal', 'work'). Optional — "
+                    "defaults to the active persona's sender identity.",
                 },
                 "message_id": {
                     "type": "string",
@@ -284,7 +288,7 @@ TOOLS = [
                     "description": "Folder the message is in (default: INBOX)",
                 },
             },
-            "required": ["account", "message_id", "body"],
+            "required": ["message_id", "body"],
         },
     },
     {
@@ -368,7 +372,9 @@ TOOLS = [
             "properties": {
                 "calendar": {
                     "type": "string",
-                    "description": "Calendar name (e.g. 'google', 'icloud')",
+                    "description": "Calendar name (e.g. 'google', 'icloud'). Optional — defaults "
+                    "to the active persona's writable calendar. Only calendars the persona "
+                    "has read_write access to may be used.",
                 },
                 "summary": {"type": "string", "description": "Event title"},
                 "start": {"type": "string", "description": "ISO datetime with timezone"},
@@ -379,7 +385,7 @@ TOOLS = [
                     "description": "Optional list of attendee email addresses",
                 },
             },
-            "required": ["calendar", "summary", "start", "end"],
+            "required": ["summary", "start", "end"],
         },
     },
     # Read-only / utility tools
@@ -1397,6 +1403,14 @@ class AgentCore:
             if roster:
                 preamble += f"\n\n{roster}"
 
+        # Which email/calendar accounts this persona may use, so send_email /
+        # create_calendar_event route without guessing account names (#110). Names
+        # and access levels only — credentials never enter the prompt.
+        if persona is not None:
+            note = self._account_note(persona)
+            if note:
+                preamble += f"\n\n{note}"
+
         if self.config.task_reflection.enabled:
             try:
                 reflections = await self.reflections.format_for_prompt()
@@ -2154,13 +2168,13 @@ class AgentCore:
             return await self.executor.run_command(command, tool_env=persona_env)
 
         if name == "send_email":
-            result = await self._tool_send_email(params)
+            result = await self._tool_send_email(params, request_state)
             if is_write_action and self._is_tool_success(result):
                 executed_writes.add(write_sig)
             return result
 
         if name == "reply_email":
-            result = await self._tool_reply_email(params)
+            result = await self._tool_reply_email(params, request_state)
             if is_write_action and self._is_tool_success(result):
                 executed_writes.add(write_sig)
             return result
@@ -2175,7 +2189,7 @@ class AgentCore:
             return await self._tool_set_reaction(params, request_state)
 
         if name == "create_calendar_event":
-            result = await self._tool_create_calendar_event(params)
+            result = await self._tool_create_calendar_event(params, request_state)
             if is_write_action and self._is_tool_success(result):
                 executed_writes.add(write_sig)
             return result
@@ -2349,9 +2363,111 @@ class AgentCore:
 
     # -- Structured tool implementations --
 
-    async def _tool_send_email(self, params: dict) -> dict:
+    @staticmethod
+    def _account_note(persona: Persona) -> str:
+        """Preamble block naming the persona's bound email/calendar accounts and
+        access levels (#110). Names + levels only — never credentials."""
+        lines: list[str] = []
+        if persona.email_accounts:
+            parts = []
+            for e in persona.email_accounts:
+                tag = e["access_level"] + (", sender" if e.get("is_sender_identity") else "")
+                parts.append(f"{e['account']} ({tag})")
+            lines.append("Email accounts: " + ", ".join(parts))
+        if persona.calendar_accounts:
+            parts = [f"{e['account']} ({e['access_level']})" for e in persona.calendar_accounts]
+            lines.append("Calendar accounts: " + ", ".join(parts))
+        if not lines:
+            return ""
+        body = "\n".join(lines)
+        return (
+            "<accounts>\n"
+            "The only email/calendar accounts you may use, with your access level. "
+            "read = read only; read_write = read plus send / create events. send_email "
+            "and reply_email default to your sender identity; create_calendar_event "
+            "defaults to your writable calendar.\n"
+            f"{body}\n"
+            "</accounts>"
+        )
+
+    @staticmethod
+    def _resolve_email_send(
+        persona: Persona | None, params: dict
+    ) -> tuple[str | None, dict | None]:
+        """Route + authorise an email account for a send/reply (#110).
+
+        Returns ``(account, error)``. With no active persona the agent runs
+        unscoped (legacy single-user behaviour) and the requested account is used
+        verbatim. With a persona, the email_accounts bindings are the allowlist:
+        the account defaults to the persona's send identity, an unbound account is
+        refused, and sending on a read-only binding is refused. Credentials are
+        never touched here — only the account *name* is resolved.
+        """
+        account = str(params.get("account") or "").strip()
+        if persona is None:
+            if not account:
+                return None, {"error": "The 'account' parameter is required."}
+            return account, None
+        if not account:
+            account = persona.sender_identity() or ""
+            if not account:
+                return None, {
+                    "error": "This persona has no send email identity. Bind an email "
+                    "account as its sender identity on the persona's admin page."
+                }
+        level = persona.email_access(account)
+        if level is None:
+            return None, {
+                "error": f"This persona is not allowed to use the '{account}' email "
+                "account. Grant it access on the persona's admin page."
+            }
+        if level != "read_write":
+            return None, {
+                "error": f"This persona has read-only access to '{account}' and cannot send email."
+            }
+        return account, None
+
+    @staticmethod
+    def _resolve_calendar_write(
+        persona: Persona | None, params: dict
+    ) -> tuple[str | None, dict | None]:
+        """Route + authorise a calendar for an event write, mirroring
+        :meth:`_resolve_email_send` (#110). Defaults to the persona's first
+        writable calendar; refuses unbound or read-only calendars."""
+        calendar = str(params.get("calendar") or "").strip()
+        if persona is None:
+            if not calendar:
+                return None, {"error": "The 'calendar' parameter is required."}
+            return calendar, None
+        if not calendar:
+            calendar = next(
+                (
+                    e["account"]
+                    for e in persona.calendar_accounts
+                    if e.get("access_level") == "read_write"
+                ),
+                "",
+            )
+            if not calendar:
+                return None, {
+                    "error": "This persona has no writable calendar. Grant it read_write "
+                    "on a calendar account on the persona's admin page."
+                }
+        level = persona.calendar_access(calendar)
+        if level is None:
+            return None, {"error": f"This persona is not allowed to use the '{calendar}' calendar."}
+        if level != "read_write":
+            return None, {
+                "error": f"This persona has read-only access to '{calendar}' and cannot "
+                "create events."
+            }
+        return calendar, None
+
+    async def _tool_send_email(self, params: dict, request_state: dict | None = None) -> dict:
         """Send an email via himalaya CLI."""
-        account = params["account"]
+        account, err = self._resolve_email_send((request_state or {}).get("persona_obj"), params)
+        if err:
+            return err
         to = params["to"]
         subject = params["subject"]
         body = params["body"]
@@ -2377,9 +2493,11 @@ class AgentCore:
         )
         return await self.executor.run_command_trusted(command)
 
-    async def _tool_reply_email(self, params: dict) -> dict:
+    async def _tool_reply_email(self, params: dict, request_state: dict | None = None) -> dict:
         """Reply to an email via himalaya CLI."""
-        account = params["account"]
+        account, err = self._resolve_email_send((request_state or {}).get("persona_obj"), params)
+        if err:
+            return err
         message_id = params["message_id"]
         body = params["body"]
         reply_all = params.get("reply_all", False)
@@ -2611,9 +2729,15 @@ class AgentCore:
             ),
         }
 
-    async def _tool_create_calendar_event(self, params: dict) -> dict:
+    async def _tool_create_calendar_event(
+        self, params: dict, request_state: dict | None = None
+    ) -> dict:
         """Create a calendar event via the CalDAV helper script."""
-        calendar = params["calendar"]
+        calendar, err = self._resolve_calendar_write(
+            (request_state or {}).get("persona_obj"), params
+        )
+        if err:
+            return err
         summary = params["summary"]
         start = params["start"]
         end = params["end"]
@@ -2987,6 +3111,10 @@ class AgentCore:
         p_skills = parent.skills if parent else []
         p_tools = parent.tools if parent else []
         p_secrets = parent.secrets if parent else []
+        # Account bindings pass None (not []) when there is no parent persona, so
+        # narrow_accounts can tell "unscoped owner" from "persona with no access".
+        p_email = parent.email_accounts if parent else None
+        p_cal = parent.calendar_accounts if parent else None
         return Persona(
             name=requested.name,
             agent_name=requested.agent_name,
@@ -3002,6 +3130,10 @@ class AgentCore:
             # scope. Dropping it would silently fall back to the owner's token and
             # re-open the very identity bleed this feature prevents.
             tool_config=requested.tool_config,
+            # Account access is a grant, narrowed to the parent's — a subagent can
+            # never reach an account (or a higher access level) its parent lacks (#110).
+            email_accounts=narrow_accounts(p_email, requested.email_accounts),
+            calendar_accounts=narrow_accounts(p_cal, requested.calendar_accounts),
         )
 
     async def _run_subagent_loop(
