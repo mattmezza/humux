@@ -19,12 +19,12 @@
     <div class="card flex flex-col gap-2 {% if p.is_default %}border-accent{% endif %}{% if not p.enabled %} opacity-60{% endif %}"
          x-show="!filter
                  || {{ p.name|tojson|forceescape }}.toLowerCase().includes(filter.toLowerCase())
+                 || {{ (p.agent_name or '')|tojson|forceescape }}.toLowerCase().includes(filter.toLowerCase())
                  || {{ (p.role or '')|tojson|forceescape }}.toLowerCase().includes(filter.toLowerCase())">
       <div class="flex items-start gap-2">
-        <span class="text-2xl leading-none">🧩</span>
         <div class="min-w-0 flex-1">
-          <div class="text-sm font-semibold truncate">{{ p.role or p.name }}</div>
-          <div class="text-muted text-xs break-all">{{ p.name }}</div>
+          <div class="text-sm font-semibold truncate">{{ p.agent_name or p.name }}</div>
+          <div class="text-muted text-xs break-all">{{ p.role }}{% if p.role and p.agent_name %} · {% endif %}{% if p.agent_name %}{{ p.name }}{% endif %}</div>
         </div>
         {% if p.is_default %}
         <span class="badge-ok whitespace-nowrap">✓ Default</span>

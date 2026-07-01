@@ -78,6 +78,10 @@
             @click="select('llm')">
       LLM
     </button>
+    <button class="tab-link" :class="tab === 'voice' && 'tab-link-active'"
+            @click="select('voice')">
+      Voice
+    </button>
     <button class="tab-link" :class="tab === 'memory' && 'tab-link-active'"
             @click="select('memory')">
       Memory
@@ -527,6 +531,7 @@
       you: '/partials/you',
       agents: '/partials/agents',
       llm: '/partials/llm',
+      voice: '/partials/identity',
       memory: '/partials/memory',
       tools: '/partials/tools',
       workspace: '/partials/workspace',

@@ -1,6 +1,6 @@
-{# Global Voice (STT/TTS) settings — shared by every agent. Embedded in the Agents
-   tab and served standalone at /partials/identity. Per-agent identity/character/
-   accounts now live on the agent row + editor (#115 follow-up). #}
+{# Global Voice (STT/TTS) settings — shared by every agent. Its own top-level
+   Voice tab, served at /partials/identity. The per-agent voice override lives on
+   the agent editor's Identity tab; identity/character/accounts on the agent row. #}
 <div class="card" x-data="{
   ttsEnabled: {{ tts_enabled|default('true', true)|tojson|forceescape }},
   sttModel: {{ stt_model|default('base', true)|tojson|forceescape }},
