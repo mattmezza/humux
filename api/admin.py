@@ -374,6 +374,24 @@ async def _calendar_providers_context(config_store: ConfigStore) -> list[dict[st
     return cleaned
 
 
+async def _email_account_names(config_store: ConfigStore) -> list[str]:
+    """Names of the configured email accounts, for persona-binding UIs (#110)."""
+    raw = await config_store.get("email.providers")
+    if not raw:
+        return []
+    try:
+        providers = json.loads(raw)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(providers, list):
+        return []
+    return [
+        str(p.get("name", "")).strip()
+        for p in providers
+        if isinstance(p, dict) and str(p.get("name", "")).strip()
+    ]
+
+
 async def _contact_providers_context(config_store: ConfigStore) -> list[dict[str, str]]:
     raw = await config_store.get("contacts.providers")
     if not raw:
@@ -614,6 +632,8 @@ class PersonaUpsertIn(BaseModel):
     bot_token: str = ""  # per-persona Telegram bot (#29); empty = no own bot
     allowed_user_ids: str = ""  # comma/newline-separated; empty = inherit global
     tool_config: dict = {}  # per-persona external-tool config (gh/browser) — #93
+    email_accounts: list[dict] = []  # [{account, access_level, is_sender_identity}] — #110
+    calendar_accounts: list[dict] = []  # [{account, access_level}] — #110
     gh_token: str = ""  # this persona's GitHub PAT → infra vault; empty = leave unchanged
     raw: str = ""  # when set, the markdown doc is parsed instead of the fields above
 
@@ -642,6 +662,26 @@ class ContactProvidersIn(BaseModel):
 
 class EmailProvidersIn(BaseModel):
     providers: list[dict[str, str]]
+
+
+class EmailTestIn(BaseModel):
+    """One email account to probe for IMAP + SMTP reachability (#110)."""
+
+    imap_host: str = ""
+    imap_port: str = "993"
+    smtp_host: str = ""
+    smtp_port: str = "465"
+    login: str = ""
+    email: str = ""
+    password: str = ""
+
+
+class CalendarTestIn(BaseModel):
+    """One CalDAV account to probe for reachability (#110)."""
+
+    url: str = ""
+    username: str = ""
+    password: str = ""
 
 
 class PromptPreviewIn(BaseModel):
@@ -984,6 +1024,12 @@ def create_admin_app(
                 if secret_store and secret_store.infra.available
                 else []
             ),
+            # Email/calendar accounts a persona can be bound to (#110). Names only —
+            # the account registry (Email/Calendar tabs) is the source of truth.
+            "available_email_accounts": await _email_account_names(config_store),
+            "available_calendar_accounts": [
+                p["name"] for p in await _calendar_providers_context(config_store) if p["name"]
+            ],
         }
 
     async def _persona_gh_token_set(name: str) -> bool:
@@ -2328,6 +2374,74 @@ def create_admin_app(
         await config_store.set("email.providers", json.dumps(providers))
         return {"ok": True}
 
+    def _resolve_secret_ref(value: str) -> str:
+        """Expand a ${vault:NAME} reference for a connection test, so a vault-backed
+        password can be verified without ever revealing it to the client (#110)."""
+        if secret_store is None or "${vault:" not in value:
+            return value
+        from core.config import resolve_vault_vars
+
+        return resolve_vault_vars(value, secret_store.infra_resolve)
+
+    @app.post("/email/test", dependencies=[Depends(auth)])
+    async def test_email_account(body: EmailTestIn) -> dict:
+        """Probe IMAP + SMTP login for one account (#110). Returns per-protocol
+        status; the password is resolved from the vault if it is a reference and
+        is never echoed back."""
+        import asyncio
+
+        password = _resolve_secret_ref(body.password.strip())
+        login = body.login.strip() or body.email.strip()
+
+        def _probe() -> dict:
+            import imaplib
+            import smtplib
+
+            out: dict = {"imap": None, "smtp": None}
+            if body.imap_host.strip():
+                try:
+                    port = int(body.imap_port or 993)
+                    with imaplib.IMAP4_SSL(body.imap_host.strip(), port, timeout=10) as m:
+                        m.login(login, password)
+                    out["imap"] = "ok"
+                except Exception as exc:  # noqa: BLE001 — surface the reason to the admin
+                    out["imap"] = f"error: {exc}"
+            if body.smtp_host.strip():
+                try:
+                    port = int(body.smtp_port or 465)
+                    with smtplib.SMTP_SSL(body.smtp_host.strip(), port, timeout=10) as s:
+                        s.login(login, password)
+                    out["smtp"] = "ok"
+                except Exception as exc:  # noqa: BLE001
+                    out["smtp"] = f"error: {exc}"
+            return out
+
+        result = await asyncio.to_thread(_probe)
+        result["ok"] = all(v == "ok" for v in (result["imap"], result["smtp"]) if v is not None)
+        return result
+
+    @app.post("/calendar/test", dependencies=[Depends(auth)])
+    async def test_calendar_account(body: CalendarTestIn) -> dict:
+        """Probe CalDAV reachability for one account (#110): connect and count the
+        calendars found. Vault-backed passwords resolve server-side."""
+        import asyncio
+
+        password = _resolve_secret_ref(body.password.strip())
+
+        def _probe() -> dict:
+            import caldav
+
+            try:
+                client = caldav.DAVClient(
+                    url=body.url.strip(), username=body.username.strip(), password=password
+                )
+                cals = client.principal().calendars()
+                return {"ok": True, "calendars": len(cals)}
+            except Exception as exc:  # noqa: BLE001 — surface the reason to the admin
+                return {"ok": False, "error": str(exc)}
+
+        return await asyncio.to_thread(_probe)
+
     # ── Google Calendar OAuth 2.0 flow ─────────────────────────────────
 
     @app.post("/calendar/google/oauth/save-credentials", dependencies=[Depends(auth)])
@@ -2718,7 +2832,13 @@ def create_admin_app(
 
     @app.post("/personae", dependencies=[Depends(auth)])
     async def upsert_persona(body: PersonaUpsertIn) -> HTMLResponse:
-        from core.personae import Persona, _as_int_list, _as_tool_config, parse_markdown
+        from core.personae import (
+            Persona,
+            _as_account_list,
+            _as_int_list,
+            _as_tool_config,
+            parse_markdown,
+        )
 
         name = body.name.strip()
         if not name:
@@ -2742,6 +2862,8 @@ def create_admin_app(
                 bot_token=body.bot_token.strip(),
                 allowed_user_ids=_as_int_list(body.allowed_user_ids),
                 tool_config=_as_tool_config(body.tool_config),
+                email_accounts=_as_account_list(body.email_accounts, sender=True),
+                calendar_accounts=_as_account_list(body.calendar_accounts),
             )
         # A per-persona GitHub token goes into the infra vault (machine-key,
         # boot-unsealed so it works headless), namespaced per persona (#93). Empty

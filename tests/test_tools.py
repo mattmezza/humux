@@ -563,7 +563,7 @@ async def test_identical_write_is_deduplicated(agent, monkeypatch) -> None:
     """
     from core.llm import LLMToolCall
 
-    async def _ok_send_email(params):
+    async def _ok_send_email(params, request_state=None):
         return {"ok": True}
 
     monkeypatch.setattr(agent, "_request_approval", _approve)

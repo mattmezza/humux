@@ -107,6 +107,55 @@ def test_persona_crud_and_activation(tmp_path) -> None:
     assert client.get("/personae/coach", headers=AUTH).status_code == 404
 
 
+def test_persona_account_bindings_roundtrip(tmp_path) -> None:
+    client, _ = _client(tmp_path)
+    r = client.post(
+        "/personae",
+        json={
+            "name": "coach",
+            "email_accounts": [
+                {"account": "coach-agent", "access_level": "read", "is_sender_identity": True},
+                {"account": "personal", "access_level": "read"},
+            ],
+            "calendar_accounts": [{"account": "google", "access_level": "read_write"}],
+        },
+        headers=AUTH,
+    )
+    assert r.status_code == 200
+    got = client.get("/personae/coach", headers=AUTH).json()
+    # Sender identity forces read_write (you cannot send from a read-only account).
+    assert got["email_accounts"][0] == {
+        "account": "coach-agent",
+        "access_level": "read_write",
+        "is_sender_identity": True,
+    }
+    assert got["email_accounts"][1]["access_level"] == "read"
+    assert got["calendar_accounts"] == [{"account": "google", "access_level": "read_write"}]
+
+
+def test_persona_editor_lists_available_accounts(tmp_path) -> None:
+    client, _ = _client(tmp_path)
+    client.post("/personae", json={"name": "coach"}, headers=AUTH)
+    # Seed the account registry the editor reads, via the real save routes.
+    client.post(
+        "/email/providers",
+        json={
+            "providers": [
+                {"name": "coach-agent", "email": "c@x.io", "imap_host": "i", "smtp_host": "s"}
+            ]
+        },
+        headers=AUTH,
+    )
+    client.post(
+        "/calendar/providers",
+        json={"providers": [{"name": "google", "url": "u", "username": "c", "password": "p"}]},
+        headers=AUTH,
+    )
+    page = client.get("/admin/personae/coach", headers=AUTH).text
+    assert "Email &amp; calendar accounts" in page  # the binding card renders
+    assert "coach-agent" in page and "google" in page  # available accounts injected
+
+
 def test_persona_raw_markdown_upsert(tmp_path) -> None:
     client, _ = _client(tmp_path)
     # A legacy `personalia:` key still parses — folded into character (#98).

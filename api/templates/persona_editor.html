@@ -128,6 +128,61 @@
                   placeholder="persona:fitness-coach:*"></textarea>
       </div>
 
+      {# ── Email & calendar accounts (#110) ── #}
+      <div class="card">
+        <h3 class="text-xs text-muted uppercase tracking-wider mb-2">Email &amp; calendar accounts</h3>
+        <p class="text-xs text-muted mb-3">
+          Which accounts this persona may use, and at what level. <strong>None</strong> = no access
+          (safe default). <strong>Read</strong> = read only. <strong>Read &amp; write</strong> = also
+          send / create events. Pick one email account as the <strong>sender</strong> identity.
+          Add or edit the accounts themselves in the <strong>Email</strong> / <strong>Calendar</strong> tabs.
+        </p>
+
+        <template x-if="availableEmail.length">
+          <div class="mb-3">
+            <label class="label mb-1">Email</label>
+            <template x-for="acc in availableEmail" :key="acc">
+              <div class="flex items-center justify-between gap-2 mb-1">
+                <span class="text-xs break-all" x-text="acc"></span>
+                <div class="flex items-center gap-2 shrink-0">
+                  <select class="select input-sm" style="max-width:128px" x-model="emailAccess[acc]">
+                    <option value="none">None</option>
+                    <option value="read">Read</option>
+                    <option value="read_write">Read &amp; write</option>
+                  </select>
+                  <label class="flex items-center gap-1 text-xs" :class="emailAccess[acc] === 'none' && 'opacity-40'">
+                    <input type="radio" name="sender-identity" :value="acc" x-model="senderIdentity"
+                           :disabled="emailAccess[acc] === 'none'"> sender
+                  </label>
+                </div>
+              </div>
+            </template>
+          </div>
+        </template>
+        <template x-if="!availableEmail.length">
+          <p class="text-xs text-muted mb-2">No email accounts configured yet — add one in the Email tab.</p>
+        </template>
+
+        <template x-if="availableCalendar.length">
+          <div>
+            <label class="label mb-1">Calendar</label>
+            <template x-for="acc in availableCalendar" :key="acc">
+              <div class="flex items-center justify-between gap-2 mb-1">
+                <span class="text-xs break-all" x-text="acc"></span>
+                <select class="select input-sm" style="max-width:128px" x-model="calAccess[acc]">
+                  <option value="none">None</option>
+                  <option value="read">Read</option>
+                  <option value="read_write">Read &amp; write</option>
+                </select>
+              </div>
+            </template>
+          </div>
+        </template>
+        <template x-if="!availableCalendar.length">
+          <p class="text-xs text-muted">No calendar accounts configured yet — add one in the Calendar tab.</p>
+        </template>
+      </div>
+
       {# ── Tool identities (#93) ── #}
       <div class="card">
         <h3 class="text-xs text-muted uppercase tracking-wider mb-2">Tool identities</h3>
@@ -200,7 +255,7 @@
   <div x-show="mode === 'raw'" class="card">
     <label class="label">Markdown (YAML frontmatter)</label>
     <textarea class="textarea" x-model="raw" style="min-height:460px; font-size:0.8rem; line-height:1.5; tab-size:2"></textarea>
-    <p class="hint">Saving in raw mode parses this document directly — frontmatter keys (role, emoji, voice, bot_token, allowed_user_ids, skills, tools, secrets, character).</p>
+    <p class="hint">Saving in raw mode parses this document directly — frontmatter keys (role, emoji, voice, bot_token, allowed_user_ids, skills, tools, secrets, email_accounts, calendar_accounts, character).</p>
   </div>
 
   <div class="flex items-center gap-2 mt-3">
@@ -243,6 +298,15 @@
       modes: {},
       profiles: {},
 
+      // Per-persona email/calendar account bindings (#110).
+      availableEmail: {{ available_email_accounts|tojson }},
+      availableCalendar: {{ available_calendar_accounts|tojson }},
+      emailBindings: {{ persona.email_accounts|tojson }},
+      calendarBindings: {{ persona.calendar_accounts|tojson }},
+      emailAccess: {},
+      calAccess: {},
+      senderIdentity: '',
+
       init() {
         for (const k of this.toolKeys) {
           const e = this.toolConfig[k];
@@ -250,6 +314,43 @@
           this.profiles[k] = (e && e.profile) || '';
         }
         this.ghTokenSecret = (this.toolConfig.gh && this.toolConfig.gh.token_secret) || '';
+
+        // Seed the account selectors: every known account starts at 'none', then
+        // existing bindings override. A binding to an account no longer in the
+        // registry still shows (so it can be cleaned up).
+        for (const acc of this.availableEmail) this.emailAccess[acc] = 'none';
+        for (const acc of this.availableCalendar) this.calAccess[acc] = 'none';
+        for (const e of this.emailBindings) {
+          if (!(e.account in this.emailAccess)) this.availableEmail.push(e.account);
+          this.emailAccess[e.account] = e.access_level || 'read';
+          if (e.is_sender_identity) this.senderIdentity = e.account;
+        }
+        for (const c of this.calendarBindings) {
+          if (!(c.account in this.calAccess)) this.availableCalendar.push(c.account);
+          this.calAccess[c.account] = c.access_level || 'read';
+        }
+      },
+
+      // Emit the account bindings the API expects; skip 'none'. The sender
+      // identity is always read_write (you cannot send from a read-only account).
+      buildEmailAccounts() {
+        const out = [];
+        for (const acc of this.availableEmail) {
+          const lvl = this.emailAccess[acc];
+          if (!lvl || lvl === 'none') continue;
+          const isSender = this.senderIdentity === acc;
+          out.push({ account: acc, access_level: isSender ? 'read_write' : lvl, is_sender_identity: isSender });
+        }
+        return out;
+      },
+      buildCalendarAccounts() {
+        const out = [];
+        for (const acc of this.availableCalendar) {
+          const lvl = this.calAccess[acc];
+          if (!lvl || lvl === 'none') continue;
+          out.push({ account: acc, access_level: lvl });
+        }
+        return out;
       },
 
       // Only configured tools get an entry; 'inherit' leaves them out so the
@@ -286,6 +387,8 @@
           'tools: ' + list(this.tools) + '\n' +
           'secrets: ' + list(secrets) + '\n' +
           'tool_config: ' + JSON.stringify(this.buildToolConfig()) + '\n' +
+          'email_accounts: ' + JSON.stringify(this.buildEmailAccounts()) + '\n' +
+          'calendar_accounts: ' + JSON.stringify(this.buildCalendarAccounts()) + '\n' +
           'character: |\n  ' + esc(this.character) + '\n' +
           '---\n';
       },
@@ -310,6 +413,8 @@
               secrets: this.secretsText.split('\n').map(s => s.trim()).filter(Boolean),
               bot_token: this.bot_token, allowed_user_ids: this.allowedUserIds,
               tool_config: this.buildToolConfig(), gh_token: ghToken,
+              email_accounts: this.buildEmailAccounts(),
+              calendar_accounts: this.buildCalendarAccounts(),
             };
         fetch('/personae', { method: 'POST', headers: this._headers(), body: JSON.stringify(body) })
           .then(r => { this.ok = r.ok; return r.text().then(t => ({ ok: r.ok, t })); })

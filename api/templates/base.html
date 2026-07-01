@@ -629,7 +629,8 @@
           name: p.name || '',
           url: p.url || '',
           username: p.username || '',
-          password: p.password || ''
+          password: p.password || '',
+          testing: false, testOk: false, testResult: ''
         })),
         status: '',
         result: '',
@@ -649,11 +650,34 @@
             name: '',
             url: '',
             username: '',
-            password: ''
+            password: '',
+            testing: false, testOk: false, testResult: ''
           });
         },
         removeProvider(index) {
           this.providers.splice(index, 1);
+        },
+
+        testProvider(provider) {
+          provider.testing = true; provider.testResult = ''; provider.testOk = false;
+          fetch('/calendar/test', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ' + (localStorage.getItem('admin_api_key') || '')
+            },
+            credentials: 'same-origin',
+            body: JSON.stringify({url: provider.url, username: provider.username, password: provider.password})
+          })
+            .then(async r => { const t = await r.text(); let d = {}; try { d = t ? JSON.parse(t) : {}; } catch (e) { d = {error: t}; } return {ok: r.ok, d}; })
+            .then(({ok, d}) => {
+              provider.testing = false;
+              provider.testOk = ok && !!d.ok;
+              provider.testResult = provider.testOk
+                ? ('Connected — ' + (d.calendars ?? 0) + ' calendar(s)')
+                : (d.error || d.detail || 'Test failed');
+            })
+            .catch(e => { provider.testing = false; provider.testResult = e.message || 'Network error'; });
         },
 
         saveOAuthCreds() {
@@ -931,11 +955,52 @@
           smtp_host: p.smtp_host || '',
           smtp_port: p.smtp_port || '465',
           login: p.login || '',
-          password: p.password || ''
+          password: p.password || '',
+          testing: false, testOk: false, testResult: ''
         })),
         status: '',
         result: '',
         resultOk: false,
+
+        // Common-provider presets so a phone setup is a name + password, nothing
+        // else to look up (#110).
+        presets: {
+          purelymail: {imap_host: 'imap.purelymail.com', imap_port: '993', smtp_host: 'smtp.purelymail.com', smtp_port: '465'},
+          gmail: {imap_host: 'imap.gmail.com', imap_port: '993', smtp_host: 'smtp.gmail.com', smtp_port: '465'},
+          fastmail: {imap_host: 'imap.fastmail.com', imap_port: '993', smtp_host: 'smtp.fastmail.com', smtp_port: '465'}
+        },
+        applyPreset(provider, key) {
+          const p = this.presets[key];
+          if (p) Object.assign(provider, p);
+        },
+
+        testProvider(provider) {
+          provider.testing = true; provider.testResult = ''; provider.testOk = false;
+          fetch('/email/test', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ' + (localStorage.getItem('admin_api_key') || '')
+            },
+            credentials: 'same-origin',
+            body: JSON.stringify({
+              imap_host: provider.imap_host, imap_port: (provider.imap_port || '993').toString(),
+              smtp_host: provider.smtp_host, smtp_port: (provider.smtp_port || '465').toString(),
+              login: provider.login, email: provider.email, password: provider.password
+            })
+          })
+            .then(async r => { const t = await r.text(); let d = {}; try { d = t ? JSON.parse(t) : {}; } catch (e) { d = {error: t}; } return {ok: r.ok, d}; })
+            .then(({ok, d}) => {
+              provider.testing = false;
+              if (!ok) { provider.testResult = d.error || d.detail || 'Test failed'; return; }
+              provider.testOk = !!d.ok;
+              const parts = [];
+              if (d.imap != null) parts.push('IMAP ' + d.imap);
+              if (d.smtp != null) parts.push('SMTP ' + d.smtp);
+              provider.testResult = parts.length ? parts.join(' · ') : 'Nothing to test';
+            })
+            .catch(e => { provider.testing = false; provider.testResult = e.message || 'Network error'; });
+        },
 
         addProvider() {
           this.providers.push({
@@ -948,7 +1013,8 @@
             smtp_host: '',
             smtp_port: '465',
             login: '',
-            password: ''
+            password: '',
+            testing: false, testOk: false, testResult: ''
           });
         },
         removeProvider(index) {

@@ -475,21 +475,19 @@ async def bind_existing_accounts(
     """
     updated = 0
     for p in await store.list_personae():
-        changed = False
-        if email_names and not p.email_accounts:
-            p.email_accounts = [
-                {"account": n, "access_level": "read_write", "is_sender_identity": (i == 0)}
-                for i, n in enumerate(email_names)
-            ]
-            changed = True
-        if calendar_names and not p.calendar_accounts:
-            p.calendar_accounts = [
-                {"account": n, "access_level": "read_write"} for n in calendar_names
-            ]
-            changed = True
-        if changed:
-            await store.upsert(p)
-            updated += 1
+        # A persona that already carries any binding was configured deliberately —
+        # leave it alone (so a re-run, or a post-migration persona, is a no-op).
+        if p.email_accounts or p.calendar_accounts:
+            continue
+        if not email_names and not calendar_names:
+            continue
+        p.email_accounts = [
+            {"account": n, "access_level": "read_write", "is_sender_identity": (i == 0)}
+            for i, n in enumerate(email_names)
+        ]
+        p.calendar_accounts = [{"account": n, "access_level": "read_write"} for n in calendar_names]
+        await store.upsert(p)
+        updated += 1
     return updated
 
 

@@ -101,6 +101,15 @@
             <li>iCloud: Apple ID &gt; App-Specific Passwords, then use the CalDAV URL from iCloud Calendar settings.</li>
             <li>Fastmail/Outlook: find CalDAV URL in account settings, use an app password if available.</li>
           </ul>
+          <p class="mt-1">The app password may be a <code>${vault:NAME}</code> reference to an infra-vault secret.</p>
+        </div>
+
+        <div class="flex items-center gap-2 mt-3 flex-wrap">
+          <button class="btn btn-sm" type="button" @click="testProvider(provider)" :disabled="provider.testing">
+            <span x-show="!provider.testing">Test connection</span>
+            <span x-show="provider.testing">Testing…</span>
+          </button>
+          <span class="text-xs" :class="provider.testOk ? 'text-accent' : 'text-warn'" x-text="provider.testResult"></span>
         </div>
       </div>
     </template>

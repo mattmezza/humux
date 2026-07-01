@@ -17,7 +17,15 @@
             <h4 class="text-sm">Account <span x-text="idx + 1"></span></h4>
             <p class="text-muted text-xs">Give each account a unique name, e.g. personal, work.</p>
           </div>
-          <button class="btn-danger btn-sm" type="button" @click="removeProvider(idx)">Remove</button>
+          <div class="flex items-center gap-2 shrink-0">
+            <select class="select input-sm" style="max-width:150px" @change="applyPreset(provider, $event.target.value); $event.target.value=''">
+              <option value="">Preset…</option>
+              <option value="purelymail">Purelymail</option>
+              <option value="gmail">Gmail</option>
+              <option value="fastmail">Fastmail</option>
+            </select>
+            <button class="btn-danger btn-sm" type="button" @click="removeProvider(idx)">Remove</button>
+          </div>
         </div>
 
         <div class="grid gap-3" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));">
@@ -67,8 +75,16 @@
           <div>
             <label class="label">App password</label>
             <input type="password" class="input-sm" x-model="provider.password" placeholder="xxxx-xxxx-xxxx-xxxx" autocomplete="new-password">
-            <p class="text-muted text-xs mt-1">Use an app-specific password, not your main login password.</p>
+            <p class="text-muted text-xs mt-1">Use an app-specific password, not your main login password. May be a <code>${vault:NAME}</code> reference to an infra-vault secret.</p>
           </div>
+        </div>
+
+        <div class="flex items-center gap-2 mt-3 flex-wrap">
+          <button class="btn btn-sm" type="button" @click="testProvider(provider)" :disabled="provider.testing">
+            <span x-show="!provider.testing">Test connection</span>
+            <span x-show="provider.testing">Testing…</span>
+          </button>
+          <span class="text-xs" :class="provider.testOk ? 'text-accent' : 'text-warn'" x-text="provider.testResult"></span>
         </div>
 
       </div>
