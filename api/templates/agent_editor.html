@@ -54,21 +54,26 @@
                   placeholder="You are a strength &amp; conditioning coach…&#10;&#10;## Tone&#10;- Direct and motivating…"></textarea>
       </div>
 
-      {# Per-agent voice override #}
+      {# Per-agent voice override — only the voices valid for the active global
+         TTS backend are offered (the backend itself lives in the Voice tab). #}
       <div class="card">
         <h3 class="text-xs text-muted uppercase tracking-wider mb-2">This agent's voice</h3>
-        <label class="label">Voice <span class="text-muted">(TTS — blank = the global default below)</span></label>
-        <input class="input-sm" x-model="voice" list="voice-options" placeholder="en-US-AvaNeural">
+        <label class="label">Voice <span class="text-muted">(TTS — blank = the global default in the Voice tab)</span></label>
+        <input class="input-sm" x-model="voice" list="voice-options"
+               placeholder="{% if backend == 'kokoro' %}af_bella{% else %}en-US-AvaNeural{% endif %}">
         <datalist id="voice-options">
+          {% if backend == 'kokoro' %}
+          {% for v in kokoro_voices %}
+          <option value="{{ v }}"></option>
+          {% endfor %}
+          {% else %}
           <option value="en-US-AvaNeural"></option>
           <option value="en-US-AndrewNeural"></option>
           <option value="en-US-GuyNeural"></option>
           <option value="en-GB-SoniaNeural"></option>
           <option value="en-GB-RyanNeural"></option>
           <option value="en-AU-NatashaNeural"></option>
-          {% for v in kokoro_voices %}
-          <option value="{{ v }}"></option>
-          {% endfor %}
+          {% endif %}
         </datalist>
         <div class="flex items-center gap-2 mt-2 flex-wrap">
           <input type="text" class="input-sm" style="max-width:240px" x-model="previewText"
@@ -83,13 +88,10 @@
           <button type="button" class="btn btn-sm"
                   @click="previewVoice(voice, previewText, /^[a-z][fm]_/.test(voice) ? previewLang : '', $event.currentTarget)">▶ Preview</button>
         </div>
-        <p class="text-muted text-xs mt-1">Edge TTS names (<code>en-US-AvaNeural</code>) or Kokoro names (<code>af_bella</code>) — match the active backend. Preview plays the selected voice; for Kokoro you can override the language.</p>
-      </div>
-
-      {# Global speech engine (STT/TTS) — shared by every agent (#135). #}
-      <div>
-        <p class="text-muted text-xs mb-2">Engine settings below are <strong>global</strong> — the STT model and TTS backend are shared by every agent. The <em>Voice</em> field above overrides only this agent's speaking voice.</p>
-        {% include "partials/identity.html" %}
+        <p class="text-muted text-xs mt-1">
+          {% if backend == 'kokoro' %}Kokoro voice names (<code>af_bella</code>) — the active backend. You can override the pronunciation language.{% else %}Edge TTS voice names (<code>en-US-AvaNeural</code>) — the active backend.{% endif %}
+          Preview plays the selected voice. Change the engine in the <strong>Voice</strong> tab.
+        </p>
       </div>
     </div>
 

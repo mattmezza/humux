@@ -1147,7 +1147,7 @@ def create_admin_app(
 
     @app.get("/partials/identity", dependencies=[Depends(auth)])
     async def partial_identity() -> HTMLResponse:
-        """Global Voice settings fragment (also embedded in the Agents tab)."""
+        """Global Voice settings fragment — the Voice tab (#135 follow-up)."""
         return _render_partial("partials/identity.html", **await _voice_context())
 
     @app.get("/partials/you", dependencies=[Depends(auth)])
