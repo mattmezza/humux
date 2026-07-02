@@ -1,0 +1,46 @@
+.tmux-session
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# venv
+.venv/
+
+# uv
+# uv.lock is tracked — Docker needs it to build
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment & secrets
+.env
+config.yml
+character.md
+
+# Data (runtime state, DB, models)
+data/
+memories.db
+
+# pytest / ruff
+.pytest_cache/
+.ruff_cache/
+
+# Tailwind CSS standalone CLI binary
+tailwindcss
+# Tailwind CSS build output
+api/static/style.css
+node_modules
+
+# Local embedding models (fastembed cache)
+models/
+
+# stray test DB from local pytest runs
+test.db
+.wrangler

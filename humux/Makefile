@@ -1,4 +1,4 @@
-.PHONY: help setup setup-hooks install install-dev sync lock lint format test run repl dev dev-agent dev-css dev-wa kokoro clean release css docs docs-dev
+.PHONY: help setup setup-hooks install install-dev sync lock lint format test run repl dev dev-agent dev-css dev-wa kokoro clean release css
 
 PORT := 8001
 PYTHON := uv run python
@@ -37,7 +37,7 @@ help:
 	@echo "    make dev-agent    Run agent with auto-reload"
 	@echo "    make dev-css      Run Tailwind CSS watcher"
 	@echo "    make dev-wa       Install WhatsApp CLI (wacli) from upstream"
-	@echo "    make docs-dev     Run docs site with hot reload"
+
 	@echo ""
 	@echo "  Quality:"
 	@echo "    make lint         Lint with ruff"
@@ -47,7 +47,7 @@ help:
 	@echo "  Build & Deploy:"
 	@echo "    make run          Run the agent (production)"
 	@echo "    make css          Build minified CSS"
-	@echo "    make docs         Build documentation (static export)"
+
 	@echo "    make clean        Remove venv and caches"
 	@echo ""
 	@echo "  Release:"
@@ -62,7 +62,7 @@ setup: install-dev setup-hooks
 
 # Install git hooks (lint + format on commit)
 setup-hooks:
-	git config core.hooksPath .githooks
+	git config core.hooksPath ../.githooks
 
 # Install production dependencies
 install:
@@ -114,9 +114,7 @@ dev:
 	@echo "  3. WhatsApp (wacli install):"
 	@echo "     make dev-wa"
 	@echo ""
-	@echo "  Docs (optional):"
-	@echo "     make docs-dev"
-	@echo ""
+
 
 # Dev: admin API with auto-reload on code changes (agent managed via UI)
 dev-agent:
@@ -172,10 +170,4 @@ release:
 css:
 	$(TAILWIND) --input $(CSS_IN) --output $(CSS_OUT) --minify
 
-# Build documentation (static export)
-docs:
-	cd docs && npm ci && npm run build
 
-# Dev: documentation with hot reload
-docs-dev:
-	cd docs && npm run dev
