@@ -84,25 +84,25 @@ RUN apt-get update && apt-get install -y gh
 ALLOWED_PREFIXES = [..., "gh"]
 ```
 
-```markdown
+````markdown
 # skills/github.md
 # GitHub CLI (gh)
 
 ## Check notifications
-\`\`\`bash
+```bash
 gh api notifications --jq '.[].subject.title'
-\`\`\`
+```
 
 ## List issues
-\`\`\`bash
+```bash
 gh issue list --repo owner/repo --json number,title,state
-\`\`\`
+```
 
 ## Create an issue
-\`\`\`bash
+```bash
 gh issue create --repo owner/repo --title "Bug" --body "Description"
-\`\`\`
 ```
+````
 
 The agent can now manage GitHub — create issues, check notifications, review PRs — with zero Python code changes.
 
