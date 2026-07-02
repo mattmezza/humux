@@ -1,4 +1,5 @@
 <div align="center">
+  <img src=".github/humux.png" alt="humux" width="100%" style="max-width: 896px; border-radius: 12px; margin-bottom: 24px;">
   <h1>
     <code>humux</code>
   </h1>
