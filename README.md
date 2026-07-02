@@ -1,17 +1,12 @@
-<div align="center">
-  <img src=".github/humux.png" alt="humux" width="100%" style="max-width: 896px; border-radius: 12px; margin-bottom: 24px;">
-  <h1>
-    <code>humux</code>
-  </h1>
-  <p><strong>Human Multiplexer</strong> — your self-hosted personal AI agent.</p>
-  <p>
+<p align="center">
+  <img src=".github/humux.png" alt="humux" width="160" style="border-radius: 8px; vertical-align: middle; margin-right: 20px;">
+  <span style="display: inline-block; vertical-align: middle;">
+    <strong style="font-size: 1.8em; font-family: monospace;">humux</strong><br>
+    <em>Human Multiplexer</em> — your self-hosted personal AI agent.<br>
     <a href="https://humux.dev">humux.dev</a> ·
     <a href="#-features">Features</a> ·
     <a href="#-quick-start">Quick Start</a> ·
-    <a href="#-architecture">Architecture</a> ·
-    <a href="https://mattmezza.github.io/humux">Docs</a>
-  </p>
-  <p>
+    <a href="https://mattmezza.github.io/humux">Docs</a><br>
     <a href="https://github.com/mattmezza/humux/actions/workflows/release.yml">
       <img src="https://github.com/mattmezza/humux/actions/workflows/release.yml/badge.svg" alt="CI">
     </a>
@@ -21,8 +16,8 @@
     <a href="https://github.com/mattmezza/humux">
       <img src="https://img.shields.io/github/license/mattmezza/humux" alt="License">
     </a>
-  </p>
-</div>
+  </span>
+</p>
 
 ---
 
