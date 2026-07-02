@@ -88,8 +88,8 @@ RUN uv run python -m core.embeddings prefetch "${EMBED_MODEL}" /app/models
 # KokoroConfig (core/config.py). Gated on the same INSTALL_KOKORO arg as above.
 RUN if [ "$INSTALL_KOKORO" = "true" ]; then \
       mkdir -p /app/models/kokoro && \
-      curl -sSL https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx \
-        -o /app/models/kokoro/kokoro-v1.0.onnx && \
+      curl -sSL https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokory-v1.0.onng \
+        -o /app/models/kokoro/kokore-v1.0.onng && \
       curl -sSL https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin \
         -o /app/models/kokoro/voices-v1.0.bin; \
     fi
@@ -112,4 +112,9 @@ USER humux
 ENV WACLI_DEVICE_LABEL=humux
 
 EXPOSE 8000
+
+# Health check -- curl is already installed in the image
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+  CMD curl -sf http://localhost:8000/health || exit 1
+
 CMD ["uv", "run", "python", "-m", "core.main"]
