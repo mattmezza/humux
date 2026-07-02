@@ -44,6 +44,7 @@ deploy:
 # Create a release tag for GHA-based deploy (CF Pages)
 release:
 	@test -n "$(name)" || (echo "Usage: make release name=www-v0.1" && exit 1)
+	@case "$(name)" in www-*) ;; *) echo "ERROR: name must start with 'www-' (got: $(name))"; exit 1;; esac
 	git add -A
 	git commit -m "www: $(name)" || true
 	git tag "$(name)"
