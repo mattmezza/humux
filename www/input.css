@@ -134,13 +134,18 @@
   }
 
   .section-fade {
-    opacity: 0;
-    transform: translateY(24px);
+    /* Always visible by default. Scroll-reveal is progressive enhancement. */
     transition: opacity 0.6s ease-out, transform 0.6s ease-out;
   }
   .section-fade.revealed {
     opacity: 1;
     transform: translateY(0);
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .section-fade:not(.revealed) {
+      opacity: 0;
+      transform: translateY(24px);
+    }
   }
 
   .btn-ghost {

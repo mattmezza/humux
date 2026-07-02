@@ -19,7 +19,7 @@ help:
 	@echo "    make release name=www-v0.1   Tag, push, trigger GHA deploy"
 	@echo ""
 
-PORT ?= 9090
+PORT ?= 9091
 
 # Local development — run both in separate terminals or use &
 dev:
