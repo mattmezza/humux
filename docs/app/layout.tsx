@@ -15,6 +15,9 @@ export const metadata: Metadata = {
 export default function Layout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <script defer src="https://analytics.casa.merola.co/script.js" data-website-id="388b4de6-a782-4d67-9cd3-d2a18df6bb60"></script>
+      </head>
       <body>
         <RootProvider
           theme={{
