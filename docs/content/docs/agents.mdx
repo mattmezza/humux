@@ -5,14 +5,14 @@ description: Swappable agent identities — character, skills, tools, voice, and
 
 # Agents
 
-A **agent** is a first-class, swappable identity the agent can take on — a fitness
-coach, a finance assistant, a travel planner — without any bespoke code. It is the same
-idea as the base `character`, made selectable.
+An **agent** is a first-class, swappable identity the assistant can switch between — a fitness
+coach, a finance assistant, a travel planner — without any bespoke code. Unlike the single
+base `character`, you can define many agents and switch between them on the fly.
 
-An agent is exactly these things:
+An agent bundles:
 
 - its own **identity** — `character` (who the agent is + its tone & behaviour);
-- an optional **agent name** it goes by (e.g. *Forge*), overriding the global assistant name;
+- an optional **name** it goes by (e.g. *Forge*), overriding the global assistant name;
 - a **skill allowlist** — which skills it may load (empty = all);
 - a **tool scope** — which function-tools are advertised (empty = all; `load_skill` is always available);
 - a **voice** — a TTS voice override (empty = the configured default);
