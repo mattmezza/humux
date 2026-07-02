@@ -36,27 +36,27 @@ ALLOWED_PREFIXES = [
 
 Create `skills/my-tool.md`:
 
-```markdown
+````markdown
 # My Tool
 
 Description of what this tool does and when to use it.
 
 ## Basic usage
 
-\`\`\`bash
+```bash
 my-tool list --format json
-\`\`\`
+```
 
 ## Output format
 
-\`\`\`json
+```json
 [{"id": 1, "name": "example"}]
-\`\`\`
+```
 
 ## Important notes
 - Always use `--format json` for parseable output
 - Requires authentication via environment variable
-```
+````
 
 ### 4. (Optional) Add permission rules
 
@@ -141,26 +141,26 @@ can only narrow it, never widen it.
 
 Show exact commands with all required flags:
 
-```markdown
+````markdown
 ## Good
-\`\`\`bash
+```bash
 himalaya -a personal envelope list -s 10 -o json
-\`\`\`
+```
 
 ## Bad
 Use himalaya to list emails.
-```
+````
 
 ### Show output format
 
 Include JSON examples so the LLM can parse responses:
 
-```markdown
+````markdown
 ## Output format
-\`\`\`json
+```json
 [{"id": "123", "subject": "Meeting", "from": {"name": "Alice"}}]
-\`\`\`
 ```
+````
 
 ### Document accounts and providers
 

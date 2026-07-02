@@ -67,7 +67,7 @@ Gotchas, best practices, and edge cases.
 
 ### Example: Email skill
 
-```markdown
+````markdown
 # Himalaya Email CLI
 
 You have access to the `himalaya` CLI to manage emails.
@@ -75,28 +75,28 @@ You have access to the `himalaya` CLI to manage emails.
 ## Reading Emails
 
 ### List recent emails
-\`\`\`bash
+```bash
 himalaya -a personal envelope list -s 10 -o json
-\`\`\`
+```
 
 ### Search emails
-\`\`\`bash
+```bash
 himalaya -a work envelope list -o json -- "from:alice subject:invoice"
-\`\`\`
+```
 
 ## Sending Emails
-\`\`\`bash
+```bash
 echo 'From: matteo@example.com
 To: recipient@example.com
 Subject: Hello
 
 Body text here.' | himalaya -a personal message send
-\`\`\`
+```
 
 ## Important Notes
 - Always use `-o json` when parsing results programmatically
 - Email IDs are relative to the current folder
-```
+````
 
 ## Creating new skills
 
