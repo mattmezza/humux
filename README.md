@@ -2,7 +2,6 @@
   <img src=".github/humux.png" alt="humux" width="160" style="border-radius: 8px; vertical-align: middle; margin-right: 20px;">
   <br>
   <span style="display: inline-block; vertical-align: middle;">
-    <strong style="font-size: 1.8em; font-family: monospace;">humux</strong><br>
     <em>Human Multiplexer</em> — your self-hosted personal AI agent.<br>
     <a href="https://humux.dev">humux.dev</a> ·
     <a href="#-features">Features</a> ·
