@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>404 — humux</title>
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="icon" type="image/svg+xml" href="/assets/images/favicon-32.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/css/style.css">
+  <style>
+    body { background: var(--color-base); display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
+    .glitch { font-family: var(--font-mono); }
+  </style>
+</head>
+<body>
+  <div class="text-center px-5">
+    <div class="glitch text-7xl font-bold mb-4" style="color: var(--color-accent);">404</div>
+    <h1 class="text-xl font-semibold mb-2" style="color: #eee;">Page not found</h1>
+    <p class="text-sm mb-8 max-w-sm mx-auto" style="color: var(--color-secondary);">
+      The terminal doesn't recognise that command. Maybe you took a wrong turn in the pipeline?
+    </p>
+    <div class="terminal-window max-w-xs mx-auto mb-8 text-left">
+      <div class="terminal-header">
+        <span class="terminal-dot red"></span>
+        <span class="terminal-dot yellow"></span>
+        <span class="terminal-dot green"></span>
+        <span class="ml-2 text-xs" style="color: var(--color-muted);">bash — error</span>
+      </div>
+      <div class="terminal-body">
+        <div><span class="terminal-prompt"></span><span style="color: var(--color-accent);">curl</span> https://humux.dev/$(<span style="color: #888;">whoops</span>)</div>
+        <div class="mt-2" style="color: #c66;">✖ 404 — Not Found</div>
+        <div class="mt-2 opacity-60">No such page. Try one of these:</div>
+        <div class="mt-1"><span class="terminal-prompt"></span><a href="/" class="no-underline" style="color: var(--color-accent);">cd /</a></div>
+        <div><span class="terminal-prompt"></span><a href="/features.html" class="no-underline" style="color: var(--color-accent);">cat /features</a></div>
+        <div><span class="terminal-prompt"></span><a href="/use-cases.html" class="no-underline" style="color: var(--color-accent);">cat /use-cases</a></div>
+        <div><span class="terminal-prompt"></span><a href="/comparison.html" class="no-underline" style="color: var(--color-accent);">cat /comparison</a></div>
+      </div>
+    </div>
+    <a href="/" class="btn-accent no-underline text-sm">Return to base</a>
+    <p class="mt-4 text-xs" style="color: var(--color-muted);">humux — Human Multiplexer &mdash; Merola Software & Services, Zürich</p>
+  </div>
+</body>
+</html>

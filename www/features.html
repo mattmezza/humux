@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Features — humux</title>
+  <meta name="description" content="Full feature catalog of humux: messaging, email, calendar, contacts, memory, voice, skills, subagents, browser automation, security vault, and more.">
+  <link rel="canonical" href="https://humux.dev/features">
+
+  <meta property="og:title" content="Features — humux">
+  <meta property="og:description" content="Everything your self-hosted personal AI agent can do.">
+  <meta property="og:url" content="https://humux.dev/features">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="https://humux.dev/assets/images/og-image.png">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Features — humux">
+  <meta name="twitter:description" content="Everything your self-hosted personal AI agent can do.">
+
+  <link rel="icon" type="image/svg+xml" href="/assets/images/favicon-32.svg">
+  <link rel="alternate icon" type="image/png" sizes="32x32" href="/assets/images/favicon-32.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/images/apple-touch-icon.png">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="/assets/css/style.css">
+
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/intersect@3.x.x/dist/cdn.min.js"></script>
+</head>
+<body>
+
+  <!-- Nav (same as index) -->
+  <nav class="sticky top-0 z-50 border-b border-[var(--color-border)]" style="background: rgba(6,6,6,0.85); backdrop-filter: blur(12px);">
+    <div class="mx-auto flex max-w-6xl items-center justify-between px-5 py-3">
+      <a href="/" class="flex items-center gap-2 no-underline">
+        <span class="text-sm font-semibold tracking-wider" style="color: var(--color-accent);">humux</span>
+        <span class="text-xs" style="color: var(--color-muted);">/ˈhjuːmʌks/</span>
+      </a>
+      <div class="flex items-center gap-5 text-xs">
+        <a href="/" class="no-underline transition-colors" style="color: var(--color-secondary);">Home</a>
+        <a href="/features.html" class="font-medium no-underline" style="color: var(--color-accent);">Features</a>
+        <a href="/use-cases.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Use Cases</a>
+        <a href="/comparison.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Comparison</a>
+        <a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="no-underline transition-colors" style="color: var(--color-secondary);">
+          <svg class="inline-block h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        </a>
+        <a href="https://docs.humux.dev" target="_blank" rel="noopener" class="no-underline transition-colors" style="color: var(--color-secondary);">Docs</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="border-b px-5 py-20 text-center" style="border-color: var(--color-border); background: var(--color-surface);">
+    <span class="tag">Feature Catalog</span>
+    <h1 class="mx-auto mt-4 max-w-3xl text-4xl font-bold leading-tight sm:text-5xl" style="color: #eee;">
+      Every capability,<br>documented and deliberate
+    </h1>
+    <p class="mx-auto mt-4 max-w-xl leading-relaxed" style="color: var(--color-secondary);">
+      humux ships with a complete set of integrated capabilities. No plugins to buy.
+      No cloud subscriptions. Everything runs locally in one container.
+    </p>
+  </section>
+
+  <!-- Feature groups -->
+  <div class="mx-auto max-w-6xl px-5 py-16">
+
+    <!-- 1. Messaging -->
+    <section class="mb-20" x-data="{ open: true }">
+      <button @click="open = !open" class="flex w-full items-center justify-between py-4 text-left">
+        <div class="flex items-center gap-3">
+          <div class="flex h-10 w-10 items-center justify-center rounded-md" style="background: var(--color-accent-glow);">
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color: var(--color-accent);"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+          </div>
+          <div>
+            <h2 class="text-lg font-semibold" style="color: #eee;">Messaging</h2>
+            <p class="text-xs" style="color: var(--color-muted);">Telegram, WhatsApp, group chats, reactions</p>
+          </div>
+        </div>
+        <svg class="h-4 w-4 transition-transform duration-200" :class="{ 'rotate-180': open }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--color-muted);"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      <div x-show="open" x-collapse>
+        <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          <div class="feature-card">
+            <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Per-agent Telegram bots</h3>
+            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">Each agent runs its own Telegram bot. Add several to one group — they take turns, never loop, only reply when addressed. Each has isolated context.</p>
+          </div>
+          <div class="feature-card">
+            <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Voice messages</h3>
+            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">Send voice notes in Telegram. humux transcribes with faster-whisper and responds by voice via edge-tts or Kokoro.</p>
+          </div>
+          <div class="feature-card">
+            <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Inline approvals</h3>
+            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">Approve or reject write actions directly from Telegram inline buttons. Permission rules use glob patterns: ALWAYS, ASK, NEVER.</p>
+          </div>
+          <div class="feature-card">
+            <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Reactions</h3>
+            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">Acknowledge messages with emoji reactions instead of text — thumbs-up, heart, eyes. Pre-approved, no prompt interruption.</p>
+          </div>
+          <div class="feature-card">
+            <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Per-chat settings</h3>
+            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">Gate who can trigger an agent in each group and who may DM it: everyone, nobody, or specific user IDs.</p>
+          </div>
+          <div class="feature-card">
+            <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">WhatsApp (wacli)</h3>
+            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">Read and send WhatsApp messages via the wacli CLI tool. Integrated as a skill the agent can learn.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. Email -->
+    <section class="mb-20" x-data="{ open: false }">
+      <button @click="open = !open" class="flex w-full items-center justify-between py-4 text-left">
+        <div class="flex items-center gap-3">
+          <div class="flex h-10 w-10 items-center justify-center rounded-md" style="background: var(--color-accent-glow);">
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color: var(--color-accent);"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+          </div>
+          <div>
+            <h2 class="text-lg font-semibold" style="color: #eee;">Email</h2>
+            <p class="text-xs" style="color: var(--color-muted);">Read, compose, manage. Himalaya CLI backend.</p>
+          </div>
+        </div>
+        <svg class="h-4 w-4 transition-transform duration-200" :class="{ 'rotate-180': open }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--color-muted);"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      <div x-show="open" x-collapse>
+        <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          <div class="feature-card">
+            <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Full email access</h3>
+            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">Read, compose, search, and manage emails. Powered by Himalaya CLI, a battle-tested Rust MUA.</p>
+          </div>
+          <div class="feature-card">
+            <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Per-agent mailboxes</h3>
+            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">Each agent can own a dedicated mailbox or be granted read / read-write access to your inbox. Bind accounts per agent.</p>
+          </div>
+          <div class="feature-card">
+            <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Vault-secured credentials</h3>
+            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">Credentials resolve from the encrypted vault — they never enter the model's context. Bitwarden import supported.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. Calendar -->
+    <section class="mb-20" x-data="{ open: false }">
+      <button @click="open = !open" class="flex w-full items-center justify-between py-4 text-left">
+        <div class="flex items-center gap-3">
+          <div class="flex h-10 w-10 items-center justify-center rounded-md" style="background: var(--color-accent-glow);">
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color: var(--color-accent);"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          </div>
+          <div>
+            <h2 class="text-lg font-semibold" style="color: #eee;">Calendar</h2>
+            <p class="text-xs" style="color: var(--color-muted);">CalDAV — Google Calendar, iCloud, Fastmail</p>
+          </div>
+        </div>
+        <svg class="h-4 w-4 transition-transform duration-200" :class="{ 'rotate-180': open }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--color-muted);"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      <div x-show="open" x-collapse>
+        <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          <div class="feature-card">
+            <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Read & write events</h3>
+            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">Check your schedule, create events, update existing ones. CalDAV works with Google Calendar, iCloud, Fastmail, and any CalDAV server.</p>
+          </div>
+          <div class="feature-card">
+            <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Per-agent access levels</h3>
+            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">Bind calendar accounts per agent with read or read-write permissions. Granular control over who sees and modifies what.</p>
+          </div>
+          <div class="feature-card">
+            <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Scheduled briefings</h3>
+            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">Morning briefings include today's events, emails, and reminders. Cron-based scheduling for any custom task.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. Contacts -->
+    <section class="mb-20" x-data="{ open: false }">
+      <button @click="open = !open" class="flex w-full items-center justify-between py-4 text-left">
+        <div class="flex items-center gap-3">
+          <div class="flex h-10 w-10 items-center justify-center rounded-md" style="background: var(--color-accent-glow);">
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color: var(--color-accent);"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+          </div>
+          <div>
+            <h2 class="text-lg font-semibold" style="color: #eee;">Contacts</h2>
+            <p class="text-xs" style="color: var(--color-muted);">CardDAV, Google Contacts, per-agent binding</p>
+          </div>
+        </div>
+        <svg class="h-4 w-4 transition-transform duration-200" :class="{ 'rotate-180': open }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--color-muted);"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      <div x-show="open" x-collapse>
+        <div class="grid gap-6 sm:grid-cols-2">
+          <div class="feature-card">
+            <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Contact search & creation</h3>
+            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">Search contacts, create new entries. Supports CardDAV (Purelymail, iCloud, Fastmail) and Google Contacts via the contacts CLI.</p>
+          </div>
+          <div class="feature-card">
+            <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Per-agent scoping</h3>
+            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">Bind contact books per agent with read or read-write access. Agents only see what you grant them.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5. Agents & Memory -->
+    <section class="mb-20" x-data="{ open: false }">
+      <button @click="open = !open" class="flex w-full items-center justify-between py-4 text-left">
+        <div class="flex items-center gap-3">
+          <div class="flex h-10 w-10 items-center justify-center rounded-md" style="background: var(--color-accent-glow);">
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color: var(--color-accent);"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          </div>
+          <div>
+            <h2 class="text-lg font-semibold" style="color: #eee;">Agents & Memory</h2>
+            <p class="text-xs" style="color: var(--color-muted);">Multi-agent, persistent memory, skills, subagents</p>
+          </div>
+        </div>
+        <svg class="h-4 w-4 transition-transform duration-200" :class="{ 'rotate-180': open }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--color-muted);"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      <div x-show="open" x-collapse>
+        <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          <div class="feature-card">
+            <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Multiple agents</h3>
+            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">Create and switch between agent identities. Each has its own character, skill/tool scope, voice, and account bindings. Enable or disable per agent.</p>
+          </div>
+          <div class="feature-card">
+            <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Two-tier memory</h3>
+            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">Permanent long-term facts and expiring short-term context. Both extracted automatically from conversations via LLM inference.</p>
+          </div>
+          <div class="feature-card">
+            <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Subagents</h3>
+            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">Delegate scoped subtasks to a sub-loop. Run sync (result in-turn) or background (distilled summary). Set step/token/thinking budgets.</p>
+          </div>
+          <div class="feature-card">
+            <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Markdown skills</h3>
+            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">Teach the agent new capabilities by writing markdown files — no code required. Add tool integrations by describing the CLI command.</p>
+          </div>
+          <div class="feature-card">
+            <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Scheduled jobs</h3>
+            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">Cron-based scheduling for morning briefings, email checks, contact sync, and custom tasks. Filter by agent in the admin UI.</p>
+          </div>
+          <div class="feature-card">
+            <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Context usage meter</h3>
+            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">See token count and percentage of context window used in the Inspect tab. Manage context budget per agent.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 6. Admin UI -->
+    <section class="mb-20" x-data="{ open: false }">
+      <button @click="open = !open" class="flex w-full items-center justify-between py-4 text-left">
+        <div class="flex items-center gap-3">
+          <div class="flex h-10 w-10 items-center justify-center rounded-md" style="background: var(--color-accent-glow);">
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color: var(--color-accent);"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+          </div>
+          <div>
+            <h2 class="text-lg font-semibold" style="color: #eee;">Admin UI</h2>
+            <p class="text-xs" style="color: var(--color-muted);">FastAPI + HTMX. Full control from your browser.</p>
+          </div>
+        </div>
+        <svg class="h-4 w-4 transition-transform duration-200" :class="{ 'rotate-180': open }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--color-muted);"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      <div x-show="open" x-collapse>
+        <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          <div class="feature-card">
+            <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Setup wizard</h3>
+            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">Step-by-step first-boot configuration. Walks through API keys, Telegram bot setup, account connections, and agent creation.</p>
+          </div>
+          <div class="feature-card">
+            <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Agent editor</h3>
+            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">Configure agent character, skills, tools, voice, Telegram bot, and account bindings. Tabbed interface with sys prompt, inference, and provider settings.</p>
+          </div>
+          <div class="feature-card">
+            <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Log streams</h3>
+            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">Per-agent log streams filterable by stream, level, time, and text. Inspect context, token usage, and chain-of-thought.</p>
+          </div>
+          <div class="feature-card">
+            <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Memory inspection</h3>
+            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">Browse and manage long-term and short-term memory entries. See what your agent remembers and edit or delete entries.</p>
+          </div>
+          <div class="feature-card">
+            <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Job management</h3>
+            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">View, create, and cancel scheduled jobs. Monitor subagent runs. Filter jobs by agent.</p>
+          </div>
+          <div class="feature-card">
+            <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Secrets vault</h3>
+            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">Encrypted two-tier vault: infrastructure keys (machine-key sealed) and agent secrets (admin-password sealed). Bitwarden import.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 7. Voice -->
+    <section class="mb-20" x-data="{ open: false }">
+      <button @click="open = !open" class="flex w-full items-center justify-between py-4 text-left">
+        <div class="flex items-center gap-3">
+          <div class="flex h-10 w-10 items-center justify-center rounded-md" style="background: var(--color-accent-glow);">
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color: var(--color-accent);"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+          </div>
+          <div>
+            <h2 class="text-lg font-semibold" style="color: #eee;">Voice</h2>
+            <p class="text-xs" style="color: var(--color-muted);">Speech-to-text, text-to-speech, offline capable</p>
+          </div>
+        </div>
+        <svg class="h-4 w-4 transition-transform duration-200" :class="{ 'rotate-180': open }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--color-muted);"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      <div x-show="open" x-collapse>
+        <div class="grid gap-6 sm:grid-cols-2">
+          <div class="feature-card">
+            <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Speech-to-text</h3>
+            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">Powered by faster-whisper. Transcribe voice messages from Telegram. On-device, no external API needed.</p>
+          </div>
+          <div class="feature-card">
+            <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Text-to-speech</h3>
+            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">edge-tts for cloud-quality voices, or Kokoro 82M for fully offline multilingual TTS. Both integrated and selectable.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 8. Browser & Web -->
+    <section class="mb-20" x-data="{ open: false }">
+      <button @click="open = !open" class="flex w-full items-center justify-between py-4 text-left">
+        <div class="flex items-center gap-3">
+          <div class="flex h-10 w-10 items-center justify-center rounded-md" style="background: var(--color-accent-glow);">
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color: var(--color-accent);"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
+          </div>
+          <div>
+            <h2 class="text-lg font-semibold" style="color: #eee;">Browser & Web</h2>
+            <p class="text-xs" style="color: var(--color-muted);">Web search, browser automation, web artifacts</p>
+          </div>
+        </div>
+        <svg class="h-4 w-4 transition-transform duration-200" :class="{ 'rotate-180': open }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--color-muted);"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      <div x-show="open" x-collapse>
+        <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          <div class="feature-card">
+            <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Web search</h3>
+            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">Tavily integration for real-time web search. The agent can look up current information, news, and research topics.</p>
+          </div>
+          <div class="feature-card">
+            <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Browser automation</h3>
+            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">Optional headless Playwright browser. Read JS-heavy pages, act on websites with persistent logged-in profiles. Per-domain approval.</p>
+          </div>
+          <div class="feature-card">
+            <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Web artifacts</h3>
+            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">The agent publishes pages and sites under /artifacts/ using workspace file tools. Sandbox CSP for security. Shareable links.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 9. Security -->
+    <section class="mb-20" x-data="{ open: false }">
+      <button @click="open = !open" class="flex w-full items-center justify-between py-4 text-left">
+        <div class="flex items-center gap-3">
+          <div class="flex h-10 w-10 items-center justify-center rounded-md" style="background: var(--color-accent-glow);">
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color: var(--color-accent);"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+          </div>
+          <div>
+            <h2 class="text-lg font-semibold" style="color: #eee;">Security</h2>
+            <p class="text-xs" style="color: var(--color-muted);">Vault, permissions, approval flow, encryption</p>
+          </div>
+        </div>
+        <svg class="h-4 w-4 transition-transform duration-200" :class="{ 'rotate-180': open }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--color-muted);"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      <div x-show="open" x-collapse>
+        <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          <div class="feature-card">
+            <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Encrypted secrets vault</h3>
+            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">Two-tier encryption: infrastructure keys sealed with machine key, agent secrets sealed with admin password. Values never enter model context.</p>
+          </div>
+          <div class="feature-card">
+            <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Granular permissions</h3>
+            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">Glob-pattern rules: ALWAYS allow, ASK for approval, NEVER allow. Interactive approval via Telegram inline buttons for write actions.</p>
+          </div>
+          <div class="feature-card">
+            <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Safe coding harness</h3>
+            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">File tools confined to workspace directory. Read pre-approved, writes ask first. Path traversal blocked. Per-call command approval.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 10. LLM Providers -->
+    <section x-data="{ open: false }">
+      <button @click="open = !open" class="flex w-full items-center justify-between py-4 text-left">
+        <div class="flex items-center gap-3">
+          <div class="flex h-10 w-10 items-center justify-center rounded-md" style="background: var(--color-accent-glow);">
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color: var(--color-accent);"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+          </div>
+          <div>
+            <h2 class="text-lg font-semibold" style="color: #eee;">LLM Providers</h2>
+            <p class="text-xs" style="color: var(--color-muted);">Anthropic, OpenAI, Grok, Google, DeepSeek, OpenRouter</p>
+          </div>
+        </div>
+        <svg class="h-4 w-4 transition-transform duration-200" :class="{ 'rotate-180': open }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--color-muted);"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      <div x-show="open" x-collapse>
+        <div class="grid gap-6 sm:grid-cols-2">
+          <div class="feature-card">
+            <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Multi-provider support</h3>
+            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">Choose from Anthropic Claude, OpenAI, Grok (xAI), Google Gemini, DeepSeek, or OpenRouter. Configure per-agent or globally. Image generation via OpenRouter, fal.ai, or OpenAI.</p>
+          </div>
+          <div class="feature-card">
+            <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Provider sub-tabs</h3>
+            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">Admin UI splits LLM config into SysPrompt, Inference, and Providers sub-tabs. URL-based navigation for copy-pasteable links.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- CTA -->
+  <section class="border-t px-5 py-20 text-center" style="border-color: var(--color-border); background: var(--color-surface);">
+    <div class="mx-auto max-w-xl">
+      <h2 class="text-2xl font-bold" style="color: #eee;">Ready to run your own AI?</h2>
+      <p class="mt-3 leading-relaxed" style="color: var(--color-secondary);">
+        One container. Your data. Your rules.
+      </p>
+      <div class="mt-6 flex flex-wrap justify-center gap-3">
+        <a href="/" class="btn-accent no-underline text-sm">Quick Start</a>
+        <a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="btn-ghost no-underline text-sm">GitHub</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="border-t px-5 py-12" style="border-color: var(--color-border); background: var(--color-base);">
+    <div class="mx-auto max-w-6xl">
+      <div class="flex flex-wrap items-start justify-between gap-8">
+        <div>
+          <span class="text-sm font-semibold" style="color: var(--color-accent);">humux</span>
+          <p class="mt-1 text-xs" style="color: var(--color-muted);">Human Multiplexer &mdash; /ˈhjuːmʌks/</p>
+        </div>
+        <div class="flex flex-wrap gap-10">
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Site</span>
+            <ul class="mt-2 space-y-1 text-xs" style="color: var(--color-muted);">
+              <li><a href="/" class="no-underline">Home</a></li>
+              <li><a href="/features.html" class="no-underline">Features</a></li>
+              <li><a href="/use-cases.html" class="no-underline">Use Cases</a></li>
+              <li><a href="/comparison.html" class="no-underline">Comparison</a></li>
+            </ul>
+          </div>
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Resources</span>
+            <ul class="mt-2 space-y-1 text-xs" style="color: var(--color-muted);">
+              <li><a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="no-underline">GitHub</a></li>
+              <li><a href="https://docs.humux.dev" target="_blank" rel="noopener" class="no-underline">Documentation</a></li>
+              <li><a href="https://github.com/mattmezza/humux/releases" target="_blank" rel="noopener" class="no-underline">Releases</a></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div class="mt-10 border-t pt-6 text-center text-xs" style="border-color: var(--color-border); color: var(--color-muted);">
+        &copy; 2026 Merola Software &amp; Services. MIT License.
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,267 @@
+@import "tailwindcss";
+
+@theme {
+  /* Dark terminal theme matching humux admin UI */
+  --color-base: #060606;
+  --color-surface: #0e0e0e;
+  --color-elevated: #161616;
+  --color-border: #222;
+  --color-border-hover: #333;
+  --color-accent: #6c9;
+  --color-accent-dim: #3d6b4f;
+  --color-accent-glow: rgba(102, 204, 153, 0.08);
+  --color-danger: #c66;
+  --color-warn: #ca6;
+  --color-muted: #666;
+  --color-secondary: #999;
+
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', ui-monospace, monospace;
+
+  --animate-typing: typing 3s steps(30, end);
+  --animate-blink: blink 1s step-end infinite;
+  --animate-fade-in: fade-in 0.6s ease-out;
+  --animate-fade-up: fade-up 0.6s ease-out;
+  --animate-pulse-glow: pulse-glow 3s ease-in-out infinite;
+}
+
+@keyframes typing {
+  from { width: 0; }
+  to { width: 100%; }
+}
+
+@keyframes blink {
+  50% { border-color: transparent; }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 20px rgba(102, 204, 153, 0.05); }
+  50% { box-shadow: 0 0 40px rgba(102, 204, 153, 0.15); }
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background-color: var(--color-base);
+    color: #ccc;
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  ::selection {
+    background: rgba(102, 204, 153, 0.25);
+    color: #fff;
+  }
+
+  pre, code, .font-mono {
+    font-family: var(--font-mono);
+  }
+
+  a {
+    color: var(--color-accent);
+    transition: opacity 0.2s;
+  }
+  a:hover {
+    opacity: 0.8;
+  }
+}
+
+@layer components {
+  .glow-border {
+    border-color: var(--color-border);
+    transition: border-color 0.3s, box-shadow 0.3s;
+  }
+  .glow-border:hover {
+    border-color: var(--color-accent);
+    box-shadow: 0 0 24px rgba(102, 204, 153, 0.08);
+  }
+
+  .terminal-window {
+    background: #000;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  .terminal-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 14px;
+    background: var(--color-surface);
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .terminal-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+  }
+  .terminal-dot.red { background: #ff5f57; }
+  .terminal-dot.yellow { background: #ffbd2e; }
+  .terminal-dot.green { background: #28c840; }
+
+  .terminal-body {
+    padding: 16px;
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    line-height: 1.6;
+    color: #c0c0c0;
+    overflow-x: auto;
+  }
+
+  .terminal-prompt::before {
+    content: "$ ";
+    color: var(--color-accent);
+  }
+
+  .glow-text {
+    text-shadow: 0 0 40px rgba(102, 204, 153, 0.15);
+  }
+
+
+
+  .btn-ghost {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.625rem 1.25rem;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: #ccc;
+    background: transparent;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .btn-ghost:hover {
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+    background: var(--color-accent-glow);
+  }
+
+  .btn-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.625rem 1.25rem;
+    border: 1px solid var(--color-accent-dim);
+    border-radius: 6px;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--color-accent);
+    background: var(--color-accent-glow);
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .btn-primary:hover {
+    background: rgba(102, 204, 153, 0.15);
+    border-color: var(--color-accent);
+    box-shadow: 0 0 24px rgba(102, 204, 153, 0.1);
+  }
+
+  .btn-accent {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.625rem 1.25rem;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: #000;
+    background: var(--color-accent);
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .btn-accent:hover {
+    background: #7dd;
+    box-shadow: 0 0 32px rgba(102, 204, 153, 0.25);
+  }
+
+  .feature-card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    padding: 1.5rem;
+    transition: all 0.3s;
+  }
+  .feature-card:hover {
+    border-color: var(--color-accent);
+    background: var(--color-elevated);
+    box-shadow: 0 0 32px rgba(102, 204, 153, 0.06);
+  }
+
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.125rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    font-family: var(--font-mono);
+    letter-spacing: 0.02em;
+    background: var(--color-accent-glow);
+    color: var(--color-accent);
+    border: 1px solid var(--color-accent-dim);
+  }
+
+  code.inline-code {
+    padding: 0.125rem 0.375rem;
+    border-radius: 4px;
+    font-size: 0.8125em;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--color-border);
+    color: var(--color-accent);
+  }
+
+  .comparison-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8125rem;
+  }
+  .comparison-table th {
+    text-align: left;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--color-border);
+    color: var(--color-muted);
+    font-weight: 500;
+    font-family: var(--font-mono);
+    text-transform: uppercase;
+    font-size: 0.6875rem;
+    letter-spacing: 0.08em;
+  }
+  .comparison-table td {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--color-border);
+    vertical-align: top;
+  }
+  .comparison-table tbody tr {
+    transition: background 0.2s;
+  }
+  .comparison-table tbody tr:hover {
+    background: var(--color-accent-glow);
+  }
+  .comparison-table .check {
+    color: var(--color-accent);
+  }
+  .comparison-table .cross {
+    color: var(--color-muted);
+    opacity: 0.4;
+  }
+}

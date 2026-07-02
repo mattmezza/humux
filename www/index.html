@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>humux — Human Multiplexer. Self-hosted personal AI agent.</title>
+  <meta name="description" content="humux is a self-hosted personal AI agent. One Docker container. Unified messaging, email, calendar, memory, voice, and automation.">
+  <meta name="keywords" content="AI agent, self-hosted, personal assistant, Docker, open source, privacy, Telegram bot, email automation">
+  <meta name="author" content="Merola Software &amp; Services">
+  <link rel="canonical" href="https://humux.dev">
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="humux — Human Multiplexer">
+  <meta property="og:description" content="Your self-hosted personal AI agent. One container. Unified messaging, email, calendar, and automation.">
+  <meta property="og:url" content="https://humux.dev">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="https://humux.dev/assets/images/og-image.png">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="humux — Human Multiplexer">
+  <meta name="twitter:description" content="Your self-hosted personal AI agent. One container.">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="/assets/images/favicon-32.svg">
+  <link rel="alternate icon" type="image/png" sizes="32x32" href="/assets/images/favicon-32.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/images/apple-touch-icon.png">
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CSS (compiled locally) -->
+  <link rel="stylesheet" href="/assets/css/style.css">
+
+  <!-- Alpine.js (CDN) -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+</head>
+<body>
+
+  <!-- Nav -->
+  <nav class="sticky top-0 z-50 border-b border-[var(--color-border)]" style="background: rgba(6,6,6,0.85); backdrop-filter: blur(12px);">
+    <div class="mx-auto flex max-w-6xl items-center justify-between px-5 py-3">
+      <a href="/" class="flex items-center gap-2 no-underline">
+        <span class="text-sm font-semibold tracking-wider" style="color: var(--color-accent);">humux</span>
+        <span class="text-xs" style="color: var(--color-muted);">/ˈhjuːmʌks/</span>
+      </a>
+      <div class="flex items-center gap-5 text-xs">
+        <a href="/" class="font-medium no-underline" style="color: var(--color-accent);">Home</a>
+        <a href="/features.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Features</a>
+        <a href="/use-cases.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Use Cases</a>
+        <a href="/comparison.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Comparison</a>
+        <a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="no-underline transition-colors" style="color: var(--color-secondary);">
+          <svg class="inline-block h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        </a>
+        <a href="https://docs.humux.dev" target="_blank" rel="noopener" class="no-underline transition-colors" style="color: var(--color-secondary);">Docs</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="relative min-h-[88vh] flex items-center justify-center overflow-hidden px-5"
+    style="background: radial-gradient(ellipse 80% 60% at 50% 40%, rgba(102,204,153,0.04) 0%, transparent 70%);">
+
+    <!-- Background grid pattern -->
+    <div class="pointer-events-none absolute inset-0 opacity-[0.03]"
+      style="background-image: linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px); background-size: 48px 48px;">
+    </div>
+
+    <div class="relative z-10 mx-auto max-w-4xl text-center">
+
+      <!-- Tagline typing effect -->
+      <div class="mb-4 inline-flex items-center gap-2 rounded-full border px-4 py-1 text-xs"
+        style="border-color: var(--color-accent-dim); background: var(--color-accent-glow); color: var(--color-accent);">
+        <span class="inline-block h-1.5 w-1.5 rounded-full" style="background: var(--color-accent);"></span>
+        v0.15 &mdash; Self-hosted &bull; Open source
+      </div>
+
+      <h1 class="mx-auto mb-6 max-w-3xl text-4xl font-bold leading-tight sm:text-5xl md:text-6xl" style="color: #eee;">
+        <span class="glow-text">Your personal AI,</span><br>
+        <span style="color: var(--color-accent);">fully under your control.</span>
+      </h1>
+
+      <p class="mx-auto mb-8 max-w-2xl text-lg leading-relaxed" style="color: var(--color-secondary);">
+        humux is a self-hosted personal AI agent that runs in a single Docker container.
+        Unified interface across messaging, email, calendars, contacts &mdash; with
+        autonomous action, scheduled tasks, voice interaction, and persistent memory.
+      </p>
+
+      <div class="flex flex-wrap items-center justify-center gap-4">
+        <a href="#quickstart" class="btn-accent text-sm no-underline">
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          Quick Start
+        </a>
+        <a href="/features.html" class="btn-ghost text-sm no-underline">
+          Explore Features
+          <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </a>
+        <a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="btn-ghost text-sm no-underline">
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+          GitHub
+        </a>
+      </div>
+
+      <!-- Terminal mockup -->
+      <div class="mx-auto mt-12 max-w-xl text-left">
+        <div class="terminal-window animate-pulse-glow">
+          <div class="terminal-header">
+            <span class="terminal-dot red"></span>
+            <span class="terminal-dot yellow"></span>
+            <span class="terminal-dot green"></span>
+            <span class="ml-2 text-xs" style="color: var(--color-muted);">bash &mdash; humux quickstart</span>
+          </div>
+          <div class="terminal-body">
+            <div>
+              <div><span class="terminal-prompt"></span><span style="color: var(--color-accent);">git clone</span> https://github.com/mattmezza/humux.git</div>
+              <div class="opacity-60">Cloning into 'humux'... done.</div>
+              <div class="mt-2"><span class="terminal-prompt"></span><span style="color: var(--color-accent);">cd</span> humux</div>
+              <div class="mt-2"><span class="terminal-prompt"></span><span style="color: var(--color-accent);">cp</span> .env.example .env</div>
+              <div class="mt-2"><span class="terminal-prompt"></span><span style="color: var(--color-accent);">cp</span> config.yml.example config.yml</div>
+              <div class="mt-2"><span class="terminal-prompt"></span><span style="color: var(--color-accent);">docker compose up -d</span></div>
+              <div class="opacity-60">[+] Running 3/3</div>
+              <div class="opacity-60">&nbsp;&nbsp;✔ Container humux  Started</div>
+              <div class="mt-2 text-xs glow-text" style="color: var(--color-accent);">
+                &gt; Admin UI at http://localhost:8000
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Quick Start -->
+  <section id="quickstart" class="border-t px-5 py-24" style="border-color: var(--color-border); background: var(--color-surface);">
+    <div class="mx-auto max-w-6xl">
+      <div class="mb-12 text-center">
+        <span class="tag mb-4">Quick Start</span>
+        <h2 class="mt-3 text-3xl font-bold" style="color: #eee;">Running in under 30 seconds</h2>
+        <p class="mx-auto mt-3 max-w-xl" style="color: var(--color-secondary);">
+          One command to start. One container to manage. Your data, your infrastructure, your rules.
+        </p>
+      </div>
+
+      <div class="mx-auto max-w-2xl">
+        <div class="terminal-window">
+          <div class="terminal-header">
+            <span class="terminal-dot red"></span>
+            <span class="terminal-dot yellow"></span>
+            <span class="terminal-dot green"></span>
+            <span class="ml-2 text-xs" style="color: var(--color-muted);">bash</span>
+          </div>
+          <div class="terminal-body">
+            <div>
+              <span class="terminal-prompt"></span>
+              <span style="color: var(--color-accent);">docker run -d \</span>
+            </div>
+            <div class="pl-5">--name humux \</div>
+            <div class="pl-5">-p 8000:8000 \</div>
+            <div class="pl-5">-v ./data:/app/data \</div>
+            <div class="pl-5">
+              <span style="color: var(--color-accent);">ghcr.io/mattmezza/humux:latest</span>
+            </div>
+            <div class="mt-2 opacity-60">Unable to find image 'ghcr.io/mattmezza/humux:latest' locally</div>
+            <div class="opacity-60">latest: Pulling from mattmezza/humux</div>
+            <div class="opacity-60">Digest: sha256:humux... done</div>
+            <div class="mt-2" style="color: var(--color-accent);">✔ Container started</div>
+            <div class="text-xs mt-1 opacity-80" style="color: var(--color-accent);">  &gt; Admin UI at http://localhost:8000 — setup wizard guides you</div>
+          </div>
+        </div>
+
+        <div class="mt-6 flex items-center justify-center gap-2 text-xs" style="color: var(--color-muted);">
+          <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          Requires Docker. No env vars needed — setup wizard walks through LLM API key, Telegram, etc.
+          <a href="https://github.com/mattmezza/humux?tab=readme-ov-file#quick-start" target="_blank" rel="noopener" class="no-underline">Full guide →</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Feature Highlights -->
+  <section class="border-t px-5 py-24" style="border-color: var(--color-border);">
+    <div class="mx-auto max-w-6xl">
+      <div class="mb-14 text-center">
+        <span class="tag mb-4">Capabilities</span>
+        <h2 class="mt-3 text-3xl font-bold" style="color: #eee;">Everything your personal AI needs</h2>
+        <p class="mx-auto mt-3 max-w-xl" style="color: var(--color-secondary);">
+          One unified interface across the tools you already use.
+        </p>
+      </div>
+
+      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <!-- Messaging -->
+        <div class="feature-card">
+          <div class="mb-3 flex h-10 w-10 items-center justify-center rounded-md" style="background: var(--color-accent-glow);">
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color: var(--color-accent);"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+          </div>
+          <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Messaging</h3>
+          <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">
+            Telegram with text, voice, inline approvals, and per-agent bots.
+            WhatsApp via wacli integration.
+          </p>
+        </div>
+
+        <!-- Email -->
+        <div class="feature-card">
+          <div class="mb-3 flex h-10 w-10 items-center justify-center rounded-md" style="background: var(--color-accent-glow);">
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color: var(--color-accent);"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+          </div>
+          <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Email</h3>
+          <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">
+            Read, compose, and manage email via Himalaya CLI. Per-agent mailboxes.
+            Credentials resolved from vault — never in model context.
+          </p>
+        </div>
+
+        <!-- Calendar -->
+        <div class="feature-card">
+          <div class="mb-3 flex h-10 w-10 items-center justify-center rounded-md" style="background: var(--color-accent-glow);">
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color: var(--color-accent);"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          </div>
+          <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Calendar</h3>
+          <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">
+            CalDAV integration with Google Calendar, iCloud, Fastmail.
+            Read or read-write access, bindable per agent.
+          </p>
+        </div>
+
+        <!-- Contacts -->
+        <div class="feature-card">
+          <div class="mb-3 flex h-10 w-10 items-center justify-center rounded-md" style="background: var(--color-accent-glow);">
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color: var(--color-accent);"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+          </div>
+          <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Contacts</h3>
+          <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">
+            CardDAV (Purelymail, iCloud, Fastmail) and Google Contacts.
+            Search and create contacts. Per-agent access levels.
+          </p>
+        </div>
+
+        <!-- Voice -->
+        <div class="feature-card">
+          <div class="mb-3 flex h-10 w-10 items-center justify-center rounded-md" style="background: var(--color-accent-glow);">
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color: var(--color-accent);"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+          </div>
+          <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Voice</h3>
+          <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">
+            Speech-to-text via faster-whisper. Text-to-speech via edge-tts or
+            fully offline Kokoro 82M. Multilingual, on-device.
+          </p>
+        </div>
+
+        <!-- Memory -->
+        <div class="feature-card">
+          <div class="mb-3 flex h-10 w-10 items-center justify-center rounded-md" style="background: var(--color-accent-glow);">
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color: var(--color-accent);"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          </div>
+          <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Memory</h3>
+          <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">
+            Two-tier memory: permanent long-term facts and expiring short-term context.
+            Both extracted automatically from conversations.
+          </p>
+        </div>
+      </div>
+
+      <div class="mt-8 text-center">
+        <a href="/features.html" class="btn-ghost no-underline text-xs">
+          View all features
+          <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Architecture / Design Philosophy -->
+  <section class="border-t px-5 py-24" style="border-color: var(--color-border); background: var(--color-surface);">
+    <div class="mx-auto max-w-6xl">
+      <div class="grid items-center gap-12 lg:grid-cols-2">
+        <div>
+          <span class="tag mb-4">Architecture</span>
+          <h2 class="mt-3 text-3xl font-bold leading-tight" style="color: #eee;">Python orchestrator +<br>battle-tested CLI tools</h2>
+          <p class="mt-4 leading-relaxed" style="color: var(--color-secondary);">
+            humux doesn't re-invent wheels. Python glues everything together while
+            proven tools handle each protocol:
+          </p>
+
+          <div class="mt-6 grid gap-2">
+            <div class="flex items-center gap-3 rounded-md px-3 py-2 text-xs" style="background: var(--color-elevated);">
+              <span class="font-mono font-semibold" style="color: var(--color-accent);">LLM</span>
+              <span style="color: var(--color-muted);">Anthropic, OpenAI, Grok, Google, DeepSeek, OpenRouter</span>
+            </div>
+            <div class="flex items-center gap-3 rounded-md px-3 py-2 text-xs" style="background: var(--color-elevated);">
+              <span class="font-mono font-semibold" style="color: var(--color-accent);">Email</span>
+              <span style="color: var(--color-muted);">Himalaya CLI (Rust)</span>
+            </div>
+            <div class="flex items-center gap-3 rounded-md px-3 py-2 text-xs" style="background: var(--color-elevated);">
+              <span class="font-mono font-semibold" style="color: var(--color-accent);">Calendar</span>
+              <span style="color: var(--color-muted);">CalDAV via python-caldav</span>
+            </div>
+            <div class="flex items-center gap-3 rounded-md px-3 py-2 text-xs" style="background: var(--color-elevated);">
+              <span class="font-mono font-semibold" style="color: var(--color-accent);">Voice</span>
+              <span style="color: var(--color-muted);">faster-whisper (STT) + edge-tts / Kokoro (TTS)</span>
+            </div>
+            <div class="flex items-center gap-3 rounded-md px-3 py-2 text-xs" style="background: var(--color-elevated);">
+              <span class="font-mono font-semibold" style="color: var(--color-accent);">Storage</span>
+              <span style="color: var(--color-muted);">SQLite (4 databases)</span>
+            </div>
+            <div class="flex items-center gap-3 rounded-md px-3 py-2 text-xs" style="background: var(--color-elevated);">
+              <span class="font-mono font-semibold" style="color: var(--color-accent);">Admin UI</span>
+              <span style="color: var(--color-muted);">FastAPI + HTMX + Tailwind CSS</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="rounded-lg border p-6" style="border-color: var(--color-border); background: var(--color-elevated);">
+          <h3 class="mb-3 text-sm font-semibold" style="color: #eee;">One container. Zero dependencies.</h3>
+          <ul class="space-y-2 text-xs" style="color: var(--color-secondary);">
+            <li class="flex gap-2">
+              <span style="color: var(--color-accent);">✔</span>
+              Single <code class="inline-code">docker compose up</code> to start
+            </li>
+            <li class="flex gap-2">
+              <span style="color: var(--color-accent);">✔</span>
+              No Kubernetes, no sidecars, no external databases
+            </li>
+            <li class="flex gap-2">
+              <span style="color: var(--color-accent);">✔</span>
+              Your API keys, your data, your infrastructure
+            </li>
+            <li class="flex gap-2">
+              <span style="color: var(--color-accent);">✔</span>
+              Python 3.14 + uv for dependency management
+            </li>
+            <li class="flex gap-2">
+              <span style="color: var(--color-accent);">✔</span>
+              Markdown skills — teach your agent without writing code
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Open Source CTA -->
+  <section class="border-t px-5 py-24 text-center" style="border-color: var(--color-border);">
+    <div class="mx-auto max-w-2xl">
+      <span class="tag mb-4">Open Source</span>
+      <h2 class="mt-3 text-3xl font-bold" style="color: #eee;">Built in the open</h2>
+      <p class="mx-auto mt-3 max-w-lg leading-relaxed" style="color: var(--color-secondary);">
+        humux is 100% open source under the MIT license. Contributions, issues,
+        and ideas welcome. Star it on GitHub, fork it, or jump into discussions.
+      </p>
+      <div class="mt-8 flex flex-wrap items-center justify-center gap-4">
+        <a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="btn-accent text-sm no-underline gap-2">
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+          Star on GitHub
+        </a>
+        <a href="https://github.com/mattmezza/humux/issues" target="_blank" rel="noopener" class="btn-ghost text-sm no-underline">
+          Report an issue
+        </a>
+        <a href="https://docs.humux.dev" target="_blank" rel="noopener" class="btn-ghost text-sm no-underline">
+          Read the docs
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="border-t px-5 py-12" style="border-color: var(--color-border); background: var(--color-surface);">
+    <div class="mx-auto max-w-6xl">
+      <div class="flex flex-wrap items-start justify-between gap-8">
+        <div>
+          <span class="text-sm font-semibold" style="color: var(--color-accent);">humux</span>
+          <p class="mt-1 text-xs" style="color: var(--color-muted);">Human Multiplexer &mdash; /ˈhjuːmʌks/</p>
+          <p class="mt-0.5 text-xs" style="color: var(--color-muted);">Your self-hosted personal AI agent.</p>
+        </div>
+        <div class="flex flex-wrap gap-10">
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Site</span>
+            <ul class="mt-2 space-y-1 text-xs" style="color: var(--color-muted);">
+              <li><a href="/" class="no-underline">Home</a></li>
+              <li><a href="/features.html" class="no-underline">Features</a></li>
+              <li><a href="/use-cases.html" class="no-underline">Use Cases</a></li>
+              <li><a href="/comparison.html" class="no-underline">Comparison</a></li>
+            </ul>
+          </div>
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Resources</span>
+            <ul class="mt-2 space-y-1 text-xs" style="color: var(--color-muted);">
+              <li><a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="no-underline">GitHub</a></li>
+              <li><a href="https://docs.humux.dev" target="_blank" rel="noopener" class="no-underline">Documentation</a></li>
+              <li><a href="https://github.com/mattmezza/humux/releases" target="_blank" rel="noopener" class="no-underline">Releases</a></li>
+            </ul>
+          </div>
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Author</span>
+            <ul class="mt-2 space-y-1 text-xs" style="color: var(--color-muted);">
+              <li><a href="https://x.com/_mattmezza_" target="_blank" rel="noopener" class="no-underline">@_mattmezza_</a></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div class="mt-10 border-t pt-6 text-center text-xs" style="border-color: var(--color-border); color: var(--color-muted);">
+        &copy; 2026 Merola Software &amp; Services. MIT License.
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

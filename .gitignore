@@ -43,3 +43,4 @@ models/
 
 # stray test DB from local pytest runs
 test.db
+.wrangler

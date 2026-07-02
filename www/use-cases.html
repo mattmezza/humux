@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Use Cases — humux</title>
+  <meta name="description" content="See how humux fits into real workflows: solo developer, privacy advocate, power user, team assistant. Self-hosted AI agent use cases.">
+  <link rel="canonical" href="https://humux.dev/use-cases">
+
+  <meta property="og:title" content="Use Cases — humux">
+  <meta property="og:description" content="Real-world scenarios for your self-hosted personal AI agent.">
+  <meta property="og:url" content="https://humux.dev/use-cases">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="https://humux.dev/assets/images/og-image.png">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Use Cases — humux">
+  <meta name="twitter:description" content="Real-world scenarios for your self-hosted personal AI agent.">
+
+  <link rel="icon" type="image/svg+xml" href="/assets/images/favicon-32.svg">
+  <link rel="alternate icon" type="image/png" sizes="32x32" href="/assets/images/favicon-32.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/images/apple-touch-icon.png">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="/assets/css/style.css">
+
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+</head>
+<body>
+
+  <!-- Nav -->
+  <nav class="sticky top-0 z-50 border-b border-[var(--color-border)]" style="background: rgba(6,6,6,0.85); backdrop-filter: blur(12px);">
+    <div class="mx-auto flex max-w-6xl items-center justify-between px-5 py-3">
+      <a href="/" class="flex items-center gap-2 no-underline">
+        <span class="text-sm font-semibold tracking-wider" style="color: var(--color-accent);">humux</span>
+        <span class="text-xs" style="color: var(--color-muted);">/ˈhjuːmʌks/</span>
+      </a>
+      <div class="flex items-center gap-5 text-xs">
+        <a href="/" class="no-underline transition-colors" style="color: var(--color-secondary);">Home</a>
+        <a href="/features.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Features</a>
+        <a href="/use-cases.html" class="font-medium no-underline" style="color: var(--color-accent);">Use Cases</a>
+        <a href="/comparison.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Comparison</a>
+        <a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="no-underline transition-colors" style="color: var(--color-secondary);">
+          <svg class="inline-block h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        </a>
+        <a href="https://docs.humux.dev" target="_blank" rel="noopener" class="no-underline transition-colors" style="color: var(--color-secondary);">Docs</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="border-b px-5 py-20 text-center" style="border-color: var(--color-border); background: var(--color-surface);">
+    <span class="tag">Use Cases</span>
+    <h1 class="mx-auto mt-4 max-w-3xl text-4xl font-bold leading-tight sm:text-5xl" style="color: #eee;">
+      Built for the way<br><span style="color: var(--color-accent);">you actually work</span>
+    </h1>
+    <p class="mx-auto mt-4 max-w-xl leading-relaxed" style="color: var(--color-secondary);">
+      humux adapts to different workflows. Here are four common patterns — find yours.
+    </p>
+  </section>
+
+  <div class="mx-auto max-w-6xl px-5 py-16 space-y-24">
+
+    <!-- Case 1: Solo Dev -->
+    <section>
+      <div class="grid items-center gap-10 lg:grid-cols-5">
+        <div class="lg:col-span-3">
+          <span class="tag mb-3">Persona 1</span>
+          <h2 class="mt-2 text-2xl font-bold leading-tight sm:text-3xl" style="color: #eee;">
+            The Solo Developer
+          </h2>
+          <p class="mt-1 text-sm" style="color: var(--color-muted);">Your AI pair programmer, researcher, and release manager</p>
+
+          <p class="mt-4 leading-relaxed" style="color: var(--color-secondary);">
+            You're a developer who wants an AI that works <em>with</em> your codebase,
+            not in a separate chat window. humux's coding harness lets the agent read,
+            write, and edit files in a confined workspace. It can grep, refactor, run
+            commands, and commit changes — all through Telegram or the admin UI.
+          </p>
+
+          <div class="mt-6 space-y-3">
+            <div class="flex gap-3 rounded-md px-4 py-3 text-xs" style="background: var(--color-elevated);">
+              <span class="shrink-0 mt-0.5" style="color: var(--color-accent);">↳</span>
+              <span style="color: var(--color-secondary);">"Review the PR in /workspace and summarize the changes"</span>
+            </div>
+            <div class="flex gap-3 rounded-md px-4 py-3 text-xs" style="background: var(--color-elevated);">
+              <span class="shrink-0 mt-0.5" style="color: var(--color-accent);">↳</span>
+              <span style="color: var(--color-secondary);">"Read the error log and suggest a fix"</span>
+            </div>
+            <div class="flex gap-3 rounded-md px-4 py-3 text-xs" style="background: var(--color-elevated);">
+              <span class="shrink-0 mt-0.5" style="color: var(--color-accent);">↳</span>
+              <span style="color: var(--color-secondary);">"Run tests, check the results, and open an issue if any fail"</span>
+            </div>
+          </div>
+
+          <div class="mt-6 flex flex-wrap gap-2">
+            <span class="text-xs px-2 py-0.5 rounded" style="background: var(--color-accent-glow); color: var(--color-accent); border: 1px solid var(--color-accent-dim);">Coding harness</span>
+            <span class="text-xs px-2 py-0.5 rounded" style="background: var(--color-accent-glow); color: var(--color-accent); border: 1px solid var(--color-accent-dim);">Browser automation</span>
+            <span class="text-xs px-2 py-0.5 rounded" style="background: var(--color-accent-glow); color: var(--color-accent); border: 1px solid var(--color-accent-dim);">Web search</span>
+            <span class="text-xs px-2 py-0.5 rounded" style="background: var(--color-accent-glow); color: var(--color-accent); border: 1px solid var(--color-accent-dim);">GitHub integration</span>
+          </div>
+        </div>
+
+        <div class="lg:col-span-2">
+          <div class="terminal-window">
+            <div class="terminal-header">
+              <span class="terminal-dot red"></span>
+              <span class="terminal-dot yellow"></span>
+              <span class="terminal-dot green"></span>
+              <span class="ml-2 text-xs" style="color: var(--color-muted);">Telegram — humux</span>
+            </div>
+            <div class="terminal-body">
+              <div><span style="color: var(--color-accent);">You:</span> can you review the commit in workspace/pr-137?</div>
+              <div class="mt-2 opacity-80"><span style="color: #888;">humux:</span> Looking at the diff in pr-137...</div>
+              <div class="opacity-80">Found 3 files changed. The auth middleware has a token expiry check that uses <code class="inline-code">&lt;</code> instead of <code class="inline-code">&lt;=</code> — off-by-one, tokens still valid for 1 second after expiry get rejected.</div>
+              <div class="mt-2 opacity-80">Suggested fix: <code class="inline-code">expires_at &lt;= now()</code></div>
+              <div class="mt-2"><span style="color: var(--color-accent);">You:</span> good catch. apply it.</div>
+              <div class="mt-2 opacity-80">✔ Fix applied. Commit <code class="inline-code">a1b2c3d</code> ready to push.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Case 2: Privacy Advocate -->
+    <section>
+      <div class="grid items-center gap-10 lg:grid-cols-5">
+        <div class="order-last lg:col-span-2 lg:order-first">
+          <div class="terminal-window">
+            <div class="terminal-header">
+              <span class="terminal-dot red"></span>
+              <span class="terminal-dot yellow"></span>
+              <span class="terminal-dot green"></span>
+              <span class="ml-2 text-xs" style="color: var(--color-muted);">bash — vault check</span>
+            </div>
+            <div class="terminal-body">
+              <div><span class="terminal-prompt"></span><span style="color: var(--color-accent);">docker ps</span></div>
+              <div class="opacity-60">CONTAINER ID   IMAGE                           STATUS</div>
+              <div class="opacity-60">abc12345       ghcr.io/mattmezza/humux:latest   Up 3 days</div>
+              <div class="mt-2"><span class="terminal-prompt"></span><span style="color: var(--color-accent);"># No cloud. No telemetry. No third-party AI.</span></div>
+              <div class="mt-1"><span class="terminal-prompt"></span><span style="color: var(--color-accent);"># Your keys. Your data. Your rules.</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="lg:col-span-3">
+          <span class="tag mb-3">Persona 2</span>
+          <h2 class="mt-2 text-2xl font-bold leading-tight sm:text-3xl" style="color: #eee;">
+            The Privacy Advocate
+          </h2>
+          <p class="mt-1 text-sm" style="color: var(--color-muted);">Full data sovereignty. Zero cloud dependencies.</p>
+
+          <p class="mt-4 leading-relaxed" style="color: var(--color-secondary);">
+            Your AI should not send your emails, contacts, or calendar data to a third party.
+            humux runs everything locally in a single Docker container on your own hardware.
+            API keys are sealed in an encrypted vault — never exposed to the LLM context.
+            Memory stays in your SQLite database. No telemetry, no phoning home.
+          </p>
+
+          <div class="mt-6 space-y-3">
+            <div class="flex gap-3 rounded-md px-4 py-3 text-xs" style="background: var(--color-elevated);">
+              <span class="shrink-0 mt-0.5" style="color: var(--color-accent);">↳</span>
+              <span style="color: var(--color-secondary);">Offline-capable voice (Kokoro 82M) — no cloud TTS needed</span>
+            </div>
+            <div class="flex gap-3 rounded-md px-4 py-3 text-xs" style="background: var(--color-elevated);">
+              <span class="shrink-0 mt-0.5" style="color: var(--color-accent);">↳</span>
+              <span style="color: var(--color-secondary);">Encrypted two-tier vault with Bitwarden import</span>
+            </div>
+            <div class="flex gap-3 rounded-md px-4 py-3 text-xs" style="background: var(--color-elevated);">
+              <span class="shrink-0 mt-0.5" style="color: var(--color-accent);">↳</span>
+              <span style="color: var(--color-secondary);">Credentials resolve from vault — never enter model context</span>
+            </div>
+            <div class="flex gap-3 rounded-md px-4 py-3 text-xs" style="background: var(--color-elevated);">
+              <span class="shrink-0 mt-0.5" style="color: var(--color-accent);">↳</span>
+              <span style="color: var(--color-secondary);">Self-contained: SQLite, no external databases, no sidecars</span>
+            </div>
+          </div>
+
+          <div class="mt-6 flex flex-wrap gap-2">
+            <span class="text-xs px-2 py-0.5 rounded" style="background: var(--color-accent-glow); color: var(--color-accent); border: 1px solid var(--color-accent-dim);">Vault encryption</span>
+            <span class="text-xs px-2 py-0.5 rounded" style="background: var(--color-accent-glow); color: var(--color-accent); border: 1px solid var(--color-accent-dim);">Offline voice</span>
+            <span class="text-xs px-2 py-0.5 rounded" style="background: var(--color-accent-glow); color: var(--color-accent); border: 1px solid var(--color-accent-dim);">Local storage</span>
+            <span class="text-xs px-2 py-0.5 rounded" style="background: var(--color-accent-glow); color: var(--color-accent); border: 1px solid var(--color-accent-dim);">No telemetry</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Case 3: Power User -->
+    <section>
+      <div class="grid items-center gap-10 lg:grid-cols-5">
+        <div class="lg:col-span-3">
+          <span class="tag mb-3">Persona 3</span>
+          <h2 class="mt-2 text-2xl font-bold leading-tight sm:text-3xl" style="color: #eee;">
+            The Power User
+          </h2>
+          <p class="mt-1 text-sm" style="color: var(--color-muted);">Email triage, calendar management, task automation</p>
+
+          <p class="mt-4 leading-relaxed" style="color: var(--color-secondary);">
+            Your inbox is overflowing, your calendar is fragmented across Google and iCloud,
+            and you have recurring tasks that eat your time. humux reads and manages email
+            (per-agent mailboxes), checks and creates calendar events, searches contacts,
+            and runs scheduled tasks — all through Telegram or the admin UI.
+          </p>
+
+          <div class="mt-6 space-y-3">
+            <div class="flex gap-3 rounded-md px-4 py-3 text-xs" style="background: var(--color-elevated);">
+              <span class="shrink-0 mt-0.5" style="color: var(--color-accent);">↳</span>
+              <span style="color: var(--color-secondary);">"Summarize my unread emails and flag anything urgent"</span>
+            </div>
+            <div class="flex gap-3 rounded-md px-4 py-3 text-xs" style="background: var(--color-elevated);">
+              <span class="shrink-0 mt-0.5" style="color: var(--color-accent);">↳</span>
+              <span style="color: var(--color-secondary);">"Schedule a 30min meeting with Alex next Tuesday at 2pm"</span>
+            </div>
+            <div class="flex gap-3 rounded-md px-4 py-3 text-xs" style="background: var(--color-elevated);">
+              <span class="shrink-0 mt-0.5" style="color: var(--color-accent);">↳</span>
+              <span style="color: var(--color-secondary);">"Send a morning briefing daily at 7am with weather, schedule, and top emails"</span>
+            </div>
+            <div class="flex gap-3 rounded-md px-4 py-3 text-xs" style="background: var(--color-elevated);">
+              <span class="shrink-0 mt-0.5" style="color: var(--color-accent);">↳</span>
+              <span style="color: var(--color-secondary);">"Find John's phone number in contacts and send him a WhatsApp message"</span>
+            </div>
+          </div>
+
+          <div class="mt-6 flex flex-wrap gap-2">
+            <span class="text-xs px-2 py-0.5 rounded" style="background: var(--color-accent-glow); color: var(--color-accent); border: 1px solid var(--color-accent-dim);">Email triage</span>
+            <span class="text-xs px-2 py-0.5 rounded" style="background: var(--color-accent-glow); color: var(--color-accent); border: 1px solid var(--color-accent-dim);">Calendar</span>
+            <span class="text-xs px-2 py-0.5 rounded" style="background: var(--color-accent-glow); color: var(--color-accent); border: 1px solid var(--color-accent-dim);">Scheduled jobs</span>
+            <span class="text-xs px-2 py-0.5 rounded" style="background: var(--color-accent-glow); color: var(--color-accent); border: 1px solid var(--color-accent-dim);">Contacts</span>
+          </div>
+        </div>
+
+        <div class="lg:col-span-2">
+          <div class="terminal-window">
+            <div class="terminal-header">
+              <span class="terminal-dot red"></span>
+              <span class="terminal-dot yellow"></span>
+              <span class="terminal-dot green"></span>
+              <span class="ml-2 text-xs" style="color: var(--color-muted);">Telegram — humux</span>
+            </div>
+            <div class="terminal-body">
+              <div><span style="color: var(--color-accent);">You:</span> morning briefing</div>
+              <div class="mt-2 opacity-80">
+                <span style="color: #888;">humux:</span> Good morning! Here's your briefing for Thursday, July 2:
+              </div>
+              <div class="opacity-80">☀️ Weather: 22°C, partly cloudy</div>
+              <div class="opacity-80">📧 14 unread — 2 from your boss, 1 newsletter</div>
+              <div class="opacity-80">📅 3 events today: Standup 10am, Dentist 2pm, Review 4pm</div>
+              <div class="mt-2 opacity-80">🔔 Reminder: PR review due tomorrow</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Case 4: Team Assistant -->
+    <section>
+      <div class="grid items-center gap-10 lg:grid-cols-5">
+        <div class="order-last lg:col-span-2 lg:order-first">
+          <div class="terminal-window">
+            <div class="terminal-header">
+              <span class="terminal-dot red"></span>
+              <span class="terminal-dot yellow"></span>
+              <span class="terminal-dot green"></span>
+              <span class="ml-2 text-xs" style="color: var(--color-muted);">Telegram — Team Chat</span>
+            </div>
+            <div class="terminal-body">
+              <div><span style="color: #4488ff;">Alice:</span> @support-bot can you check the deploy status?</div>
+              <div class="mt-1" style="color: var(--color-accent);">support-bot: Deploy #847 completed successfully at 14:32 UTC. All health checks pass.</div>
+              <div class="mt-2"><span style="color: #ff8844;">Bob:</span> @research-bot what's the latest on the auth rewrite?</div>
+              <div class="mt-1" style="color: var(--color-accent);">research-bot: I found 3 recent articles on OAuth 2.1 migration. PR #312 in review. Want me to summarize?</div>
+              <div class="mt-2 opacity-60 italic">— Multiple agent-bots in one group. Each responds only when addressed. No loops. —</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="lg:col-span-3">
+          <span class="tag mb-3">Persona 4</span>
+          <h2 class="mt-2 text-2xl font-bold leading-tight sm:text-3xl" style="color: #eee;">
+            The Team Assistant
+          </h2>
+          <p class="mt-1 text-sm" style="color: var(--color-muted);">Multiple agents, one Telegram group, zero collisions</p>
+
+          <p class="mt-4 leading-relaxed" style="color: var(--color-secondary);">
+            Your team needs different AI personalities for different domains — a support
+            agent, a research agent, a devops agent. humux's per-agent bots let you drop
+            multiple agents into one Telegram group. Each has its own context, tools, and
+            identity. They only reply when addressed and ignore other bots — no infinite
+            loops, no confused replies.
+          </p>
+
+          <div class="mt-6 space-y-3">
+            <div class="flex gap-3 rounded-md px-4 py-3 text-xs" style="background: var(--color-elevated);">
+              <span class="shrink-0 mt-0.5" style="color: var(--color-accent);">↳</span>
+              <span style="color: var(--color-secondary);">Each agent has its own Telegram bot token and isolated context</span>
+            </div>
+            <div class="flex gap-3 rounded-md px-4 py-3 text-xs" style="background: var(--color-elevated);">
+              <span class="shrink-0 mt-0.5" style="color: var(--color-accent);">↳</span>
+              <span style="color: var(--color-secondary);">Bots tag who said what in shared history — full audit trail</span>
+            </div>
+            <div class="flex gap-3 rounded-md px-4 py-3 text-xs" style="background: var(--color-elevated);">
+              <span class="shrink-0 mt-0.5" style="color: var(--color-accent);">↳</span>
+              <span style="color: var(--color-secondary);">Per-chat permissions: control who can DM each agent in each group</span>
+            </div>
+            <div class="flex gap-3 rounded-md px-4 py-3 text-xs" style="background: var(--color-elevated);">
+              <span class="shrink-0 mt-0.5" style="color: var(--color-accent);">↳</span>
+              <span style="color: var(--color-secondary);">Background subagents handle long tasks — monitor via /jobs</span>
+            </div>
+          </div>
+
+          <div class="mt-6 flex flex-wrap gap-2">
+            <span class="text-xs px-2 py-0.5 rounded" style="background: var(--color-accent-glow); color: var(--color-accent); border: 1px solid var(--color-accent-dim);">Multi-agent</span>
+            <span class="text-xs px-2 py-0.5 rounded" style="background: var(--color-accent-glow); color: var(--color-accent); border: 1px solid var(--color-accent-dim);">Group chat</span>
+            <span class="text-xs px-2 py-0.5 rounded" style="background: var(--color-accent-glow); color: var(--color-accent); border: 1px solid var(--color-accent-dim);">Subagents</span>
+            <span class="text-xs px-2 py-0.5 rounded" style="background: var(--color-accent-glow); color: var(--color-accent); border: 1px solid var(--color-accent-dim);">Job monitoring</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- CTA -->
+  <section class="border-t px-5 py-20 text-center" style="border-color: var(--color-border); background: var(--color-surface);">
+    <div class="mx-auto max-w-xl">
+      <h2 class="text-2xl font-bold" style="color: #eee;">Which persona fits you?</h2>
+      <p class="mt-3 leading-relaxed" style="color: var(--color-secondary);">
+        humux works for all of them. One container, your configuration.
+      </p>
+      <div class="mt-6 flex flex-wrap justify-center gap-3">
+        <a href="/" class="btn-accent no-underline text-sm">Get Started</a>
+        <a href="/comparison.html" class="btn-ghost no-underline text-sm">See how we compare →</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="border-t px-5 py-12" style="border-color: var(--color-border); background: var(--color-base);">
+    <div class="mx-auto max-w-6xl">
+      <div class="flex flex-wrap items-start justify-between gap-8">
+        <div>
+          <span class="text-sm font-semibold" style="color: var(--color-accent);">humux</span>
+          <p class="mt-1 text-xs" style="color: var(--color-muted);">Human Multiplexer &mdash; /ˈhjuːmʌks/</p>
+        </div>
+        <div class="flex flex-wrap gap-10">
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Site</span>
+            <ul class="mt-2 space-y-1 text-xs" style="color: var(--color-muted);">
+              <li><a href="/" class="no-underline">Home</a></li>
+              <li><a href="/features.html" class="no-underline">Features</a></li>
+              <li><a href="/use-cases.html" class="no-underline">Use Cases</a></li>
+              <li><a href="/comparison.html" class="no-underline">Comparison</a></li>
+            </ul>
+          </div>
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Resources</span>
+            <ul class="mt-2 space-y-1 text-xs" style="color: var(--color-muted);">
+              <li><a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="no-underline">GitHub</a></li>
+              <li><a href="https://docs.humux.dev" target="_blank" rel="noopener" class="no-underline">Documentation</a></li>
+              <li><a href="https://github.com/mattmezza/humux/releases" target="_blank" rel="noopener" class="no-underline">Releases</a></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div class="mt-10 border-t pt-6 text-center text-xs" style="border-color: var(--color-border); color: var(--color-muted);">
+        &copy; 2026 Merola Software &amp; Services. MIT License.
+      </div>
+    </div>
+  </footer>
+</body>
+</html>
