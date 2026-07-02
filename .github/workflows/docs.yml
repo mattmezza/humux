@@ -34,7 +34,7 @@ jobs:
         run: npm run build
         working-directory: docs
         env:
-          NEXT_PUBLIC_BASE_PATH: /mpa
+          NEXT_PUBLIC_BASE_PATH: /humux
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

@@ -555,7 +555,7 @@ def _load_agent_config():
 
     Resolves ``${vault:NAME}`` references so a migrated LLM key (issue #35)
     reaches the explore loop's own LLM calls. This subprocess inherits the
-    machine key (``MPA_MASTER_KEY`` / ``data/master.key``) and ``.env``, so the
+    machine key (``HUMUX_MASTER_KEY`` / ``data/master.key``) and ``.env``, so the
     infra vault unseals headlessly with a plain env fallback.
     """
     import asyncio

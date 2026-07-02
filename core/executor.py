@@ -179,9 +179,9 @@ class ToolExecutor:
             env = os.environ.copy()
             if "himalaya" in command:
                 env.update(himalaya_env())
-            # wacli: identify the linked device as MPA (matches the Docker ENV).
+            # wacli: identify the linked device as humux (matches the Docker ENV).
             if wants_wacli_label:
-                env.setdefault("WACLI_DEVICE_LABEL", "MPA")
+                env.setdefault("WACLI_DEVICE_LABEL", "humux")
             # An agent-scoped override is authoritative over the registry's managed
             # keys: strip any it didn't set so an agent can't inherit a tool
             # credential (e.g. GH_TOKEN from .env) its policy dropped (#93).

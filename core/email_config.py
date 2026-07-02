@@ -14,8 +14,8 @@ from pathlib import Path
 
 log = logging.getLogger(__name__)
 
-HIMALAYA_CONFIG_PATH = Path("/tmp/mpa-himalaya-config.toml")
-HIMALAYA_XDG_DIR = Path("/tmp/mpa-himalaya-xdg")
+HIMALAYA_CONFIG_PATH = Path("/tmp/humux-himalaya-config.toml")
+HIMALAYA_XDG_DIR = Path("/tmp/humux-himalaya-xdg")
 HIMALAYA_XDG_CONFIG_PATH = HIMALAYA_XDG_DIR / "himalaya" / "config.toml"
 
 # Config key used to store the structured provider list.

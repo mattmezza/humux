@@ -5,7 +5,7 @@ description: Telegram, configured per-agent (WhatsApp is a tool, see below).
 
 # Channels
 
-MPA talks over Telegram, and **each agent runs its own Telegram bot**. There is no
+humux talks over Telegram, and **each agent runs its own Telegram bot**. There is no
 separate "channel" to set up: a bot belongs to an agent, and you configure it on the
 **agent edit screen** (admin UI → **Agents** → edit an agent → the **Telegram bot**
 section). The **default** agent's bot is the bare `telegram` channel; every other
@@ -121,14 +121,14 @@ Subject: Meeting tomorrow
 
 ## WhatsApp (tool)
 
-WhatsApp is a **tool**, not a channel (issue #97). MPA does not run an inbound WhatsApp
+WhatsApp is a **tool**, not a channel (issue #97). humux does not run an inbound WhatsApp
 bot; instead the agent reads and sends WhatsApp on demand by running
 [wacli](https://github.com/openclaw/wacli) — a local WhatsApp CLI written in Go — through
 the `run_command` tool. No cloud APIs or business verification needed. Reads run without
 asking; sending a message asks for confirmation first. See the **wacli-whatsapp** skill for
 the full command reference.
 
-The binary is not vendored: the Docker image installs a pinned upstream tag (`WACLI_VERSION` in the `Dockerfile`, currently `v0.11.0`) with `go install`. For local dev, `make dev-wa` installs the same tag into `~/go/bin`. Point MPA at a custom binary with the `WACLI_BIN` env var. The linked device shows up as **MPA** via `WACLI_DEVICE_LABEL` (override it per the **Device label** field in the Tools tab).
+The binary is not vendored: the Docker image installs a pinned upstream tag (`WACLI_VERSION` in the `Dockerfile`, currently `v0.11.0`) with `go install`. For local dev, `make dev-wa` installs the same tag into `~/go/bin`. Point humux at a custom binary with the `WACLI_BIN` env var. The linked device shows up as **humux** via `WACLI_DEVICE_LABEL` (override it per the **Device label** field in the Tools tab).
 
 ### Setup
 

@@ -1,11 +1,11 @@
 ---
-title: Extending MPA
-description: Add new capabilities to MPA by writing markdown skill files.
+title: Extending humux
+description: Add new capabilities to humux by writing markdown skill files.
 ---
 
-# Extending MPA
+# Extending humux
 
-One of MPA's core principles is that adding new capabilities should not require writing Python code. The system is designed to be extended through markdown skill files and configuration changes.
+One of humux's core principles is that adding new capabilities should not require writing Python code. The system is designed to be extended through markdown skill files and configuration changes.
 
 ## Adding a new tool in 4 steps
 
@@ -117,7 +117,7 @@ silently override a PAT you later select:
 - **GitHub App** — the recommended path for an agent. Register an app at
   [github.com/settings/apps/new](https://github.com/settings/apps/new), grant it the
   fine-grained permissions you want, install it on the repos it may touch, then paste the
-  **App ID**, **Installation ID**, and **private key** (PEM). MPA signs a short JWT with the
+  **App ID**, **Installation ID**, and **private key** (PEM). humux signs a short JWT with the
   key, exchanges it for an installation access token (valid ~1h, auto-refreshed in memory,
   never persisted), and injects it as `GH_TOKEN`. Actions then show as the app's bot
   identity (`<app>[bot]`) with the app's own rate-limit pool. The private key lives in the

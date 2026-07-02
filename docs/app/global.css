@@ -35,8 +35,8 @@
   --fd-popover-foreground: 210 16% 22%;
   --fd-secondary: 210 20% 94%;
   --fd-secondary-foreground: 210 16% 22%;
-  --mpa-code-bg: 210 25% 96%;
-  --mpa-code-border: 210 15% 82%;
+  --humux-code-bg: 210 25% 96%;
+  --humux-code-border: 210 15% 82%;
 }
 
 .dark {
@@ -72,8 +72,8 @@
   --fd-popover-foreground: 210 14% 82%;
   --fd-secondary: 0 0% 18%;
   --fd-secondary-foreground: 210 14% 82%;
-  --mpa-code-bg: 0 0% 9%;
-  --mpa-code-border: 0 0% 24%;
+  --humux-code-bg: 0 0% 9%;
+  --humux-code-border: 0 0% 24%;
 }
 
 body {
@@ -112,10 +112,10 @@ body {
   border-color: hsl(var(--fd-border) / 0.18) !important;
 }
 
-/* Code blocks styling to match MPA terminal aesthetic */
+/* Code blocks styling to match humux terminal aesthetic */
 pre {
   border: none !important;
-  background: hsl(var(--mpa-code-bg)) !important;
+  background: hsl(var(--humux-code-bg)) !important;
 }
 
 pre code {

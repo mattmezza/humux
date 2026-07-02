@@ -204,7 +204,7 @@ per-agent token requires a master key (configure one in the **Vaults** tab first
 ## Email, calendar & contacts accounts
 
 Each agent declares which email, calendar, and contacts **accounts** it may use, and at what
-level ([#110](https://github.com/mattmezza/mpa/issues/110)). The accounts themselves live in the
+level ([#110](https://github.com/mattmezza/humux/issues/110)). The accounts themselves live in the
 **Email**, **Calendar**, and **Contacts** tabs (the registry); an agent simply **binds** to
 some of them.
 
@@ -288,7 +288,7 @@ reach only accounts its parent identity holds, at an equal or lower level.
 
 Each agent carries its own Telegram **bot token**, so it's a separate contact in your
 address book — its own name and voice — addressable independently of every other
-agent ([#29](https://github.com/mattmezza/mpa/issues/29)). The bot is part of the agent's
+agent ([#29](https://github.com/mattmezza/humux/issues/29)). The bot is part of the agent's
 identity, configured on the agent, not on any channel.
 
 - **Configure** — open the agent in the admin UI and fill in the **Telegram bot** section:
@@ -318,7 +318,7 @@ step that needs no further code.
 
 `allowed_user_ids` is a single **bot-wide** allowlist. To gate who can reach an agent **per
 chat** — trigger it in one group but not another, let some users DM it and block others — use
-per-chat settings ([#129](https://github.com/mattmezza/mpa/issues/129)).
+per-chat settings ([#129](https://github.com/mattmezza/humux/issues/129)).
 
 Open the agent in the admin UI: the **Telegram chat settings** section lists every Telegram
 chat the agent takes part in (its own bot's chats, chats bound to it, and — when it is the
@@ -355,7 +355,7 @@ unaffected: they were never going to reply.
 Agent resolution is deliberately funnelled through one seam,
 `AgentCore._resolve_agent(channel, user_id, chat_id)`, so future work is additive:
 
-- **Group multi-agent** ([#30](https://github.com/mattmezza/mpa/issues/30)) — several
+- **Group multi-agent** ([#30](https://github.com/mattmezza/humux/issues/30)) — several
   agent-bots in one group chat, taking turns. Builds directly on bot-per-agent.
 
 The **secret scope** facet is now enforced by the [secrets vault](/docs/secrets) — an agent

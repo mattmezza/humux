@@ -309,7 +309,7 @@ _agent_state = AgentState()
 async def _lifespan(application):  # noqa: ANN001
     """FastAPI lifespan: seed config, start agent, yield, then tear down."""
     # -- startup --
-    # Load .env so MPA_MASTER_KEY / ADMIN_PASSWORD etc. are in the environment even
+    # Load .env so HUMUX_MASTER_KEY / ADMIN_PASSWORD etc. are in the environment even
     # for existing installs where the config store is already seeded (Docker injects
     # env_file directly; this covers `make run` / bare-process deployments).
     from dotenv import load_dotenv

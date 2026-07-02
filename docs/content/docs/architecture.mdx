@@ -1,11 +1,11 @@
 ---
 title: Architecture
-description: Deep dive into MPA's Python orchestrator + CLI tools design.
+description: Deep dive into humux's Python orchestrator + CLI tools design.
 ---
 
 # Architecture
 
-MPA is built around a simple but powerful principle: **Python orchestrator + CLI tools**. Python handles async orchestration, the LLM conversation loop, and the web UI. Battle-tested CLI tools handle protocol complexity (IMAP, CalDAV, CardDAV).
+humux is built around a simple but powerful principle: **Python orchestrator + CLI tools**. Python handles async orchestration, the LLM conversation loop, and the web UI. Battle-tested CLI tools handle protocol complexity (IMAP, CalDAV, CardDAV).
 
 ## High-level overview
 
@@ -67,7 +67,7 @@ The agent becomes a **thin orchestrator**: it reads skill files, passes them to 
 
 ### Agent Core (`core/agent.py`)
 
-The brain of MPA. Implements the LLM tool-use loop:
+The brain of humux. Implements the LLM tool-use loop:
 
 1. Load conversation history
 2. Build the static system prompt (character, active tools). In session mode this is snapshotted once per conversation (rebuilt after `/new`) and reused every turn, so the cacheable prefix stays stable; on Anthropic it is sent with a `cache_control` breakpoint so the tools + system prefix is not reprocessed each turn
@@ -144,7 +144,7 @@ Agent Core (agent.py)
 ## Project structure
 
 ```
-mpa/
+humux/
 ├── core/                 Core agent modules
 │   ├── agent.py            LLM tool-use loop
 │   ├── llm.py              LLM provider abstraction

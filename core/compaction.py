@@ -4,7 +4,7 @@ When a sticky session grows close to the model's context window, the oldest
 turns are summarised by a (cheap) LLM into a single synthetic exchange, while
 the most recent turns are kept verbatim. This keeps long conversations going
 without blowing the context window, and — unlike provider-specific server-side
-compaction — works across every provider MPA supports.
+compaction — works across every provider humux supports.
 
 The trigger is the *real* token usage reported by the provider after the turn
 (see ``LLMResponse.usage``), so no local tokenizer is needed.

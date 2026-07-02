@@ -41,7 +41,7 @@ root or a descendant of it. So neither `../../etc/passwd` nor a symlink pointing
 the workspace can escape — both are blocked (`NEVER`).
 
 `run_command_in_dir` confines only the **working directory** it runs in — *not* the
-command itself. The command runs through the shell with the full privileges of the MPA
+command itself. The command runs through the shell with the full privileges of the humux
 process, so it can still read paths outside the workspace (e.g. `cat /etc/passwd`). Its
 real boundary is the permission gate (the `run_command` rules above), not the workspace.
 Enable it only if you're comfortable with that.

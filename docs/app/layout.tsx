@@ -5,11 +5,11 @@ import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: {
-    template: "%s — MPA Docs",
-    default: "MPA — My Personal Agent",
+    template: "%s — humux Docs",
+    default: "humux — Human Multiplexer",
   },
   description:
-    "Documentation for MPA, a self-hosted personal AI agent with messaging, email, calendar, memory, and voice capabilities.",
+    "Documentation for humux, a self-hosted personal AI agent with messaging, email, calendar, memory, and voice capabilities.",
 };
 
 export default function Layout({ children }: { children: ReactNode }) {

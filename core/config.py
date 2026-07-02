@@ -411,7 +411,7 @@ class WhatsAppToolConfig(BaseModel):
     # WACLI_STORE override (which linked account). Blank = wacli default (~/.wacli).
     # ponytail: one global store; per-agent accounts ride #93's tool_env override.
     store: str = ""
-    device_label: str = ""  # WACLI_DEVICE_LABEL; blank = wacli default ("MPA")
+    device_label: str = ""  # WACLI_DEVICE_LABEL; blank = wacli default ("humux")
 
 
 class ToolsConfig(BaseModel):

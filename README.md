@@ -1,6 +1,6 @@
-# MPA — My Personal Agent
+# humux — Human Multiplexer
 
-A self-hosted personal AI agent that runs in a single Docker container. MPA acts as a unified interface across messaging channels (Telegram, WhatsApp), email, calendars, and contacts — capable of autonomous action, scheduled tasks, voice interaction, and persistent memory.
+A self-hosted personal AI agent that runs in a single Docker container. humux acts as a unified interface across messaging channels (Telegram, WhatsApp), email, calendars, and contacts — capable of autonomous action, scheduled tasks, voice interaction, and persistent memory.
 
 ## Features
 
@@ -28,7 +28,7 @@ A self-hosted personal AI agent that runs in a single Docker container. MPA acts
 
 ## Architecture
 
-MPA follows a **Python orchestrator + CLI tools** design. Python glues everything together, while battle-tested CLI tools handle protocol complexity:
+humux follows a **Python orchestrator + CLI tools** design. Python glues everything together, while battle-tested CLI tools handle protocol complexity:
 
 | Concern | Tool |
 |---------|------|
@@ -53,8 +53,8 @@ Instead of hardcoded integrations, the agent learns to use CLI tools via markdow
 ### 1. Clone and configure
 
 ```bash
-git clone https://github.com/mattmezza/mpa.git
-cd mpa
+git clone https://github.com/mattmezza/humux.git
+cd humux
 cp .env.example .env
 cp config.yml.example config.yml
 cp character.md.example character.md
@@ -68,7 +68,7 @@ Edit `.env` with your API keys and secrets. Edit `config.yml` to customize the a
 docker compose up -d
 ```
 
-The admin UI will be available at `http://localhost:8000`. On first boot, MPA starts in **setup mode** — a wizard walks you through the initial configuration.
+The admin UI will be available at `http://localhost:8000`. On first boot, humux starts in **setup mode** — a wizard walks you through the initial configuration.
 
 ### 3. Run without Docker
 
@@ -82,7 +82,7 @@ make run         # starts the agent
 
 ## Configuration
 
-MPA uses a dual-layer config system:
+humux uses a dual-layer config system:
 
 - **`config.yml`** + **`.env`** — File-based seed config loaded on first boot. Supports `${ENV_VAR}` interpolation.
 - **SQLite config store** (`data/config.db`) — Becomes the source of truth after setup. Managed through the admin UI.

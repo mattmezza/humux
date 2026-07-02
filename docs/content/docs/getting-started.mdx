@@ -1,6 +1,6 @@
 ---
 title: Getting Started
-description: Get MPA up and running in minutes with Docker or from source.
+description: Get humux up and running in minutes with Docker or from source.
 ---
 
 # Getting Started
@@ -16,8 +16,8 @@ description: Get MPA up and running in minutes with Docker or from source.
 ### 1. Clone and configure
 
 ```bash
-git clone https://github.com/mattmezza/mpa.git
-cd mpa
+git clone https://github.com/mattmezza/humux.git
+cd humux
 cp .env.example .env
 cp config.yml.example config.yml
 cp character.md.example character.md
@@ -31,7 +31,7 @@ Edit `.env` with your API keys and secrets. Edit `config.yml` to customize the a
 docker compose up -d
 ```
 
-The admin UI will be available at `http://localhost:8000`. On first boot, MPA starts in **setup mode** — a wizard walks you through the initial configuration.
+The admin UI will be available at `http://localhost:8000`. On first boot, humux starts in **setup mode** — a wizard walks you through the initial configuration.
 
 ### 3. Talk to your agent
 
@@ -85,7 +85,7 @@ After setup, all configuration is managed through the admin UI or `config.yml`.
 
 ## Next steps
 
-- [Architecture](/docs/architecture) — understand how MPA works under the hood
+- [Architecture](/docs/architecture) — understand how humux works under the hood
 - [Configuration](/docs/configuration) — detailed config reference
 - [Skills](/docs/skills) — learn how the skills system works
 - [Channels](/docs/channels) — set up per-agent Telegram bots (WhatsApp is a tool)

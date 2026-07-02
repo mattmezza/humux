@@ -118,7 +118,7 @@ def _write_seed_file(seed_dir: str, name: str, content: str) -> Path:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Manage MPA skills.")
+    parser = argparse.ArgumentParser(description="Manage humux skills.")
     parser.add_argument("--db", default=_default_db_path(), help="Path to skills DB")
     parser.add_argument(
         "--seed-dir",

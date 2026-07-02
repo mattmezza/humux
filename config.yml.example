@@ -164,7 +164,7 @@ memory:
 # tools; they're served at /artifacts/<slug>/. This only toggles that public,
 # no-auth route — the files live in the workspace below, so serving needs the
 # workspace harness enabled too. The slug is public/guessable: no secrets in an
-# artifact. Set MPA_BASE_URL so the shared links are reachable from your devices.
+# artifact. Set HUMUX_BASE_URL so the shared links are reachable from your devices.
 artifacts:
   enabled: true
 

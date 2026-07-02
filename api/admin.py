@@ -3720,7 +3720,7 @@ def create_admin_app(
 
         ctx = await _secrets_ctx()
         if not secret_store.infra.available:
-            ctx["error"] = "No machine key configured (set MPA_MASTER_KEY or generate one)."
+            ctx["error"] = "No machine key configured (set HUMUX_MASTER_KEY or generate one)."
             return _render_partial("partials/secrets.html", **ctx)
         migrated = await migrate_config_to_infra_vault(config_store, secret_store)
         ctx = await _secrets_ctx()
@@ -3796,7 +3796,7 @@ def create_admin_app(
 
         if not secret_store.infra.available:
             ctx = await _secrets_ctx()
-            ctx["error"] = "No machine key configured (set MPA_MASTER_KEY or generate one)."
+            ctx["error"] = "No machine key configured (set HUMUX_MASTER_KEY or generate one)."
             return _render_partial("partials/secrets.html", **ctx)
         if not valid_name(name):
             ctx = await _secrets_ctx()

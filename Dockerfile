@@ -63,8 +63,8 @@ RUN if [ "$INSTALL_BROWSER" = "true" ]; then \
     fi
 
 # Create non-root user
-RUN groupadd --gid 10001 mpa && \
-    useradd --uid 10001 --gid 10001 --create-home --shell /bin/bash mpa
+RUN groupadd --gid 10001 humux && \
+    useradd --uid 10001 --gid 10001 --create-home --shell /bin/bash humux
 
 # Copy application code
 COPY core/ core/
@@ -104,12 +104,12 @@ RUN ARCH=$(dpkg --print-architecture) && \
 
 # Data directory
 RUN mkdir -p /app/data \
-    && chown -R mpa:mpa /home/mpa /app
+    && chown -R humux:humux /home/humux /app
 
-USER mpa
+USER humux
 
-# Identify the linked WhatsApp device as "MPA" (native since wacli 0.2.0).
-ENV WACLI_DEVICE_LABEL=MPA
+# Identify the linked WhatsApp device as "humux" (native since wacli 0.2.0).
+ENV WACLI_DEVICE_LABEL=humux
 
 EXPOSE 8000
 CMD ["uv", "run", "python", "-m", "core.main"]

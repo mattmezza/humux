@@ -25,7 +25,7 @@ write_file(path="artifacts/q3-report/index.html", content="<!doctype html><html>
 The page is then live at `<base>/artifacts/q3-report/`. The exact `<base>` for
 this deployment is given to you each turn as `[Web artifact base URL: …]` in the
 context preamble — use that verbatim to build the link you give the user (it
-already reflects `MPA_BASE_URL` when configured). If that line is absent,
+already reflects `HUMUX_BASE_URL` when configured). If that line is absent,
 artifacts aren't servable here (the workspace harness is off).
 
 - `<slug>` must be letters, digits, `-` and `_` only (e.g. `q3-report`,

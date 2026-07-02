@@ -1,11 +1,11 @@
 ---
 title: Deployment
-description: Deploy MPA with Docker on any VPS.
+description: Deploy humux with Docker on any VPS.
 ---
 
 # Deployment
 
-MPA is designed to run as a single Docker container on any VPS. It runs comfortably on a small server.
+humux is designed to run as a single Docker container on any VPS. It runs comfortably on a small server.
 
 ## Resource requirements
 
@@ -25,8 +25,8 @@ MPA is designed to run as a single Docker container on any VPS. It runs comforta
 ### 1. Clone and configure
 
 ```bash
-git clone https://github.com/mattmezza/mpa.git
-cd mpa
+git clone https://github.com/mattmezza/humux.git
+cd humux
 cp .env.example .env
 cp config.yml.example config.yml
 cp character.md.example character.md
@@ -50,10 +50,10 @@ docker compose logs -f
 
 ## Docker image
 
-MPA publishes Docker images to GitHub Container Registry on every release:
+humux publishes Docker images to GitHub Container Registry on every release:
 
 ```bash
-docker pull ghcr.io/mattmezza/mpa:latest
+docker pull ghcr.io/mattmezza/humux:latest
 ```
 
 ### Available tags
@@ -117,7 +117,7 @@ Or pin a specific version:
 # docker-compose.yml
 services:
   agent:
-    image: ghcr.io/mattmezza/mpa:0.1.0
+    image: ghcr.io/mattmezza/humux:0.1.0
 ```
 
 ## Releasing

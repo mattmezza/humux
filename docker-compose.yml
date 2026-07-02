@@ -1,7 +1,7 @@
 services:
   agent:
     build: .
-    container_name: mpa
+    container_name: humux
     restart: unless-stopped
     ports:
       - "8000:8000"
@@ -24,7 +24,7 @@ services:
   # Exposes a CDP endpoint; point tools.browser.cdp_url at ws://browser:3000.
   # browser:
   #   image: browserless/chrome:latest
-  #   container_name: mpa-browser
+  #   container_name: humux-browser
   #   restart: unless-stopped
   #   profiles: ["browser"]
   #   environment:

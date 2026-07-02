@@ -20,7 +20,7 @@ stored in SQLite and seeded from markdown files at startup.
 3. Create or update the skill in the DB.
 4. Optionally update the seed file for new deployments.
 
-## Skill format (MPA)
+## Skill format (humux)
 
 - Skills are plain markdown files stored in the DB.
 - The first non-empty line becomes the summary shown in the UI.

@@ -27,7 +27,7 @@ def default_wacli_store() -> str:
 
 
 def default_device_label() -> str:
-    return os.getenv("WACLI_DEVICE_LABEL", "MPA")
+    return os.getenv("WACLI_DEVICE_LABEL", "humux")
 
 
 # Lock-wait window for write commands: wait for the store lock instead of

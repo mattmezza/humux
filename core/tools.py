@@ -572,19 +572,19 @@ if __name__ == "__main__":
         _ga.installation_token = _real_it
 
     # Per-agent repo allowlist (#111): only --repo targets outside the list are blocked.
-    scoped = Agent(name="coder", tool_config={"gh": {"enabled": True, "repos": ["me/mpa"]}})
-    assert github_repo_violation(scoped, "gh issue list --repo me/mpa") is None
+    scoped = Agent(name="coder", tool_config={"gh": {"enabled": True, "repos": ["me/humux"]}})
+    assert github_repo_violation(scoped, "gh issue list --repo me/humux") is None
     assert github_repo_violation(scoped, "gh pr view 1 -R me/other") == "me/other"
     assert github_repo_violation(scoped, "gh api user") is None  # no --repo → can't tell → allow
     assert github_repo_violation(plain, "gh pr view 1 --repo any/thing") is None  # no allowlist
     # Quote/glue-tolerant + gh-scoped (no false-block on grep -R).
     assert github_repo_violation(scoped, 'gh pr view 1 --repo "me/evil"') == "me/evil"
     assert github_repo_violation(scoped, "gh pr view 1 -Rme/evil") == "me/evil"
-    assert github_repo_violation(scoped, "gh pr view 1 --repo=me/mpa") is None
+    assert github_repo_violation(scoped, "gh pr view 1 --repo=me/humux") is None
     assert github_repo_violation(scoped, "grep -R foo/bar .") is None  # not a gh command
     # Present-but-empty allowlist = block every --repo (disjoint-narrow result).
     blocked = Agent(name="sub", tool_config={"gh": {"enabled": True, "repos": []}})
-    assert github_repo_violation(blocked, "gh pr view 1 --repo me/mpa") == "me/mpa"
+    assert github_repo_violation(blocked, "gh pr view 1 --repo me/humux") == "me/humux"
     assert github_repo_violation(blocked, "gh api user") is None  # no --repo target
 
     # Prompts: hopper sees gh + browser, with identity notes; lingua's gh is hidden.

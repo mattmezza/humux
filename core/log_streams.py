@@ -24,8 +24,8 @@ DEFAULT_STREAM = "default"
 # Empty = "never set by a turn" (distinct from a turn that ran as the default
 # identity, which sets it to "default" explicitly). The distinction matters for
 # subagent_stream's fallback below.
-_stream: contextvars.ContextVar[str] = contextvars.ContextVar("mpa_log_stream", default="")
-_subagent: contextvars.ContextVar[str] = contextvars.ContextVar("mpa_log_subagent", default="")
+_stream: contextvars.ContextVar[str] = contextvars.ContextVar("humux_log_stream", default="")
+_subagent: contextvars.ContextVar[str] = contextvars.ContextVar("humux_log_subagent", default="")
 
 
 def current_stream() -> str:

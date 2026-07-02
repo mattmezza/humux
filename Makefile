@@ -18,7 +18,7 @@ KOKORO_BASE_URL := https://github.com/thewh1teagle/kokoro-onnx/releases/download
 # Show available targets
 help:
 	@echo ""
-	@echo "MPA — My Personal Agent"
+	@echo "humux — Human Multiplexer"
 	@echo ""
 	@echo "  Setup & Dependencies:"
 	@echo "    make setup        First-time setup (install, hooks, copy example configs)"

@@ -1,11 +1,11 @@
 ---
 title: Memory
-description: MPA's persistent memory — two tiers, semantic retrieval, forgetting, and a self-healing hygiene pass.
+description: humux's persistent memory — two tiers, semantic retrieval, forgetting, and a self-healing hygiene pass.
 ---
 
 # Memory
 
-MPA has a persistent memory system that lets the agent remember facts about you and your world. Memories are stored in SQLite at `data/memory.db`. The agent reads and writes them via the `sqlite3` CLI (guided by `skills/memory.md`), following the same "skills over code" philosophy as the rest of the system — but the heavy lifting (extraction, dedup, ranking, forgetting) runs in `core/memory.py`.
+humux has a persistent memory system that lets the agent remember facts about you and your world. Memories are stored in SQLite at `data/memory.db`. The agent reads and writes them via the `sqlite3` CLI (guided by `skills/memory.md`), following the same "skills over code" philosophy as the rest of the system — but the heavy lifting (extraction, dedup, ranking, forgetting) runs in `core/memory.py`.
 
 The system is layered in four tiers:
 

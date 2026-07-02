@@ -317,7 +317,7 @@ async def main() -> None:
 
     from dotenv import load_dotenv
 
-    load_dotenv()  # MPA_MASTER_KEY / ADMIN_PASSWORD from .env, as main.py does at boot
+    load_dotenv()  # HUMUX_MASTER_KEY / ADMIN_PASSWORD from .env, as main.py does at boot
 
     spinner = Spinner()
     _setup_logging(spinner)

@@ -67,7 +67,7 @@ def build_vcalendar(
     lines = [
         "BEGIN:VCALENDAR",
         "VERSION:2.0",
-        "PRODID:-//MPA Agent//CalDAV Writer//EN",
+        "PRODID:-//humux//CalDAV Writer//EN",
         "BEGIN:VEVENT",
         f"UID:{uid}",
         f"DTSTAMP:{now}",

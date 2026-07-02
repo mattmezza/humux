@@ -1,11 +1,11 @@
 ---
 title: Configuration
-description: Complete reference for MPA's dual-layer configuration system.
+description: Complete reference for humux's dual-layer configuration system.
 ---
 
 # Configuration
 
-MPA uses a dual-layer configuration system:
+humux uses a dual-layer configuration system:
 
 1. **File-based** (`config.yml` + `.env`) — seed config loaded on first boot, supports `${ENV_VAR}` interpolation
 2. **SQLite config store** (`data/config.db`) — becomes the source of truth after setup, managed through the admin UI
@@ -38,8 +38,8 @@ Key variables:
 | `TAVILY_API_KEY` | Tavily web search API key |
 | `GOOGLE_EMAIL` | Google account for calendar |
 | `GOOGLE_APP_PASSWORD` | Google app-specific password |
-| `MPA_MASTER_KEY` | Infra [secrets vault](/docs/secrets) machine key (optional; a `data/master.key` keyfile is used if unset) |
-| `MPA_BASE_URL` | Base URL for secure "provide a secret" links and [web artifact](/docs/artifacts) links (defaults to `http://localhost:<admin port>`) |
+| `HUMUX_MASTER_KEY` | Infra [secrets vault](/docs/secrets) machine key (optional; a `data/master.key` keyfile is used if unset) |
+| `HUMUX_BASE_URL` | Base URL for secure "provide a secret" links and [web artifact](/docs/artifacts) links (defaults to `http://localhost:<admin port>`) |
 
 ## Agent config (`config.yml`)
 
@@ -185,7 +185,7 @@ Memory system settings. `extraction_model` is the cheap/fast model used for post
 
 #### `artifacts`
 
-[Web artifacts](/docs/artifacts) — pages, multi-file sites, or documents the agent publishes by writing files under `{workspace}/artifacts/<slug>/` with the `workspace` file tools, served at `/artifacts/<slug>/`. The only key is `enabled`, which toggles that public, no-auth route; the files live in the `workspace` (below), so serving also requires the workspace harness to be on. The slug is public and guessable — don't publish secrets. Set `MPA_BASE_URL` so the shared links are reachable from your devices. Managed from the admin **Tools** tab; `enabled: false` 404s all links.
+[Web artifacts](/docs/artifacts) — pages, multi-file sites, or documents the agent publishes by writing files under `{workspace}/artifacts/<slug>/` with the `workspace` file tools, served at `/artifacts/<slug>/`. The only key is `enabled`, which toggles that public, no-auth route; the files live in the `workspace` (below), so serving also requires the workspace harness to be on. The slug is public and guessable — don't publish secrets. Set `HUMUX_BASE_URL` so the shared links are reachable from your devices. Managed from the admin **Tools** tab; `enabled: false` 404s all links.
 
 #### `workspace`
 

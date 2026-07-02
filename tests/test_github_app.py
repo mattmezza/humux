@@ -217,8 +217,8 @@ def test_gh_env_auth_app_uses_app(monkeypatch) -> None:
 
 
 def test_repo_gate_blocks_only_disallowed_repo_flags() -> None:
-    coder = Agent(name="coder", tool_config={"gh": {"enabled": True, "repos": ["me/mpa"]}})
-    assert github_repo_violation(coder, "gh pr list --repo me/mpa") is None
+    coder = Agent(name="coder", tool_config={"gh": {"enabled": True, "repos": ["me/humux"]}})
+    assert github_repo_violation(coder, "gh pr list --repo me/humux") is None
     assert github_repo_violation(coder, "gh pr view 1 --repo me/secret") == "me/secret"
     assert github_repo_violation(coder, "gh api user") is None  # no --repo → cannot tell → allow
     open_p = Agent(name="open", tool_config={"gh": {"enabled": True}})
@@ -226,7 +226,7 @@ def test_repo_gate_blocks_only_disallowed_repo_flags() -> None:
 
 
 def test_repo_gate_is_quote_glue_tolerant_and_gh_scoped() -> None:
-    coder = Agent(name="coder", tool_config={"gh": {"enabled": True, "repos": ["me/mpa"]}})
+    coder = Agent(name="coder", tool_config={"gh": {"enabled": True, "repos": ["me/humux"]}})
     # Quoting / `=` / glued `-R` must not bypass the gate.
     assert github_repo_violation(coder, 'gh pr view 1 --repo "me/evil"') == "me/evil"
     assert github_repo_violation(coder, "gh pr view 1 --repo='me/evil'") == "me/evil"
@@ -239,10 +239,10 @@ def test_repo_gate_is_quote_glue_tolerant_and_gh_scoped() -> None:
 def test_repo_gate_empty_allowlist_blocks_everything() -> None:
     # A present-but-empty allowlist (disjoint-narrow result) = allow nothing.
     sub = Agent(name="sub", tool_config={"gh": {"enabled": True, "repos": []}})
-    assert github_repo_violation(sub, "gh pr view 1 --repo me/mpa") == "me/mpa"
+    assert github_repo_violation(sub, "gh pr view 1 --repo me/humux") == "me/humux"
     # Absent repos key = unrestricted (distinct from empty list).
     plain = Agent(name="plain", tool_config={"gh": {"enabled": True}})
-    assert github_repo_violation(plain, "gh pr view 1 --repo me/mpa") is None
+    assert github_repo_violation(plain, "gh pr view 1 --repo me/humux") is None
 
 
 def test_narrow_gh_repos_never_widens() -> None:

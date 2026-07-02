@@ -2797,7 +2797,7 @@ class AgentCore:
     def _base_url(self) -> str:
         import os
 
-        return os.getenv("MPA_BASE_URL", f"http://localhost:{self.config.admin.port}")
+        return os.getenv("HUMUX_BASE_URL", f"http://localhost:{self.config.admin.port}")
 
     # -- Coding harness (issue #76) ------------------------------------------
 

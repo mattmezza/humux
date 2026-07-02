@@ -5,7 +5,7 @@ description: Speech-to-text and text-to-speech pipeline for voice interactions.
 
 # Voice
 
-MPA includes a voice pipeline for receiving and sending voice messages through messaging channels. It uses local, offline-capable models — no cloud speech APIs needed.
+humux includes a voice pipeline for receiving and sending voice messages through messaging channels. It uses local, offline-capable models — no cloud speech APIs needed.
 
 ## Components
 
@@ -102,7 +102,7 @@ the Kokoro extra (onnxruntime ~200 MB) and model (~325 MB) just ride along ready
 to use. For a leaner edge-tts-only image, opt out at build time:
 
 ```bash
-docker build --build-arg INSTALL_KOKORO=false -t mpa .
+docker build --build-arg INSTALL_KOKORO=false -t humux .
 ```
 
 For a local (non-Docker) run, fetch the extra and the model with one command:
@@ -122,7 +122,7 @@ curl -fL https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-fil
 curl -fL https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin -o models/kokoro/voices-v1.0.bin
 ```
 
-If the model can't be loaded (missing file, OOM), MPA logs a warning and **falls
+If the model can't be loaded (missing file, OOM), humux logs a warning and **falls
 back to edge-tts** — both at startup and per-reply — so voice replies are never
 lost.
 

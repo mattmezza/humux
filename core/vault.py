@@ -46,7 +46,7 @@ def _coerce_fernet_key(value: str | bytes) -> bytes:
 
     A real 32-byte url-safe base64 Fernet key is used as-is; anything else
     (e.g. a human passphrase) is hashed to 32 bytes and base64-encoded. This
-    lets the user set ``MPA_MASTER_KEY`` to either a generated key or a memorable
+    lets the user set ``HUMUX_MASTER_KEY`` to either a generated key or a memorable
     passphrase.
     """
     raw = value.encode() if isinstance(value, str) else value
@@ -67,14 +67,14 @@ def derive_kek(password: str, salt: bytes) -> bytes:
 def load_machine_key() -> str | None:
     """Locate the infra-vault machine key.
 
-    Order: ``MPA_MASTER_KEY`` env → ``MPA_MASTER_KEY_FILE`` path → the default
+    Order: ``HUMUX_MASTER_KEY`` env → ``HUMUX_MASTER_KEY_FILE`` path → the default
     keyfile on the data volume. Returns ``None`` when no key is configured (the
     infra vault is then unavailable and ``${vault:...}`` falls back to env).
     """
-    env = os.getenv("MPA_MASTER_KEY")
+    env = os.getenv("HUMUX_MASTER_KEY")
     if env:
         return env
-    keyfile = os.getenv("MPA_MASTER_KEY_FILE") or DEFAULT_KEYFILE
+    keyfile = os.getenv("HUMUX_MASTER_KEY_FILE") or DEFAULT_KEYFILE
     path = Path(keyfile)
     if path.exists():
         text = path.read_text().strip()
