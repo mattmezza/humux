@@ -1710,6 +1710,10 @@ def create_admin_app(
             "hygiene_threshold": await _cfg("memory.hygiene_similarity_threshold", "0.45"),
         }
 
+        # Agent slugs for the scope dropdown in the edit forms (#158).
+        agent_store = await _agent_store_from_config(config_store)
+        ctx["agent_slugs"] = [a.name for a in await agent_store.list_agents()]
+
         # Memory data — read directly from DB (works even when agent is stopped)
         memory_db = await config_store.get("memory.db_path") or "data/memory.db"
         long_term: list[dict] = []
@@ -3216,6 +3220,49 @@ def create_admin_app(
                 raise HTTPException(404, f"Memory {memory_id} not found in {tier}")
 
         # Return refreshed memory partial (full config + tables)
+        return await _render_memory_partial()
+
+    @app.post("/memory/update", dependencies=[Depends(auth)])
+    async def update_memory(request: Request) -> HTMLResponse:
+        """Edit a memory entry (#158). Returns refreshed memory partial for HTMX."""
+        agent = agent_state.agent
+        if not agent:
+            raise HTTPException(503, "Agent not running")
+        content_type = request.headers.get("content-type", "")
+        if "x-www-form-urlencoded" in content_type:
+            body = await request.form()
+        else:
+            body = await request.json()
+        tier = str(body.get("tier", ""))
+        if tier not in ("long-term", "short-term"):
+            raise HTTPException(400, "Tier must be 'long-term' or 'short-term'")
+        try:
+            memory_id = int(cast(str, body.get("memory_id")))
+        except TypeError, ValueError:
+            raise HTTPException(400, "memory_id must be an integer")
+
+        await agent.memory._ensure_schema()
+        if tier == "long-term":
+            rows = await agent.memory.update_long_term(
+                memory_id,
+                category=str(body.get("category", "fact")),
+                subject=str(body.get("subject", "")),
+                content=str(body.get("content", "")),
+                scope=str(body.get("scope", "")),
+            )
+        else:
+            # datetime-local sends "YYYY-MM-DDTHH:MM"; store SQLite's space form.
+            expires = str(body.get("expires_at", "")).replace("T", " ")
+            if len(expires) == 16:  # noqa: PLR2004 — no seconds → add them
+                expires += ":00"
+            rows = await agent.memory.update_short_term(
+                memory_id,
+                content=str(body.get("content", "")),
+                scope=str(body.get("scope", "")),
+                expires_at=expires,
+            )
+        if rows == 0:
+            raise HTTPException(404, f"Memory {memory_id} not found in {tier}")
         return await _render_memory_partial()
 
     @app.get("/memory/embedding/status", dependencies=[Depends(auth)])

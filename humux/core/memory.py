@@ -1155,6 +1155,47 @@ class MemoryStore:
             log.debug("Stored short-term memory (TTL %dh): %s", ttl_hours, content[:80])
             return 1
 
+    async def update_long_term(
+        self, memory_id: int, *, category: str, subject: str, content: str, scope: str
+    ) -> int:
+        """Edit a long-term row from the admin UI (#158). Re-embeds only when
+        subject/content changed, so a scope-only fix never nukes the vector when
+        the embedder is momentarily off. Returns rows affected (0 = not found)."""
+        await self._ensure_schema()
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                "SELECT subject, content, embedding FROM long_term WHERE id = ?", (memory_id,)
+            )
+            row = await cursor.fetchone()
+            if row is None:
+                return 0
+            old_subject, old_content, old_blob = row
+            if subject != old_subject or content != old_content:
+                blob = await self._embed_blob(f"{subject}: {content}")
+            else:
+                blob = old_blob
+            cursor = await db.execute(
+                "UPDATE long_term SET category = ?, subject = ?, content = ?, embedding = ?, "
+                "scope = ?, updated_at = datetime('now') WHERE id = ?",
+                (category, subject, content, blob, scope, memory_id),
+            )
+            await db.commit()
+            return cursor.rowcount
+
+    async def update_short_term(
+        self, memory_id: int, *, content: str, scope: str, expires_at: str
+    ) -> int:
+        """Edit a short-term row from the admin UI (#158). No embedding column on
+        short_term, so this is a plain UPDATE. Returns rows affected."""
+        await self._ensure_schema()
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                "UPDATE short_term SET content = ?, scope = ?, expires_at = ? WHERE id = ?",
+                (content, scope, expires_at, memory_id),
+            )
+            await db.commit()
+            return cursor.rowcount
+
     # -- Consolidation & cleanup --
 
     async def consolidate_and_cleanup(self, llm: LLMClient, model: str) -> dict:
