@@ -430,6 +430,7 @@ def _validate_bash_commands(path: Path, content: str) -> list[ValidationError]:
             _check_single_command(stripped, i + 1, path, errors)
     if in_bash and buf:
         _check_command_buffer(buf, buf_start, path, errors)
+    return errors
 
 
 def _first_token(stripped: str) -> str:
