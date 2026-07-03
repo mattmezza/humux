@@ -1222,15 +1222,34 @@ class AgentCore:
         return m
 
     def _drain_steer(self, channel: str, user_id: str, chat_id: str) -> list[dict]:
-        """Pop and return this chat's pending steer entries, marking each consumed.
+        """Pop and return this chat's pending steer entries (does NOT mark consumed).
 
-        ``consumed`` is read by the depositing message's own (lock-blocked) task:
-        once the running turn has folded the follow-up in, that task returns silently
-        instead of re-running it as a duplicate turn (#145)."""
-        entries = self._steer_map().pop((channel, user_id, chat_id), [])
+        Draining is split from marking so ``consumed`` flips only once the steer has
+        actually reached the model — see ``_commit_steer``. If the ``generate()`` that
+        was to carry the steer raises, the entries stay unconsumed and their depositing
+        tasks run them as their own turns instead of being silently dropped (#145)."""
+        return self._steer_map().pop((channel, user_id, chat_id), [])
+
+    def _steer_message(self, entries: list[dict]) -> dict:
+        """Build one labelled user message from drained steer entries (#145). ponytail:
+        text only — a steer's attachments are dropped; if it wasn't consumed its own
+        turn still carries them, and mid-turn image steers are rare enough to defer."""
+        joined = "\n\n".join(e["text"] for e in entries)
+        text = (
+            "[The user sent a follow-up while you were working:]\n"
+            f"<steering_message>\n{joined}\n</steering_message>\n"
+            "Continue your current task taking this into account."
+        )
+        return {"role": "user", "content": text}
+
+    async def _commit_steer(self, channel: str, chat_id: str, entries: list[dict]) -> None:
+        """Confirm steers the model has now received: mark each consumed (so its
+        depositing task returns silently instead of re-running it) and ack 👀. Called
+        only AFTER the carrying ``generate()`` returns, so a failed call leaves the
+        steer unconsumed and it falls through to run as its own turn (#145)."""
         for e in entries:
             e["consumed"] = True
-        return entries
+            await self._ack_steer(channel, chat_id, e.get("message_id"))
 
     def _discard_steer(self, key: tuple, entry: dict) -> None:
         """Remove one still-pending entry (turn ended before it was drained), so it
@@ -1255,24 +1274,6 @@ class AgentCore:
             await react(chat_id, int(message_id), "👀")
         except Exception as exc:  # cosmetic — never break the turn over an ack
             log.debug("Steer ack reaction failed: %s", exc)
-
-    async def _pop_steer_message(self, channel: str, user_id: str, chat_id: str) -> dict | None:
-        """Drain pending steers for this chat into one labelled user message, acking
-        each with 👀. Returns None when nothing is pending (#145). ponytail: text
-        only — a steer's attachments are dropped; if it wasn't consumed its own turn
-        still carries them, and mid-turn image steers are rare enough to defer."""
-        entries = self._drain_steer(channel, user_id, chat_id)
-        if not entries:
-            return None
-        for e in entries:
-            await self._ack_steer(channel, chat_id, e.get("message_id"))
-        joined = "\n\n".join(e["text"] for e in entries)
-        text = (
-            "[The user sent a follow-up while you were working:]\n"
-            f"<steering_message>\n{joined}\n</steering_message>\n"
-            "Continue your current task taking this into account."
-        )
-        return {"role": "user", "content": text}
 
     def _chat_lock(self, channel: str, user_id: str, chat_id: str) -> asyncio.Lock:
         """The turn lock for one chat key, created on first use.
@@ -2088,9 +2089,11 @@ class AgentCore:
             # Mid-turn steering (#145): fold any follow-up the user sent while we
             # worked into the next call. Appended after the tool_result user turn;
             # generate() merges the consecutive user turns, so alternation holds.
-            steer_msg = await self._pop_steer_message(channel, user_id, chat_id)
-            if steer_msg:
-                messages.append(steer_msg)
+            # Committed (consumed + 👀) only after generate() returns, so a failed
+            # call leaves the steer to run as its own turn rather than vanish.
+            steer = self._drain_steer(channel, user_id, chat_id)
+            if steer:
+                messages.append(self._steer_message(steer))
             response = await self.llm.generate(
                 model=self.config.agent.model,
                 max_tokens=self.config.agent.max_tokens,
@@ -2098,6 +2101,8 @@ class AgentCore:
                 messages=messages,
                 tools=cast(Any, tools),
             )
+            if steer:
+                await self._commit_steer(channel, chat_id, steer)
         if stopped:
             final_text = _STOPPED_MESSAGE
         else:
@@ -2264,8 +2269,12 @@ class AgentCore:
             # Mid-turn steering (#145): fold any follow-up the user sent while we
             # worked into the next call, and persist it so the sticky session keeps a
             # faithful record. generate() merges it with the tool_result user turn.
-            steer_msg = await self._pop_steer_message(channel, user_id, chat_id)
-            if steer_msg:
+            # Committed (consumed + 👀) only after generate() returns; on a failed
+            # call the steer stays unconsumed and runs as its own turn (no double
+            # action — no tool runs between injecting the steer and this generate).
+            steer = self._drain_steer(channel, user_id, chat_id)
+            if steer:
+                steer_msg = self._steer_message(steer)
                 new_messages.append(steer_msg)
                 await self.history.append_session_messages(channel, user_id, [steer_msg], chat_id)
 
@@ -2276,6 +2285,8 @@ class AgentCore:
                 messages=session,
                 tools=cast(Any, tools),
             )
+            if steer:
+                await self._commit_steer(channel, chat_id, steer)
 
         if stopped:
             final_text = _STOPPED_MESSAGE

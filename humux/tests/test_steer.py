@@ -72,30 +72,33 @@ class _FakeChannel:
 # --- unit: buffer mechanics ------------------------------------------------
 
 
-def test_drain_is_scoped_per_chat(agent) -> None:
+def test_drain_is_scoped_and_defers_consume(agent) -> None:
     a = ("telegram", "u", "1")
     b = ("telegram", "u", "2")
     agent._steer_map().setdefault(a, []).append({"text": "hi", "consumed": False})
     assert agent._drain_steer(*b) == []  # other chat sees nothing
     got = agent._drain_steer(*a)
     assert [e["text"] for e in got] == ["hi"]
-    assert got[0]["consumed"] is True  # drained entries are marked for the depositor
+    # Draining does NOT consume — that waits until the steer has reached the model,
+    # so a failed generate() leaves it to run as its own turn (#145).
+    assert got[0]["consumed"] is False
     assert agent._drain_steer(*a) == []  # popped, not re-served
 
 
-@pytest.mark.asyncio
-async def test_pop_formats_and_acks(agent) -> None:
-    agent.channels = {"telegram": _FakeChannel()}
-    key = ("telegram", "u", "1")
-    agent._steer_map().setdefault(key, []).append(
-        {"text": "use the calendar API instead", "message_id": 7, "consumed": False}
-    )
-    msg = await agent._pop_steer_message(*key)
+def test_steer_message_formats(agent) -> None:
+    msg = agent._steer_message([{"text": "use the calendar API instead", "message_id": 7}])
     assert msg["role"] == "user"
     assert "<steering_message>" in msg["content"]
     assert "use the calendar API instead" in msg["content"]
+
+
+@pytest.mark.asyncio
+async def test_commit_marks_and_acks(agent) -> None:
+    agent.channels = {"telegram": _FakeChannel()}
+    entries = [{"text": "x", "message_id": 7, "consumed": False}]
+    await agent._commit_steer("telegram", "1", entries)
+    assert entries[0]["consumed"] is True  # committed only after the model saw it
     assert agent.channels["telegram"].reactions == [("1", 7, "👀")]
-    assert await agent._pop_steer_message(*key) is None  # drained
 
 
 # --- integration: injection into a running turn ----------------------------
@@ -140,6 +143,69 @@ async def test_steer_injected_into_running_turn(agent) -> None:
     assert "use the calendar API" in flat
     # And the follow-up got a 👀 ack.
     assert (("55", 2, "👀")) in agent.channels["telegram"].reactions
+
+
+class _FailOnSteeredRoundLLM:
+    """call 1 → a tool call; call 2 (the steered round) → raises; later calls answer.
+
+    Reproduces the failure the review found: the generate() carrying the steer errors."""
+
+    provider = "deepseek"
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def generate(self, *, messages, **_kw) -> LLMResponse:
+        self.calls += 1
+        if self.calls == 1:
+            return LLMResponse(
+                text="",
+                tool_calls=[LLMToolCall(id="c1", name="web_search", arguments={"q": "x"})],
+            )
+        if self.calls == 2:
+            raise RuntimeError("provider 5xx on the steered round")
+        return LLMResponse(text="recovered", tool_calls=[])
+
+    def assistant_message(self, response: LLMResponse) -> dict:
+        return {"role": "assistant", "content": response.text}
+
+    def tool_result_messages(self, results: list[dict]) -> list[dict]:
+        return [{"role": "user", "content": results}]
+
+
+@pytest.mark.asyncio
+async def test_steer_not_lost_when_carrying_generate_fails(agent) -> None:
+    # Injection mode: no sticky-session safety net, so the unconsumed-on-failure
+    # fallback is the only thing keeping the steer alive.
+    agent.history_mode = "injection"
+    agent.llm = _FailOnSteeredRoundLLM()
+    agent.channels = {"telegram": _FakeChannel()}
+
+    async def fake_tool(call, channel, user_id, request_state):
+        await asyncio.sleep(0.02)  # window for the steer to land before the failing round
+        return {"ok": True}
+
+    agent._execute_tool = fake_tool
+    key = ("telegram", "u", "77")
+
+    turn = asyncio.create_task(
+        agent.process("start work", "telegram", "u", chat_id="77", message_id=1)
+    )
+    await _wait_active(agent, key, turn)
+
+    steer_task = asyncio.create_task(
+        agent.process("actually, do it differently", "telegram", "u", chat_id="77", message_id=2)
+    )
+
+    with pytest.raises(RuntimeError):
+        await asyncio.wait_for(turn, timeout=3)  # the failing round propagates
+
+    # The steer was never confirmed to the model, so it runs as its own turn
+    # instead of being silently dropped.
+    steer_resp = await asyncio.wait_for(steer_task, timeout=3)
+    assert steer_resp.text == "recovered"
+    # No false ack: 👀 fires only on a committed steer, and this one never committed.
+    assert agent.channels["telegram"].reactions == []
 
 
 @pytest.mark.asyncio
