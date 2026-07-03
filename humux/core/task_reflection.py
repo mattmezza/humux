@@ -20,8 +20,19 @@ from pathlib import Path
 import aiosqlite
 
 from core.llm import LLMClient
+from core.memory import _similarity, _tokens  # reuse lexical sim — no new dep (#156)
 
 log = logging.getLogger(__name__)
+
+# Lessons that steer toward a binary that isn't installed are worse than none —
+# they send the agent at a missing tool. rg is allowlisted but absent on the host
+# (see the executor allowlist issue #156), so drop advice recommending it.
+# ponytail: extend this set if other phantom-tool lessons surface.
+_PHANTOM_TOOL_RE = re.compile(r"\b(rg|ripgrep)\b", re.IGNORECASE)
+
+# Two lessons this similar (Jaccard over content tokens) are the same advice
+# reworded — the store fills with near-duplicate variants otherwise (#156).
+_NEAR_DUP_THRESHOLD = 0.6
 
 _SCHEMA_FILE = Path(__file__).resolve().parent.parent / "schema" / "reflections.sql"
 
@@ -66,6 +77,8 @@ Rules:
   - "himalaya list --folder flag is case-sensitive; use 'INBOX' not 'inbox'"
 - Do NOT record trivial observations like "task completed successfully"
   or "user said thank you".
+- Do NOT recommend switching to a different tool or binary ("use X instead
+  of Y"); the runtime's command allowlist already defines what is available.
 - Be concise. Lessons should be 1-2 sentences max.
 
 Respond with ONLY the JSON object, no other text."""
@@ -174,11 +187,17 @@ class ReflectionStore:
             return ""
 
         lines: list[str] = []
-        seen: set[str] = set()  # #5: drop exact-duplicate lessons (the store has many repeats)
+        # #156: drop phantom-tool advice and near-duplicate lessons (the store
+        # accumulates reworded repeats), not just byte-identical ones.
+        kept_tokens: list[set[str]] = []
         for r in reflections:
-            if r["lesson"] in seen:
+            lesson = r["lesson"]
+            if _PHANTOM_TOOL_RE.search(lesson):
                 continue
-            seen.add(r["lesson"])
+            toks = _tokens(lesson)
+            if any(_similarity(toks, prev) >= _NEAR_DUP_THRESHOLD for prev in kept_tokens):
+                continue
+            kept_tokens.append(toks)
             outcome_marker = ""
             if r["outcome"] != "success":
                 outcome_marker = f" [{r['outcome']}]"
@@ -276,6 +295,11 @@ class ReflectionStore:
         if not lesson:
             return False
 
+        # Drop advice that points at a tool that isn't installed (#156).
+        if _PHANTOM_TOOL_RE.search(lesson):
+            log.debug("Skipping reflection recommending an uninstalled tool: %s", lesson[:80])
+            return False
+
         # Validate outcome
         if outcome not in ("success", "partial", "failure"):
             outcome = "success"
@@ -289,14 +313,16 @@ class ReflectionStore:
 
         await self._ensure_schema()
         async with aiosqlite.connect(self.db_path) as db:
-            # Check for duplicate lessons (same lesson text)
-            cursor = await db.execute(
-                "SELECT id FROM reflections WHERE lesson = ?",
-                (lesson,),
-            )
-            if await cursor.fetchone():
-                log.debug("Skipping duplicate reflection: %s", lesson[:80])
-                return False
+            # Skip exact OR near-duplicate lessons — the store fills with reworded
+            # variants of the same advice otherwise (#156).
+            cursor = await db.execute("SELECT lesson FROM reflections")
+            new_tokens = _tokens(lesson)
+            for (existing,) in await cursor.fetchall():
+                if existing == lesson or _similarity(new_tokens, _tokens(existing)) >= (
+                    _NEAR_DUP_THRESHOLD
+                ):
+                    log.debug("Skipping duplicate reflection: %s", lesson[:80])
+                    return False
 
             await db.execute(
                 "INSERT INTO reflections (task_summary, outcome, lesson, tool_issues, category) "

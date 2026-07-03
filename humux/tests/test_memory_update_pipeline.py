@@ -280,3 +280,47 @@ class TestHelpers:
         assert _similarity({"a", "b"}, {"c", "d"}) == 0.0
         assert _similarity(set(), {"a"}) == 0.0
         assert _similarity({"a", "b", "c"}, {"a"}) == pytest.approx(1 / 3)
+
+
+# -- #156: remember() subject normalization + transient-confirmation guard --
+
+
+async def _all_rows(store: MemoryStore) -> list[dict]:
+    async with aiosqlite.connect(store.db_path) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("SELECT category, subject, content FROM long_term")
+        return [dict(r) for r in await cursor.fetchall()]
+
+
+@pytest.mark.asyncio
+async def test_remember_drops_category_echo_subject(store) -> None:
+    """Subject that just echoes the category is blanked, not stored as '[work] work'."""
+    stored = await store.remember(
+        "Ships the payroll run every month-end", subject="work", category="work"
+    )
+    assert stored is True
+    rows = await _all_rows(store)
+    assert rows == [
+        {"category": "work", "subject": "", "content": "Ships the payroll run every month-end"}
+    ]
+
+
+@pytest.mark.asyncio
+async def test_remember_keeps_meaningful_subject(store) -> None:
+    stored = await store.remember("Prefers oat milk", subject="matteo", category="preference")
+    assert stored is True
+    assert (await _all_rows(store))[0]["subject"] == "matteo"
+
+
+@pytest.mark.asyncio
+async def test_remember_rejects_transient_confirmations(store) -> None:
+    for content in ("Filed issue #156 on GitHub", "Created PR #40", "Sent the email to Marco"):
+        assert await store.remember(content) is False
+    assert await _all_rows(store) == []
+
+
+@pytest.mark.asyncio
+async def test_remember_keeps_durable_fact_with_number(store) -> None:
+    """A durable fact that happens to contain a number is still stored."""
+    assert await store.remember("Lives at 12 Baker Street", subject="matteo") is True
+    assert len(await _all_rows(store)) == 1

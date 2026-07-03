@@ -687,7 +687,8 @@ sqlite3 /app/data/memory.db "DELETE FROM short_term WHERE id = 7;"
 ## Important Notes
 - Always use `-json` flag when you need to parse results programmatically
 - Use LIKE with % wildcards for fuzzy content search
-- For long-term memories, always set `category` and `subject` — these are used for filtering
+- For long-term memories, set `category` and a meaningful `subject` (who/what it is about) — never the category word itself (no `[work] work: …`); leave `subject` empty when no clear who/what applies
+- Do not store transient action-confirmations (e.g. "filed issue #12", "created PR #40") as long-term memories — GitHub already records them
 - Short-term facts are auto-cleaned every 8 hours; set `expires_at` appropriately
 - When you learn something new that contradicts an existing memory, UPDATE the old one rather than inserting a duplicate
 - Before inserting a long-term memory, check if a similar one already exists to avoid duplicates
