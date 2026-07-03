@@ -1,83 +1,16 @@
-{# History tab partial #}
+{# History tab partial.
+   Injection-mode selector removed (#138): the agent always runs in sticky
+   session mode now, so this tab hosts only compaction settings. #}
 <div class="space-y-6" x-data="{
-  mode: {{ mode|default('injection', true)|tojson|forceescape }},
-  maxTurns: {{ max_turns|default('10', true)|tojson|forceescape }},
   compactionEnabled: {{ compaction_enabled|default('true', true)|tojson|forceescape }},
   thresholdType: {{ compaction_threshold_type|default('percent', true)|tojson|forceescape }},
   thresholdPercent: {{ compaction_threshold_percent|default('80', true)|tojson|forceescape }},
   thresholdTokens: {{ compaction_threshold_tokens|default('150000', true)|tojson|forceescape }},
   contextWindow: {{ compaction_context_window|default('200000', true)|tojson|forceescape }},
   keepRecentTurns: {{ compaction_keep_recent_turns|default('4', true)|tojson|forceescape }},
-  result: '',
-  resultOk: false,
   cResult: '',
   cResultOk: false
 }">
-  <div class="card">
-    <h2 class="text-base mb-1">Conversation History</h2>
-    <p class="text-muted text-xs mb-4">Configure how conversation history is stored and how much context the agent sees when processing messages.</p>
-
-    <div class="space-y-3">
-      <div>
-        <label class="label">Mode</label>
-        <div class="flex gap-4 mt-1">
-          <label class="flex items-center gap-2 cursor-pointer">
-            <input type="radio" name="history_mode" value="injection"
-                   x-model="mode" class="accent-primary">
-            <span class="text-sm">History injection</span>
-          </label>
-          <label class="flex items-center gap-2 cursor-pointer">
-            <input type="radio" name="history_mode" value="session"
-                   x-model="mode" class="accent-primary">
-            <span class="text-sm">Sticky session</span>
-          </label>
-        </div>
-        <p class="text-muted text-xs mt-1" x-show="mode === 'injection'">Recent conversation turns are replayed as context with each request. Older messages fall off after the configured limit.</p>
-        <p class="text-muted text-xs mt-1" x-show="mode === 'session'">A persistent session is maintained per channel. The full conversation is sent to the LLM, preserving tool call history and enabling prompt caching. Reset via the channel's clear command.</p>
-      </div>
-
-      <div x-show="mode === 'injection'" x-transition>
-        <label class="label">Max turns</label>
-        <input type="number" class="input-sm" style="max-width:120px"
-               x-model="maxTurns" min="1" max="50">
-        <p class="text-muted text-xs mt-1">Number of recent user-assistant pairs included as context. Lower values reduce noise from old conversations; higher values give more continuity.</p>
-        {% include "partials/restart_note.html" %}
-      </div>
-    </div>
-
-    <div class="flex items-center gap-2 mt-4">
-      <button class="btn-primary btn-sm"
-              @click="
-                const vals = {
-                  'history.mode': mode,
-                  'history.max_turns': String(maxTurns)
-                };
-                fetch('/config', {
-                  method: 'PATCH',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': 'Bearer ' + (localStorage.getItem('admin_api_key') || '')
-                  },
-                  body: JSON.stringify({values: vals})
-                })
-                .then(r => { resultOk = r.ok; return r.json(); })
-                .then(d => {
-                  result = resultOk ? 'History settings saved' : (d.detail || 'Error');
-                  if (resultOk && window.showToast) { window.showToast('History settings saved'); }
-                  if (resultOk && d.restart_required && window.notifyRestartRequired) { notifyRestartRequired(); }
-                })
-                .catch(e => { resultOk = false; result = e.message; })
-              ">
-        Save
-      </button>
-    </div>
-
-    <template x-if="result">
-      <div :class="resultOk ? 'alert-success' : 'alert-error'" class="mt-2" x-text="result"></div>
-    </template>
-  </div>
-
-  {# Compaction — only relevant in session mode #}
   <div class="card">
     <div class="flex items-center justify-between gap-3 mb-1">
       <h2 class="text-base">Context compaction</h2>
@@ -88,10 +21,10 @@
       </div>
     </div>
     <p class="text-muted text-xs mb-4">
-      In <strong>session</strong> mode, when the conversation approaches the model's
-      context window, the oldest turns are summarized by a small model (configured in
-      the <strong>LLM</strong> tab) while recent turns are kept verbatim. The user is
-      notified with a system message when this happens. Has no effect in injection mode.
+      When the conversation approaches the model's context window, the oldest turns
+      are summarized by a small model (configured in the <strong>LLM</strong> tab)
+      while recent turns are kept verbatim. The user is notified with a system
+      message when this happens.
     </p>
 
     <div class="space-y-3" :class="(compactionEnabled === 'true' || compactionEnabled === true) ? '' : 'opacity-50'">

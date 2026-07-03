@@ -112,21 +112,22 @@
     }
     window.previewVoice = previewVoice;
 
-    function llmTab(provider, apiKey, model, openaiKey, openaiBaseUrl, googleKey, googleBaseUrl, grokKey, grokBaseUrl, deepseekKey, deepseekBaseUrl, openrouterKey, openrouterBaseUrl, extractionProvider, extractionModel, consolidationProvider, consolidationModel, gdEnabled, gdProvider, gdModel, trEnabled, trProvider, trModel, promptToolUsageOverride, promptHistoryOverride, defaultToolUsage, defaultHistoryHandling, promptCaptureEnabled, compactionProvider, compactionModel, thinkingLevel, extractionThinkingLevel, consolidationThinkingLevel, gdThinkingLevel, trThinkingLevel, compactionThinkingLevel, visionEnabled, visionProvider, visionModel, rdEnabled, rdProvider, rdModel, rdThinkingLevel, rdGroupOnly, rdMaxReplies, rdWindowSeconds, maxTokens, temperature, trMaxReflections) {
+    function llmTab(provider, apiKey, model, openaiKey, openaiBaseUrl, googleKey, googleBaseUrl, grokKey, grokBaseUrl, deepseekKey, deepseekBaseUrl, openrouterKey, openrouterBaseUrl, extractionProvider, extractionModel, consolidationProvider, consolidationModel, gdEnabled, gdProvider, gdModel, trEnabled, trProvider, trModel, compactionProvider, compactionModel, thinkingLevel, extractionThinkingLevel, consolidationThinkingLevel, gdThinkingLevel, trThinkingLevel, compactionThinkingLevel, visionEnabled, visionProvider, visionModel, rdEnabled, rdProvider, rdModel, rdThinkingLevel, rdGroupOnly, rdMaxReplies, rdWindowSeconds, maxTokens, temperature, trMaxReflections) {
       const currentProvider = provider || 'anthropic';
       return {
-        // Sub-tab within the LLM tab (issue #114): sysprompt | inference | providers.
+        // Sub-tab within the LLM tab (issue #114): inference | providers | history.
         // Persisted so switching away and back, or a partial reload after a
-        // provider save, lands on the same sub-tab.
+        // provider save, lands on the same sub-tab. (SysPrompt sub-tab removed
+        // in #137 — superseded by the Inspect tab.)
         section: (() => {
-          const allowed = ['sysprompt', 'inference', 'providers', 'history'];
+          const allowed = ['inference', 'providers', 'history'];
           try {
             const q = new URLSearchParams(window.location.search).get('llmsub');
             if (allowed.includes(q)) return q;
             const ls = localStorage.getItem('llm_section');
             if (allowed.includes(ls)) return ls;
           } catch (e) {}
-          return 'sysprompt';
+          return 'inference';
         })(),
         setSection(s) {
           this.section = s;
@@ -181,24 +182,6 @@
         trProvider: trProvider || 'anthropic',
         trModel: trModel || 'claude-haiku-4-5',
         trMaxReflections: trMaxReflections || '12',
-        promptToolUsageOverride: promptToolUsageOverride || '',
-        promptHistoryOverride: promptHistoryOverride || '',
-        defaultToolUsage: defaultToolUsage || '',
-        defaultHistoryHandling: defaultHistoryHandling || '',
-        promptCaptureEnabled: promptCaptureEnabled === true || promptCaptureEnabled === 'true',
-        promptPreviewMessage: '',
-        includePreviewMemories: true,
-        includePreviewReflections: true,
-        promptPreviewResult: '',
-        promptPreviewOk: false,
-        promptPreviewLoading: false,
-        promptPreviewRaw: '',
-        promptPreviewSections: null,
-        promptPreviewMeta: null,
-        recentPrompts: [],
-        recentPromptsLoading: false,
-        promptSaveResult: '',
-        promptSaveOk: false,
         memoryResult: '',
         memoryResultOk: false,
         gdResult: '',
@@ -569,88 +552,6 @@
             .then(() => { if (window.showToast) { window.showToast('Copied'); } })
             .catch(() => { if (window.showToast) { window.showToast('Copy failed', false); } });
         },
-        previewSystemPrompt() {
-          this.promptPreviewLoading = true;
-          this.promptPreviewResult = '';
-          fetch('/debug/system-prompt/preview', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': 'Bearer ' + (localStorage.getItem('admin_api_key') || '')
-            },
-            body: JSON.stringify({
-              message: this.promptPreviewMessage,
-              include_memories: this.includePreviewMemories,
-              include_reflections: this.includePreviewReflections
-            })
-          })
-            .then(r => { this.promptPreviewOk = r.ok; return r.json(); })
-            .then(d => {
-              this.promptPreviewRaw = d.full_prompt || '';
-              this.promptPreviewSections = d.sections || null;
-              this.promptPreviewMeta = {
-                generated_at: d.generated_at,
-                history_mode: d.history_mode,
-                token_estimate: d.token_estimate,
-                flags: d.flags || {}
-              };
-              this.promptPreviewResult = this.promptPreviewOk ? 'Prompt preview generated' : (d.detail || 'Failed to preview prompt');
-            })
-            .catch(e => {
-              this.promptPreviewOk = false;
-              this.promptPreviewResult = e.message || 'Failed to preview prompt';
-            })
-            .finally(() => {
-              this.promptPreviewLoading = false;
-            });
-        },
-        fetchRecentPrompts() {
-          this.recentPromptsLoading = true;
-          fetch('/debug/system-prompt/recent', {
-            headers: {
-              'Authorization': 'Bearer ' + (localStorage.getItem('admin_api_key') || '')
-            }
-          })
-            .then(r => r.json())
-            .then(d => {
-              this.recentPrompts = Array.isArray(d.items) ? d.items : [];
-            })
-            .catch(() => {
-              this.recentPrompts = [];
-            })
-            .finally(() => {
-              this.recentPromptsLoading = false;
-            });
-        },
-        resetPromptOverrides() {
-          this.promptToolUsageOverride = '';
-          this.promptHistoryOverride = '';
-          this.promptSaveResult = 'Overrides reset locally';
-          this.promptSaveOk = true;
-        },
-        savePromptConfig() {
-          fetch('/config', {
-            method: 'PATCH',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': 'Bearer ' + (localStorage.getItem('admin_api_key') || '')
-            },
-            body: JSON.stringify({values: {
-              'prompt.tool_usage_override': this.promptToolUsageOverride,
-              'prompt.history_handling_override': this.promptHistoryOverride,
-              'admin.capture_prompts': this.promptCaptureEnabled ? 'true' : 'false'
-            }})
-          })
-            .then(r => { this.promptSaveOk = r.ok; return r.json(); })
-            .then(d => {
-              this.promptSaveResult = this.promptSaveOk ? 'Prompt settings saved' : (d.detail || 'Error');
-              if (this.promptSaveOk && window.showToast) { window.showToast('Prompt settings saved'); }
-            })
-            .catch(e => {
-              this.promptSaveOk = false;
-              this.promptSaveResult = e.message || 'Error';
-            });
-        }
       };
     }
     window.llmTab = llmTab;

@@ -283,17 +283,19 @@ class TestVoicePreview:
         assert "workspace.directory" in resp.text
 
     def test_llm_partial_has_subtabs(self):
-        # The LLM tab is split into SysPrompt / Inference / Providers / History
-        # sub-tabs (#114 + History folded in), with a link to the Inspect tab.
+        # The LLM tab is split into Inference / Providers / History sub-tabs
+        # (#114 + History folded in). The SysPrompt sub-tab was removed (#137),
+        # superseded by the Inspect tab.
         client = _client(setup_complete=True)
         resp = client.get("/partials/llm", headers=AUTH)
         assert resp.status_code == 200
-        for sec in ("sysprompt", "inference", "providers", "history"):
+        for sec in ("inference", "providers", "history"):
             assert f"setSection('{sec}')" in resp.text
             assert f"section === '{sec}'" in resp.text
-        assert "$dispatch('switch-tab', 'inspect')" in resp.text  # SysPrompt -> Inspect
+        assert "setSection('sysprompt')" not in resp.text
+        assert "System Prompt Controls" not in resp.text
         # History sub-tab content is included, not a separate top-level tab.
-        assert "Conversation History" in resp.text
+        assert "Context compaction" in resp.text
 
     def test_llm_partial_has_vision_fallback(self):
         client = _client(setup_complete=True)
@@ -411,9 +413,10 @@ class TestVoicePreview:
         assert "text/html" in resp.headers["content-type"]
 
     def test_history_partial(self):
+        # #138: the injection-mode selector is gone; the tab hosts only
+        # compaction settings now.
         store = _ConfigStoreStub(setup_complete=True)
-        store._data["history.mode"] = "session"
-        store._data["history.max_turns"] = "15"
+        store._data["compaction.threshold_percent"] = "77"
         agent_state = AgentState(agent=cast(Any, _AgentStub()))
         app, _ = create_admin_app(agent_state, cast(ConfigStore, store))
         client = TestClient(app, follow_redirects=False)
@@ -421,15 +424,17 @@ class TestVoicePreview:
         resp = client.get("/partials/history", headers=AUTH)
         assert resp.status_code == 200
         assert "text/html" in resp.headers["content-type"]
-        assert "15" in resp.text
-        assert "session" in resp.text
+        assert "Context compaction" in resp.text
+        assert "77" in resp.text
+        # The removed mode selector must not resurface.
+        assert 'name="history_mode"' not in resp.text
 
     def test_history_partial_defaults(self):
         client = _client(setup_complete=True)
         resp = client.get("/partials/history", headers=AUTH)
         assert resp.status_code == 200
         assert "text/html" in resp.headers["content-type"]
-        assert "Conversation History" in resp.text
+        assert "Context compaction" in resp.text
 
     def test_partials_require_auth(self):
         client = _client(setup_complete=True)

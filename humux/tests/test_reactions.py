@@ -71,6 +71,7 @@ def agent(tmp_path, monkeypatch):
     cfg.agent.llm_provider = "deepseek"
     cfg.agent.model = "deepseek-v4-flash"
     cfg.memory.embedding.enabled = False
+    cfg.history.mode = "injection"  # asserts on the windowed get_messages store
     return AgentCore(cfg)
 
 

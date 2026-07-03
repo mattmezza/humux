@@ -142,6 +142,7 @@ def agent(tmp_path, monkeypatch):
     cfg.agent.llm_provider = "deepseek"
     cfg.agent.model = "deepseek-v4-flash"
     cfg.memory.embedding.enabled = False  # keep retrieval lexical (no model load)
+    cfg.history.mode = "injection"  # exercises the windowed add_turn/get_messages store
     return AgentCore(cfg)
 
 
