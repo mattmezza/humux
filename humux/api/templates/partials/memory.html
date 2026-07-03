@@ -291,6 +291,7 @@
           <td class="text-xs">
             <span x-show="!editing">{{ m.category }}</span>
             <select name="category" class="input-sm" x-show="editing">
+              {% if m.category not in categories %}<option value="{{ m.category }}" selected>{{ m.category }}</option>{% endif %}
               {% for c in categories %}<option value="{{ c }}" {% if m.category == c %}selected{% endif %}>{{ c }}</option>{% endfor %}
             </select>
           </td>
@@ -306,6 +307,7 @@
             <span x-show="!editing">{% if m.scope %}{{ m.scope }}{% else %}<span class="text-muted">shared</span>{% endif %}</span>
             <select name="scope" class="input-sm" x-show="editing">
               <option value="" {% if not m.scope %}selected{% endif %}>shared</option>
+              {% if m.scope and m.scope not in agent_slugs %}<option value="{{ m.scope }}" selected>{{ m.scope }} (no agent)</option>{% endif %}
               {% for s in agent_slugs %}<option value="{{ s }}" {% if m.scope == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
             </select>
           </td>
@@ -357,6 +359,7 @@
             <span x-show="!editing">{% if m.scope %}{{ m.scope }}{% else %}<span class="text-muted">shared</span>{% endif %}</span>
             <select name="scope" class="input-sm" x-show="editing">
               <option value="" {% if not m.scope %}selected{% endif %}>shared</option>
+              {% if m.scope and m.scope not in agent_slugs %}<option value="{{ m.scope }}" selected>{{ m.scope }} (no agent)</option>{% endif %}
               {% for s in agent_slugs %}<option value="{{ s }}" {% if m.scope == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
             </select>
           </td>
