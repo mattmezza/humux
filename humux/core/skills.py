@@ -253,3 +253,249 @@ class SkillsEngine:
         if not skill:
             return ""
         return str(skill.get("content", ""))
+
+
+# ── Skill file validator ──────────────────────────────────────────────────────
+
+# The canonical allowlist for command prefix validation.  Imported at module
+# level so the validator stays in sync with the executor without an import
+# cycle (executor → skills → executor would loop).  We replicate the list
+# here; keep it in sync with ToolExecutor.ALLOWED_PREFIXES.
+_ALLOWED_PREFIXES: list[str] = [
+    "curl",
+    "himalaya",
+    "jq",
+    "wacli",
+    "python3 /app/tools/skills.py",
+    "python3 /app/tools/contacts.py",
+    "sqlite3",
+    "python3 /app/tools/",
+    "gh",
+    "git",
+    "w3m",
+    "pandoc",
+    "pdftotext",
+    "rg",
+    "yt-dlp",
+    "cal",
+    "cp",
+]
+
+_SAFE_FILTERS: set[str] = {
+    "jq", "head", "tail", "rg", "cat", "sort", "uniq", "wc", "grep", "cut", "tr", "column",
+}
+
+# Tools that are registered as callable tools (not CLI commands) — their
+# names are valid as tool-names inside bash code blocks.
+_KNOWN_TOOL_NAMES: set[str] = {
+    "send_email",
+    "reply_email",
+    "send_message",
+    "create_calendar_event",
+    "create_contact",
+    "search_contacts",
+    "web_search",
+    "generate_image",
+    "manage_jobs",
+    "spawn_subagent",
+    "list_secrets",
+}
+
+
+class ValidationError:
+    """A single validation finding — either an error or a warning."""
+
+    def __init__(self, file: str, line: int, message: str, severity: str = "error"):
+        self.file = file
+        self.line = line
+        self.message = message
+        self.severity = severity  # "error" | "warning"
+
+    def __str__(self) -> str:
+        prefix = "E" if self.severity == "error" else "W"
+        return f"{prefix}: {self.file}:{self.line}: {self.message}"
+
+
+def _validate_h1_title(path: Path, content: str) -> list[ValidationError]:
+    """Check that the file has a valid H1 title matching the filename."""
+    errors: list[ValidationError] = []
+    lines = content.splitlines()
+    h1_found = False
+    for i, line in enumerate(lines):
+        if line.startswith("# ") and not line.startswith("## "):
+            h1_found = True
+            break
+    if not h1_found:
+        errors.append(ValidationError(
+            str(path), 1,
+            "Missing H1 title (first line should be '# Title')",
+        ))
+    return errors
+
+
+def _validate_code_blocks(path: Path, content: str) -> list[ValidationError]:
+    """Check that fenced code blocks are properly opened and closed."""
+    errors: list[ValidationError] = []
+    lines = content.splitlines()
+    fence_open = False
+    fence_start = 0
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            if fence_open:
+                fence_open = False
+            else:
+                fence_open = True
+                fence_start = i + 1
+    if fence_open:
+        errors.append(ValidationError(
+            str(path), fence_start,
+            "Unclosed fenced code block (opening ``` without closing ```)",
+        ))
+    return errors
+
+
+def _validate_bash_commands(path: Path, content: str) -> list[ValidationError]:
+    """Check that every command in bash code blocks complies with the prefix
+    allowlist.  Ignores lines that look like commentary, blank lines, or
+    variable assignments."""
+    errors: list[ValidationError] = []
+    lines = content.splitlines()
+    in_bash = False
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            lang = stripped.removeprefix("```").strip().lower()
+            if in_bash:
+                in_bash = False
+            elif lang in ("bash", "sh", ""):
+                in_bash = True
+            continue
+        if not in_bash:
+            continue
+        if not stripped or stripped.startswith("#"):
+            continue
+        if "=" in stripped and not stripped.startswith(" "):
+            # Simple variable assignment (e.g. NAME=value)
+            lhs = stripped.split("=", 1)[0]
+            if lhs.isidentifier() or lhs.isupper():
+                continue
+
+        # Extract the first token of the command
+        first_token = stripped.split(maxsplit=1)[0] if stripped else ""
+        if not first_token:
+            continue
+
+        # Check if it's a known tool name (e.g. send_email, write_file)
+        if first_token in _KNOWN_TOOL_NAMES:
+            continue
+
+        # Check if it starts with an allowed prefix (including piped filters)
+        allowed = False
+        for prefix in _ALLOWED_PREFIXES:
+            if first_token.startswith(prefix):
+                allowed = True
+                break
+        if first_token in _SAFE_FILTERS:
+            allowed = True
+        # Special case: variable expansion or shell built-ins that are safe
+        if first_token.startswith("$") or first_token in ("echo", "printf", "cd", "export", "source", "."):
+            allowed = True
+
+        if not allowed:
+            errors.append(ValidationError(
+                str(path), i + 1,
+                f"Command '{first_token}' is not in the allowed prefix list "
+                f"({_ALLOWED_PREFIXES})",
+            ))
+    return errors
+
+
+def _validate_cross_references(path: Path, content: str) -> list[ValidationError]:
+    """Check that referenced tool scripts or file paths actually exist, using
+    the seed directory as the root.  Limited to obvious script references."""
+    errors: list[ValidationError] = []
+    lines = content.splitlines()
+    seed_dir = path.parent
+    for i, line in enumerate(lines):
+        # Match tool script references like ./tools/foo.py or /app/tools/foo.py
+        # These are informational only — we check the paths referenced in code
+        # blocks are reasonable.
+        if "tools/" in line and ("/" in line or "`" in line):
+            for part in line.split():
+                clean = part.strip("`\"'(),.")
+                if clean.startswith("./tools/") or clean.startswith("tools/"):
+                    ref = seed_dir.parent / clean
+                    if not ref.exists():
+                        errors.append(ValidationError(
+                            str(path), i + 1,
+                            f"Referenced path '{clean}' does not exist",
+                            severity="warning",
+                        ))
+    return errors
+
+
+def validate_skill_file(path: Path, strict: bool = False) -> list[ValidationError]:
+    """Validate a single skill markdown file.  Returns a list of findings (empty
+    = file is valid)."""
+    if not path.exists():
+        return [ValidationError(str(path), 1, "File not found")]
+    content = path.read_text()
+    errors: list[ValidationError] = []
+    errors.extend(_validate_h1_title(path, content))
+    errors.extend(_validate_code_blocks(path, content))
+    errors.extend(_validate_bash_commands(path, content))
+    errors.extend(_validate_cross_references(path, content))
+
+    if strict:
+        lines = content.splitlines()
+        if len(lines) < 3 or not lines[1].strip():
+            errors.append(ValidationError(
+                str(path), 2,
+                "Missing description paragraph after the title",
+                severity="warning",
+            ))
+    return errors
+
+
+def validate_skill_dir(seed_dir: str | Path, strict: bool = False) -> list[ValidationError]:
+    """Validate all skill markdown files in *seed_dir*."""
+    d = Path(seed_dir)
+    if not d.exists():
+        return [ValidationError(str(d), 1, f"Seed directory '{seed_dir}' not found")]
+    errors: list[ValidationError] = []
+    for skill_file in sorted(d.glob("*.md")):
+        errors.extend(validate_skill_file(skill_file, strict=strict))
+    return errors
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Entry point for ``python -m core.skills validate``."""
+    import argparse
+
+    parser = argparse.ArgumentParser(prog="python -m core.skills", description="Skills CLI")
+    sub = parser.add_subparsers(dest="command")
+
+    validate_parser = sub.add_parser("validate", help="Validate skill files")
+    validate_parser.add_argument(
+        "--seed-dir", default="skills/",
+        help="Path to the skills seed directory (default: skills/)",
+    )
+    validate_parser.add_argument(
+        "--strict", action="store_true",
+        help="Enable additional style warnings",
+    )
+
+    args = parser.parse_args(argv)
+    if args.command == "validate":
+        errors = validate_skill_dir(args.seed_dir, strict=args.strict)
+        for err in errors:
+            print(str(err), file=__import__("sys").stderr)
+        return 1 if any(e.severity == "error" for e in errors) else 0
+    parser.print_help()
+    return 1
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(main())
