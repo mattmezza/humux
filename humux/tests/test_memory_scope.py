@@ -154,3 +154,68 @@ def test_extraction_scope_block():
     assert _extraction_scope_block("") == ""
     block = _extraction_scope_block("coach")
     assert "coach" in block and "private" in block
+
+
+# --- inline editing from the admin UI (#158) --------------------------------
+
+
+async def _one_id(store, table: str) -> int:
+    async with aiosqlite.connect(store.db_path) as db:
+        cursor = await db.execute(f"SELECT id FROM {table} LIMIT 1")  # noqa: S608
+        return (await cursor.fetchone())[0]
+
+
+async def test_update_long_term_changes_fields_and_scope(store):
+    await store._insert_long_term("fact", "matteo", "old content", scope="")
+    n = await store.update_long_term(
+        await _one_id(store, "long_term"),
+        category="work",
+        subject="matteo",
+        content="new content",
+        scope="coach",
+    )
+    assert n == 1
+    # Moved to the coach scope with the new category.
+    coach = {r["content"]: r for r in await store.get_long_term("coach")}
+    assert coach["new content"]["category"] == "work"
+
+
+async def test_update_long_term_reembeds_only_on_text_change(store, monkeypatch):
+    calls = []
+
+    async def fake_blob(text):
+        calls.append(text)
+        return b"vec"
+
+    monkeypatch.setattr(store, "_embed_blob", fake_blob)
+    await store._insert_long_term("fact", "s", "content", scope="")
+    mid = await _one_id(store, "long_term")
+    calls.clear()
+
+    # Scope-only edit → no re-embed.
+    await store.update_long_term(mid, category="fact", subject="s", content="content", scope="x")
+    assert calls == []
+    # Content edit → re-embed.
+    await store.update_long_term(mid, category="fact", subject="s", content="changed", scope="x")
+    assert calls == ["s: changed"]
+
+
+async def test_update_long_term_missing_returns_zero(store):
+    assert (
+        await store.update_long_term(999, category="fact", subject="s", content="c", scope="") == 0
+    )
+
+
+async def test_update_short_term(store):
+    await store._store_short_term(
+        {"content": "temp fact", "context": "", "ttl_hours": 24}, scope=""
+    )
+    n = await store.update_short_term(
+        await _one_id(store, "short_term"),
+        content="edited",
+        scope="coach",
+        expires_at="2099-01-01 00:00:00",
+    )
+    assert n == 1
+    coach = {r["content"] for r in await store.get_short_term("coach")}
+    assert "edited" in coach

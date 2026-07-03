@@ -76,6 +76,7 @@ This is the real inference payload, captured in memory at send time, so it shows
 Inspect and manage the agent's memories, and tune the memory engine live:
 
 - View all long-term memories by category, and active short-term context
+- Edit any memory inline: long-term (category, subject, content, scope) and short-term (content, scope, expiry). Scope offers `shared` plus every known agent slug, so a memory mis-filed as shared/private can be re-scoped without deleting it. Content/subject edits re-embed the row so semantic search stays correct.
 - Delete individual memories
 - Trigger manual memory consolidation
 - **Semantic memory (embeddings)** — toggle on/off, pick the backend (Local / OpenAI / Google), set the model, base URL, and injected-memories-per-turn (top-k). A status line shows whether the local model is downloaded, with **Download model** and **Test** buttons. Changes apply live (the local model loads on first use). See [Memory → Tier 2](/docs/memory#tier-2-semantic-retrieval-relevance-ranked-injection).

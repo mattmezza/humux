@@ -284,15 +284,41 @@
         </tr>
       </thead>
       <tbody>
+        {% set categories = ['preference','relationship','fact','routine','work','health','travel'] %}
         {% for m in long_term %}
-        <tr>
+        <tr x-data="{editing:false}">
           <td class="text-xs">{{ m.id }}</td>
-          <td class="text-xs">{{ m.category }}</td>
-          <td class="text-xs">{{ m.subject }}</td>
-          <td class="text-xs break-all">{{ m.content }}</td>
-          <td class="text-xs">{% if m.scope %}{{ m.scope }}{% else %}<span class="text-muted">shared</span>{% endif %}</td>
-          <td>
-            <button class="btn-danger btn-sm"
+          <td class="text-xs">
+            <span x-show="!editing">{{ m.category }}</span>
+            <select name="category" class="input-sm" x-show="editing">
+              {% if m.category not in categories %}<option value="{{ m.category }}" selected>{{ m.category }}</option>{% endif %}
+              {% for c in categories %}<option value="{{ c }}" {% if m.category == c %}selected{% endif %}>{{ c }}</option>{% endfor %}
+            </select>
+          </td>
+          <td class="text-xs">
+            <span x-show="!editing">{{ m.subject }}</span>
+            <input name="subject" class="input-sm" value="{{ m.subject }}" x-show="editing">
+          </td>
+          <td class="text-xs break-all">
+            <span x-show="!editing">{{ m.content }}</span>
+            <textarea name="content" class="input-sm w-full" rows="2" x-show="editing">{{ m.content }}</textarea>
+          </td>
+          <td class="text-xs">
+            <span x-show="!editing">{% if m.scope %}{{ m.scope }}{% else %}<span class="text-muted">shared</span>{% endif %}</span>
+            <select name="scope" class="input-sm" x-show="editing">
+              <option value="" {% if not m.scope %}selected{% endif %}>shared</option>
+              {% if m.scope and m.scope not in agent_slugs %}<option value="{{ m.scope }}" selected>{{ m.scope }} (no agent)</option>{% endif %}
+              {% for s in agent_slugs %}<option value="{{ s }}" {% if m.scope == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+            </select>
+          </td>
+          <td class="whitespace-nowrap">
+            <button class="btn btn-sm" x-show="!editing" @click="editing=true">edit</button>
+            <button class="btn-primary btn-sm" x-show="editing"
+                    hx-post="/memory/update" hx-target="#tab-content" hx-swap="innerHTML"
+                    hx-include="closest tr"
+                    hx-vals='{"tier": "long-term", "memory_id": "{{ m.id }}"}'>save</button>
+            <button class="btn btn-sm" x-show="editing" @click="editing=false">cancel</button>
+            <button class="btn-danger btn-sm" x-show="!editing"
                     hx-post="/memory/delete" hx-target="#tab-content" hx-swap="innerHTML"
                     hx-vals='{"tier": "long-term", "memory_id": "{{ m.id }}"}'
                     hx-confirm="Delete this memory?">
@@ -323,13 +349,33 @@
       </thead>
       <tbody>
         {% for m in short_term %}
-        <tr>
+        <tr x-data="{editing:false}">
           <td class="text-xs">{{ m.id }}</td>
-          <td class="text-xs break-all">{{ m.content }}</td>
-          <td class="text-xs">{% if m.scope %}{{ m.scope }}{% else %}<span class="text-muted">shared</span>{% endif %}</td>
-          <td class="text-xs">{{ m.expires_at }}</td>
-          <td>
-            <button class="btn-danger btn-sm"
+          <td class="text-xs break-all">
+            <span x-show="!editing">{{ m.content }}</span>
+            <input name="content" class="input-sm w-full" value="{{ m.content }}" x-show="editing">
+          </td>
+          <td class="text-xs">
+            <span x-show="!editing">{% if m.scope %}{{ m.scope }}{% else %}<span class="text-muted">shared</span>{% endif %}</span>
+            <select name="scope" class="input-sm" x-show="editing">
+              <option value="" {% if not m.scope %}selected{% endif %}>shared</option>
+              {% if m.scope and m.scope not in agent_slugs %}<option value="{{ m.scope }}" selected>{{ m.scope }} (no agent)</option>{% endif %}
+              {% for s in agent_slugs %}<option value="{{ s }}" {% if m.scope == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+            </select>
+          </td>
+          <td class="text-xs">
+            <span x-show="!editing">{{ m.expires_at }}</span>
+            <input type="datetime-local" name="expires_at" step="1" class="input-sm"
+                   value="{{ m.expires_at[:19]|replace(' ','T') }}" x-show="editing">
+          </td>
+          <td class="whitespace-nowrap">
+            <button class="btn btn-sm" x-show="!editing" @click="editing=true">edit</button>
+            <button class="btn-primary btn-sm" x-show="editing"
+                    hx-post="/memory/update" hx-target="#tab-content" hx-swap="innerHTML"
+                    hx-include="closest tr"
+                    hx-vals='{"tier": "short-term", "memory_id": "{{ m.id }}"}'>save</button>
+            <button class="btn btn-sm" x-show="editing" @click="editing=false">cancel</button>
+            <button class="btn-danger btn-sm" x-show="!editing"
                     hx-post="/memory/delete" hx-target="#tab-content" hx-swap="innerHTML"
                     hx-vals='{"tier": "short-term", "memory_id": "{{ m.id }}"}'
                     hx-confirm="Delete this memory?">
