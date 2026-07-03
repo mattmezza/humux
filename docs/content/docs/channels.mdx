@@ -96,6 +96,15 @@ A few details worth knowing:
   the whole running turn (not just one action). `/stop` works mid-turn and in YOLO mode
   where there are no prompts; it's scoped to that chat and is a no-op when nothing is
   running. See [Permissions](/docs/permissions#stopping-a-turn).
+- **Steering mid-turn** — you don't have to wait for a long turn to finish to redirect it.
+  Send a normal follow-up while the agent is working (in a group, address it — reply to the
+  bot or `@mention` it) and it's folded into the running turn before its next step, so the
+  agent adjusts course instead of finishing on the wrong track. The bot reacts 👀 on your
+  message to show it was picked up. It's scoped to that chat — a steer never leaks into
+  another conversation. One limit: while the agent is parked on an approval prompt it only
+  reads a steer once that resolves; steering lands between tool steps, not during a wait.
+  (If the turn happens to end before your message lands, it just runs as the next turn — so
+  nothing is ever lost.)
 - **YOLO mode** — `/yolo-on` lets a bot act without asking for approval; `/yolo-off`
   restores prompting. Only the short hard-blocked (`NEVER`) list is still refused (e.g.
   direct DB drops/alters) — **everything else, including filesystem and network commands,
