@@ -43,7 +43,7 @@ def set_stream(name: str) -> None:
 
     Called once per turn after the agent is resolved. No reset: channels run
     each turn in its own ``asyncio`` task (so the value dies with the task), and
-    a reused task — the REPL — overwrites it at the next turn's entry anyway.
+    a reused task — the CLI — overwrites it at the next turn's entry anyway.
     """
     _stream.set(name or DEFAULT_STREAM)
 

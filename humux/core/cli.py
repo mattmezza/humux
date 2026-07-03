@@ -1,10 +1,19 @@
-"""Local REPL channel — talk to the agent from the terminal, no Telegram.
+"""CLI channel — a first-class terminal interface to the agent, no Telegram.
 
-Run:  make repl   (or  uv run python -m core.repl)
+Run:  make cli   (or  uv run python -m core.cli)
+
+Remote (single-operator deploy): the host's own sshd authenticates you, then
+``docker exec`` drops you into a live REPL against production data:
+
+    ssh -t user@host docker exec -it humux uv run python -m core.cli
 
 Builds the agent from the same config store the server uses, registers itself
-as the ``repl`` channel so permission approvals route to a y/n terminal prompt,
+as the ``cli`` channel so permission approvals route to a y/n terminal prompt,
 then loops on stdin. Ctrl-D or ``/exit`` quits.
+
+Each run is a fresh **session** (its own chat row) by default; ``--session`` /
+``--sessions`` / ``--rm-session`` resume, list and delete them. (Not to be
+confused with ``history.mode == "session"``, the prompt-snapshot history mode.)
 
 While the agent works, a spinner shows it's busy and the chain of thought
 (model reasoning + each tool call) streams live above it.
@@ -19,6 +28,8 @@ import mimetypes
 import os
 import sys
 import time
+import uuid
+from datetime import datetime
 from pathlib import Path
 
 from core.agent import AgentCore
@@ -38,7 +49,8 @@ except ImportError:  # pragma: no cover - non-POSIX
 
 log = logging.getLogger(__name__)
 
-USER_ID = "repl"
+CHANNEL = "cli"
+USER_ID = "cli"  # the operator; sessions differ by chat_id (cli:<session>)
 _PROMPT = "> "
 
 # Loggers whose INFO output is the agent's "chain of thought" / activity trail.
@@ -64,7 +76,7 @@ class _SpinnerHandler(logging.Handler):
 
     def emit(self, record: logging.LogRecord) -> None:
         if record.getMessage().startswith("Processing message"):
-            return  # redundant in a REPL — you just typed it (and it shows "repl/repl/repl")
+            return  # redundant in the CLI — you just typed it
         color = _DIM if record.name == "core.llm.reasoning" else _CYAN
         line = f"  {color}· {record.getMessage()}{_RESET}"
         sys.stderr.write("\r\033[K" + line + "\n")
@@ -137,7 +149,7 @@ class Spinner:
         sys.stderr.flush()
 
 
-class ReplChannel:
+class CliChannel:
     """Minimal channel: prints approval prompts and reads a y/n from stdin."""
 
     def __init__(self, agent: AgentCore, spinner: Spinner, yolo: bool = False):
@@ -235,7 +247,7 @@ def _print_debug_config(config, agent=None) -> None:
         ("voice", "on" if config.voice.tts_enabled else "off"),
         ("timezone", a.timezone),
     ]
-    print(f"\n{_CYAN}── REPL debug config ──{_RESET}")
+    print(f"\n{_CYAN}── CLI debug config ──{_RESET}")
     for k, v in rows:
         print(f"  {_DIM}{k:>10}{_RESET}  {v}")
     print(
@@ -244,14 +256,16 @@ def _print_debug_config(config, agent=None) -> None:
     )
 
 
-async def _run_turn(agent: AgentCore, spinner: Spinner, text: str, attachments=None, agent_name=""):
+async def _run_turn(
+    agent: AgentCore, spinner: Spinner, text: str, chat_id: str, attachments=None, agent_name=""
+):
     """Run one turn, cancellable by pressing ESC. Returns None if interrupted."""
     proc = asyncio.create_task(
         agent.process(
             message=text,
-            channel="repl",
+            channel=CHANNEL,
             user_id=USER_ID,
-            chat_id=USER_ID,
+            chat_id=chat_id,
             attachments=attachments,
             agent_name=agent_name or None,
         )
@@ -269,7 +283,7 @@ async def _run_turn(agent: AgentCore, spinner: Spinner, text: str, attachments=N
         except OSError:
             pass
 
-    chan = agent.channels.get("repl")
+    chan = agent.channels.get(CHANNEL)
 
     def _pause() -> None:  # hand stdin back to a blocking input() prompt
         loop.remove_reader(fd)
@@ -298,6 +312,24 @@ async def _run_turn(agent: AgentCore, spinner: Spinner, text: str, attachments=N
         await spinner.stop()
 
 
+def _new_session_id() -> str:
+    """Short, human-readable session id, e.g. ``2026-07-03-a1b2``."""
+    return f"{datetime.now().strftime('%Y-%m-%d')}-{uuid.uuid4().hex[:4]}"
+
+
+async def _list_sessions(history) -> None:
+    chats = [c for c in await history.list_chats() if c["channel"] == CHANNEL]
+    if not chats:
+        print("No CLI sessions yet.")
+        return
+    print("CLI sessions (most recent first):")
+    for c in chats:
+        name = c["chat_id"].removeprefix(f"{CHANNEL}:")
+        when = c.get("last_active") or "—"
+        who = f"  [{c['agent']}]" if c.get("agent") else ""
+        print(f"  {name:<24} {when}{who}")
+
+
 async def main() -> None:
     import argparse
 
@@ -313,11 +345,32 @@ async def main() -> None:
         action="store_true",
         help="Auto-approve every permission prompt (no rules saved). Local testing only.",
     )
+    parser.add_argument(
+        "--session",
+        metavar="NAME",
+        default=None,
+        help="Resume a previous CLI session by name (default: start a fresh one).",
+    )
+    parser.add_argument(
+        "--sessions",
+        action="store_true",
+        help="List existing CLI sessions and exit.",
+    )
+    parser.add_argument(
+        "--rm-session",
+        metavar="NAME",
+        default=None,
+        help="Delete a CLI session by name and exit.",
+    )
     args = parser.parse_args()
 
     from dotenv import load_dotenv
 
     load_dotenv()  # HUMUX_MASTER_KEY / ADMIN_PASSWORD from .env, as main.py does at boot
+
+    from core.db import ensure_wal
+
+    ensure_wal()  # WAL is a persistent file property; safe to run every boot (#168)
 
     spinner = Spinner()
     _setup_logging(spinner)
@@ -327,7 +380,7 @@ async def main() -> None:
     await store.ensure_admin_password()
 
     # Wire the secrets vault the same way main.py does, so {{secret:}} / ${vault:}
-    # and list_secrets/request_secret work in the repl. ponytail: mirror boot, no abstraction.
+    # and list_secrets/request_secret work in the CLI. ponytail: mirror boot, no abstraction.
     from core.secret_store import SecretStore
 
     secret_store = SecretStore()
@@ -336,6 +389,21 @@ async def main() -> None:
     if seed_pw:  # unseals agent vault in-process (created on first set)
         await secret_store.ensure_wrapped_dek(seed_pw)
     config = await store.export_to_config(vault_resolve=secret_store.infra_resolve)
+
+    # Session management commands need only the history store — handle & exit.
+    if args.sessions or args.rm_session:
+        from core.history import ConversationHistory
+
+        history = ConversationHistory(db_path=config.history.db_path)
+        if args.rm_session:
+            await history.clear(CHANNEL, USER_ID, f"{CHANNEL}:{args.rm_session}")
+            print(f"Deleted session: {args.rm_session}")
+        else:
+            await _list_sessions(history)
+        return
+
+    session = args.session or _new_session_id()
+    chat_id = f"{CHANNEL}:{session}"
 
     if args.agent is not None:
         # Validate against the agent store so a typo fails loudly with options.
@@ -349,7 +417,7 @@ async def main() -> None:
 
     forced_agent = args.agent or ""  # per-turn identity override for this session
     agent = AgentCore(config, secret_store=secret_store)
-    agent.channels["repl"] = ReplChannel(agent, spinner, yolo=args.yolo)
+    agent.channels[CHANNEL] = CliChannel(agent, spinner, yolo=args.yolo)
     if args.yolo:
         print(f"{_DIM}⚠ --yolo: auto-approving all tool permissions this session.{_RESET}")
 
@@ -358,14 +426,16 @@ async def main() -> None:
         # would keep the previous identity. Clear it so the agent takes effect
         # on the first turn instead of after a manual /clear.
         if agent.history_mode == "session":
-            await agent.history.clear_session("repl", USER_ID, USER_ID)
+            await agent.history.clear_session(CHANNEL, USER_ID, chat_id)
         else:
-            await agent.history.clear("repl", USER_ID, USER_ID)
+            await agent.history.clear(CHANNEL, USER_ID, chat_id)
 
     session_agent = (
         await agent.agents.get(forced_agent) if forced_agent else await agent.agents.get_default()
     )
     _print_debug_config(config, session_agent)
+    resumed = "resumed" if args.session else "new"
+    print(f"{_DIM}session: {session} ({resumed} · resume with --session {session}){_RESET}\n")
 
     while True:
         spinner.awaiting_input = True
@@ -381,7 +451,7 @@ async def main() -> None:
         if text in ("/exit", "/quit"):
             break
         if text == "/clear":
-            await agent.history.clear("repl", USER_ID, USER_ID)
+            await agent.history.clear(CHANNEL, USER_ID, chat_id)
             print("[context cleared]\n")
             continue
         attachments = None
@@ -403,7 +473,9 @@ async def main() -> None:
                 continue
             attachments = [Attachment(data=data, mime_type=mime, filename="clipboard")]
             text = text[len("/paste") :].strip() or "What's in this image?"
-        response = await _run_turn(agent, spinner, text, attachments, agent_name=forced_agent)
+        response = await _run_turn(
+            agent, spinner, text, chat_id, attachments, agent_name=forced_agent
+        )
         if response is None:
             print("\n[interrupted]\n")
             continue

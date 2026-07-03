@@ -202,6 +202,26 @@ async def test_run_agent_task_silent_no_updates() -> None:
 
 
 @pytest.mark.asyncio
+async def test_run_agent_task_cli_falls_back_to_telegram() -> None:
+    # Issue #168: a job scheduled from the CLI stores channel="cli", which the
+    # server has no channel for. Rather than drop it, deliver to the owner's
+    # Telegram DM — ignoring the cli origin chat id.
+    tg = AsyncMock()
+    tg.config = SimpleNamespace(allowed_user_ids=[7])
+    agent = SimpleNamespace(
+        channels={"telegram": tg},
+        process=AsyncMock(return_value=SimpleNamespace(text="done")),
+        config=SimpleNamespace(),
+        job_store=None,
+    )
+    set_agent_context(agent)
+
+    await run_agent_task("do thing", channel="cli", origin_chat_id="cli:2026-07-03-a1b2")
+
+    tg.send.assert_awaited_once_with(7, "done")  # owner DM, not the cli chat id
+
+
+@pytest.mark.asyncio
 async def test_run_agent_task_no_channel() -> None:
     """If the target channel is not registered, the response is dropped."""
     agent = SimpleNamespace(

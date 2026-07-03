@@ -185,6 +185,83 @@ as repeated auth loss. The fix is a version bump:
 - Session may need re-authentication periodically (and after a wacli version bump)
 - WhatsApp may restrict accounts using unofficial clients
 
+## CLI
+
+The `cli` channel is a first-class terminal interface to the agent — the same
+agent, the same `data/*.db` stores, the same tools and permission flow as
+Telegram, just at a prompt. It was the old "REPL"; it is no longer a
+testing-only afterthought.
+
+```bash
+make cli                    # or: uv run python -m core.cli
+make cli AGENT=<slug>       # run as a specific agent (--agent <slug>)
+make cli YOLO=1             # auto-approve every permission this session (--yolo)
+```
+
+In the prompt: `ESC` interrupts a turn, `/img PATH [caption]` or `/paste
+[caption]` sends an image, `/clear` resets the current session's context, and
+`Ctrl-D` / `/exit` quits.
+
+### Remote access (SSH + docker exec)
+
+No in-app SSH server: the deploy host's own `sshd` already authenticates you
+(key-based, encrypted), then `docker exec` drops you into a live CLI against
+production data while the server keeps running:
+
+```bash
+ssh -t user@host docker exec -it humux uv run python -m core.cli
+```
+
+A host-side shell alias keeps it to one word:
+
+```bash
+alias humux='ssh -t user@host docker exec -it humux uv run python -m core.cli'
+```
+
+### Sessions
+
+Each run is its own **session** (its own chat row); it prints its id at startup:
+
+```
+session: 2026-07-03-a1b2 (new · resume with --session 2026-07-03-a1b2)
+```
+
+- `--session NAME` — resume a previous session (history persists in
+  `history.db` on the volume; sessions are just chat rows, no new store).
+- `--sessions` — list existing CLI sessions with last-activity timestamps.
+- `--rm-session NAME` — delete one. In-prompt `/clear` only clears the *current*
+  session's context.
+
+(Not to be confused with `history.mode == "session"`, the prompt-snapshot
+history mode — a different concept that happens to share the word.)
+
+### Scheduled jobs from the CLI
+
+A job you schedule from a CLI session is saved to the job store and fires in the
+**server** process, where no `cli` channel exists — so its output is delivered
+to the owner's Telegram DM instead of the terminal, and the scheduling
+confirmation tells you so.
+
+One caveat, from the same two-process split as the notes below: the CLI persists
+the job but does **not** notify the already-running server's scheduler, which
+only loads jobs at boot. A CLI-created job therefore becomes active on the
+server's next restart — a recurring **cron** job then fires normally, but a
+**one-shot** whose time has already passed by that restart is retired without
+firing. For time-sensitive one-shots, schedule from Telegram instead.
+
+### Cross-process notes
+
+The CLI builds its own `AgentCore` in a separate process that shares the
+SQLite stores with the live server. All `data/*.db` files are put in **WAL
+mode** at boot of either entrypoint, so concurrent reads/writes don't hit
+`SQLITE_BUSY`. Two quirks follow from the two processes not sharing memory:
+
+- **"Always allow" permission rules** load once at process start. A rule granted
+  in a CLI session is invisible to the live server until it restarts, and vice
+  versa.
+- **Config** is snapshotted at CLI boot; admin-UI config changes need a CLI
+  restart to take effect.
+
 ## Channel architecture
 
 Both channels implement the same interface:
