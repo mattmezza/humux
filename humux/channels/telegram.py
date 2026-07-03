@@ -815,6 +815,9 @@ class TelegramChannel:
             # Re-render the label on each state change until the turn ends. A failed
             # edit is swallowed: a stale label is cosmetic, never worth a crash.
             while not turn_over.is_set():
+                # Clear BEFORE reading state: a toggle that lands between the read
+                # and the clear would otherwise be dropped (lost wakeup).
+                state["changed"].clear()
                 want = _WAITING_APPROVAL if state["waiting"] else _THINKING
                 if want != shown:
                     try:
@@ -824,7 +827,6 @@ class TelegramChannel:
                         shown = want
                     except Exception:
                         pass
-                state["changed"].clear()
                 wakers = [
                     asyncio.ensure_future(turn_over.wait()),
                     asyncio.ensure_future(state["changed"].wait()),
