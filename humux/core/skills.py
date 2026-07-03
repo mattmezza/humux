@@ -434,8 +434,14 @@ def _validate_bash_commands(path: Path, content: str) -> list[ValidationError]:
 
 
 def _first_token(stripped: str) -> str:
-    """Extract the first token from a stripped command line."""
-    return stripped.split(maxsplit=1)[0] if stripped else ""
+    """Extract the first token from a stripped command line, stripping any
+    opening parenthesis so that ``write_file(path=...)`` is recognised as
+    the tool name ``write_file``."""
+    token = stripped.split(maxsplit=1)[0] if stripped else ""
+    # Strip opening parenthesis and everything after for tool-name matching
+    if "(" in token:
+        token = token.split("(")[0]
+    return token
 
 
 def _command_allowed(first_token: str) -> bool:
@@ -517,7 +523,11 @@ def validate_skill_file(path: Path, strict: bool = False) -> list[ValidationErro
 
     if strict:
         lines = content.splitlines()
-        if len(lines) < 3 or not lines[1].strip():
+        has_description = any(
+            line.strip() and not line.startswith("#") and not line.startswith("```")
+            for line in lines[1:4]
+        )
+        if not has_description:
             errors.append(ValidationError(
                 str(path), 2,
                 "Missing description paragraph after the title",
