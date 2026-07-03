@@ -16,7 +16,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from core.agent import AgentCore, _strip_command_suffix
+from core.agent import AgentCore, _control_command, _strip_command_suffix
 from core.config import GroupChatConfig, TelegramConfig
 from core.history import ConversationHistory
 from core.llm import _coalesce_user_messages
@@ -111,6 +111,31 @@ def test_coalesce_empty() -> None:
 )
 def test_strip_command_suffix(raw: str, expected: str) -> None:
     assert _strip_command_suffix(raw) == expected
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("/yolo-on", "/yolo-on"),
+        ("/yolo-on@coachbot", "/yolo-on"),
+        ("  /New  ", "/new"),
+        # Menu underscore alias folds to the canonical hyphenated command.
+        ("/yolo_on", "/yolo-on"),
+        ("/yolo_off@coachbot", "/yolo-off"),
+        ("/yolo_on\n\n/yolo-on", "/yolo-on"),  # alias + canonical, same command
+        # Duplicated / merged deliveries still resolve to the one command (#154).
+        ("/yolo-on\n\n/yolo-on", "/yolo-on"),
+        ("/yolo-on@coachbot\n\n/yolo-on", "/yolo-on"),
+        ("/new /new@bot", "/new"),
+        # Mixed with real text → not a command (never pulled out of a message).
+        ("/new please", ""),
+        ("/yolo-on then /yolo-off", ""),
+        ("hello there", ""),
+        ("", ""),
+    ],
+)
+def test_control_command(raw: str, expected: str) -> None:
+    assert _control_command(raw) == expected
 
 
 # ---------------------------------------------------------------------------
@@ -219,6 +244,40 @@ async def test_yolo_toggle_requires_addressing_and_scopes_per_chat(tmp_path) -> 
     resp = await agent.process("/yolo-off@coachbot", channel="telegram", user_id="g1", chat_id="g1")
     assert "YOLO mode OFF" in resp.text
     assert agent.permissions.is_yolo(scope) is False
+
+
+@pytest.mark.asyncio
+async def test_yolo_on_toggles_when_duplicated_or_merged(tmp_path) -> None:
+    """A duplicated/merged '/yolo-on' still toggles instead of reaching the LLM as
+    ordinary text — the swallow behind #154 (and the observed #155 symptom)."""
+    agent = _bare_agent(tmp_path, "injection")
+    agent.permissions = PermissionEngine(db_path=str(tmp_path / "config.db"))
+    scope = agent._yolo_scope("telegram", "g1")
+
+    resp = await agent.process(
+        "/yolo-on@coachbot\n\n/yolo-on", channel="telegram", user_id="g1", chat_id="g1"
+    )
+    assert "YOLO mode ON" in resp.text
+    assert agent.permissions.is_yolo(scope) is True
+
+    resp = await agent.process(
+        "/yolo-off\n\n/yolo-off", channel="telegram", user_id="g1", chat_id="g1"
+    )
+    assert "YOLO mode OFF" in resp.text
+    assert agent.permissions.is_yolo(scope) is False
+
+
+@pytest.mark.asyncio
+async def test_yolo_menu_underscore_alias_toggles(tmp_path) -> None:
+    """The /yolo_on menu alias (Telegram forbids '-' in command names) toggles the
+    same grant as /yolo-on."""
+    agent = _bare_agent(tmp_path, "injection")
+    agent.permissions = PermissionEngine(db_path=str(tmp_path / "config.db"))
+    scope = agent._yolo_scope("telegram", "g1")
+
+    resp = await agent.process("/yolo_on@coachbot", channel="telegram", user_id="g1", chat_id="g1")
+    assert "YOLO mode ON" in resp.text
+    assert agent.permissions.is_yolo(scope) is True
 
 
 # ---------------------------------------------------------------------------

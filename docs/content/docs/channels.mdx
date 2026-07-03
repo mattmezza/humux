@@ -99,6 +99,11 @@ A few details worth knowing:
   address a specific bot with `/yolo-on@botname`, and the grant applies only in that chat
   (a bare `/yolo-on`, addressed to no bot, toggles nothing). The setting persists across
   restarts until you turn it off.
+- **Command menu** — each bot publishes its commands to Telegram's ☰ menu / `/`
+  autocomplete on startup (`/new`, `/jobs`, `/yolo_on`, `/yolo_off` — Telegram forbids
+  `-` in menu command names, so YOLO shows with an underscore; `/yolo-on` still works too).
+  In a group each bot lists its own commands, `@bot`-suffixed, so tapping one targets that
+  bot. The menu is a full replace, so the list simply tracks whatever the version ships.
 - **Upgrade note** — enabling group rooms re-keys a group's history from per-sender to
   per-group, so a previously-active group starts fresh (old per-sender history is left in
   place, just not carried forward).

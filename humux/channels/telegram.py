@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from telegram import (
+    BotCommand,
     CallbackQuery,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
@@ -40,7 +41,27 @@ log = logging.getLogger(__name__)
 # Plain-text commands the agent handles in process() (not Telegram CommandHandlers).
 # _on_text sends these bare (no speaker tag / reply-quote) and honours an explicit
 # "@bot" target so a command never acts on the wrong bot in a multi-agent room.
-_AGENT_COMMANDS = frozenset({"/new", "/clear", "/yolo-on", "/yolo-off"})
+_AGENT_COMMANDS = frozenset({"/new", "/clear", "/yolo-on", "/yolo-off", "/yolo_on", "/yolo_off"})
+
+# The command menu surfaced in Telegram's ☰ button / "/" autocomplete
+# (setMyCommands). This is the single source of truth: set_my_commands is a full
+# REPLACE, so future versions add/remove/edit commands just by editing this list —
+# removed entries drop out of the menu on the next startup, no delta logic needed.
+# Command names may only be [a-z0-9_], so the hyphenated /yolo-on is registered
+# under its /yolo_on alias (the runtime accepts both — see _COMMAND_ALIASES).
+_MENU_COMMANDS = [
+    BotCommand("new", "Clear the conversation"),
+    BotCommand("jobs", "Show scheduled jobs"),
+    BotCommand("yolo_on", "Run actions without asking for approval"),
+    BotCommand("yolo_off", "Restore approval prompts"),
+]
+
+# Collapse identical back-to-back inbound text from the same sender within this
+# window (#154): Telegram/network redelivery or a client burst can deliver the
+# same message several times, and a duplicated control command ("/yolo-on") would
+# otherwise fold into one merged turn and be processed as text. A short window so
+# a deliberate repeat seconds later still counts as a new turn.
+_DEDUP_WINDOW_S = 3.0
 
 # Callback data prefix for approval buttons
 _APPROVE_PREFIX = "perm_approve:"
@@ -134,6 +155,9 @@ class TelegramChannel:
         # Last chat a user wrote from, used to route approval prompts. Holds a
         # folded "<chat>:<thread>" string when the message came from a topic.
         self._last_chat_for_user: dict[int, int | str] = {}
+        # Last inbound text per (sender, chat) + when, to drop duplicate deliveries
+        # (#154). Keyed by sender so two people saying the same thing don't collide.
+        self._last_inbound: dict[tuple[int, str], tuple[str, float]] = {}
         # This bot's own identity, cached lazily from the first update (the Bot
         # API has it only once polling is initialised). Used to detect @mentions
         # and replies aimed at this bot in group rooms (#30).
@@ -238,6 +262,21 @@ class TelegramChannel:
             # False this once and the next update retries once it is available.
             self._bot_id = None
             self._bot_username = None
+
+    async def register_commands(self) -> None:
+        """Publish the ``_MENU_COMMANDS`` list to Telegram's ☰ menu / autocomplete.
+
+        A full replace (setMyCommands), so editing the list is enough to add,
+        remove, or rename commands across versions. Per-bot: in a group each bot
+        shows its own commands, ``@bot``-suffixed, which is exactly the addressed
+        form the runtime routes on. Best-effort — a failure here must never stop
+        the bot from polling."""
+        try:
+            await self.app.bot.set_my_commands(_MENU_COMMANDS)
+        except Exception:
+            log.warning(
+                "Could not set Telegram command menu (%s)", self.channel_name, exc_info=True
+            )
 
     @staticmethod
     def _entity_text(message, text: str, ent) -> str:
@@ -384,6 +423,21 @@ class TelegramChannel:
             return
 
         text = (message.text or "").strip()
+
+        # Drop an identical back-to-back message from the same sender (#154):
+        # redelivery or a client burst would otherwise become several turns (or a
+        # folded, unmatchable "/yolo-on\n\n/yolo-on"). Empty text is left alone.
+        dedup_key = (sender_id, str(chat_id))
+        now = time.monotonic()
+        prev = self._last_inbound.get(dedup_key)
+        if text and prev and prev[0] == text and now - prev[1] < _DEDUP_WINDOW_S:
+            # Anchor the window to the last *processed* message (don't refresh on a
+            # drop) so a deliberate repeat after the window still counts as a turn.
+            log.debug("Dropping duplicate inbound (chat=%s): %r", chat_id, text[:40])
+            return
+        if text:
+            self._last_inbound[dedup_key] = (text, now)
+
         respond = routing["respond"]
         first = text.split(maxsplit=1)[0] if text else ""
         base, _, target = first.partition("@") if first.startswith("/") else ("", "", "")

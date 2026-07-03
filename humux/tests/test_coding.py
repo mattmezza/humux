@@ -263,3 +263,68 @@ def test_workspace_config_defaults_off():
     cfg = Config()
     assert cfg.workspace.enabled is False
     assert cfg.workspace.directory == ""
+
+
+# --- #155: YOLO covers the coding-harness write tools ---
+
+
+def _yolo_gate_agent(tmp_path):
+    """Bare AgentCore wired only for the _execute_tool_inner permission gate, with
+    the actual tool dispatch stubbed so nothing touches the filesystem."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from core.agent import AgentCore
+
+    agent = object.__new__(AgentCore)
+    agent.permissions = PermissionEngine(db_path=str(tmp_path / "config.db"))
+    agent._request_approval = AsyncMock(return_value="approved")
+    agent._tool_write_file = MagicMock(return_value={"ok": True})
+    agent._tool_edit_file = MagicMock(return_value={"ok": True})
+    agent._tool_run_command_in_dir = AsyncMock(return_value={"exit_code": 0})
+    return agent
+
+
+def _call(name, params):
+    from core.llm import LLMToolCall
+
+    return LLMToolCall(id="t1", name=name, arguments=params)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "name,params",
+    [
+        ("write_file", {"path": "a.txt", "content": "x"}),
+        ("edit_file", {"path": "a.txt", "old": "x", "new": "y"}),
+        ("run_command_in_dir", {"command": "make test"}),
+    ],
+)
+async def test_yolo_auto_approves_coding_tools(tmp_path, name, params):
+    """Under YOLO these ASK-level write tools run without an approval prompt (#155)."""
+    agent = _yolo_gate_agent(tmp_path)
+    result = await agent._execute_tool_inner(_call(name, params), "telegram", "u1", {"yolo": True})
+    assert "error" not in result  # dispatched, not denied
+    agent._request_approval.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_without_yolo_coding_tools_still_prompt(tmp_path):
+    """Without YOLO the same tool prompts for approval as before (#155)."""
+    agent = _yolo_gate_agent(tmp_path)
+    await agent._execute_tool_inner(
+        _call("write_file", {"path": "a.txt", "content": "x"}), "telegram", "u1", {"yolo": False}
+    )
+    agent._request_approval.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_yolo_still_refuses_never_actions(tmp_path):
+    """A NEVER-rail action is refused even under YOLO, with no prompt (#155)."""
+    agent = _yolo_gate_agent(tmp_path)
+    drop = {"command": 'sqlite3 /app/data/x.db "DROP TABLE t"'}
+    result = await agent._execute_tool_inner(
+        _call("run_command_in_dir", drop), "telegram", "u1", {"yolo": True}
+    )
+    assert result == {"error": "This action is not allowed."}
+    agent._request_approval.assert_not_awaited()
+    agent._tool_run_command_in_dir.assert_not_awaited()

@@ -134,6 +134,7 @@ async def _start_agent(config_store: ConfigStore):
             await tg.app.start()
             if tg.app.updater is not None:
                 await tg.app.updater.start_polling()
+            await tg.register_commands()  # publish the ☰ command menu (best-effort)
             agent.channels[channel_name] = tg  # registered only once it is actually polling
             log.info("Telegram bot started (%s)", channel_name)
         except Exception:

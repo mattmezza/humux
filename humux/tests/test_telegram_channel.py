@@ -1,10 +1,99 @@
 import asyncio
+import re
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
 
-from channels.telegram import TELEGRAM_LIMIT, TelegramChannel, _chunk
+from channels.telegram import _MENU_COMMANDS, TELEGRAM_LIMIT, TelegramChannel, _chunk
+
+
+def _dedup_channel() -> TelegramChannel:
+    """Bare channel wired only for _on_text up to the create_task dispatch (#154)."""
+    ch = object.__new__(TelegramChannel)
+    ch.channel_name = "telegram"
+    ch._bot_username = "coachbot"
+    ch._last_inbound = {}
+    ch._fold = lambda chat: None
+    ch._remember_chat = lambda *a: None
+    ch._reply_context = lambda m: ""
+    ch._may_act = AsyncMock(return_value=True)
+    ch._handle_text = AsyncMock()
+    ch._turn_routing = lambda u, m, c: {
+        "user_id": str(u.effective_user.id),
+        "speaker_tag": "",
+        "respond": True,
+        "addressed": True,
+    }
+    return ch
+
+
+def _text_update(text: str, user_id: int = 7, chat_id: int = 100) -> SimpleNamespace:
+    msg = SimpleNamespace(text=text, message_id=1)
+    user = SimpleNamespace(id=user_id, is_bot=False)
+    chat = SimpleNamespace(id=chat_id, type="private")
+    return SimpleNamespace(effective_user=user, message=msg, effective_chat=chat)
+
+
+@pytest.mark.asyncio
+async def test_duplicate_inbound_collapsed_to_one_turn() -> None:
+    ch = _dedup_channel()
+    await ch._on_text(_text_update("/yolo-on"), None)
+    await ch._on_text(_text_update("/yolo-on"), None)  # redelivery
+    await asyncio.sleep(0)
+    assert ch._handle_text.await_count == 1  # second dropped
+
+
+@pytest.mark.asyncio
+async def test_same_text_from_different_senders_not_deduped() -> None:
+    ch = _dedup_channel()
+    await ch._on_text(_text_update("hi", user_id=7), None)
+    await ch._on_text(_text_update("hi", user_id=8), None)  # a different person
+    await asyncio.sleep(0)
+    assert ch._handle_text.await_count == 2
+
+
+def test_menu_command_names_are_telegram_valid() -> None:
+    """Telegram rejects command names with anything but [a-z0-9_] — a hyphenated
+    entry (e.g. yolo-on) would make set_my_commands fail at startup."""
+    for cmd in _MENU_COMMANDS:
+        assert re.fullmatch(r"[a-z0-9_]{1,32}", cmd.command), cmd.command
+        assert cmd.description
+
+
+@pytest.mark.asyncio
+async def test_register_commands_full_replaces_menu() -> None:
+    ch = object.__new__(TelegramChannel)
+    ch.channel_name = "telegram"
+    ch.app = SimpleNamespace(bot=AsyncMock())
+    await ch.register_commands()
+    ch.app.bot.set_my_commands.assert_awaited_once_with(_MENU_COMMANDS)
+
+
+@pytest.mark.asyncio
+async def test_register_commands_swallows_failure() -> None:
+    """A menu-registration error must never stop the bot from polling."""
+    ch = object.__new__(TelegramChannel)
+    ch.channel_name = "telegram"
+    ch.app = SimpleNamespace(bot=AsyncMock())
+    ch.app.bot.set_my_commands.side_effect = RuntimeError("boom")
+    await ch.register_commands()  # does not raise
+
+
+@pytest.mark.asyncio
+async def test_dedup_window_anchored_to_last_processed(monkeypatch) -> None:
+    """A repeat within the window drops, but one after it is a fresh turn — the
+    window is anchored to the last processed message, not slid on every drop."""
+    ch = _dedup_channel()
+    clock = {"t": 0.0}
+    monkeypatch.setattr("channels.telegram.time.monotonic", lambda: clock["t"])
+    await ch._on_text(_text_update("ping"), None)  # processed
+    clock["t"] = 1.0
+    await ch._on_text(_text_update("ping"), None)  # within 3s → dropped
+    clock["t"] = 10.0
+    await ch._on_text(_text_update("ping"), None)  # window passed → processed
+    await asyncio.sleep(0)
+    assert ch._handle_text.await_count == 2
 
 
 def _channel_with_mock_bot(delay: float = 0.0) -> TelegramChannel:
