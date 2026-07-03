@@ -175,6 +175,36 @@ def test_python3_c_script(tmp_path) -> None:
     assert errors == []
 
 
+def test_backslash_continuation(tmp_path) -> None:
+    """Continuation lines after \\ should be treated as part of the same command."""
+    path = tmp_path / "good.md"
+    path.write_text(
+        "# Skill\n\n```bash\npython3 /app/tools/browser.py act --url https://site/login \\\n  --steps '[{\"click\":\"#btn\"}]'\n```\n"
+    )
+    errors = validate_skill_file(path)
+    assert errors == []
+
+
+def test_long_python_invocation(tmp_path) -> None:
+    """Multi-line python3 command with continuation."""
+    path = tmp_path / "good.md"
+    path.write_text(
+        "# Skill\n\n```bash\npython3 /app/tools/skills.py upsert --name weather --stdin --write-seed \\\n  < skills/weather.md\n```\n"
+    )
+    errors = validate_skill_file(path)
+    assert errors == []
+
+
+def test_pipe_continuation(tmp_path) -> None:
+    """Pipe at end of line is fine."""
+    path = tmp_path / "good.md"
+    path.write_text(
+        "# Skill\n\n```bash\nhimalaya envelope list -a personal -s 10 -o json \\\n  | jq '.[].subject'\n```\n"
+    )
+    errors = validate_skill_file(path)
+    assert errors == []
+
+
 def test_strict_mode_warns_missing_description(tmp_path) -> None:
     path = tmp_path / "strict.md"
     path.write_text("# Minimal\n\n```bash\necho hi\n```\n")

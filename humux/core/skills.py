@@ -375,13 +375,20 @@ def _validate_code_blocks(path: Path, content: str) -> list[ValidationError]:
 def _validate_bash_commands(path: Path, content: str) -> list[ValidationError]:
     """Check that every command in bash code blocks complies with the prefix
     allowlist.  Ignores lines that look like commentary, blank lines, or
-    variable assignments."""
+    variable assignments.  Handles backslash and pipe continuations."""
     errors: list[ValidationError] = []
     lines = content.splitlines()
     in_bash = False
+    buf: list[str] = []
+    buf_start: int = 0
+    continued: bool = False  # True when the previous line ended with a backslash
     for i, line in enumerate(lines):
         stripped = line.strip()
         if stripped.startswith("```"):
+            if in_bash and buf:
+                _check_command_buffer(buf, buf_start, path, errors)
+                buf = []
+                continued = False
             lang = stripped.removeprefix("```").strip().lower()
             if in_bash:
                 in_bash = False
@@ -391,41 +398,87 @@ def _validate_bash_commands(path: Path, content: str) -> list[ValidationError]:
         if not in_bash:
             continue
         if not stripped or stripped.startswith("#"):
+            if buf:
+                _check_command_buffer(buf, buf_start, path, errors)
+                buf = []
+                continued = False
             continue
         if "=" in stripped and not stripped.startswith(" "):
-            # Simple variable assignment (e.g. NAME=value)
             lhs = stripped.split("=", 1)[0]
             if lhs.isidentifier() or lhs.isupper():
                 continue
+        ends_with_bs = stripped.endswith("\\")
+        is_pipe_cont = stripped.startswith("|")
+        if buf:
+            if continued or is_pipe_cont:
+                buf.append(line)
+                continued = ends_with_bs
+                if not continued and not is_pipe_cont:
+                    _check_command_buffer(buf, buf_start, path, errors)
+                    buf = []
+                    continued = False
+                continue
+            else:
+                _check_command_buffer(buf, buf_start, path, errors)
+                buf = []
+                continued = False
+        if ends_with_bs:
+            buf = [line]
+            buf_start = i + 1
+            continued = True
+        else:
+            _check_single_command(stripped, i + 1, path, errors)
+    if in_bash and buf:
+        _check_command_buffer(buf, buf_start, path, errors)
 
-        # Extract the first token of the command
-        first_token = stripped.split(maxsplit=1)[0] if stripped else ""
-        if not first_token:
-            continue
 
-        # Check if it's a known tool name (e.g. send_email, write_file)
-        if first_token in _KNOWN_TOOL_NAMES:
-            continue
+def _first_token(stripped: str) -> str:
+    """Extract the first token from a stripped command line."""
+    return stripped.split(maxsplit=1)[0] if stripped else ""
 
-        # Check if it starts with an allowed prefix (including piped filters)
-        allowed = False
-        for prefix in _ALLOWED_PREFIXES:
-            if first_token.startswith(prefix):
-                allowed = True
-                break
-        if first_token in _SAFE_FILTERS:
-            allowed = True
-        # Special case: variable expansion or shell built-ins that are safe
-        if first_token.startswith("$") or first_token in ("echo", "printf", "cd", "export", "source", "."):
-            allowed = True
 
-        if not allowed:
-            errors.append(ValidationError(
-                str(path), i + 1,
-                f"Command '{first_token}' is not in the allowed prefix list "
-                f"({_ALLOWED_PREFIXES})",
-            ))
-    return errors
+def _command_allowed(first_token: str) -> bool:
+    """Check whether *first_token* looks like an allowed command start."""
+    if not first_token:
+        return True
+    if first_token in _KNOWN_TOOL_NAMES:
+        return True
+    if first_token in _SAFE_FILTERS:
+        return True
+    if first_token.startswith("$"):
+        return True
+    if first_token in ("echo", "printf", "cd", "export", "source", "."):
+        return True
+    for prefix in _ALLOWED_PREFIXES:
+        if first_token.startswith(prefix):
+            return True
+    return False
+
+
+def _check_single_command(stripped: str, line_no: int, path: Path, errors: list[ValidationError]) -> None:
+    """Check a single (non-continuation) command line."""
+    token = _first_token(stripped)
+    if token and not _command_allowed(token):
+        errors.append(ValidationError(
+            str(path), line_no,
+            f"Command '{token}' is not in the allowed prefix list "
+            f"({_ALLOWED_PREFIXES})",
+        ))
+
+
+def _check_command_buffer(buf: list[str], start_line: int, path: Path, errors: list[ValidationError]) -> None:
+    """Check a logical command assembled from continuation lines by
+    examining the first token of the first line."""
+    if not buf:
+        return
+    first = buf[0].strip()
+    token = _first_token(first)
+    if token and not _command_allowed(token):
+        errors.append(ValidationError(
+            str(path), start_line,
+            f"Command '{token}' is not in the allowed prefix list "
+            f"({_ALLOWED_PREFIXES})",
+        ))
 
 
 def _validate_cross_references(path: Path, content: str) -> list[ValidationError]:
@@ -435,9 +488,6 @@ def _validate_cross_references(path: Path, content: str) -> list[ValidationError
     lines = content.splitlines()
     seed_dir = path.parent
     for i, line in enumerate(lines):
-        # Match tool script references like ./tools/foo.py or /app/tools/foo.py
-        # These are informational only — we check the paths referenced in code
-        # blocks are reasonable.
         if "tools/" in line and ("/" in line or "`" in line):
             for part in line.split():
                 clean = part.strip("`\"'(),.")
