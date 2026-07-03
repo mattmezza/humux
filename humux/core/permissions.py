@@ -162,6 +162,37 @@ DEFAULT_RULES: dict[str, str] = {
     "run_command:rg*": "ALWAYS",
     "run_command:yt-dlp*": "ALWAYS",
     "run_command:cal*": "ALWAYS",
+    # Common read-only Unix commands (#148) — noisy to ASK for on every fresh
+    # agent. Safe because the check() shell-control guard still blocks any
+    # wildcard auto-approval of a command carrying ; | & $() ` < > (redirects,
+    # chaining, substitution), so `cat >x`, `date; rm -rf /`, `echo x|sh` all
+    # still ASK. Deliberately EXCLUDED: `env` (exec-wrapper — `env A=1 python3 -c
+    # …` runs arbitrary code with no shell-control char, so the guard can't catch
+    # it; it stays ASK, same as xargs/sudo). `tr` uses a `tr *` pattern, not
+    # `tr*`, so it can't bleed onto destructive `truncate`.
+    "run_command:cat*": "ALWAYS",
+    "run_command:ls*": "ALWAYS",
+    "run_command:echo*": "ALWAYS",
+    "run_command:head*": "ALWAYS",
+    "run_command:tail*": "ALWAYS",
+    "run_command:date*": "ALWAYS",
+    "run_command:pwd*": "ALWAYS",
+    "run_command:whoami*": "ALWAYS",
+    "run_command:id*": "ALWAYS",
+    "run_command:uname*": "ALWAYS",
+    "run_command:hostname*": "ALWAYS",
+    "run_command:which*": "ALWAYS",
+    "run_command:wc*": "ALWAYS",
+    "run_command:sort*": "ALWAYS",
+    "run_command:uniq*": "ALWAYS",
+    "run_command:cut*": "ALWAYS",
+    "run_command:tr *": "ALWAYS",
+    "run_command:du*": "ALWAYS",
+    "run_command:df*": "ALWAYS",
+    "run_command:file*": "ALWAYS",
+    "run_command:basename*": "ALWAYS",
+    "run_command:dirname*": "ALWAYS",
+    "run_command:printenv*": "ALWAYS",
     # cp writes files (into the workspace) — treat like other write ops: ask first.
     "run_command:cp*": "ASK",
     "run_command:git*log*": "ALWAYS",

@@ -372,3 +372,48 @@ def test_format_approval_message_truncates_huge_command() -> None:
     )
     assert len(text) < 400
     assert "…" in text
+
+
+def test_readonly_unix_commands_are_default_always() -> None:
+    # #148: fresh agent runs common read-only commands without a prompt.
+    engine = PermissionEngine()
+    for cmd in (
+        "cat notes.txt",
+        "ls -la",
+        "echo hi",
+        "date",
+        "pwd",
+        "whoami",
+        "head -5 f",
+        "tail f",
+        "wc -l f",
+        "df -h",
+        "du -sh .",
+        "which python3",
+        "tr a-z A-Z",
+        "file f",
+    ):
+        assert engine.check("run_command", {"command": cmd}) == PermissionLevel.ALWAYS, cmd
+
+
+def test_readonly_wildcard_still_asks_on_shell_control() -> None:
+    # The shell-control guard must survive the new rules: redirect/chain/subst
+    # commands whose prefix matches an ALWAYS rule still ASK.
+    engine = PermissionEngine()
+    for cmd in ("cat secret > /etc/passwd", "date; rm -rf /", "echo x | sh", "ls $(rm -rf /)"):
+        assert engine.check("run_command", {"command": cmd}) == PermissionLevel.ASK, cmd
+
+
+def test_exec_wrapper_env_stays_ask() -> None:
+    # `env` is an exec-wrapper: `env A=1 python3 -c 'evil'` runs arbitrary code
+    # with no shell-control char, so it is deliberately NOT pre-approved.
+    engine = PermissionEngine()
+    got = engine.check("run_command", {"command": "env A=1 python3 -c 'x'"})
+    assert got == PermissionLevel.ASK
+
+
+def test_tr_rule_does_not_bleed_onto_truncate() -> None:
+    # `tr *` (with space) must not auto-approve destructive `truncate`.
+    engine = PermissionEngine()
+    got = engine.check("run_command", {"command": "truncate -s 0 important.db"})
+    assert got == PermissionLevel.ASK
