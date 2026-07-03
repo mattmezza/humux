@@ -249,14 +249,21 @@ make setup       # creates venv, installs deps, copies example configs
 make run         # starts the agent
 ```
 
-### 4. Chat from the terminal (no Telegram needed)
+### 4. Chat from the terminal (the CLI channel)
 
 ```bash
 cd mpa/humux
-make repl        # interactive REPL — type your messages, see the agent think
-make repl AGENT=my-agent  # chat as a specific agent
-make repl YOLO=1          # auto-approve all permissions (local testing)
+make cli        # interactive CLI — type your messages, see the agent think
+make cli AGENT=my-agent  # chat as a specific agent
+make cli YOLO=1          # auto-approve all permissions (local testing)
 ```
+
+The CLI is a first-class channel — the same agent, same data, same tools as
+Telegram, just at your terminal. It's also reachable remotely over the deploy
+host's SSH (`ssh -t user@host docker exec -it humux uv run python -m core.cli`),
+supports resumable sessions (`--session` / `--sessions` / `--rm-session`), and
+runs concurrently with the live server (all databases run in WAL mode). See the
+**Channels → CLI** docs for details.
 
 ---
 

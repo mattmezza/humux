@@ -121,13 +121,13 @@ assistant, pick one of any agents you've seeded, or skip and build agents later.
 
 ## Testing an agent from the terminal
 
-The REPL can start with a specific agent active, so you can iterate on one without touching
-the global setting:
+The [CLI channel](/docs/channels#cli) can start with a specific agent active, so you can
+iterate on one without touching the global setting:
 
 ```bash
-make repl AGENT=<slug>
+make cli AGENT=<slug>
 # or
-uv run python -m core.repl --agent <slug>
+uv run python -m core.cli --agent <slug>
 ```
 
 An unknown name fails loudly and lists the available agents.
@@ -151,7 +151,7 @@ default. Resolution runs a ladder in `AgentCore._resolve_agent(channel, user_id,
 2. the agent flagged as the default (`is_default`) — or `None` (the config base) if none is.
 
 Bindings live in the `chat_agent` table and work on **any** channel (Telegram, WhatsApp,
-REPL). They are set programmatically — by **bot-per-agent** routing — rather than
+CLI). They are set programmatically — by **bot-per-agent** routing — rather than
 hand-picked per chat; the project is built around **one agent = one bot** (a dedicated
 `telegram:<slug>` bot per identity), so the admin UI no longer offers a per-chat agent
 dropdown. A binding applies on the next turn; the open chat keeps its current identity
