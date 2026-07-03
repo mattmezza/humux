@@ -133,6 +133,34 @@ def test_prompt_uses_agent_identity() -> None:
     assert "DEFAULT-CHARACTER" in default.full_prompt
 
 
+def test_workspace_section_namespaces_by_slug() -> None:
+    # #149/#151: harness on → a <workspace> block appears, exposes the root path,
+    # and namespaces under the agent slug; off → no block.
+    cfg = Config()
+    cfg.workspace.enabled = True
+    cfg.workspace.directory = "/data/ws"
+
+    def build(agent):
+        return build_prompt_sections(
+            config=cfg,
+            history_mode="injection",
+            skills_index="",
+            memories="",
+            reflections="",
+            decomposed_goal=None,
+            agent=agent,
+        ).workspace
+
+    scoped = build(Agent(name="coach"))
+    assert "/data/ws" in scoped  # CWD affordance exposed
+    assert "coach/" in scoped  # namespaced under the slug
+
+    assert "default/" in build(None)  # no agent → "default" fallback
+
+    cfg.workspace.enabled = False
+    assert build(Agent(name="coach")) == ""  # harness off → no block
+
+
 @pytest.mark.asyncio
 async def test_store_seed_lists_files(tmp_path) -> None:
     (tmp_path / "coach.md").write_text("---\nrole: Coach\nskills: [memory]\n---\n")

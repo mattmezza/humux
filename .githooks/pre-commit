@@ -8,9 +8,11 @@ if [ -z "$STAGED" ]; then
   exit 0
 fi
 
-# Fix lint issues and format staged files
-uv run ruff check --fix $STAGED
-uv run ruff format $STAGED
+# Fix lint issues and format staged files. The uv project lives under humux/
+# (monorepo layout), so point uv at it; paths stay repo-root-relative and ruff
+# discovers per-file config by walking up to humux/pyproject.toml.
+uv run --project humux ruff check --fix $STAGED
+uv run --project humux ruff format $STAGED
 
 # Re-stage any files that were modified by ruff
 git add $STAGED
