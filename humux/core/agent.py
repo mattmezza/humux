@@ -579,8 +579,9 @@ TOOLS = [
         "description": (
             "Save a durable long-term memory — a fact, preference, or relationship about "
             "the owner or their contacts. Use it proactively whenever you learn something "
-            "worth keeping. Reading is automatic: relevant memories are injected each turn, "
-            "and recall_memory searches the rest."
+            "worth keeping. Do NOT store transient action-confirmations (e.g. 'filed issue "
+            "#12', 'created PR #40') — those are not durable facts. Reading is automatic: "
+            "relevant memories are injected each turn, and recall_memory searches the rest."
         ),
         "input_schema": {
             "type": "object",
@@ -591,7 +592,10 @@ TOOLS = [
                 },
                 "subject": {
                     "type": "string",
-                    "description": "Who or what it is about, e.g. 'matteo' or a contact's name.",
+                    "description": (
+                        "Who or what it is about, e.g. 'matteo' or a contact's name. Leave "
+                        "empty rather than repeating the category (not 'work'/'fact')."
+                    ),
                 },
                 "category": {
                     "type": "string",
@@ -3259,10 +3263,15 @@ class AgentCore:
         category = str(params.get("category", "") or "fact").strip()
         scope = (request_state or {}).get("agent_name") or ""
         try:
-            await self.memory.remember(content, subject=subject, category=category, scope=scope)
+            stored = await self.memory.remember(
+                content, subject=subject, category=category, scope=scope
+            )
         except Exception:
             log.exception("remember failed for: %s", content[:80])
             return {"error": "Saving the memory failed."}
+        if not stored:
+            log.info("Tool call: remember — skipped transient/empty: %s", content[:80])
+            return {"ok": True, "skipped": "transient confirmation; not stored as a durable memory"}
         log.info("Tool call: remember — %s/%s", category, subject or "-")
         return {"ok": True, "remembered": content}
 

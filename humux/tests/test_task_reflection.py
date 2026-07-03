@@ -347,3 +347,58 @@ class TestFormatToolLog:
         log = [{"name": "run_command", "result": {"stdout": "x" * 1000}}]
         result = ReflectionStore._format_tool_log(log)
         assert "run_command: OK" in result
+
+
+# -- #156: dedup / phantom-tool hygiene --
+
+
+@pytest.mark.asyncio
+async def test_store_drops_phantom_tool_lesson(store) -> None:
+    """A lesson recommending an uninstalled binary (rg) is not stored."""
+    stored = await store._store_reflection(
+        {"lesson": "Use rg instead of grep for faster search", "category": "tool"}
+    )
+    assert stored is False
+    assert await _count_rows(store.db_path) == 0
+
+
+@pytest.mark.asyncio
+async def test_store_drops_near_duplicate_lesson(store) -> None:
+    """A reworded variant of an existing lesson is not stored again."""
+    first = await store._store_reflection(
+        {"lesson": "Obtain user confirmation before sending email", "category": "communication"}
+    )
+    second = await store._store_reflection(
+        {
+            "lesson": "Always get user confirmation before sending an email",
+            "category": "communication",
+        }
+    )
+    assert first is True
+    assert second is False
+    assert await _count_rows(store.db_path) == 1
+
+
+@pytest.mark.asyncio
+async def test_format_filters_phantom_and_near_dupes(store) -> None:
+    """format_for_prompt drops phantom-tool advice and near-duplicate lessons."""
+    # Insert directly (bypassing store-time filters) to simulate a legacy DB.
+    async with aiosqlite.connect(store.db_path) as db:
+        for lesson in (
+            "Use rg instead of grep to search files",
+            "Obtain user confirmation before sending email",
+            "Always get user confirmation before sending an email",
+            "Calendar events need an end time; default to one hour",
+        ):
+            await db.execute(
+                "INSERT INTO reflections (task_summary, outcome, lesson, category) "
+                "VALUES ('', 'success', ?, 'general')",
+                (lesson,),
+            )
+        await db.commit()
+
+    out = await store.format_for_prompt()
+    assert "rg instead of grep" not in out
+    # Exactly one of the two confirmation variants survives.
+    assert out.count("confirmation before sending") == 1
+    assert "Calendar events need an end time" in out

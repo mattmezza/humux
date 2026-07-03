@@ -359,6 +359,30 @@ def _normalize_subject(subject: str) -> str:
     return (subject or "").strip().lower()
 
 
+# Category words must never land in the subject slot (#156): the model sometimes
+# echoes the category there, producing entries like "[work] work: ...".
+_CATEGORY_WORDS = frozenset(
+    {"fact", "preference", "relationship", "work", "routine", "health", "travel", "general"}
+)
+
+# Transient action-confirmations ("filed issue #12", "created PR #40") duplicate
+# what GitHub already records and shouldn't become durable memories (#156).
+# ponytail: heuristic (verb + tracking-noun/#N); widen if new phrasings slip through.
+_TRANSIENT_CONFIRMATION_RE = re.compile(
+    r"\b(filed|created|opened|closed|merged|submitted|sent|posted|drafted|pushed)\b"
+    r".{0,40}(\b(issue|pr|pull request|ticket|email|message|comment|commit)\b|#\d+)",
+    re.IGNORECASE,
+)
+
+
+def _clean_subject(subject: str, category: str) -> str:
+    """Drop a subject that is just the category word echoed back (#156)."""
+    s = _normalize_subject(subject)
+    if not s or s == (category or "").strip().lower() or s in _CATEGORY_WORDS:
+        return ""
+    return s
+
+
 def _extraction_scope_block(agent_scope: str) -> str:
     """Scope instruction injected into the extraction prompt (#42).
 
@@ -1081,15 +1105,26 @@ class MemoryStore:
 
     async def remember(
         self, content: str, *, subject: str = "", category: str = "fact", scope: str = ""
-    ) -> None:
+    ) -> bool:
         """Public entry point for the ``remember`` tool (#13): store a durable fact.
 
         Thin wrapper over ``_insert_long_term`` so memory writes go through a
         parameterised INSERT instead of the model hand-building sqlite3 SQL (which
         broke on quoting and was injectable). ponytail: dedup is left to the
         consolidation job; add a similarity pre-check here if repeats pile up.
+
+        Rejects transient action-confirmations and normalises a category-echo
+        subject (#156). Returns True if stored, False if skipped.
         """
+        content = (content or "").strip()
+        if not content:
+            return False
+        if _TRANSIENT_CONFIRMATION_RE.search(content):
+            log.debug("Skipping transient confirmation, not a durable memory: %s", content[:80])
+            return False
+        subject = _clean_subject(subject, category or "fact")
         await self._insert_long_term(category or "fact", subject, content, scope=scope)
+        return True
 
     async def _insert_long_term(
         self,
