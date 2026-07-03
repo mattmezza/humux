@@ -4,10 +4,14 @@ WORKDIR /app
 
 # System deps (ffmpeg for voice pipeline, curl for health checks, sqlite3 for memory)
 # golang + build-essential build wacli (CGO, sqlite_fts5) from the pinned upstream tag.
+# The run_command allowlist (core/executor.py ALLOWED_PREFIXES) promises these CLIs
+# exist — keep this list in sync with it: git (coding harness clone/commit),
+# ripgrep (rg), w3m, pandoc, poppler-utils (pdftotext), yt-dlp, ncal (cal).
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg curl ca-certificates jq sqlite3 \
     bash tar gzip xz-utils \
     golang build-essential pkg-config \
+    git ripgrep w3m pandoc poppler-utils yt-dlp ncal \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Himalaya CLI (pre-built Rust binary for email management)

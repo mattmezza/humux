@@ -103,6 +103,8 @@ ALLOWED_PREFIXES = [
 ]
 ```
 
+The effective list is injected into the system prompt (`core/prompt_builder.py`) so the model constructs valid commands on the first try instead of discovering the whitelist by "Command not allowed" errors. Every prefix must resolve to a binary installed in the image — the `Dockerfile` apt layer is kept in sync with this list.
+
 ### Config System (`core/config.py`, `core/config_store.py`)
 
 Dual-layer configuration:

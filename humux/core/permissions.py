@@ -162,6 +162,8 @@ DEFAULT_RULES: dict[str, str] = {
     "run_command:rg*": "ALWAYS",
     "run_command:yt-dlp*": "ALWAYS",
     "run_command:cal*": "ALWAYS",
+    # cp writes files (into the workspace) — treat like other write ops: ask first.
+    "run_command:cp*": "ASK",
     "run_command:git*log*": "ALWAYS",
     "run_command:git*status*": "ALWAYS",
     "run_command:git*diff*": "ALWAYS",
