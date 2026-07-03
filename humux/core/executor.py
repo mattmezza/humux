@@ -147,24 +147,30 @@ class ToolExecutor:
             return False  # unbalanced quotes etc. — refuse rather than guess
         if not tokens:
             return False
+        # Each segment carries the operator that precedes it ("" for the first).
+        # A safe filter is only permitted after a real pipe `|`: after `;`/`&&`
+        # it would run as a standalone command reading its own file argument
+        # (`curl ok ; cat /etc/passwd`), which is not a downstream filter at all.
+        segments: list[tuple[str, list[str]]] = []
+        op = ""
         segment: list[str] = []
-        segments = [segment]
         for tok in tokens:
             if tok in self._SEGMENT_OPS:
+                segments.append((op, segment))
+                op = tok
                 segment = []
-                segments.append(segment)
             elif tok in ("(", ")"):
                 return False  # bare subshell
             else:
                 segment.append(tok)
-        for idx, segment in enumerate(segments):
+        segments.append((op, segment))
+        for prev_op, segment in segments:
             if not segment:
                 continue
             joined = " ".join(segment)
             if any(joined.startswith(p) for p in self.ALLOWED_PREFIXES):
                 continue
-            # Downstream pipeline stages may be pure read-only filters.
-            if idx > 0 and segment[0] in self._SAFE_FILTERS:
+            if prev_op == "|" and segment[0] in self._SAFE_FILTERS:
                 continue
             return False
         return True
