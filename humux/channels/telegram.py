@@ -894,7 +894,7 @@ class TelegramChannel:
 
         explore writes a per-step line to data/browser/last/explore.status; we
         poll it and edit a single Telegram message in place (the chat equivalent
-        of the REPL's self-updating spinner line). No-op when nothing is running.
+        of the CLI's self-updating spinner line). No-op when nothing is running.
         """
         # ponytail: the explore status file is a single global singleton, so only
         # the default bot mirrors it — otherwise a run triggered via one agent-bot

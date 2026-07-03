@@ -396,19 +396,19 @@ def test_subagent_status_note_lists_only_running_runs(agent) -> None:
             run_id="r1",
             agent="coding-helper",
             task="t",
-            origin_channel="repl",
-            origin_chat_id="repl",
+            origin_channel="cli",
+            origin_chat_id="cli:s1",
             progress="step 2",
         )
     )
-    note = agent._subagent_status_note("repl", "repl")
+    note = agent._subagent_status_note("cli", "cli:s1")
     assert "r1" in note and "running" in note and "step 2" in note
     # Scoped to the chat: a different chat sees nothing.
-    assert agent._subagent_status_note("repl", "other-chat") == ""
+    assert agent._subagent_status_note("cli", "other-chat") == ""
 
     # Once finished it leaves the preamble (the agent synthesises a reply instead).
     agent.subagents.finish("r1", "done", result="the iPhone 17e is CHF 599")
-    assert agent._subagent_status_note("repl", "repl") == ""
+    assert agent._subagent_status_note("cli", "cli:s1") == ""
 
 
 # ---------------------------------------------------------------------------
