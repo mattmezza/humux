@@ -116,4 +116,12 @@ USER humux
 ENV WACLI_DEVICE_LABEL=humux
 
 EXPOSE 8000
+
+# Health check \u2014 orchestrators (Docker Compose, Swarm, K8s) can detect a hung
+# or failed process.  Curl is pre-installed (see system-deps apt-get above).
+# The start period is generous: the first boot runs the setup wizard and may
+# take a while before the /health route responds 200.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD curl -f http://localhost:8000/health || exit 1
+
 CMD ["uv", "run", "python", "-m", "core.main"]
