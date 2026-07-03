@@ -32,9 +32,15 @@ humux ships with sensible defaults:
 "run_command:sqlite3*/app/data/memory.db*INSERT*"    # Memory writes
 "run_command:sqlite3*/app/data/memory.db*UPDATE*"    # Memory updates
 "run_command:sqlite3*/app/data/memory.db*DELETE*"    # Memory deletes
+"run_command:cat*"  "run_command:ls*"  "run_command:echo*"   # Common read-only
+"run_command:head*" "run_command:tail*" "run_command:date*"  # Unix commands —
+"run_command:pwd*"  "run_command:whoami*" "run_command:id*"  # cat/ls/wc/df/…
+"run_command:wc*"   "run_command:df*"   "run_command:du*"    # (see note below)
 "web_search"                                          # Web searches
 "set_reaction"                                        # Emoji reactions (Telegram)
 ```
+
+The read-only Unix commands above (`cat`, `ls`, `echo`, `head`, `tail`, `date`, `pwd`, `whoami`, `id`, `uname`, `hostname`, `which`, `wc`, `sort`, `uniq`, `cut`, `tr`, `du`, `df`, `file`, `basename`, `dirname`, `printenv`) are pre-approved so a fresh agent isn't prompted for trivial inspection. They stay safe because the shell-control guard still forces an **ASK** whenever the command redirects, chains, or substitutes (`cat x > y`, `date; rm -rf /`, `echo x | sh`). `env` is **not** pre-approved — as an exec-wrapper (`env A=1 python3 -c …`) it can run arbitrary code with no shell-control character, so it stays ASK alongside `xargs`, `sudo`, `find`, and the file-mutating commands (`rm`, `mv`, `cp`, `chmod`, `mkdir`, …).
 
 ### Ask first (write operations)
 
