@@ -130,7 +130,7 @@ Rules are persisted in the SQLite config store (`data/config.db`) and can be man
 
 The permission system works alongside other security layers:
 
-- **Command whitelist** — only commands matching `ALLOWED_PREFIXES` can run
+- **Command whitelist** — only commands matching `ALLOWED_PREFIXES` can run. A command may pipe into a read-only filter (`jq`, `head`, `tail`, `rg`, `grep`, `wc`, …), but the first segment must be an allowlisted prefix. Subshells and command substitution (`` ` ``, `$(…)`) are rejected unless single-quoted — single quotes make them literal, so quote Markdown bodies (`--body '…'`) to keep backticks intact.
 - **User ID whitelist** — only allowed users can interact with the bot
 - **Permission patterns** — glob-based rules control what the agent can do
 - **Approval flow** — interactive confirmation for write operations
