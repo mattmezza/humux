@@ -401,11 +401,13 @@ class TelegramChannel:
         dedup_key = (sender_id, str(chat_id))
         now = time.monotonic()
         prev = self._last_inbound.get(dedup_key)
-        if text:
-            self._last_inbound[dedup_key] = (text, now)
         if text and prev and prev[0] == text and now - prev[1] < _DEDUP_WINDOW_S:
+            # Anchor the window to the last *processed* message (don't refresh on a
+            # drop) so a deliberate repeat after the window still counts as a turn.
             log.debug("Dropping duplicate inbound (chat=%s): %r", chat_id, text[:40])
             return
+        if text:
+            self._last_inbound[dedup_key] = (text, now)
 
         respond = routing["respond"]
         first = text.split(maxsplit=1)[0] if text else ""

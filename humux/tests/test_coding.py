@@ -302,9 +302,7 @@ def _call(name, params):
 async def test_yolo_auto_approves_coding_tools(tmp_path, name, params):
     """Under YOLO these ASK-level write tools run without an approval prompt (#155)."""
     agent = _yolo_gate_agent(tmp_path)
-    result = await agent._execute_tool_inner(
-        _call(name, params), "telegram", "u1", {"yolo": True}
-    )
+    result = await agent._execute_tool_inner(_call(name, params), "telegram", "u1", {"yolo": True})
     assert "error" not in result  # dispatched, not denied
     agent._request_approval.assert_not_awaited()
 

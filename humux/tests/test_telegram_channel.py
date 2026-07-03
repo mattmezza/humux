@@ -52,6 +52,22 @@ async def test_same_text_from_different_senders_not_deduped() -> None:
     assert ch._handle_text.await_count == 2
 
 
+@pytest.mark.asyncio
+async def test_dedup_window_anchored_to_last_processed(monkeypatch) -> None:
+    """A repeat within the window drops, but one after it is a fresh turn — the
+    window is anchored to the last processed message, not slid on every drop."""
+    ch = _dedup_channel()
+    clock = {"t": 0.0}
+    monkeypatch.setattr("channels.telegram.time.monotonic", lambda: clock["t"])
+    await ch._on_text(_text_update("ping"), None)  # processed
+    clock["t"] = 1.0
+    await ch._on_text(_text_update("ping"), None)  # within 3s → dropped
+    clock["t"] = 10.0
+    await ch._on_text(_text_update("ping"), None)  # window passed → processed
+    await asyncio.sleep(0)
+    assert ch._handle_text.await_count == 2
+
+
 def _channel_with_mock_bot(delay: float = 0.0) -> TelegramChannel:
     # Skip __init__ (it builds a real Application needing a bot token); _typing
     # only touches self.app.bot, the static _route helper and _PLACEHOLDER_DELAY.
