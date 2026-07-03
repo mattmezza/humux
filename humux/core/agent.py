@@ -231,6 +231,31 @@ def _strip_command_suffix(message: str) -> str:
     return text.lower()
 
 
+_CONTROL_COMMANDS = ("/yolo-on", "/yolo-off", "/new", "/clear")
+
+
+def _control_command(message: str) -> str:
+    """The control command a message *is*, tolerant of the ``@bot`` suffix and of
+    duplicate/merged self-repetition (#154).
+
+    Inbound coalescing or a redelivering client can hand the runtime a command as
+    ``"/yolo-on\\n\\n/yolo-on"`` or ``"/yolo-on@bot\\n\\n/yolo-on"``; a bare
+    exact-match misses those and the command is processed as ordinary text (YOLO
+    never actually toggles). Returns the command only when *every* whitespace-
+    separated token normalises to the same control command — mixed text (e.g.
+    ``"/new please"``) returns ``""`` so a command is never silently pulled out of
+    a real message."""
+    tokens = message.split()
+    if not tokens:
+        return ""
+    normalised = {_strip_command_suffix(tok) for tok in tokens}
+    if len(normalised) == 1:
+        (only,) = tuple(normalised)
+        if only in _CONTROL_COMMANDS:
+            return only
+    return ""
+
+
 # -- Tool definitions the LLM can call --
 
 TOOLS = [
@@ -1165,7 +1190,7 @@ class AgentCore:
             await self._record_inbound(channel, user_id, chat_id, message, attachments)
             return AgentResponse(text="")
 
-        command = _strip_command_suffix(message)
+        command = _control_command(message)
 
         # Resolve the agent for this turn — a per-chat binding wins over the default
         # (#14); an explicit override (scheduler) skips the ladder (#29).

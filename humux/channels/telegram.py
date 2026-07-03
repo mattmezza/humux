@@ -42,6 +42,13 @@ log = logging.getLogger(__name__)
 # "@bot" target so a command never acts on the wrong bot in a multi-agent room.
 _AGENT_COMMANDS = frozenset({"/new", "/clear", "/yolo-on", "/yolo-off"})
 
+# Collapse identical back-to-back inbound text from the same sender within this
+# window (#154): Telegram/network redelivery or a client burst can deliver the
+# same message several times, and a duplicated control command ("/yolo-on") would
+# otherwise fold into one merged turn and be processed as text. A short window so
+# a deliberate repeat seconds later still counts as a new turn.
+_DEDUP_WINDOW_S = 3.0
+
 # Callback data prefix for approval buttons
 _APPROVE_PREFIX = "perm_approve:"
 _DENY_PREFIX = "perm_deny:"
@@ -134,6 +141,9 @@ class TelegramChannel:
         # Last chat a user wrote from, used to route approval prompts. Holds a
         # folded "<chat>:<thread>" string when the message came from a topic.
         self._last_chat_for_user: dict[int, int | str] = {}
+        # Last inbound text per (sender, chat) + when, to drop duplicate deliveries
+        # (#154). Keyed by sender so two people saying the same thing don't collide.
+        self._last_inbound: dict[tuple[int, str], tuple[str, float]] = {}
         # This bot's own identity, cached lazily from the first update (the Bot
         # API has it only once polling is initialised). Used to detect @mentions
         # and replies aimed at this bot in group rooms (#30).
@@ -384,6 +394,19 @@ class TelegramChannel:
             return
 
         text = (message.text or "").strip()
+
+        # Drop an identical back-to-back message from the same sender (#154):
+        # redelivery or a client burst would otherwise become several turns (or a
+        # folded, unmatchable "/yolo-on\n\n/yolo-on"). Empty text is left alone.
+        dedup_key = (sender_id, str(chat_id))
+        now = time.monotonic()
+        prev = self._last_inbound.get(dedup_key)
+        if text:
+            self._last_inbound[dedup_key] = (text, now)
+        if text and prev and prev[0] == text and now - prev[1] < _DEDUP_WINDOW_S:
+            log.debug("Dropping duplicate inbound (chat=%s): %r", chat_id, text[:40])
+            return
+
         respond = routing["respond"]
         first = text.split(maxsplit=1)[0] if text else ""
         base, _, target = first.partition("@") if first.startswith("/") else ("", "", "")
