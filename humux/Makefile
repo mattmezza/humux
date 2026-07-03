@@ -1,4 +1,4 @@
-.PHONY: help setup setup-hooks install install-dev sync lock lint format test run repl dev dev-agent dev-css dev-wa kokoro clean release css
+.PHONY: help setup setup-hooks install install-dev sync lock lint format test run cli dev dev-agent dev-css dev-wa kokoro clean release css
 
 PORT := 8001
 PYTHON := uv run python
@@ -30,9 +30,9 @@ help:
 	@echo "    make kokoro       Install Kokoro offline TTS + download its model (local runs)"
 	@echo ""
 	@echo "  Development:"
-	@echo "    make repl         Chat with the agent from the terminal (no Telegram)"
-	@echo "                      (make repl AGENT=<slug> to test a specific agent)"
-	@echo "                      (make repl YOLO=1 to auto-approve all permissions)"
+	@echo "    make cli          Chat with the agent from the terminal (no Telegram)"
+	@echo "                      (make cli AGENT=<slug> to test a specific agent)"
+	@echo "                      (make cli YOLO=1 to auto-approve all permissions)"
 	@echo "    make dev          Show instructions for running dev services"
 	@echo "    make dev-agent    Run agent with auto-reload"
 	@echo "    make dev-css      Run Tailwind CSS watcher"
@@ -96,9 +96,9 @@ test:
 run:
 	$(UV) run python -m core.main
 
-# Local REPL — chat with the agent from the terminal (no Telegram)
-repl:
-	$(PYTHON) -m core.repl $(if $(AGENT),--agent $(AGENT),) $(if $(YOLO),--yolo,)
+# Local CLI — chat with the agent from the terminal (no Telegram)
+cli:
+	$(PYTHON) -m core.cli $(if $(AGENT),--agent $(AGENT),) $(if $(YOLO),--yolo,)
 
 # Run in dev mode: instructions for running services in separate shells
 dev:

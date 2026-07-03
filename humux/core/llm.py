@@ -14,7 +14,7 @@ from typing import Any, cast
 from anthropic import AsyncAnthropic
 
 # Dedicated logger for model chain-of-thought. Silent by default (WARNING);
-# the REPL bumps it to INFO to stream reasoning live without spamming server logs.
+# the CLI bumps it to INFO to stream reasoning live without spamming server logs.
 reasoning_log = logging.getLogger("core.llm.reasoning")
 reasoning_log.setLevel(logging.WARNING)
 

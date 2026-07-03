@@ -93,7 +93,7 @@ def _preview_path(name: str) -> Path:
 
 
 def _status_path() -> Path:
-    # Live one-line progress for an in-flight `explore` run. The REPL spinner tails
+    # Live one-line progress for an in-flight `explore` run. The CLI spinner tails
     # this so the user sees step-by-step progress during the (multi-minute) loop.
     return _data_dir() / "browser" / "last" / "explore.status"
 
@@ -101,7 +101,7 @@ def _status_path() -> Path:
 def _shot_dir() -> Path:
     """Where saved screenshots go.
 
-    Local dev/REPL: ~/Downloads so you can open the file. Server/Docker (/app/data
+    Local dev/CLI: ~/Downloads so you can open the file. Server/Docker (/app/data
     present): the data volume instead — nobody browses the container's home, and
     Downloads isn't mounted, so a Downloads default would just bloat the container
     layer invisibly.

@@ -383,7 +383,7 @@ class BrowserToolConfig(BaseModel):
     enabled: bool = False
     headless: bool = True
     # Optional CDP endpoint of a sidecar Chromium. Empty = launch locally (works
-    # in the local REPL with no extra services). Set to keep the main image lean.
+    # in the local CLI with no extra services). Set to keep the main image lean.
     cdp_url: str = ""
     # Override the browser User-Agent. Empty = built-in desktop Chrome UA.
     user_agent: str = ""
