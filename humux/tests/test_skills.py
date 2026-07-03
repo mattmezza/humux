@@ -153,6 +153,28 @@ def test_known_tool_name_is_valid(tmp_path) -> None:
     assert errors == []
 
 
+def test_unlabeled_block_not_checked(tmp_path) -> None:
+    """Unlabeled code blocks (tables, tool call examples) are not validated."""
+    path = tmp_path / "good.md"
+    path.write_text("# Skill\n\n```\n| Col1 | Col2 |\n|------|------|\n| A    | B    |\n```\n\n```\nwrite_file(path=\"test.txt\", content=\"hello\")\n```\n")
+    errors = validate_skill_file(path)
+    assert errors == []
+
+
+def test_python3_tool_invocation(tmp_path) -> None:
+    path = tmp_path / "good.md"
+    path.write_text("# Skill\n\n```bash\npython3 ./tools/browser.py read --url https://example.com\n```\n")
+    errors = validate_skill_file(path)
+    assert errors == []
+
+
+def test_python3_c_script(tmp_path) -> None:
+    path = tmp_path / "good.md"
+    path.write_text("# Skill\n\n```bash\npython3 -c \"import sys; print(sys.version)\"\n```\n")
+    errors = validate_skill_file(path)
+    assert errors == []
+
+
 def test_strict_mode_warns_missing_description(tmp_path) -> None:
     path = tmp_path / "strict.md"
     path.write_text("# Minimal\n\n```bash\necho hi\n```\n")

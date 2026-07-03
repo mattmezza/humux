@@ -266,10 +266,8 @@ _ALLOWED_PREFIXES: list[str] = [
     "himalaya",
     "jq",
     "wacli",
-    "python3 /app/tools/skills.py",
-    "python3 /app/tools/contacts.py",
+    "python3",
     "sqlite3",
-    "python3 /app/tools/",
     "gh",
     "git",
     "w3m",
@@ -288,17 +286,36 @@ _SAFE_FILTERS: set[str] = {
 # Tools that are registered as callable tools (not CLI commands) — their
 # names are valid as tool-names inside bash code blocks.
 _KNOWN_TOOL_NAMES: set[str] = {
+    # Communication tools
     "send_email",
     "reply_email",
     "send_message",
+    "set_reaction",
+    # Calendar
     "create_calendar_event",
+    # Contacts
     "create_contact",
     "search_contacts",
+    # Web / search
     "web_search",
     "generate_image",
-    "manage_jobs",
-    "spawn_subagent",
+    # Workspace file tools
+    "read_file",
+    "write_file",
+    "edit_file",
+    "list_dir",
+    "grep",
+    "run_command_in_dir",
+    # Memory
+    "remember",
+    "recall_memory",
     "list_secrets",
+    "request_secret",
+    # Scheduling
+    "manage_jobs",
+    # Agent
+    "spawn_subagent",
+    "load_skill",
 }
 
 
@@ -368,7 +385,7 @@ def _validate_bash_commands(path: Path, content: str) -> list[ValidationError]:
             lang = stripped.removeprefix("```").strip().lower()
             if in_bash:
                 in_bash = False
-            elif lang in ("bash", "sh", ""):
+            elif lang in ("bash", "sh"):
                 in_bash = True
             continue
         if not in_bash:
