@@ -201,6 +201,19 @@ def _truncate_approval(text: str) -> str:
     return text if len(text) <= _APPROVAL_TEXT_CAP else text[: _APPROVAL_TEXT_CAP - 1] + "…"
 
 
+# When the approval prompt can't be delivered we fail closed (skip the action),
+# but the user never saw it — so the model must NOT be told "user skipped", or
+# it wrongly concludes the owner is stepping in and replies to a phantom.
+_UNDELIVERABLE_ERROR = {
+    "error": (
+        "The approval prompt could not be delivered to the user (channel/delivery "
+        "error). The user did NOT see this request and did NOT skip or intervene. "
+        "Do not retry the same action; if it matters, say you couldn't reach the "
+        "user for approval."
+    )
+}
+
+
 def strip_voice_marker(text: str) -> str:
     """Remove the voice control marker (bare or with a ``:lang`` suffix) so it
     never leaks into a user-visible reply."""
@@ -2445,6 +2458,8 @@ class AgentCore:
             }
         if is_write_action and write_decisions.get(write_sig) == "denied":
             return {"error": "Action denied by user."}
+        if is_write_action and write_decisions.get(write_sig) == "undeliverable":
+            return _UNDELIVERABLE_ERROR
         if is_write_action and write_decisions.get(write_sig) == "skipped":
             return {
                 "error": (
@@ -2488,6 +2503,9 @@ class AgentCore:
                 elif isinstance(approvals, dict):
                     approvals[match_key] = decision
                     request_state["approvals"] = approvals
+            if decision == "undeliverable":
+                log.warning("Permission UNDELIVERABLE (fail-closed): %s", name)
+                return _UNDELIVERABLE_ERROR
             if decision == "skipped":
                 log.info("Permission SKIPPED by user: %s", name)
                 return {
@@ -4233,7 +4251,7 @@ class AgentCore:
                 # request and skip the action.
                 log.exception("Approval request undeliverable; skipping action (fail-closed)")
                 self.permissions._pending.pop(request_id, None)
-                return "skipped"
+                return "undeliverable"
 
         # Wait for the user's response (timeout after 2 minutes)
         try:

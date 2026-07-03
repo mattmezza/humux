@@ -996,7 +996,7 @@ async def test_undeliverable_approval_fails_closed(agent) -> None:
     ch = _FailingChannel()
     agent.channels = {"tg": ch}
     result = await agent._await_approval("Run command: " + "x" * 9000, "tg", "user1")
-    assert result == "skipped"
+    assert result == "undeliverable"  # distinct from a real user skip (#stepping-in bug)
     assert len(ch.calls) == 2  # original send + one truncated retry
     assert len(ch.calls[1]) <= 3500  # the retry was truncated to fit
     assert not agent.permissions._pending  # pending request dropped, no leak
