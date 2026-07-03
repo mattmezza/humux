@@ -316,6 +316,11 @@ async def _lifespan(application):  # noqa: ANN001
     from dotenv import load_dotenv
 
     load_dotenv()
+    # WAL mode for every data/*.db so a concurrent core.cli process can write
+    # without SQLITE_BUSY (#168). Persistent file property; one-shot at boot.
+    from core.db import ensure_wal
+
+    ensure_wal()
     await _config_store.seed_if_empty()
     await _config_store.ensure_admin_password()
     # Initialise the agent vault's wrapped DEK when an admin password is set via
