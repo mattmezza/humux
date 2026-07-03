@@ -3372,10 +3372,22 @@ class AgentCore:
             origin = (request_state or {}).get("origin") or {}
             origin_agent = (request_state or {}).get("agent_name") or ""
             origin_channel = origin.get("channel") or ""
+            from_cli = origin_channel == "cli"
             if origin_channel == "telegram" or origin_channel.startswith("telegram:"):
                 channel = origin_channel
+            elif from_cli:
+                # The CLI channel only exists in this transient process; the job
+                # fires later in the server, where the scheduler falls back to
+                # the owner's Telegram DM (#168).
+                channel = "cli"
             origin_user_id = str(origin.get("user_id") or "")
             origin_chat_id = str(origin.get("chat_id") or "")
+            cli_note = (
+                "This job runs in the server later; its output is delivered to your "
+                "Telegram DM, not this terminal."
+                if from_cli
+                else None
+            )
 
             if cron_expr:
                 # Recurring cron job
@@ -3401,7 +3413,7 @@ class AgentCore:
                     origin_chat_id=origin_chat_id,
                 )
                 await self.scheduler.sync_job(job_id)
-                return {
+                result = {
                     "ok": True,
                     "job_id": job_id,
                     "schedule": "cron",
@@ -3409,6 +3421,9 @@ class AgentCore:
                     "task": task,
                     "channel": channel,
                 }
+                if cli_note:
+                    result["note"] = cli_note
+                return result
 
             elif run_at_str:
                 # One-shot job
@@ -3437,7 +3452,7 @@ class AgentCore:
                     origin_chat_id=origin_chat_id,
                 )
                 await self.scheduler.sync_job(job_id)
-                return {
+                result = {
                     "ok": True,
                     "job_id": job_id,
                     "schedule": "once",
@@ -3445,6 +3460,9 @@ class AgentCore:
                     "task": task,
                     "channel": channel,
                 }
+                if cli_note:
+                    result["note"] = cli_note
+                return result
             else:
                 return {"error": "Must specify 'cron' for recurring or 'run_at' for one-time jobs."}
 

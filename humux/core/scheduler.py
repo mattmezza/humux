@@ -90,15 +90,21 @@ async def run_agent_task(
 
         # Deliver the response to the target channel
         ch = agent.channels.get(channel)
+        # Deliver to the chat the job was scheduled in (#71); fall back to the
+        # owner's chat for jobs with no captured origin (pre-#71, config-seeded).
+        chat_id = origin_chat_id or _get_owner_chat_id(agent, channel)
+        if ch is None:
+            # Origin channel isn't registered here (e.g. a job scheduled from the
+            # cli/repl channel firing in the server) — deliver to the owner's
+            # Telegram DM instead of dropping it (#168).
+            ch, chat_id = _fallback_delivery(agent)
+            if ch:
+                log.info("Scheduler: channel %r not registered; delivering via Telegram", channel)
         if ch and response.text:
             text = response.text.replace("[NO_UPDATES]", "").strip()
             if silent_mode and not text:
                 log.info("Scheduler silent task produced no updates; skipping send")
                 return
-            # Deliver to the chat the job was scheduled in (#71); fall back to
-            # the owner's chat for jobs with no captured origin (pre-#71, CLI,
-            # config-seeded).
-            chat_id = origin_chat_id or _get_owner_chat_id(agent, channel)
             if chat_id:
                 await ch.send(chat_id, text or response.text)
             else:
@@ -148,6 +154,11 @@ async def run_subagent_task(
         )
         text = result.get("result") or result.get("error") or ""
         ch = agent.channels.get(channel)
+        if ch is None:
+            # cli/repl-origin job firing in the server: deliver to owner's DM (#168).
+            ch, target = _fallback_delivery(agent)
+            if ch:
+                log.info("Scheduler: channel %r not registered; delivering via Telegram", channel)
         if ch and text and target:
             await ch.send(target, text)
         elif not ch:
@@ -210,6 +221,22 @@ async def run_memory_consolidation() -> None:
         )
     except Exception:
         log.exception("Scheduler memory consolidation failed")
+
+
+def _fallback_delivery(agent: AgentCore) -> tuple[object, int | str | None]:
+    """Owner's Telegram channel + chat id, for jobs whose origin channel is gone.
+
+    A job scheduled from the ``cli`` channel (issue #168) — or a legacy ``repl``
+    one — fires in the server process where no such channel is registered.
+    Rather than drop its output silently, deliver it to the owner's Telegram DM:
+    the default agent's bare ``telegram`` bot if present, else the first
+    ``telegram:<agent>`` bot. Returns ``(None, None)`` if no Telegram bot runs.
+    """
+    for key in ("telegram", *(k for k in agent.channels if k.startswith("telegram:"))):
+        ch = agent.channels.get(key)
+        if ch:
+            return ch, _get_owner_chat_id(agent, key)
+    return None, None
 
 
 def _get_owner_chat_id(agent: AgentCore, channel: str) -> int | str | None:
