@@ -189,6 +189,8 @@ Secrets are referenced as `${vault:NAME}` in config and `{{secret:NAME}}` in com
 
 - `read_file`, `write_file`, `edit_file`, `list_dir`, `grep`, `run_command_in_dir`
 - Confined to one configurable workspace directory — path traversal blocked
+- `run_command` shares that root, so a cloned repo is readable, editable and committable in place
+- Each agent namespaces its files under a `<slug>/` subdirectory
 - Reads pre-approved, writes ask permission
 
 </details>

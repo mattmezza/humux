@@ -50,6 +50,22 @@ There is **no default workspace**. With the harness disabled, or with a blank
 directory, the tools are hidden from the agent entirely and the handlers refuse — the
 agent cannot reach the filesystem until you point it at a directory.
 
+## One shared root with `run_command`
+
+When the harness is on, the generic `run_command` tool runs **in the workspace root**,
+the same tree the file tools resolve against. So a repo cloned with
+`run_command git clone <url>` lands inside the workspace and is immediately visible to
+`read_file`/`grep`, editable with `write_file`/`edit_file`, and committable with `git`
+— no need to bridge two directories or hand-author git blobs to commit a change. The
+root is created on first use if it doesn't exist yet.
+
+## Per-agent subdirectory convention
+
+The system prompt tells the agent to namespace everything it creates under a
+subdirectory named after its [agent](/docs/agents) slug — e.g. an agent named `coach`
+clones and writes under `coach/…`, the default identity under `default/…`. This keeps
+multiple agents from colliding in the workspace root when they share one directory.
+
 ## Configuration
 
 Enable it under **Settings → Workspace** in the admin UI, or in `config.yml`:
