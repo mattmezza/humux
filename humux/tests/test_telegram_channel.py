@@ -196,6 +196,35 @@ async def test_placeholder_send_failure_is_non_fatal() -> None:
     ch.app.bot.delete_message.assert_not_awaited()
 
 
+@pytest.mark.asyncio
+async def test_placeholder_reflects_approval_wait_then_thinking() -> None:
+    # #147: while the agent is blocked on a permission prompt the placeholder must
+    # say it's waiting, not still "Thinking…", and flip back once a decision lands.
+    ch = _channel_with_mock_bot()
+
+    async with ch._typing(123):
+        await _wait_for(lambda: ch.app.bot.send_message.await_count > 0)
+        # Agent hits an approval → the label switches to "Waiting…".
+        ch._set_typing_waiting(123, True)
+        await _wait_for(lambda: ch.app.bot.edit_message_text.await_count > 0)
+        text, kwargs = ch.app.bot.edit_message_text.call_args
+        assert "Waiting" in text[0]
+        assert kwargs["message_id"] == 4242
+        # User decides → back to "Thinking…".
+        ch._set_typing_waiting(123, False)
+        await _wait_for(lambda: ch.app.bot.edit_message_text.await_count > 1)
+        assert "Thinking" in ch.app.bot.edit_message_text.call_args[0][0]
+
+    ch.app.bot.delete_message.assert_awaited_once_with(123, 4242)
+
+
+def test_set_typing_waiting_is_noop_without_active_placeholder() -> None:
+    # A subagent / admin-API approval has no _typing wrapper for the chat; toggling
+    # must not raise (registry miss), it just does nothing.
+    ch = _channel_with_mock_bot()
+    ch._set_typing_waiting(999, True)  # no entry for 999 → silent no-op
+
+
 def test_chunk_keeps_pieces_under_limit_and_loses_nothing() -> None:
     # 50 lines of 200 chars = 10000 chars, well over the 4096 limit (#80).
     text = "\n".join(f"line{i} " + "x" * 200 for i in range(50))

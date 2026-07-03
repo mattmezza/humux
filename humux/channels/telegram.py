@@ -69,6 +69,10 @@ _DENY_PREFIX = "perm_deny:"
 _ALWAYS_PREFIX = "perm_always:"
 # Callback data prefix for subagent-run cancel buttons (issue #15)
 _SUB_CANCEL_PREFIX = "sub_cancel:"
+# Placeholder labels for the "working" bubble (#57, #147). The label tracks the
+# agent's real state so a permission wait never reads as "still thinking".
+_THINKING = "🤔 Thinking…"
+_WAITING_APPROVAL = "✋ Waiting for your approval…"
 _HTML_TAG_RE = re.compile(
     r"</?(b|strong|i|em|u|ins|s|strike|del|code|pre|a|tg-spoiler)(\s+[^>]*)?>",
     re.IGNORECASE,
@@ -631,6 +635,13 @@ class TelegramChannel:
 
         data = query.data or ""
 
+        if data.startswith((_APPROVE_PREFIX, _DENY_PREFIX, _ALWAYS_PREFIX)):
+            # Decision made: the agent unblocks and resumes, so the placeholder
+            # goes back to "Thinking…" (#147). A timeout has no button press and so
+            # can't clear here — the label is corrected on the next approval or gone
+            # when the turn ends; that 120s edge isn't worth agent-side plumbing.
+            self._set_typing_waiting(chat_id, False)
+
         if data.startswith(_APPROVE_PREFIX):
             request_id = data[len(_APPROVE_PREFIX) :]
             resolved = self.agent.permissions.resolve_approval(request_id, True)
@@ -720,6 +731,9 @@ class TelegramChannel:
         )
         text = f"Permission request:\n\n{description}"
         cid, kw = self._route(chat_id)
+        # The agent is now blocked awaiting this decision — reflect that on the
+        # placeholder so it stops claiming to think (#147).
+        self._set_typing_waiting(chat_id, True)
         if image_path:
             try:
                 with open(image_path, "rb") as photo:
@@ -769,6 +783,15 @@ class TelegramChannel:
                 pass
 
         turn_over = asyncio.Event()
+        # State shared with the approval hooks (#147): while the agent is blocked on
+        # a permission prompt it is waiting, not thinking, so the placeholder label
+        # must say so instead of a stale "Thinking…". send_approval_request /
+        # _on_approval_callback flip ``waiting`` and poke ``changed`` to re-render.
+        # ponytail: one entry per routed chat, assumes turns in a chat don't overlap
+        # (approvals are interactive/serial anyway) — key by (chat, turn) if they do.
+        state = {"waiting": False, "changed": asyncio.Event()}
+        waits = self.__dict__.setdefault("_typing_waits", {})
+        waits[str(cid)] = state
 
         async def _placeholder():
             # Wait out the delay; a turn that finishes first never posts (no flash).
@@ -779,13 +802,39 @@ class TelegramChannel:
                 pass
             # disable_notification: deleting a message does NOT retract its push, so
             # a notifying placeholder would ping the user every turn. Keep it silent.
-            # ponytail: static "Thinking…". Streaming the real per-step CoT would
-            # need a progress callback threaded through agent.process() — add that
-            # if the generic signal proves not enough.
-            msg = await self.app.bot.send_message(
-                cid, "🤔 Thinking…", disable_notification=True, **kw
-            )
-            await turn_over.wait()  # leave it up for the rest of the turn
+            # ponytail: static labels. Streaming the real per-step CoT would need a
+            # progress callback threaded through agent.process() — add that if the
+            # generic signal proves not enough.
+            try:
+                msg = await self.app.bot.send_message(
+                    cid, _THINKING, disable_notification=True, **kw
+                )
+            except Exception:
+                return  # send failed → nothing posted, nothing to re-render or delete
+            shown = _THINKING
+            # Re-render the label on each state change until the turn ends. A failed
+            # edit is swallowed: a stale label is cosmetic, never worth a crash.
+            while not turn_over.is_set():
+                want = _WAITING_APPROVAL if state["waiting"] else _THINKING
+                if want != shown:
+                    try:
+                        await self.app.bot.edit_message_text(
+                            want, chat_id=cid, message_id=msg.message_id
+                        )
+                        shown = want
+                    except Exception:
+                        pass
+                state["changed"].clear()
+                wakers = [
+                    asyncio.ensure_future(turn_over.wait()),
+                    asyncio.ensure_future(state["changed"].wait()),
+                ]
+                try:
+                    await asyncio.wait(wakers, return_when=asyncio.FIRST_COMPLETED)
+                finally:
+                    for w in wakers:
+                        w.cancel()
+                    await asyncio.gather(*wakers, return_exceptions=True)
             try:
                 await self.app.bot.delete_message(cid, msg.message_id)
             except Exception:
@@ -800,12 +849,24 @@ class TelegramChannel:
             yield
         finally:
             turn_over.set()
+            waits.pop(str(cid), None)
             typing_task.cancel()
             for t in (typing_task, placeholder_task):
                 try:
                     await t
                 except asyncio.CancelledError, Exception:
                     pass
+
+    def _set_typing_waiting(self, chat_id: int | str, waiting: bool) -> None:
+        """Flip the active turn's placeholder between "Thinking…" and "Waiting for
+        your approval…" (#147). No-op when no turn is showing a placeholder for
+        this chat (e.g. a subagent or admin-API approval with no _typing wrapper)."""
+        cid, _ = self._route(chat_id)
+        state = self.__dict__.get("_typing_waits", {}).get(str(cid))
+        if state is None:
+            return
+        state["waiting"] = waiting
+        state["changed"].set()
 
     @asynccontextmanager
     async def _progress(self, chat_id: int | str):
