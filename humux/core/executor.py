@@ -123,13 +123,21 @@ class ToolExecutor:
         return True
 
     async def run_command(
-        self, command: str, timeout: int = 30, tool_env: dict[str, str] | None = None
+        self,
+        command: str,
+        timeout: int = 30,
+        tool_env: dict[str, str] | None = None,
+        cwd: str | None = None,
     ) -> dict:
         """Execute a shell command and return its output.
 
         ``tool_env`` overrides the default :attr:`tool_env` for this one call —
         used to inject the active agent's own tool identity (own GH_TOKEN,
         browser profile) so each agent authenticates as itself (#93).
+
+        ``cwd`` is the working directory. The coding harness passes the workspace
+        root here so `git clone`/`git` operate in the SAME tree the file tools
+        resolve under (#151); ``None`` keeps the process cwd (unchanged default).
         """
         # Security: validate against whitelist
         if not self._command_allowed(command):
@@ -144,7 +152,7 @@ class ToolExecutor:
         # minutes, not the 30s default — otherwise it's always killed mid-booking.
         if "browser.py explore" in command:
             timeout = max(timeout, 480)
-        return await self._exec(self._resolve_command(command), timeout, tool_env=tool_env)
+        return await self._exec(self._resolve_command(command), timeout, cwd=cwd, tool_env=tool_env)
 
     async def run_command_trusted(self, command: str, timeout: int = 30) -> dict:
         """Execute a shell command without prefix validation.

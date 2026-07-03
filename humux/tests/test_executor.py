@@ -34,6 +34,19 @@ async def test_run_command_allows_whitelisted_prefix(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_run_command_forwards_cwd(monkeypatch) -> None:
+    # #151: the harness passes the workspace root so git operates in the same
+    # tree the file tools resolve under.
+    executor = ToolExecutor()
+    mock_exec = AsyncMock(return_value={"stdout": "", "stderr": "", "exit_code": 0})
+    monkeypatch.setattr(executor, "_exec", mock_exec)
+
+    await executor.run_command("git status", cwd="/data/ws")
+
+    assert mock_exec.await_args.kwargs["cwd"] == "/data/ws"
+
+
+@pytest.mark.asyncio
 async def test_agent_override_strips_leaked_managed_env(monkeypatch) -> None:
     # A GH_TOKEN present in the process env (e.g. loaded from .env) must NOT leak
     # to an agent-scoped run whose override doesn't set it — otherwise an agent

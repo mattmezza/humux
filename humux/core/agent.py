@@ -2311,7 +2311,9 @@ class AgentCore:
                 store = self.secret_store
                 resolve = store.infra_resolve if store else (lambda _n: None)
                 agent_env = effective_tool_env(self.config, agent, resolve)
-            return await self.executor.run_command(command, tool_env=agent_env)
+            return await self.executor.run_command(
+                command, tool_env=agent_env, cwd=self._workspace_cwd()
+            )
 
         if name == "send_email":
             result = await self._tool_send_email(params, request_state)
@@ -2812,6 +2814,25 @@ class AgentCore:
         if not ws.enabled or not ws.directory.strip():
             return None
         return ws.directory
+
+    def _workspace_cwd(self) -> str | None:
+        """Workspace root as a run_command working directory, or None (#151).
+
+        Unifies the two filesystem roots: when the harness is on, `run_command`
+        (git clone, git, gh) runs in the SAME tree the file tools resolve under,
+        so a cloned repo is immediately visible to read_file/grep and its edits
+        are committable. Created on demand (like write_file) so a fresh, correctly
+        configured workspace works without the owner pre-making the directory.
+        """
+        ws = self._workspace_dir()
+        if ws is None:
+            return None
+        try:
+            root = Path(ws).expanduser()
+            root.mkdir(parents=True, exist_ok=True)
+            return str(root.resolve())
+        except OSError:
+            return None  # unwritable path — fall back to the process cwd
 
     def _tool_read_file(self, params: dict) -> dict:
         workspace = self._workspace_dir()

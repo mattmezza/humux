@@ -68,6 +68,7 @@ class PromptSections:
     about_user: str
     tool_usage: str
     tools: str
+    workspace: str
     secrets: str
     voice: str
     memory_instruction: str
@@ -87,6 +88,8 @@ class PromptSections:
         ]
         if self.tools:
             parts.append(self.tools)
+        if self.workspace:
+            parts.append(self.workspace)
         if self.secrets:
             parts.append(self.secrets)
         if self.voice:
@@ -111,6 +114,7 @@ class PromptSections:
             "about_user": self.about_user,
             "tool_usage": self.tool_usage,
             "tools": self.tools,
+            "workspace": self.workspace,
             "secrets": self.secrets,
             "voice": self.voice,
             "memory_instruction": self.memory_instruction,
@@ -193,6 +197,33 @@ def build_prompt_sections(
     tools_section = ""
     if tool_blocks:
         tools_section = "<tools>\n" + "\n\n".join(tool_blocks) + "\n</tools>"
+
+    # Coding workspace (#149/#151): when the harness is on, tell the agent that
+    # `run_command` and the file tools share ONE tree (a repo cloned via git is
+    # readable/editable/committable in place), expose that root path (it was
+    # previously undiscoverable — `pwd` is blocked), and require every agent to
+    # namespace its files under a slug subdir so agents don't collide.
+    workspace_section = ""
+    ws = config.workspace
+    if ws.enabled and ws.directory.strip():
+        root = ws.directory.strip()
+        slug = agent.name if agent and agent.name else "default"
+        workspace_section = (
+            "<workspace>\n"
+            f"A coding workspace is enabled, rooted at `{root}`. This is the working "
+            "directory for `run_command` (so `git clone`, `git`, `gh` and builds run "
+            "here) AND the root the file tools (read_file/write_file/edit_file/list_dir/"
+            "grep) and run_command_in_dir resolve paths against — the SAME tree. A repo "
+            "you clone with `run_command` is therefore immediately visible to "
+            "read_file/grep, editable with write_file/edit_file, and committable with "
+            "`git` — never hand-author git blobs to commit a change.\n"
+            f"Namespace everything you create under a subdirectory named after your "
+            f"identity slug: `{slug}/`. Clone repos, write files and generate content "
+            f"under `{slug}/…` (e.g. `git clone <url> {slug}/<repo>`, then read/edit "
+            f"`{slug}/<repo>/<file>`), so multiple agents never collide in the workspace "
+            "root. File-tool paths are relative to the workspace root.\n"
+            "</workspace>"
+        )
 
     # Secret discoverability: a short, static pointer to the `list_secrets` tool —
     # NOT the secret names themselves, to keep the cacheable prompt small and avoid
@@ -277,6 +308,7 @@ def build_prompt_sections(
         about_user=about_user,
         tool_usage=tool_usage,
         tools=tools_section,
+        workspace=workspace_section,
         secrets=secrets_section,
         voice=voice_section,
         memory_instruction=memory_instruction,
