@@ -231,7 +231,14 @@ def _strip_command_suffix(message: str) -> str:
     return text.lower()
 
 
-_CONTROL_COMMANDS = ("/yolo-on", "/yolo-off", "/new", "/clear")
+_CONTROL_COMMANDS = ("/yolo-on", "/yolo-off", "/new", "/clear", "/stop")
+
+# Shown as the reply of an aborted turn AND stored as its assistant history entry,
+# so the next turn's model sees it was interrupted mid-work (#146).
+_STOPPED_MESSAGE = (
+    "⏹️ Stopped at your request — I halted this turn before finishing, so some "
+    "actions may already have run and others were skipped. Tell me how to proceed."
+)
 
 # Telegram command names (setMyCommands) may only be [a-z0-9_], so the hyphenated
 # /yolo-on is menu-registered under a /yolo_on underscore alias; canonicalise it
@@ -1126,6 +1133,18 @@ class AgentCore:
         cross-chat concurrency is unchanged. The turn logic lives in
         ``_process_impl``.
         """
+        # /stop — abort the active turn for this chat. Handled BEFORE the chat lock
+        # (#146): a running turn HOLDS that lock, so a queued /stop would otherwise
+        # wait for the very turn it means to cancel. Gated on ``respond`` so an
+        # unaddressed "/stop@otherbot" in a group doesn't act. No-op (brief note)
+        # when nothing is running.
+        if respond and _control_command(message) == "/stop":
+            if self.request_stop(channel, user_id, chat_id):
+                # The aborting turn delivers _STOPPED_MESSAGE itself; stay silent
+                # here so the user isn't answered twice.
+                return AgentResponse(text="")
+            return AgentResponse(text="Nothing to stop — no turn is running.")
+
         async with self._chat_lock(channel, user_id, chat_id):
             return await self._process_impl(
                 message,
@@ -1138,6 +1157,31 @@ class AgentCore:
                 addressed=addressed,
                 message_id=message_id,
             )
+
+    def _active_turns_map(self) -> dict:
+        """Conversation key → abort Event for the turn currently running there.
+
+        Lazy like ``_chat_locks`` so it also works on a bare-``__new__`` instance
+        (the test pattern). A turn registers its Event in ``_process_impl`` and
+        pops it on exit; ``request_stop`` sets it to break the tool loop (#146)."""
+        turns = getattr(self, "_active_turns", None)
+        if turns is None:
+            turns = self._active_turns = {}
+        return turns
+
+    def request_stop(self, channel: str, user_id: str, chat_id: str) -> bool:
+        """Ask the running turn of one chat to abort at the next tool round.
+
+        Returns True if a turn was active (its abort Event was set), False if the
+        chat was idle. Scoped per conversation key, so a stop never crosses into
+        another chat (#146). The turn checks the flag between rounds/tool calls, so
+        it takes effect after the in-flight LLM call or tool returns, not instantly.
+        """
+        ev = self._active_turns_map().get((channel, user_id, chat_id))
+        if ev is None:
+            return False
+        ev.set()
+        return True
 
     def _chat_lock(self, channel: str, user_id: str, chat_id: str) -> asyncio.Lock:
         """The turn lock for one chat key, created on first use.
@@ -1358,6 +1402,12 @@ class AgentCore:
                 prompt=system,
             )
 
+        # Register this turn's abort Event so /stop and the Stop button can reach it
+        # (#146). The chat lock serialises turns of one key, so there's never a live
+        # entry to clobber; popped in finally whether the turn returns or raises.
+        turn_key = (channel, user_id, chat_id)
+        self._active_turns_map()[turn_key] = asyncio.Event()
+
         # Record every generate() this turn under this context so the admin
         # Inspect tab can show the exact last-sent payload (#99). Reset in finally
         # so a context never leaks onto an unrelated later turn on the same task.
@@ -1390,6 +1440,7 @@ class AgentCore:
             )
         finally:
             reset_capture_context(cap_token)
+            self._active_turns_map().pop(turn_key, None)
 
     async def _resolve_agent(self, channel: str, user_id: str, chat_id: str) -> Agent | None:
         """Resolve the agent for this request, in precedence order:
@@ -1903,8 +1954,13 @@ class AgentCore:
         tool_log: list[dict] = []
         truncations = 0
         rounds = 0
+        abort = self._active_turns_map().get((channel, user_id, chat_id))
+        stopped = False
         while response.tool_calls and rounds < _MAX_TOOL_ROUNDS:
             rounds += 1
+            if abort and abort.is_set():  # /stop or the Stop button fired (#146)
+                stopped = True
+                break
             if response.truncated:
                 truncations += 1
                 if truncations > _MAX_TRUNCATION_RETRIES:
@@ -1918,6 +1974,11 @@ class AgentCore:
                 )
                 tool_results = []
                 for call in response.tool_calls:
+                    if abort and abort.is_set():
+                        # Stop pressed mid-batch — let the in-flight call finish,
+                        # skip the rest, and break the loop on the next check (#146).
+                        stopped = True
+                        break
                     result = await self._execute_tool(call, channel, user_id, request_state)
                     tool_log.append({"name": call.name, "args": call.arguments, "result": result})
                     tool_results.append(
@@ -1927,6 +1988,8 @@ class AgentCore:
                             "content": json.dumps(result),
                         }
                     )
+                if stopped:
+                    break
 
             # Feed tool results back to the LLM
             messages.append(self.llm.assistant_message(response))
@@ -1938,11 +2001,14 @@ class AgentCore:
                 messages=messages,
                 tools=cast(Any, tools),
             )
-        final_text = response.text
-        if response.truncated and not final_text:
-            final_text = _TRUNCATION_GIVEUP_MESSAGE
-        elif response.tool_calls and not final_text:
-            final_text = _LOOP_ABORT_MESSAGE
+        if stopped:
+            final_text = _STOPPED_MESSAGE
+        else:
+            final_text = response.text
+            if response.truncated and not final_text:
+                final_text = _TRUNCATION_GIVEUP_MESSAGE
+            elif response.tool_calls and not final_text:
+                final_text = _LOOP_ABORT_MESSAGE
         log.info("Response: %s", final_text[:200])
 
         # Check if the LLM wants to respond with voice
@@ -2044,8 +2110,13 @@ class AgentCore:
         tool_log: list[dict] = []
         truncations = 0
         rounds = 0
+        abort = self._active_turns_map().get((channel, user_id, chat_id))
+        stopped = False
         while response.tool_calls and rounds < _MAX_TOOL_ROUNDS:
             rounds += 1
+            if abort and abort.is_set():  # /stop or the Stop button fired (#146)
+                stopped = True
+                break
             if response.truncated:
                 truncations += 1
                 if truncations > _MAX_TRUNCATION_RETRIES:
@@ -2059,6 +2130,11 @@ class AgentCore:
                 )
                 tool_results = []
                 for call in response.tool_calls:
+                    if abort and abort.is_set():
+                        # Stop pressed mid-batch — let the in-flight call finish,
+                        # skip the rest, and break the loop on the next check (#146).
+                        stopped = True
+                        break
                     result = await self._execute_tool(call, channel, user_id, request_state)
                     tool_log.append({"name": call.name, "args": call.arguments, "result": result})
                     tool_results.append(
@@ -2068,6 +2144,12 @@ class AgentCore:
                             "content": json.dumps(result),
                         }
                     )
+                if stopped:
+                    # Don't persist a half-batch: the assistant tool_use turn below
+                    # would name calls whose results we're dropping, leaving an
+                    # orphan tool_use in the session. Break with only whole rounds
+                    # recorded; _STOPPED_MESSAGE becomes the assistant turn (#146).
+                    break
 
             # Append tool exchange to session
             assistant_msg = self.llm.assistant_message(response)
@@ -2090,11 +2172,14 @@ class AgentCore:
                 tools=cast(Any, tools),
             )
 
-        final_text = response.text
-        if response.truncated and not final_text:
-            final_text = _TRUNCATION_GIVEUP_MESSAGE
-        elif response.tool_calls and not final_text:
-            final_text = _LOOP_ABORT_MESSAGE
+        if stopped:
+            final_text = _STOPPED_MESSAGE
+        else:
+            final_text = response.text
+            if response.truncated and not final_text:
+                final_text = _TRUNCATION_GIVEUP_MESSAGE
+            elif response.tool_calls and not final_text:
+                final_text = _LOOP_ABORT_MESSAGE
 
         # Append the final assistant response to the session. Skip an empty final
         # (a react-only turn sends nothing): the reaction is already recorded as the

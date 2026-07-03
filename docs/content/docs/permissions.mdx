@@ -100,12 +100,23 @@ When the agent wants to perform an action with `ASK` permission, it sends a mess
 I'd like to send this WhatsApp message to Simge (+41 78 ...):
 "Hey, I'll be home a bit late tonight"
 
-[Approve] [Edit] [Deny]
+[Approve] [Deny] [Always allow]
+[⛔ Stop]
 ```
 
-- **Approve** — execute the action as-is
-- **Edit** — modify the action before executing (agent will ask for changes)
-- **Deny** — cancel the action
+- **Approve** — execute this one action, then continue the turn
+- **Deny** — skip this one action, then continue the turn
+- **Always allow** — approve and persist a rule for this command shape, then continue
+- **Stop** — abort the **entire** current turn, not just this action. The turn ends immediately (after any in-flight action finishes) and a notice is recorded so the agent knows on your next message that it was interrupted.
+
+## Stopping a turn
+
+Once a turn is running you can cancel it without waiting for it to finish:
+
+- Press **⛔ Stop** on any approval prompt.
+- Send **`/stop`** — works even in YOLO mode (where there are no prompts) and mid-turn. It aborts the running turn for that chat only; if nothing is running it's a no-op. Available from Telegram's `/` command menu.
+
+The turn stops at the next tool round, so an action already in flight finishes first. What ran up to that point stands; the turn simply doesn't continue.
 
 ## Managing rules
 

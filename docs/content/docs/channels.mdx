@@ -36,7 +36,7 @@ agent's row, after which every bot is configured per-agent. See
 
 - **Text messages** — standard chat with the agent
 - **Voice messages** — automatically transcribed via Whisper, agent can respond with synthesized voice
-- **Inline keyboards** — used for permission approval flow (Approve / Edit / Deny)
+- **Inline keyboards** — used for permission approval flow (Approve / Deny / Always allow / Stop)
 - **User ID whitelist** — only allowed users can interact with the bot
 - **Bot-per-agent** — every agent has its own bot token, so it's a separate Telegram contact, all running in one process; see below
 - **Group rooms** — several agent-bots share one group sanely: each replies only when addressed, ignores other bots, and tags who said what; see below
@@ -92,6 +92,10 @@ A few details worth knowing:
 
 - **Clearing context** — in a group, clear a specific bot with `/new@botname` (a bare
   `/new` is not addressed to any one bot, so it's recorded as context, not a clear).
+- **Stopping a turn** — press **⛔ Stop** on any approval prompt, or send `/stop`, to abort
+  the whole running turn (not just one action). `/stop` works mid-turn and in YOLO mode
+  where there are no prompts; it's scoped to that chat and is a no-op when nothing is
+  running. See [Permissions](/docs/permissions#stopping-a-turn).
 - **YOLO mode** — `/yolo-on` lets a bot act without asking for approval; `/yolo-off`
   restores prompting. Only the short hard-blocked (`NEVER`) list is still refused (e.g.
   direct DB drops/alters) — **everything else, including filesystem and network commands,
@@ -100,7 +104,7 @@ A few details worth knowing:
   (a bare `/yolo-on`, addressed to no bot, toggles nothing). The setting persists across
   restarts until you turn it off.
 - **Command menu** — each bot publishes its commands to Telegram's ☰ menu / `/`
-  autocomplete on startup (`/new`, `/jobs`, `/yolo_on`, `/yolo_off` — Telegram forbids
+  autocomplete on startup (`/new`, `/jobs`, `/yolo_on`, `/yolo_off`, `/stop` — Telegram forbids
   `-` in menu command names, so YOLO shows with an underscore; `/yolo-on` still works too).
   In a group each bot lists its own commands, `@bot`-suffixed, so tapping one targets that
   bot. The menu is a full replace, so the list simply tracks whatever the version ships.

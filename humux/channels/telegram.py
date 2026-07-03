@@ -41,7 +41,9 @@ log = logging.getLogger(__name__)
 # Plain-text commands the agent handles in process() (not Telegram CommandHandlers).
 # _on_text sends these bare (no speaker tag / reply-quote) and honours an explicit
 # "@bot" target so a command never acts on the wrong bot in a multi-agent room.
-_AGENT_COMMANDS = frozenset({"/new", "/clear", "/yolo-on", "/yolo-off", "/yolo_on", "/yolo_off"})
+_AGENT_COMMANDS = frozenset(
+    {"/new", "/clear", "/yolo-on", "/yolo-off", "/yolo_on", "/yolo_off", "/stop"}
+)
 
 # The command menu surfaced in Telegram's ☰ button / "/" autocomplete
 # (setMyCommands). This is the single source of truth: set_my_commands is a full
@@ -54,6 +56,7 @@ _MENU_COMMANDS = [
     BotCommand("jobs", "Show scheduled jobs"),
     BotCommand("yolo_on", "Run actions without asking for approval"),
     BotCommand("yolo_off", "Restore approval prompts"),
+    BotCommand("stop", "Stop the current turn"),
 ]
 
 # Collapse identical back-to-back inbound text from the same sender within this
@@ -67,6 +70,7 @@ _DEDUP_WINDOW_S = 3.0
 _APPROVE_PREFIX = "perm_approve:"
 _DENY_PREFIX = "perm_deny:"
 _ALWAYS_PREFIX = "perm_always:"
+_STOP_PREFIX = "perm_stop:"
 # Callback data prefix for subagent-run cancel buttons (issue #15)
 _SUB_CANCEL_PREFIX = "sub_cancel:"
 _HTML_TAG_RE = re.compile(
@@ -646,6 +650,16 @@ class TelegramChannel:
             resolved = self.agent.permissions.resolve_approval(request_id, True, always_allow=True)
             await self._finalize_approval_response(query, resolved, "♾️ Always allowed")
 
+        elif data.startswith(_STOP_PREFIX):
+            # Stop button (#146): resolve THIS pending prompt as denied so the
+            # awaiting tool unblocks, then flag the turn to abort at the next round.
+            # request_stop is keyed by the same (convo_user, chat_id) as the turn.
+            request_id = data[len(_STOP_PREFIX) :]
+            self.agent.permissions.resolve_approval(request_id, False)
+            active = self.agent.request_stop(self.channel_name, str(convo_user), str(chat_id))
+            label = "⏹️ Stopping…" if active else "⏹️ Stopped"
+            await self._finalize_approval_response(query, True, label)
+
         elif data.startswith(_SUB_CANCEL_PREFIX):
             run_id = data[len(_SUB_CANCEL_PREFIX) :]
             ok = self.agent.subagents.cancel(run_id)
@@ -715,7 +729,11 @@ class TelegramChannel:
                     InlineKeyboardButton(
                         "Always allow", callback_data=f"{_ALWAYS_PREFIX}{request_id}"
                     ),
-                ]
+                ],
+                # Stop rides its own row (#146): aborts the WHOLE turn, not just this
+                # one action — a different scope from the three per-action buttons, and
+                # Telegram gives no button colour to signal that, so the row does.
+                [InlineKeyboardButton("⛔ Stop", callback_data=f"{_STOP_PREFIX}{request_id}")],
             ]
         )
         text = f"Permission request:\n\n{description}"
