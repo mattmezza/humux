@@ -97,7 +97,7 @@
           </div>
           <div>
             <h2 class="text-lg font-semibold" style="color: #eee;">Messaging</h2>
-            <p class="text-xs" style="color: var(--color-muted);">Telegram, WhatsApp, group chats, reactions</p>
+            <p class="text-xs" style="color: var(--color-muted);">Telegram, WhatsApp, CLI, group chats, reactions</p>
           </div>
         </div>
         <svg class="h-4 w-4 transition-transform duration-200" :class="{ 'rotate-180': open }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--color-muted);"><polyline points="6 9 12 15 18 9"/></svg>
@@ -127,6 +127,10 @@
           <div class="feature-card">
             <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">WhatsApp (wacli)</h3>
             <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">Read and send WhatsApp messages via the wacli CLI tool. Integrated as a skill the agent can learn.</p>
+          </div>
+          <div class="feature-card">
+            <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">CLI channel</h3>
+            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">Chat with the agent directly from your terminal — SSH in or run <code class="inline-code">uv run python -m core.cli</code>. Resumable sessions, no Telegram needed.</p>
           </div>
         </div>
       </div>

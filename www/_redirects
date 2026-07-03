@@ -1,8 +1,3 @@
-# Clean URL rewrites (internal, no redirect)
-/features /features.html 200
-/use-cases /use-cases.html 200
-/comparison /comparison.html 200
-
 # External redirects
 /docs/*  https://docs.humux.dev/:splat  301
 /github  https://github.com/mattmezza/humux  301
