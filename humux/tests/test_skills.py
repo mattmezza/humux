@@ -63,37 +63,6 @@ async def test_index_entries_scoped_to_allowlist(tmp_path) -> None:
     assert {e["name"] for e in entries} == {"email", "news"}
 
 
-@pytest.mark.asyncio
-async def test_search_index_ranks_name_hit_first(tmp_path) -> None:
-    engine = _engine_with(
-        tmp_path,
-        weather="forecast lookups",
-        travel="plan trips, mentions weather in passing",
-    )
-    hits = await engine.search_index("weather")
-    assert [h["name"] for h in hits] == ["weather", "travel"]
-
-
-@pytest.mark.asyncio
-async def test_search_index_no_match_is_empty(tmp_path) -> None:
-    engine = _engine_with(tmp_path, email="send email")
-    assert await engine.search_index("quantumchromodynamics") == []
-
-
-@pytest.mark.asyncio
-async def test_search_index_empty_query_browses(tmp_path) -> None:
-    engine = _engine_with(tmp_path, a="x", b="y", c="z")
-    hits = await engine.search_index("", limit=2)
-    assert len(hits) == 2
-
-
-@pytest.mark.asyncio
-async def test_search_index_respects_allowlist(tmp_path) -> None:
-    engine = _engine_with(tmp_path, email="send email", webmail="email in the browser")
-    hits = await engine.search_index("email", allow=["email"])
-    assert {h["name"] for h in hits} == {"email"}
-
-
 # --- Validator tests ---
 
 

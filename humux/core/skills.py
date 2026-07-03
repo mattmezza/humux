@@ -523,10 +523,18 @@ def validate_skill_file(path: Path, strict: bool = False) -> list[ValidationErro
 
     if strict:
         lines = content.splitlines()
-        has_description = any(
-            line.strip() and not line.startswith("#") and not line.startswith("```")
-            for line in lines[1:4]
-        )
+        in_code = False
+        has_description = False
+        for line in lines[1:5]:
+            stripped = line.strip()
+            if stripped.startswith("```"):
+                in_code = not in_code
+                continue
+            if in_code:
+                continue
+            if stripped and not stripped.startswith("#"):
+                has_description = True
+                break
         if not has_description:
             errors.append(ValidationError(
                 str(path), 2,
