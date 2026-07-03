@@ -1,4 +1,4 @@
-.PHONY: help dev build watch deploy release
+.PHONY: help dev build watch deploy publish release
 
 TAILWIND := ./tailwindcss
 CSS_IN := input.css
@@ -14,6 +14,7 @@ help:
 	@echo "  make build     Build production CSS (minified)"
 	@echo "  make watch     Watch Tailwind CSS for changes"
 	@echo "  make deploy    Deploy to Cloudflare Pages (via wrangler)"
+	@echo "  make publish   Build + deploy in one step"
 	@echo ""
 	@echo "  Release:"
 	@echo "    make release name=www-v0.1   Tag, push, trigger GHA deploy"
@@ -40,6 +41,9 @@ build:
 deploy:
 	@command -v wrangler >/dev/null 2>&1 || { echo "wrangler not found. Install: npm i -g wrangler"; exit 1; }
 	wrangler pages deploy $(WWW_DIR) --project-name humux
+
+# Build + deploy in one step
+publish: build deploy
 
 # Create a release tag for GHA-based deploy (CF Pages)
 release:
