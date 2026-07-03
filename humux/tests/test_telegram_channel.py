@@ -1,10 +1,11 @@
 import asyncio
+import re
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
 
-from channels.telegram import TELEGRAM_LIMIT, TelegramChannel, _chunk
+from channels.telegram import _MENU_COMMANDS, TELEGRAM_LIMIT, TelegramChannel, _chunk
 
 
 def _dedup_channel() -> TelegramChannel:
@@ -50,6 +51,33 @@ async def test_same_text_from_different_senders_not_deduped() -> None:
     await ch._on_text(_text_update("hi", user_id=8), None)  # a different person
     await asyncio.sleep(0)
     assert ch._handle_text.await_count == 2
+
+
+def test_menu_command_names_are_telegram_valid() -> None:
+    """Telegram rejects command names with anything but [a-z0-9_] — a hyphenated
+    entry (e.g. yolo-on) would make set_my_commands fail at startup."""
+    for cmd in _MENU_COMMANDS:
+        assert re.fullmatch(r"[a-z0-9_]{1,32}", cmd.command), cmd.command
+        assert cmd.description
+
+
+@pytest.mark.asyncio
+async def test_register_commands_full_replaces_menu() -> None:
+    ch = object.__new__(TelegramChannel)
+    ch.channel_name = "telegram"
+    ch.app = SimpleNamespace(bot=AsyncMock())
+    await ch.register_commands()
+    ch.app.bot.set_my_commands.assert_awaited_once_with(_MENU_COMMANDS)
+
+
+@pytest.mark.asyncio
+async def test_register_commands_swallows_failure() -> None:
+    """A menu-registration error must never stop the bot from polling."""
+    ch = object.__new__(TelegramChannel)
+    ch.channel_name = "telegram"
+    ch.app = SimpleNamespace(bot=AsyncMock())
+    ch.app.bot.set_my_commands.side_effect = RuntimeError("boom")
+    await ch.register_commands()  # does not raise
 
 
 @pytest.mark.asyncio

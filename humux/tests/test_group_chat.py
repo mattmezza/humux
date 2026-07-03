@@ -119,6 +119,10 @@ def test_strip_command_suffix(raw: str, expected: str) -> None:
         ("/yolo-on", "/yolo-on"),
         ("/yolo-on@coachbot", "/yolo-on"),
         ("  /New  ", "/new"),
+        # Menu underscore alias folds to the canonical hyphenated command.
+        ("/yolo_on", "/yolo-on"),
+        ("/yolo_off@coachbot", "/yolo-off"),
+        ("/yolo_on\n\n/yolo-on", "/yolo-on"),  # alias + canonical, same command
         # Duplicated / merged deliveries still resolve to the one command (#154).
         ("/yolo-on\n\n/yolo-on", "/yolo-on"),
         ("/yolo-on@coachbot\n\n/yolo-on", "/yolo-on"),
@@ -261,6 +265,19 @@ async def test_yolo_on_toggles_when_duplicated_or_merged(tmp_path) -> None:
     )
     assert "YOLO mode OFF" in resp.text
     assert agent.permissions.is_yolo(scope) is False
+
+
+@pytest.mark.asyncio
+async def test_yolo_menu_underscore_alias_toggles(tmp_path) -> None:
+    """The /yolo_on menu alias (Telegram forbids '-' in command names) toggles the
+    same grant as /yolo-on."""
+    agent = _bare_agent(tmp_path, "injection")
+    agent.permissions = PermissionEngine(db_path=str(tmp_path / "config.db"))
+    scope = agent._yolo_scope("telegram", "g1")
+
+    resp = await agent.process("/yolo_on@coachbot", channel="telegram", user_id="g1", chat_id="g1")
+    assert "YOLO mode ON" in resp.text
+    assert agent.permissions.is_yolo(scope) is True
 
 
 # ---------------------------------------------------------------------------

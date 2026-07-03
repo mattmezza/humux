@@ -233,10 +233,22 @@ def _strip_command_suffix(message: str) -> str:
 
 _CONTROL_COMMANDS = ("/yolo-on", "/yolo-off", "/new", "/clear")
 
+# Telegram command names (setMyCommands) may only be [a-z0-9_], so the hyphenated
+# /yolo-on is menu-registered under a /yolo_on underscore alias; canonicalise it
+# back here so the runtime treats both forms identically.
+_COMMAND_ALIASES = {"/yolo_on": "/yolo-on", "/yolo_off": "/yolo-off"}
+
+
+def _normalize_command(token: str) -> str:
+    """Strip the ``@bot`` suffix and fold a menu underscore alias to its canonical
+    hyphenated command."""
+    stripped = _strip_command_suffix(token)
+    return _COMMAND_ALIASES.get(stripped, stripped)
+
 
 def _control_command(message: str) -> str:
-    """The control command a message *is*, tolerant of the ``@bot`` suffix and of
-    duplicate/merged self-repetition (#154).
+    """The control command a message *is*, tolerant of the ``@bot`` suffix, the
+    ``/yolo_on`` menu alias, and duplicate/merged self-repetition (#154).
 
     Inbound coalescing or a redelivering client can hand the runtime a command as
     ``"/yolo-on\\n\\n/yolo-on"`` or ``"/yolo-on@bot\\n\\n/yolo-on"``; a bare
@@ -248,7 +260,7 @@ def _control_command(message: str) -> str:
     tokens = message.split()
     if not tokens:
         return ""
-    normalised = {_strip_command_suffix(tok) for tok in tokens}
+    normalised = {_normalize_command(tok) for tok in tokens}
     if len(normalised) == 1:
         (only,) = tuple(normalised)
         if only in _CONTROL_COMMANDS:
