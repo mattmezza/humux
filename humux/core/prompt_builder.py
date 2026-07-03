@@ -6,8 +6,26 @@ from dataclasses import dataclass
 
 from core.agents import Agent
 from core.config import Config
+from core.executor import ToolExecutor
 from core.goal_decomposition import DecomposedGoal
 from core.tools import active_tool_prompts
+
+
+def _allowlist_note() -> str:
+    """A short, always-shown block listing the run_command prefix allowlist, so the
+    model builds valid commands on the first try instead of discovering the whitelist
+    by trial-and-error (#153). Derived from ToolExecutor.ALLOWED_PREFIXES — the one
+    source of truth — so it can never drift from what the guard actually permits."""
+    prefixes = ", ".join(f"`{p}`" for p in ToolExecutor.ALLOWED_PREFIXES)
+    filters = ", ".join(f"`{f}`" for f in sorted(ToolExecutor._SAFE_FILTERS))
+    return (
+        "\n\n`run_command` is allowlisted: every piped/chained segment must start with "
+        f"one of these prefixes — {prefixes}. After a real pipe you may also use a "
+        f'read-only filter ({filters}). Anything else returns "Command not allowed"; '
+        "subshells and live command substitution are rejected (single-quote a Markdown "
+        "body so its backticks stay literal). Copy a file with `cp`."
+    )
+
 
 DEFAULT_TOOL_USAGE_BLOCK = """For write actions that have a dedicated structured tool —
 sending or replying to emails, sending messages, creating calendar events, and
@@ -150,9 +168,14 @@ def build_prompt_sections(
     cfg = config.agent
 
     about_user_block = config.you.personalia.strip()
-    tool_usage_text = resolve_prompt_block(
-        DEFAULT_TOOL_USAGE_BLOCK,
-        getattr(config.prompt, "tool_usage_override", ""),
+    # Append the allowlist AFTER resolving the (overridable) block, so it is shown
+    # even when the owner overrides tool_usage — the model must always see it (#153).
+    tool_usage_text = (
+        resolve_prompt_block(
+            DEFAULT_TOOL_USAGE_BLOCK,
+            getattr(config.prompt, "tool_usage_override", ""),
+        )
+        + _allowlist_note()
     )
     history_handling_text = resolve_prompt_block(
         DEFAULT_HISTORY_HANDLING_BLOCK,

@@ -53,6 +53,7 @@ class ToolExecutor:
         "rg",
         "yt-dlp",
         "cal",
+        "cp",
     ]
 
     def _resolve_command(self, command: str) -> str:

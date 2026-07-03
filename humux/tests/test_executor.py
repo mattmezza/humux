@@ -34,6 +34,19 @@ async def test_run_command_allows_whitelisted_prefix(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_run_command_allows_cp(monkeypatch) -> None:
+    # #153: copying a file within the workspace must be permitted.
+    executor = ToolExecutor()
+    mock_exec = AsyncMock(return_value={"stdout": "", "stderr": "", "exit_code": 0})
+    monkeypatch.setattr(executor, "_exec", mock_exec)
+
+    result = await executor.run_command("cp a.txt b.txt")
+
+    assert "error" not in result
+    mock_exec.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_run_command_forwards_cwd(monkeypatch) -> None:
     # #151: the harness passes the workspace root so git operates in the same
     # tree the file tools resolve under.

@@ -32,6 +32,8 @@ ALLOWED_PREFIXES = [
 ]
 ```
 
+If `my-tool` is a real binary (not one of the bundled `python3 /app/tools/` scripts), also install it in the `Dockerfile` apt layer — a prefix on the allowlist that isn't installed passes the guard but fails at exec with `not found`. The allowlist is surfaced to the model automatically, so it must resolve to something that actually runs.
+
 ### 3. Write a skill file
 
 Create `skills/my-tool.md`:
