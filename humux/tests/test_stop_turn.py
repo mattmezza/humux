@@ -97,6 +97,8 @@ async def test_stop_command_aborts_running_turn(agent) -> None:
     assert resp.text == _STOPPED_MESSAGE
     # The loop broke instead of spinning to the round cap.
     assert agent.llm.calls < 50
-    # History records the stop so the next turn knows it was interrupted.
-    msgs = await agent.history.get_messages("telegram", "u", "55")
-    assert msgs[-1]["role"] == "assistant" and msgs[-1]["content"] == _STOPPED_MESSAGE
+    # The session records the stop so the next turn knows it was interrupted.
+    # (Session is the only history mode now; the old injection-mode conversation_turns
+    # table that get_messages reads is no longer written on this path.)
+    session = await agent.history.get_session("telegram", "u", "55")
+    assert session[-1]["role"] == "assistant" and session[-1]["content"] == _STOPPED_MESSAGE
