@@ -3383,8 +3383,10 @@ class AgentCore:
             origin_user_id = str(origin.get("user_id") or "")
             origin_chat_id = str(origin.get("chat_id") or "")
             cli_note = (
-                "This job runs in the server later; its output is delivered to your "
-                "Telegram DM, not this terminal."
+                "Saved to the job store. Output is delivered to your Telegram DM, not this "
+                "terminal. It becomes active when the server next reloads jobs (on restart) — "
+                "the running server isn't notified from this CLI process, so a time-sensitive "
+                "one-shot may not fire. Prefer a cron job, or schedule it from Telegram."
                 if from_cli
                 else None
             )

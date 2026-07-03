@@ -237,9 +237,17 @@ history mode — a different concept that happens to share the word.)
 
 ### Scheduled jobs from the CLI
 
-A job you schedule from a CLI session fires later in the **server** process,
-where no `cli` channel exists. Its output is delivered to the owner's Telegram
-DM instead of the terminal, and the scheduling confirmation tells you so.
+A job you schedule from a CLI session is saved to the job store and fires in the
+**server** process, where no `cli` channel exists — so its output is delivered
+to the owner's Telegram DM instead of the terminal, and the scheduling
+confirmation tells you so.
+
+One caveat, from the same two-process split as the notes below: the CLI persists
+the job but does **not** notify the already-running server's scheduler, which
+only loads jobs at boot. A CLI-created job therefore becomes active on the
+server's next restart — a recurring **cron** job then fires normally, but a
+**one-shot** whose time has already passed by that restart is retired without
+firing. For time-sensitive one-shots, schedule from Telegram instead.
 
 ### Cross-process notes
 
