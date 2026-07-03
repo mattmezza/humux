@@ -50,11 +50,6 @@
   {{ tr_enabled|default('true', true)|tojson|forceescape }},
   {{ tr_provider|default('deepseek', true)|tojson|forceescape }},
   {{ tr_model|default('deepseek-v4-flash', true)|tojson|forceescape }},
-  {{ prompt_tool_usage_override|default('', true)|tojson|forceescape }},
-  {{ prompt_history_override|default('', true)|tojson|forceescape }},
-  {{ default_tool_usage|default('', true)|tojson|forceescape }},
-  {{ default_history_handling|default('', true)|tojson|forceescape }},
-  {{ prompt_capture_enabled|default(false, true)|tojson|forceescape }},
   {{ compaction_provider|default('deepseek', true)|tojson|forceescape }},
   {{ compaction_model|default('deepseek-v4-flash', true)|tojson|forceescape }},
   {{ thinking_level|default('', true)|tojson|forceescape }},
@@ -77,138 +72,16 @@
   {{ temperature|default('0.5', true)|tojson|forceescape }},
   {{ tr_max_reflections|default('12', true)|tojson|forceescape }}
 )">
-  {# Sub-tabs (issue #114): split the crowded LLM settings into three views. #}
+  {# Sub-tabs (issue #114): split the crowded LLM settings into views.
+     SysPrompt sub-tab removed (#137) — the Inspect tab shows the full
+     assembled system prompt directly. #}
   <div class="flex border-b border-border mb-4 overflow-x-auto">
-    <button type="button" class="tab-link" :class="section === 'sysprompt' && 'tab-link-active'" @click="setSection('sysprompt')">SysPrompt</button>
     <button type="button" class="tab-link" :class="section === 'inference' && 'tab-link-active'" @click="setSection('inference')">Inference</button>
     <button type="button" class="tab-link" :class="section === 'providers' && 'tab-link-active'" @click="setSection('providers')">Providers</button>
     <button type="button" class="tab-link" :class="section === 'history' && 'tab-link-active'" @click="setSection('history')">History</button>
   </div>
 
-  <div class="space-y-6" x-show="section === 'sysprompt'">
-  <div class="card">
-    <h2 class="text-base mb-1">System Prompt Controls</h2>
-    <p class="text-muted text-xs mb-4">Preview the full assembled system prompt, edit override blocks, compare against defaults, and optionally capture recent runtime prompts. Debugging a live run? The <button type="button" class="text-accent hover:underline" @click="$dispatch('switch-tab', 'inspect')">Inspect</button> tab shows the exact last-sent payload per chat.</p>
-
-    <form class="space-y-4" @submit.prevent>
-      <div class="space-y-2">
-        <label class="label">Tool usage override</label>
-        <textarea class="textarea"
-                  style="min-height:200px; font-size:0.8rem; line-height:1.5; tab-size:2"
-                  x-model="promptToolUsageOverride"
-                  placeholder="Leave empty to use built-in defaults"></textarea>
-        <p class="text-muted text-xs">Effective value: override if non-empty, otherwise default block.</p>
-      </div>
-
-      <div class="space-y-2">
-        <label class="label">History handling override</label>
-        <textarea class="textarea"
-                  style="min-height:140px; font-size:0.8rem; line-height:1.5; tab-size:2"
-                  x-model="promptHistoryOverride"
-                  placeholder="Leave empty to use built-in defaults"></textarea>
-      </div>
-
-      <div class="space-y-2">
-        <label class="label">Default reference: tool usage</label>
-        <textarea class="textarea" style="min-height:160px; font-size:0.75rem" x-model="defaultToolUsage" readonly></textarea>
-      </div>
-
-      <div class="space-y-2">
-        <label class="label">Default reference: history handling</label>
-        <textarea class="textarea" style="min-height:100px; font-size:0.75rem" x-model="defaultHistoryHandling" readonly></textarea>
-      </div>
-
-      <div class="flex items-center gap-2">
-        <label class="label mb-0">Capture recent runtime prompts</label>
-        <input type="checkbox" x-model="promptCaptureEnabled" class="rounded border-border">
-      </div>
-
-      <div class="flex items-center gap-2">
-        <button class="btn-primary btn-sm" type="button" @click="savePromptConfig()">Save prompt settings</button>
-        <button class="btn btn-sm" type="button" @click="resetPromptOverrides()">Reset local overrides</button>
-      </div>
-      <template x-if="promptSaveResult">
-        <div :class="promptSaveOk ? 'alert-success' : 'alert-error'" class="mt-2" x-text="promptSaveResult"></div>
-      </template>
-    </form>
-
-    <hr class="border-border my-4">
-
-    <form class="space-y-3" @submit.prevent="previewSystemPrompt()">
-      <div>
-        <label class="label">Preview with test user message (optional)</label>
-        <textarea class="textarea" style="min-height:90px" x-model="promptPreviewMessage" placeholder="Example: Plan my week and draft two emails"></textarea>
-      </div>
-      <div class="flex items-center gap-4">
-        <label class="inline-flex items-center gap-2 text-xs text-muted">
-          <input type="checkbox" x-model="includePreviewMemories" class="rounded border-border">
-          Include memories
-        </label>
-        <label class="inline-flex items-center gap-2 text-xs text-muted">
-          <input type="checkbox" x-model="includePreviewReflections" class="rounded border-border">
-          Include task reflections
-        </label>
-      </div>
-      <div class="flex items-center gap-2">
-        <button class="btn-primary btn-sm" type="submit" :disabled="promptPreviewLoading">
-          <span x-show="!promptPreviewLoading">Generate preview</span>
-          <span x-show="promptPreviewLoading">Generating...</span>
-        </button>
-        <button class="btn btn-sm" type="button" @click="copyText(promptPreviewRaw)" :disabled="!promptPreviewRaw">Copy full prompt</button>
-      </div>
-    </form>
-
-    <template x-if="promptPreviewResult">
-      <div :class="promptPreviewOk ? 'alert-success' : 'alert-error'" class="mt-3" x-text="promptPreviewResult"></div>
-    </template>
-
-    <div class="mt-3" x-show="promptPreviewMeta">
-      <p class="text-muted text-xs" x-text="'Generated: ' + (promptPreviewMeta?.generated_at || '-') + ' · mode=' + (promptPreviewMeta?.history_mode || '-') + ' · ~tokens=' + (promptPreviewMeta?.token_estimate || 0)"></p>
-    </div>
-
-    <div class="mt-3" x-show="promptPreviewSections">
-      <h3 class="text-sm mb-2">Section view</h3>
-      <template x-for="entry in Object.entries(promptPreviewSections || {})" :key="entry[0]">
-        <details class="mb-2 rounded border border-border p-2">
-          <summary class="text-xs" x-text="entry[0]"></summary>
-          <pre class="mt-2 text-xs" style="white-space: pre-wrap" x-text="entry[1]"></pre>
-        </details>
-      </template>
-    </div>
-
-    <div class="mt-3" x-show="promptPreviewRaw">
-      <h3 class="text-sm mb-2">Raw assembled prompt</h3>
-      <pre class="text-xs" style="white-space: pre-wrap" x-text="promptPreviewRaw"></pre>
-    </div>
-
-    <hr class="border-border my-4">
-
-    <div>
-      <h3 class="text-sm mb-2">Recent runtime prompts</h3>
-      <div class="flex items-center gap-2 mb-2">
-        <button class="btn btn-sm" type="button" @click="fetchRecentPrompts()">Refresh captured prompts</button>
-        <span class="text-muted text-xs">Only available when capture is enabled and the agent is running.</span>
-      </div>
-      <template x-if="recentPromptsLoading">
-        <div class="text-muted text-xs">Loading...</div>
-      </template>
-      <template x-if="!recentPromptsLoading && (!recentPrompts || recentPrompts.length === 0)">
-        <div class="text-muted text-xs">No captured prompts yet.</div>
-      </template>
-      <template x-for="(item, idx) in (recentPrompts || [])" :key="idx">
-        <details class="mb-2 rounded border border-border p-2">
-          <summary class="text-xs" x-text="(item.captured_at || '-') + ' · ' + (item.channel || '-') + ' · user=' + (item.user_hash || '-')"></summary>
-          <div class="flex items-center gap-2 mt-2">
-            <button class="btn btn-sm" type="button" @click="copyText(item.prompt || '')">Copy</button>
-          </div>
-          <pre class="mt-2 text-xs" style="white-space: pre-wrap" x-text="item.prompt || ''"></pre>
-        </details>
-      </template>
-    </div>
-  </div>
-  </div>{# /sysprompt #}
-
-  <div class="space-y-6" x-show="section === 'inference'" style="display:none">
+  <div class="space-y-6" x-show="section === 'inference'">
   <div class="card">
     <h2 class="text-base mb-1">Active Inference Provider</h2>
     <p class="text-muted text-xs mb-4">Select the provider used for agent inference after testing its connection.</p>

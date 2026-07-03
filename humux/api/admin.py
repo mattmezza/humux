@@ -41,8 +41,6 @@ from core.goal_decomposition import classify_complexity, decompose_goal
 from core.llm import LLMClient, get_sent_payload
 from core.log_streams import current_stream, current_subagent
 from core.prompt_builder import (
-    DEFAULT_HISTORY_HANDLING_BLOCK,
-    DEFAULT_TOOL_USAGE_BLOCK,
     build_prompt_sections,
 )
 from core.tools import gh_token_secret_name, tool_env
@@ -1310,12 +1308,6 @@ def create_admin_app(
         vision_enabled = vision_enabled if vision_enabled is not None else "false"
         vision_provider = await config_store.get("vision.provider") or "anthropic"
         vision_model = await config_store.get("vision.model") or "claude-haiku-4-5"
-        prompt_tool_usage_override = await config_store.get("prompt.tool_usage_override") or ""
-        prompt_history_override = await config_store.get("prompt.history_handling_override") or ""
-        prompt_capture_enabled = await config_store.get("admin.capture_prompts")
-        prompt_capture_enabled = False
-        if prompt_capture_enabled is not None:
-            prompt_capture_enabled = str(prompt_capture_enabled).lower() == "true"
         return _render_partial(
             "partials/llm.html",
             provider=provider,
@@ -1368,11 +1360,6 @@ def create_admin_app(
             vision_enabled=vision_enabled,
             vision_provider=vision_provider,
             vision_model=vision_model,
-            prompt_tool_usage_override=prompt_tool_usage_override,
-            prompt_history_override=prompt_history_override,
-            default_tool_usage=DEFAULT_TOOL_USAGE_BLOCK,
-            default_history_handling=DEFAULT_HISTORY_HANDLING_BLOCK,
-            prompt_capture_enabled=prompt_capture_enabled,
             # History sub-tab (included into the LLM tab) needs its config too.
             **(await _history_ctx()),
         )
@@ -1752,8 +1739,6 @@ def create_admin_app(
         tab (included there) and the standalone /partials/history route."""
         c_enabled = await config_store.get("compaction.enabled")
         return {
-            "mode": await config_store.get("history.mode") or "injection",
-            "max_turns": await config_store.get("history.max_turns") or "10",
             "compaction_enabled": c_enabled if c_enabled is not None else "true",
             "compaction_threshold_type": await config_store.get("compaction.threshold_type")
             or "percent",

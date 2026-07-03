@@ -215,8 +215,10 @@ class AdminConfig(BaseModel):
 
 class HistoryConfig(BaseModel):
     db_path: str = "data/history.db"
-    max_turns: int = 10  # number of user-assistant pairs to include
-    mode: str = "injection"  # "injection" (windowed history) or "session" (sticky per channel)
+    max_turns: int = 10  # number of user-assistant pairs to include (injection mode only)
+    # Sticky per-channel session is the only user-facing mode now (#138); the
+    # injection code path is kept for back-compat but no longer selectable in the UI.
+    mode: str = "session"  # "injection" (windowed history) or "session" (sticky per channel)
 
 
 class EmbeddingConfig(BaseModel):
