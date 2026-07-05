@@ -1,25 +1,62 @@
-<div class="card" x-data="{ testResult: '', testOk: false, testing: false }">
+<div class="card" x-data="{
+      provider: '{{ step_ctx.search_provider|default('tavily') }}',
+      testResult: '', testOk: false, testing: false,
+      test() {
+        this.testing = true; this.testResult = '';
+        const body = this.provider === 'searxng'
+          ? {service: 'searxng', url: document.getElementById('w-searxng-url').value}
+          : {service: 'tavily', api_key: document.getElementById('w-tavily-key').value};
+        fetch('/setup/test-connection', {
+          method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)
+        })
+        .then(r => r.json())
+        .then(d => { this.testOk = d.ok; this.testResult = d.ok ? 'Search working (' + d.results + ' results)' : d.error; })
+        .catch(e => { this.testOk = false; this.testResult = e.message; })
+        .finally(() => { this.testing = false; });
+      },
+      next() {
+        const searxng = this.provider === 'searxng';
+        const key = document.getElementById('w-tavily-key').value;
+        const url = document.getElementById('w-searxng-url').value;
+        const enabled = searxng ? !!url : !!key;
+        htmx.ajax('POST', '/setup/step', {
+          target: '#wizard-step', swap: 'innerHTML',
+          values: {
+            step: 'browser',
+            'values[search.enabled]': enabled ? 'true' : 'false',
+            'values[search.provider]': this.provider,
+            'values[search.api_key]': key,
+            'values[search.searxng_url]': url
+          }
+        });
+      }
+    }">
   <h2 class="text-base mb-3">Web Search <span class="text-muted font-normal text-xs">(optional)</span></h2>
 
-  <label class="label" for="w-tavily-key">Tavily API Key</label>
-  <input type="password" class="input" id="w-tavily-key" name="tavily_key" placeholder="tvly-..."
-         value="{{ step_ctx.tavily_key|default('') }}">
-  <p class="hint">Free tier at <a href="https://app.tavily.com" target="_blank">app.tavily.com</a></p>
+  <label class="label">Provider</label>
+  <select class="input" style="max-width:320px" x-model="provider">
+    <option value="tavily">Tavily — hosted, needs an API key</option>
+    <option value="searxng">SearXNG — self-hosted, zero cost, needs a URL</option>
+  </select>
+  <p class="hint" x-show="provider === 'tavily'">Hosted metasearch with cleaned, LLM-ready content. Free tier of 1K queries/mo.</p>
+  <p class="hint" x-show="provider === 'searxng'">Self-hosted metasearch — no API key, no per-query cost. Ship it with the bundled <code>docker-compose.searxng.yml</code>.</p>
+
+  <div class="mt-3" x-show="provider === 'tavily'">
+    <label class="label" for="w-tavily-key">Tavily API Key</label>
+    <input type="password" class="input" id="w-tavily-key" name="tavily_key" placeholder="tvly-..."
+           value="{{ step_ctx.tavily_key|default('') }}">
+    <p class="hint">Free tier at <a href="https://app.tavily.com" target="_blank">app.tavily.com</a></p>
+  </div>
+
+  <div class="mt-3" x-show="provider === 'searxng'">
+    <label class="label" for="w-searxng-url">Instance URL</label>
+    <input type="text" class="input" id="w-searxng-url" name="searxng_url" placeholder="http://searxng:8080"
+           value="{{ step_ctx.searxng_url|default('') }}">
+    <p class="hint">Base URL of your SearXNG instance (JSON format must be enabled).</p>
+  </div>
 
   <div class="mt-3">
-    <button class="btn" :disabled="testing"
-            @click="
-              testing = true; testResult = '';
-              fetch('/setup/test-connection', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({service: 'tavily', api_key: document.getElementById('w-tavily-key').value})
-              })
-              .then(r => r.json())
-              .then(d => { testOk = d.ok; testResult = d.ok ? 'Search working (' + d.results + ' results)' : d.error; })
-              .catch(e => { testOk = false; testResult = e.message; })
-              .finally(() => { testing = false; })
-            ">
+    <button class="btn" :disabled="testing" @click="test()">
       <span x-show="testing" class="spinner mr-1"></span>
       Test connection
     </button>
@@ -40,21 +77,7 @@
               hx-vals='{"step": "browser", "values": {}}'>
         Skip
       </button>
-      <button class="btn-primary"
-              @click="
-                const key = document.getElementById('w-tavily-key').value;
-                htmx.ajax('POST', '/setup/step', {
-                  target: '#wizard-step', swap: 'innerHTML',
-                  values: {
-                    step: 'browser',
-                    'values[search.enabled]': key ? 'true' : 'false',
-                    'values[search.api_key]': key,
-                    'values[search.provider]': 'tavily'
-                  }
-                })
-              ">
-        Next
-      </button>
+      <button class="btn-primary" @click="next()">Next</button>
     </div>
   </div>
 </div>
