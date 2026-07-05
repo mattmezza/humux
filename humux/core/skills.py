@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 import aiosqlite
@@ -11,10 +12,14 @@ CREATE TABLE IF NOT EXISTS skills (
     name TEXT PRIMARY KEY,
     content TEXT NOT NULL,
     summary TEXT DEFAULT '',
+    seed_hash TEXT DEFAULT NULL,
     created_at DATETIME DEFAULT (datetime('now')),
     updated_at DATETIME DEFAULT (datetime('now'))
 );
 """
+
+# Migration: add seed_hash to existing tables (safe no-op if already present).
+_MIGRATE_SEED_HASH = "ALTER TABLE skills ADD COLUMN seed_hash TEXT DEFAULT NULL;"
 
 
 # One-line instruction prepended to the skills index (#178), telling the model
@@ -73,30 +78,67 @@ class SkillsStore:
             return int(row[0]) if row else 0
 
     async def ensure_seeded(self) -> bool:
-        """Seed missing skills from markdown files."""
+        """Seed / re-seed skills from markdown files (#182).
+
+        Uses a content hash (``seed_hash``) to detect when a source file has
+        changed. Only overwrites rows whose ``seed_hash`` matches the current
+        file hash — user-edited rows (``seed_hash IS NULL``) are never touched.
+        """
         await self._ensure_schema()
+        # Run migration (safe no-op if column already exists).
+        async with aiosqlite.connect(self.db_path) as db:
+            try:
+                await db.execute(_MIGRATE_SEED_HASH)
+            except aiosqlite.OperationalError:  # already present
+                pass
+            await db.commit()
+
         if not self.seed_dir or not self.seed_dir.exists():
             return False
 
-        inserted = 0
+        changed = 0
         async with aiosqlite.connect(self.db_path) as db:
-            cursor = await db.execute("SELECT name FROM skills")
-            existing = {row[0] for row in await cursor.fetchall()}
+            cursor = await db.execute("SELECT name, content, seed_hash FROM skills")
+            existing_rows = {row[0]: {"content": row[1], "seed_hash": row[2]} for row in await cursor.fetchall()}
+
             for skill_file in sorted(self.seed_dir.glob("*.md")):
                 content = skill_file.read_text().strip()
                 if not content:
                     continue
                 name = skill_file.stem
-                if name in existing:
-                    continue
+                file_hash = hashlib.sha256(content.encode()).hexdigest()
                 summary = _extract_summary(content)
-                await db.execute(
-                    "INSERT INTO skills (name, content, summary) VALUES (?, ?, ?)",
-                    (name, content, summary),
-                )
-                inserted += 1
+
+                if name not in existing_rows:
+                    # New skill — insert.
+                    await db.execute(
+                        "INSERT INTO skills (name, content, summary, seed_hash) VALUES (?, ?, ?, ?)",
+                        (name, content, summary, file_hash),
+                    )
+                    changed += 1
+                else:
+                    row = existing_rows[name]
+                    if row["seed_hash"] is None:
+                        # Pre-migration or user-edited. If content still matches
+                        # the seed file, adopt the hash so future re-seeds work.
+                        if row["content"] == content:
+                            await db.execute(
+                                "UPDATE skills SET seed_hash = ? WHERE name = ?",
+                                (file_hash, name),
+                            )
+                    elif row["seed_hash"] != file_hash:
+                        # Seed file changed — re-seed.
+                        await db.execute(
+                            "UPDATE skills SET content = ?, summary = ?, "
+                            "seed_hash = ?, updated_at = datetime('now') "
+                            "WHERE name = ?",
+                            (content, summary, file_hash, name),
+                        )
+                        changed += 1
+                    # Same hash → no-op.
+
             await db.commit()
-        return inserted > 0
+        return changed > 0
 
     async def list_skills(self) -> list[dict]:
         await self.ensure_seeded()
@@ -119,6 +161,7 @@ class SkillsStore:
             return dict(row) if row else None
 
     async def upsert_skill(self, name: str, content: str) -> None:
+        """Upsert a skill, clearing its seed_hash (user edit = no longer pristine)."""
         await self._ensure_schema()
         summary = _extract_summary(content)
         async with aiosqlite.connect(self.db_path) as db:
@@ -126,7 +169,7 @@ class SkillsStore:
                 "INSERT INTO skills (name, content, summary) VALUES (?, ?, ?) "
                 "ON CONFLICT(name) DO UPDATE SET "
                 "content = excluded.content, summary = excluded.summary, "
-                "updated_at = datetime('now')",
+                "seed_hash = NULL, updated_at = datetime('now')",
                 (name, content, summary),
             )
             await db.commit()
