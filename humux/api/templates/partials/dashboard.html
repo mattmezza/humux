@@ -66,7 +66,7 @@
   {% endif %}
 
   {# Recent activity #}
-  <div class="card p-4">
+  <div class="card p-4 overflow-hidden">
     <div class="flex items-center justify-between mb-3">
       <h3 class="text-xs text-muted uppercase tracking-wider">Recent activity</h3>
     </div>
@@ -75,13 +75,13 @@
       {% for entry in log_entries[:20] %}
       {% set ts = entry.get('time', '') %}
       {% set msg = entry.get('message', '') %}
-      <a href="/admin?tab=inspect&amp;inspectsub=logs" class="flex items-start gap-2 text-xs font-mono no-underline hover:bg-surface-hover rounded px-1 py-0.5 -mx-1 transition-colors">
+      <a href="/admin?tab=inspect&amp;inspectsub=logs" class="flex items-start gap-2 text-xs font-mono no-underline hover:bg-surface-hover rounded px-1 py-0.5 -mx-1 transition-colors min-w-0">
         <span class="shrink-0 text-muted"
               style="color:{% if entry.level == 'ERROR' %}#c66{% elif entry.level == 'WARNING' %}#ca6{% else %}#888{% endif %}">
           {{ entry.level|truncate(4, True, '') }}
         </span>
         <span class="text-muted shrink-0">{{ ts }}</span>
-        <span class="text-gray-300 truncate">{{ msg }}</span>
+        <span class="text-gray-300 truncate min-w-0">{{ msg }}</span>
       </a>
       {% endfor %}
     </div>
