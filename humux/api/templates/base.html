@@ -1354,6 +1354,21 @@
       }
     });
 
+    // Global: format a token count with k/M/G suffix (#199).
+    // 12530 → "12.53k", 1.23M → "1230000", 100.4M → "100400000", 1.34G → "1340000000"
+    function formatTokens(n) {
+      if (n >= 1e9) return (n / 1e9).toFixed(2).replace(/\.?0+$/, '') + 'G';
+      if (n >= 1e6) return (n / 1e6).toFixed(2).replace(/\.?0+$/, '') + 'M';
+      if (n >= 1e3) return (n / 1e3).toFixed(2).replace(/\.?0+$/, '') + 'k';
+      return String(n);
+    }
+    // Estimate tokens from character count (chars / 3.5).
+    function estimateTokens(text) {
+      return formatTokens(Math.round((text || '').length / 3.5));
+    }
+    window.formatTokens = formatTokens;
+    window.estimateTokens = estimateTokens;
+
     // Global: listen for HX-Trigger showToast events from the server
     document.body.addEventListener('showToast', function(e) {
       if (window.showToast && e.detail && e.detail.value) {

@@ -33,7 +33,10 @@ Include executable CLI examples.
 Edge cases, pitfalls, safety constraints."
                     x-on:input.debounce.500ms="validate($el.value)"
                     x-model.fill="content">{{ skill_content }}</textarea>
-          <div class="hint">First non-empty line becomes the summary shown in the list.</div>
+          <div class="flex items-center justify-between">
+            <div class="hint">First non-empty line becomes the summary shown in the list.</div>
+            <span class="text-[10px] text-muted" x-text="'~' + window.estimateTokens(content) + ' tokens'"></span>
+          </div>
           <template x-if="validationErrors.length > 0">
             <div class="mt-2 space-y-0.5">
               <template x-for="err in validationErrors" :key="err.line + err.message">

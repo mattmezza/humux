@@ -35,18 +35,18 @@
   <div class="grid grid-cols-3 gap-3">
     <div class="card px-4 py-3">
       <div class="text-xs text-muted mb-0.5">Tokens · 24h</div>
-      <div class="text-lg text-accent font-semibold">{{ tok_24h.total_input + tok_24h.total_output }}</div>
-      <div class="text-[10px] text-muted mt-0.5">{{ tok_24h.total_input }} in / {{ tok_24h.total_output }} out</div>
+      <div class="text-lg text-accent font-semibold">{{ fmt_tokens(tok_24h.total_input + tok_24h.total_output) }}</div>
+      <div class="text-[10px] text-muted mt-0.5">{{ fmt_tokens(tok_24h.total_input) }} in / {{ fmt_tokens(tok_24h.total_output) }} out</div>
     </div>
     <div class="card px-4 py-3">
       <div class="text-xs text-muted mb-0.5">Tokens · 7d</div>
-      <div class="text-lg text-accent font-semibold">{{ tok_7d.total_input + tok_7d.total_output }}</div>
-      <div class="text-[10px] text-muted mt-0.5">{{ tok_7d.total_input }} in / {{ tok_7d.total_output }} out</div>
+      <div class="text-lg text-accent font-semibold">{{ fmt_tokens(tok_7d.total_input + tok_7d.total_output) }}</div>
+      <div class="text-[10px] text-muted mt-0.5">{{ fmt_tokens(tok_7d.total_input) }} in / {{ fmt_tokens(tok_7d.total_output) }} out</div>
     </div>
     <div class="card px-4 py-3">
       <div class="text-xs text-muted mb-0.5">Tokens · 30d</div>
-      <div class="text-lg text-accent font-semibold">{{ tok_30d.total_input + tok_30d.total_output }}</div>
-      <div class="text-[10px] text-muted mt-0.5">{{ tok_30d.total_input }} in / {{ tok_30d.total_output }} out</div>
+      <div class="text-lg text-accent font-semibold">{{ fmt_tokens(tok_30d.total_input + tok_30d.total_output) }}</div>
+      <div class="text-[10px] text-muted mt-0.5">{{ fmt_tokens(tok_30d.total_input) }} in / {{ fmt_tokens(tok_30d.total_output) }} out</div>
     </div>
   </div>
 

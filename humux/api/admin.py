@@ -91,9 +91,19 @@ _jinja_env = Environment(
     autoescape=True,
     auto_reload=True,
 )
+def _fmt_tokens(n: int) -> str:
+    """Format a token count with k/M/G suffix (#199)."""
+    if n >= 1_000_000_000:
+        return f"{n / 1_000_000_000:.2f}".rstrip("0").rstrip(".") + "G"
+    if n >= 1_000_000:
+        return f"{n / 1_000_000:.2f}".rstrip("0").rstrip(".") + "M"
+    if n >= 1_000:
+        return f"{n / 1_000:.2f}".rstrip("0").rstrip(".") + "k"
+    return str(n)
+
+
 _jinja_env.globals["step_ctx"] = {}  # default empty dict for wizard templates
-
-
+_jinja_env.globals["fmt_tokens"] = _fmt_tokens
 def _render(template_name: str, **ctx: object) -> HTMLResponse:
     """Render a Jinja2 template and return an HTMLResponse."""
     tmpl = _jinja_env.get_template(template_name)
