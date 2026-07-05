@@ -90,6 +90,9 @@ group or supergroup each bot then:
 
 A few details worth knowing:
 
+- **Forum topics** — in a group with topics enabled, each topic is its own conversation:
+  the agent keeps separate context per topic and always replies in the topic that
+  triggered it (the General topic behaves like the plain group chat).
 - **Clearing context** — in a group, clear a specific bot with `/new@botname` (a bare
   `/new` is not addressed to any one bot, so it's recorded as context, not a clear).
 - **Stopping a turn** — press **⛔ Stop** on any approval prompt, or send `/stop`, to abort
