@@ -2827,6 +2827,19 @@ def create_admin_app(
         skills = await store.list_skills()
         return _render_partial("partials/skills.html", skills=skills)
 
+    @app.post("/skills/{name}/reset", dependencies=[Depends(auth)])
+    async def reset_skill(name: str) -> HTMLResponse:
+        """Reset a skill to its seed version (#182)."""
+        store = await _skills_store_from_config(config_store)
+        updated = await store.reset_skill_to_seed(name)
+        if not updated:
+            # Skill may have no seed file, or the file is unchanged.
+            skill = await store.get_skill(name)
+            if not skill:
+                raise HTTPException(404, f"Skill not found: {name}")
+        skills = await store.list_skills()
+        return _render_partial("partials/skills.html", skills=skills)
+
     # ── Agents API ───────────────────────────────────────────────────
 
     async def _agents_partial() -> HTMLResponse:

@@ -15,7 +15,7 @@
         <tr>
           <th class="min-w-[160px]">Name</th>
           <th>Summary</th>
-          <th class="w-20"></th>
+          <th class="w-28"></th>
         </tr>
       </thead>
       <tbody>
@@ -25,6 +25,14 @@
           <td class="text-xs">{{ skill.summary }}</td>
           <td class="whitespace-nowrap">
             <a class="btn btn-sm" href="/admin/skills/{{ skill.name }}">edit</a>
+            {% if skill.stale_seed %}
+            <button class="btn-outline btn-sm ml-0.5"
+                    hx-post="/skills/{{ skill.name }}/reset" hx-target="#tab-content" hx-swap="innerHTML"
+                    title="Seed file changed — reset to original"
+                    hx-confirm="Reset &quot;{{ skill.name }}&quot; to the seed version?">
+              ↺
+            </button>
+            {% endif %}
             <button class="btn-danger btn-sm ml-0.5"
                     hx-post="/skills/delete" hx-target="#tab-content" hx-swap="innerHTML"
                     hx-vals='{"name": {{ skill.name|tojson }} }'
