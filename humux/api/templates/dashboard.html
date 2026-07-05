@@ -11,12 +11,6 @@
   </div>
     -->
 
-  {# Status bar — loaded via HTMX, refreshes on lifecycle events #}
-  <div id="status-bar" class="flex items-center gap-3 py-2 mb-4 flex-wrap"
-       hx-get="/partials/status" hx-trigger="load, refresh-status from:body" hx-swap="innerHTML">
-    <span class="text-muted text-xs">Loading...</span>
-  </div>
-
   {# Restart-required banner — shown after saving a setting the agent only reads at
      startup. Sibling of #tab-content so it survives tab swaps. #}
   <div id="restart-banner" class="card mb-4" style="display:none;" role="status">
@@ -66,6 +60,10 @@
 
   {# Tab navigation #}
   <div class="flex border-b border-border mb-4 overflow-x-auto" x-data="adminTabs()" x-init="init()" @switch-tab.window="select($event.detail)">
+    <button class="tab-link" :class="tab === 'overview' && 'tab-link-active'"
+            @click="select('overview')">
+      Overview
+    </button>
     <button class="tab-link" :class="tab === 'agents' && 'tab-link-active'"
             @click="select('agents')">
       Agents
@@ -528,6 +526,7 @@
 
   function adminTabs() {
     const tabs = {
+      overview: '/partials/dashboard',
       you: '/partials/you',
       agents: '/partials/agents',
       llm: '/partials/llm',
@@ -567,7 +566,7 @@
           history.replaceState(history.state, '', u);
           urlTab = top;
         }
-        const initialTab = (urlTab && tabs[urlTab]) ? urlTab : 'agents';
+        const initialTab = (urlTab && tabs[urlTab]) ? urlTab : 'overview';
         this.tab = initialTab;
         if (!urlTab) {
           const url = new URL(window.location.href);
@@ -581,7 +580,7 @@
         });
 
         window.addEventListener('popstate', () => {
-          const current = new URLSearchParams(window.location.search).get('tab') || 'agents';
+          const current = new URLSearchParams(window.location.search).get('tab') || 'overview';
           if (tabs[current]) {
             this.loadTab(current, false);
           }
@@ -598,6 +597,8 @@
         htmx.ajax('GET', tabs[name], {target: '#tab-content', swap: 'innerHTML'});
         if (updateUrl) {
           const url = new URL(window.location.href);
+          // Strip all sub-tab query params when switching parent tabs (#197).
+          url.search = '';
           url.searchParams.set('tab', name);
           history.pushState({tab: name}, '', url);
         }

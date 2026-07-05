@@ -1162,6 +1162,22 @@ def create_admin_app(
             log_entries=log_entries,
         )
 
+    @app.get("/version", dependencies=[Depends(auth)])
+    async def version() -> HTMLResponse:
+        """Latest release version from GitHub."""
+        try:
+            async with httpx.AsyncClient(timeout=5) as client:
+                resp = await client.get(
+                    "https://api.github.com/repos/mattmezza/humux/releases/latest",
+                    headers={"Accept": "application/vnd.github.v3+json"},
+                )
+                if resp.is_success:
+                    tag = resp.json().get("tag_name", "") or ""
+                    return HTMLResponse(tag)
+        except Exception:
+            pass
+        return HTMLResponse("dev")
+
     async def _voice_context() -> dict:
         """Global speech (STT/TTS) settings for the Voice card. Not per-agent —
         identity/character/accounts now live on the default agent row (#115 flw)."""
