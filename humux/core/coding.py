@@ -1,36 +1,42 @@
-"""Coding harness — confined file read/write/edit/list/grep for the agent (issue #76).
+"""Coding harness — confined file read/write/edit for the agent (#76, #178).
 
 A minimal set of file tools that let the agent operate on a real codebase
-directly, instead of describing every change in chat for the user to apply by
-hand. Deliberately *not* a plugin system, LSP, or AST editor — those are out of
-scope for the first iteration.
+directly. Listing and searching moved to the `bash` tool (`ls`, `rg`, `find`),
+so this module is just the three structured file operations: read, write, edit.
 
 Every path is resolved against a single **allowed workspace root**; anything
 that escapes it (via ``..`` or a symlink) is refused. That containment is the
 trust boundary, so the check is ``realpath``-based, not a string-prefix compare:
 ``resolve()`` follows symlinks and collapses ``..`` before we test containment.
 
-These functions are pure (no agent/LLM state) so they are unit-testable on their
-own; the thin ``_tool_*`` wrappers in ``core/agent.py`` add permission gating and
-logging. Write/edit are permission-gated (ASK) by the agent; read/list/grep are
+Reads return **hashline**-prefixed lines (``12#KT:content``): each line carries
+a 2-char hash of itself and its neighbours, so an edit can address a line or
+range by anchor (``{"pos": "12#KT", "lines": [...]}``) instead of quoting the
+full text back — a stale anchor (file changed since the read) is rejected.
+Inspired by pi-hashline-edit; the hash only needs to be stable between a read
+and the following edit, so stdlib crc32 does the job.
+
+These functions are pure (no agent/LLM state) so they are unit-testable on
+their own; the thin ``_tool_*`` wrappers in ``core/agent.py`` add permission
+gating and logging. Write/edit are permission-gated (ASK); read is
 pre-approved (ALWAYS).
 """
 
 from __future__ import annotations
 
-import fnmatch
 import re
+import zlib
 from pathlib import Path
 
-# ponytail: cap grep matches so a broad pattern can't flood the model's context;
-# narrow the pattern or path to see more. Bump if it bites in practice.
-GREP_MAX_MATCHES = 200
-_LINE_CLIP = 400  # max chars per returned grep/line snippet
-# read_file/grep read whole files into memory and are pre-approved (no prompt), so
-# cap file size to avoid an accidental multi-GB OOM. Source files are far smaller;
-# bigger blobs should be inspected with run_command_in_dir. ponytail: flat cap,
-# stream line-by-line only if huge code files ever become a real need.
+# read reads whole files into memory and is pre-approved (no prompt), so cap
+# file size to avoid an accidental multi-GB OOM. Source files are far smaller;
+# bigger blobs should be inspected via bash. ponytail: flat cap, stream
+# line-by-line only if huge code files ever become a real need.
 MAX_READ_BYTES = 10 * 1024 * 1024  # 10 MiB
+
+# 16-char hashline alphabet (same as pi-hashline-edit, so anchors look familiar).
+_HASH_ALPHABET = "ZPMQVRWSNKTXJBYH"
+_ANCHOR_RE = re.compile(r"^\s*(\d+)#([A-Z]{2})\s*$")
 
 
 class WorkspaceError(Exception):
@@ -61,8 +67,32 @@ def resolve_in_workspace(workspace: str, path: str) -> Path:
     return target
 
 
+def _line_hash(prev: str, curr: str, nxt: str) -> str:
+    """2-char hashline hash of a line in its context (prev/next neighbours).
+
+    Context-sensitive on purpose: editing line N invalidates the anchors of
+    N-1..N+1 while distant anchors stay valid, and identical lines in different
+    places get different hashes so an anchor can't silently hit the wrong copy.
+    """
+    h = zlib.crc32(f"{prev}\0{curr}\0{nxt}".encode())
+    return _HASH_ALPHABET[(h >> 4) & 15] + _HASH_ALPHABET[h & 15]
+
+
+def hash_lines(lines: list[str]) -> list[str]:
+    """The hashline hash for every line of a file (parallel to ``lines``)."""
+    n = len(lines)
+    return [
+        _line_hash(lines[i - 1] if i else "", lines[i], lines[i + 1] if i + 1 < n else "")
+        for i in range(n)
+    ]
+
+
 def read_file(workspace: str, path: str, offset: int = 0, limit: int = 100) -> dict:
-    """Read up to ``limit`` lines starting at 0-indexed ``offset``, with line numbers."""
+    """Read up to ``limit`` lines starting at 0-indexed ``offset``.
+
+    Each returned line is prefixed ``LINE#HH:`` — a 1-based line number plus
+    its 2-char hashline hash, usable as an edit anchor (see :func:`edit_file`).
+    """
     target = resolve_in_workspace(workspace, path)
     if not target.is_file():
         return {"error": f"Not a file: {path}"}
@@ -71,14 +101,17 @@ def read_file(workspace: str, path: str, offset: int = 0, limit: int = 100) -> d
         return {
             "error": (
                 f"File too large to read ({size} bytes > {MAX_READ_BYTES}); "
-                "search it with grep or inspect it via run_command_in_dir."
+                "inspect it via bash (rg, head, tail) instead."
             )
         }
     offset = max(0, int(offset))
     limit = max(1, int(limit))
     lines = target.read_text(errors="replace").splitlines()
+    hashes = hash_lines(lines)
     chunk = lines[offset : offset + limit]
-    numbered = "\n".join(f"{offset + i + 1}\t{line}" for i, line in enumerate(chunk))
+    numbered = "\n".join(
+        f"{offset + i + 1}#{hashes[offset + i]}:{line}" for i, line in enumerate(chunk)
+    )
     return {
         "path": str(target),
         "offset": offset,
@@ -98,102 +131,119 @@ def write_file(workspace: str, path: str, content: str) -> dict:
     return {"ok": True, "path": str(target), "bytes": len(content.encode())}
 
 
-def edit_file(
-    workspace: str, path: str, old_string: str, new_string: str, multiple: bool = False
-) -> dict:
-    """Find-and-replace ``old_string`` with ``new_string`` in ``path``.
+def _parse_anchor(anchor: str, lines: list[str], hashes: list[str]) -> tuple[int, str]:
+    """Resolve a ``"12#KT"`` anchor to a 1-based line number, or ``(0, error)``.
 
-    With ``multiple=False`` (default) the match must be unique — more than one
-    occurrence is an error, so an ambiguous edit never silently hits the wrong
-    spot. With ``multiple=True`` every occurrence is replaced.
+    The hash must match the line's CURRENT hash — a mismatch means the file
+    changed since the read that produced the anchor, so the edit must not be
+    applied blind.
+    """
+    m = _ANCHOR_RE.match(str(anchor))
+    if not m:
+        return 0, f"Invalid anchor {anchor!r}: expected LINE#HH, e.g. '12#KT'."
+    n, want = int(m.group(1)), m.group(2)
+    if not 1 <= n <= len(lines):
+        return 0, f"Anchor {anchor!r} is out of range (file has {len(lines)} lines)."
+    if hashes[n - 1] != want:
+        return 0, (
+            f"Stale anchor {anchor!r}: line {n} now hashes to #{hashes[n - 1]}. "
+            "The file changed since you read it — read it again and retry."
+        )
+    return n, ""
+
+
+def edit_file(workspace: str, path: str, edits: list[dict]) -> dict:
+    """Apply one or more edits to ``path`` atomically (all-or-nothing).
+
+    Each edit is one of:
+
+    * ``{"oldText": ..., "newText": ...}`` — exact-substring replace.
+      ``oldText`` must be unique in the file unless ``"all": true`` replaces
+      every occurrence.
+    * ``{"pos": "12#KT", "lines": [...]}`` — replace the anchored line (or the
+      inclusive range up to ``"end": "15#BH"``) with ``lines`` (``[]`` deletes).
+      Anchors come from a ``read`` and are validated against the current
+      content, so a stale anchor errors instead of hitting the wrong line.
+
+    Anchor edits are validated against one snapshot and applied bottom-up, so
+    several ranges in one call don't shift each other; text edits then apply in
+    order. Nothing is written unless every edit succeeds.
     """
     target = resolve_in_workspace(workspace, path)
     if not target.is_file():
         return {"error": f"Not a file: {path}"}
-    if not old_string:
-        return {"error": "old_string must not be empty."}
+    if not isinstance(edits, list) or not edits:
+        return {"error": "edits must be a non-empty array of edit objects."}
+
     text = target.read_text()
-    count = text.count(old_string)
-    if count == 0:
-        return {"error": "old_string not found in file."}
-    if count > 1 and not multiple:
-        return {
-            "error": (
-                f"old_string matches {count} times; add surrounding context to make it "
-                "unique, or pass multiple=true to replace every occurrence."
-            )
-        }
-    if multiple:
-        new_text = text.replace(old_string, new_string)
-        replacements = count
-    else:
-        new_text = text.replace(old_string, new_string, 1)
-        replacements = 1
-    target.write_text(new_text)
-    return {"ok": True, "path": str(target), "replacements": replacements}
+    line_ops: list[dict] = []
+    text_ops: list[dict] = []
+    for i, e in enumerate(edits):
+        if not isinstance(e, dict):
+            return {"error": f"Edit #{i + 1} is not an object."}
+        if "oldText" in e:
+            text_ops.append(e)
+        elif "pos" in e:
+            line_ops.append(e)
+        else:
+            return {"error": f"Edit #{i + 1} needs either oldText/newText or pos/lines."}
 
+    replacements = 0
 
-def list_dir(workspace: str, path: str = ".") -> dict:
-    """List one level of ``path`` as ``[{name, type, size}]`` (size 0 for dirs)."""
-    target = resolve_in_workspace(workspace, path)
-    if not target.is_dir():
-        return {"error": f"Not a directory: {path}"}
-    entries: list[dict] = []
-    for child in sorted(target.iterdir(), key=lambda p: (p.is_file(), p.name)):
-        try:
-            # A symlink pointing outside the workspace must not leak its target's
-            # type/size — confine to the workspace, same boundary as every read.
-            if child.is_symlink() and not _contained(target, child.resolve()):
-                continue
-            is_dir = child.is_dir()
-            entries.append(
-                {
-                    "name": child.name,
-                    "type": "dir" if is_dir else "file",
-                    "size": 0 if is_dir else child.stat().st_size,
+    # Anchor edits: validate everything against the read snapshot, then apply
+    # bottom-up so earlier replacements don't shift later line numbers.
+    if line_ops:
+        # ponytail: assumes \n line endings (splitlines folds \r\n; reassembly
+        # normalises). Fine for the code files this harness edits.
+        trail = "\n" if text.endswith("\n") else ""
+        lines = text.splitlines()
+        hashes = hash_lines(lines)
+        resolved: list[tuple[int, int, list[str]]] = []
+        for e in line_ops:
+            start, err = _parse_anchor(e["pos"], lines, hashes)
+            if err:
+                return {"error": err}
+            end = start
+            if e.get("end"):
+                end, err = _parse_anchor(e["end"], lines, hashes)
+                if err:
+                    return {"error": err}
+            if end < start:
+                return {"error": f"Anchor range {e['pos']}..{e['end']} is reversed."}
+            new_lines = e.get("lines", [])
+            if not isinstance(new_lines, list):
+                return {"error": "'lines' must be an array of strings."}
+            resolved.append((start, end, [str(ln) for ln in new_lines]))
+        resolved.sort(key=lambda r: r[0], reverse=True)
+        for i in range(1, len(resolved)):
+            if resolved[i][1] >= resolved[i - 1][0]:
+                return {"error": "Anchor ranges overlap; split them into separate calls."}
+        for start, end, new_lines in resolved:
+            lines[start - 1 : end] = new_lines
+            replacements += 1
+        text = "\n".join(lines) + (trail if lines else "")
+
+    for e in text_ops:
+        old = str(e.get("oldText", ""))
+        new = str(e.get("newText", ""))
+        if not old:
+            return {"error": "oldText must not be empty."}
+        count = text.count(old)
+        if count == 0:
+            return {"error": f"oldText not found in file: {old[:120]!r}"}
+        if e.get("all"):
+            text = text.replace(old, new)
+            replacements += count
+        else:
+            if count > 1:
+                return {
+                    "error": (
+                        f"oldText matches {count} times; add surrounding context to make "
+                        'it unique, or pass "all": true to replace every occurrence.'
+                    )
                 }
-            )
-        except OSError:
-            continue  # broken symlink / permission — skip, don't fail the whole listing
-    return {"path": str(target), "entries": entries}
+            text = text.replace(old, new, 1)
+            replacements += 1
 
-
-def grep(workspace: str, pattern: str, path: str = ".", include: str = "") -> dict:
-    """Regex-search files under ``path`` (recursive), optionally filtered by glob.
-
-    Returns ``[{file, line, content}]``, capped at :data:`GREP_MAX_MATCHES`.
-    Binary files (those with a NUL byte) and files above :data:`MAX_READ_BYTES`
-    are skipped. Symlinks resolving outside the workspace are skipped — `rglob`
-    can surface them (or descend a symlinked dir), so each file is re-confined.
-    """
-    root = resolve_in_workspace(workspace, path)
-    try:
-        rx = re.compile(pattern)
-    except re.error as exc:
-        return {"error": f"Invalid regex: {exc}"}
-    files = [root] if root.is_file() else (p for p in root.rglob("*") if p.is_file())
-    matches: list[dict] = []
-    for f in files:
-        if include and not fnmatch.fnmatch(f.name, include):
-            continue
-        try:
-            if not _contained(root, f.resolve()):
-                continue  # symlink escaping the workspace
-            if f.stat().st_size > MAX_READ_BYTES:
-                continue  # too large; don't materialize it
-            text = f.read_text(errors="replace")
-        except OSError:
-            continue
-        if "\x00" in text:
-            continue  # binary
-        for lineno, line in enumerate(text.splitlines(), 1):
-            if rx.search(line):
-                matches.append({"file": str(f), "line": lineno, "content": line[:_LINE_CLIP]})
-                if len(matches) >= GREP_MAX_MATCHES:
-                    return {
-                        "pattern": pattern,
-                        "count": len(matches),
-                        "matches": matches,
-                        "truncated": True,
-                    }
-    return {"pattern": pattern, "count": len(matches), "matches": matches, "truncated": False}
+    target.write_text(text)
+    return {"ok": True, "path": str(target), "replacements": replacements}

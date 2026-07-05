@@ -1651,7 +1651,7 @@ def create_admin_app(
             level = "ASK"
         # Global default scope on purpose: a per-domain browser trust toggle applies
         # to every agent, not just one (#100 scoping is opt-in via the perms tab).
-        agent.permissions.add_rule(f"run_command:*browser.py act*{domain}*", level)
+        agent.permissions.add_rule(f"bash:*browser.py act*{domain}*", level)
         return {"ok": True, "rules": _browser_rules()}
 
     @app.post("/tools/browser/rules/delete", dependencies=[Depends(auth)])
@@ -2195,16 +2195,12 @@ def create_admin_app(
         skills_store = await _skills_store_from_config(config_store)
         await skills_store.ensure_seeded()
         skills = await skills_store.list_skills()
-        skill_lines = []
-        for skill in skills:
-            summary = str(skill.get("summary", "")).strip()
-            name = str(skill.get("name", "")).strip()
-            if not name:
-                continue
-            if summary:
-                skill_lines.append(f"- {name}: {summary}")
-            else:
-                skill_lines.append(f"- {name}")
+        skill_lines = [
+            f'<skill name="{name}">{summary}</skill>'
+            for skill in skills
+            if (name := str(skill.get("name", "")).strip())
+            for summary in [str(skill.get("summary", "")).strip()]
+        ]
         skills_index = "\n".join(skill_lines)
 
         memories = ""
@@ -2269,7 +2265,6 @@ def create_admin_app(
             secrets_available=secret_store is not None,
             include_memories=body.include_memories,
             include_reflections=body.include_reflections,
-            skills_on_demand=config.agent.skills_index_mode == "on_demand",
         )
         full_prompt = sections.full_prompt
         section_map = sections.as_dict()
@@ -4049,15 +4044,12 @@ def _config_requires_restart(values: dict) -> bool:
     return any(key == "history.max_turns" or key.startswith("voice.") for key in values)
 
 
-# Function-tools that an agent may scope. ``load_skill`` is intentionally
-# excluded — it is always available (the core mechanic agents use to read
-# their allowlisted skills); so are ``search_skills``/``list_skills`` (its
-# on-demand discovery counterparts — #50), the vault tools, and ``recall_memory``
-# (memory is injected for every agent, scope-filtered, so its on-demand
-# counterpart is always available too). Kept here (not imported from core.agent)
+# Function-tools that an agent may scope. The vault tools and ``recall_memory``/
+# ``remember`` are intentionally excluded — always available (memory is injected
+# for every agent, scope-filtered). Kept here (not imported from core.agent)
 # to avoid pulling the agent's heavy import graph into the admin app.
 GATEABLE_TOOLS = [
-    "run_command",
+    "bash",
     "send_email",
     "reply_email",
     "send_message",
@@ -4069,27 +4061,21 @@ GATEABLE_TOOLS = [
     "manage_jobs",
     "spawn_subagent",
     "generate_image",
-    "read_file",
-    "write_file",
-    "edit_file",
-    "list_dir",
-    "grep",
-    "run_command_in_dir",
+    "read",
+    "write",
+    "edit",
 ]
 
 _WORKSPACE_TOOLS = (
-    "read_file",
-    "write_file",
-    "edit_file",
-    "list_dir",
-    "grep",
-    "run_command_in_dir",
+    "read",
+    "write",
+    "edit",
 )
 
 # One-line blurbs for the per-agent Tool scope UI (#135), so each checkbox says
 # what it does. Keyed by the gateable tool name; unlisted tools show no blurb.
 TOOL_DESCRIPTIONS = {
-    "run_command": "Run shell commands on the host (guarded; risky ones ask first).",
+    "bash": "Run shell commands on the host (guarded; risky ones ask first).",
     "send_email": "Compose and send email from a bound account.",
     "reply_email": "Reply within an existing email thread.",
     "send_message": "Send a chat message to a Telegram/WhatsApp conversation.",
@@ -4101,12 +4087,9 @@ TOOL_DESCRIPTIONS = {
     "manage_jobs": "Schedule, list and cancel the agent's own jobs.",
     "spawn_subagent": "Delegate a scoped subtask to a child agent.",
     "generate_image": "Generate images and send them as photos.",
-    "read_file": "Read a file inside the workspace.",
-    "write_file": "Create or overwrite a file inside the workspace.",
-    "edit_file": "Edit a file inside the workspace.",
-    "list_dir": "List a directory inside the workspace.",
-    "grep": "Search file contents inside the workspace.",
-    "run_command_in_dir": "Run a command inside a workspace subdirectory.",
+    "read": "Read a file inside the workspace.",
+    "write": "Create or overwrite a file inside the workspace.",
+    "edit": "Edit a file inside the workspace (multi-edit).",
 }
 
 

@@ -135,39 +135,24 @@ class SkillsEngine:
         return [{"name": s["name"], "summary": (s.get("summary") or "").strip()} for s in skills]
 
     async def get_index_block(self, allow: list[str] | None = None) -> str:
-        """Render the skills index. When ``allow`` is given (an agent's
-        allowlist), only those skills are advertised; ``None``/empty = all."""
+        """Render the skills index as an XML-style listing (#178). When ``allow``
+        is given (an agent's allowlist), only those skills are advertised;
+        ``None``/empty = all.
+
+        Skills are domain knowledge, not tools: the index carries name + summary
+        + how to load, and the model pulls a body on demand via bash (the
+        ``skills.py show`` read is pre-approved).
+        """
         entries = await self.index_entries(allow=allow)
         if not entries:
             return ""
-        return "\n".join(
-            f"- {e['name']}: {e['summary']}" if e["summary"] else f"- {e['name']}" for e in entries
-        )
-
-    async def search_index(
-        self, query: str, allow: list[str] | None = None, limit: int = 10
-    ) -> list[dict]:
-        """Top-``limit`` index entries matching ``query`` (keyword scored over
-        name + summary), scoped to ``allow``. An empty query returns the first
-        ``limit`` entries (a cheap browse). No match → empty list.
-
-        ponytail: lexical scoring only; the issue defers embedding ranking until
-        keyword search measurably falls short.
-        """
-        entries = await self.index_entries(allow=allow)
-        terms = [t for t in query.lower().split() if t]
-        if not terms:
-            return entries[:limit]
-        scored = []
-        for e in entries:
-            haystack = f"{e['name']} {e['summary']}".lower()
-            score = sum(haystack.count(t) for t in terms)
-            if any(t in e["name"].lower() for t in terms):
-                score += 5  # a name hit beats a summary hit
-            if score:
-                scored.append((score, e))
-        scored.sort(key=lambda se: (-se[0], se[1]["name"]))
-        return [e for _, e in scored[:limit]]
+        lines = [
+            "Skills are reusable instructions for specific tasks. Before acting on a "
+            "task a skill covers, read it with bash: "
+            "`python3 /app/tools/skills.py show <name>`."
+        ]
+        lines += [f'<skill name="{e["name"]}">{e["summary"]}</skill>' for e in entries]
+        return "\n".join(lines)
 
     async def get_skill_content(self, name: str) -> str:
         skill = await self.store.get_skill(name)

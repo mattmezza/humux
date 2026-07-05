@@ -148,6 +148,33 @@ class Agent:
     # ``set_enabled`` — NOT written by ``upsert`` (editing keeps the on/off state).
     enabled: bool = True
 
+    def __post_init__(self) -> None:
+        # Tool renames (#178): agent docs saved before the rename keep working —
+        # run_command/run_command_in_dir → bash, read_file → read, write_file →
+        # write, edit_file → edit; list_dir/grep map to bash (which lists and
+        # searches now). The removed skill tools drop out (always-on mechanics).
+        legacy = {
+            "run_command": "bash",
+            "run_command_in_dir": "bash",
+            "read_file": "read",
+            "write_file": "write",
+            "edit_file": "edit",
+            "list_dir": "bash",
+            "grep": "bash",
+            "load_skill": None,
+            "search_skills": None,
+            "list_skills": None,
+        }
+        if self.tools and any(t in legacy for t in self.tools):
+            seen: set[str] = set()
+            out: list[str] = []
+            for t in self.tools:
+                new = legacy.get(t, t)
+                if new and new not in seen:
+                    seen.add(new)
+                    out.append(new)
+            self.tools = out
+
     def chat_permits(self, chat_id: str, sender_id: int) -> bool:
         """Whether ``sender_id`` may trigger this agent (or DM it) in ``chat_id``.
 
