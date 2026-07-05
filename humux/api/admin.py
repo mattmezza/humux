@@ -18,6 +18,8 @@ import re
 import secrets
 import sys
 import urllib.parse
+
+import httpx
 from base64 import urlsafe_b64encode
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
@@ -1136,22 +1138,7 @@ def create_admin_app(
         status = agent_state.status
         if running and status not in ("STARTING", "RESTARTING", "STOPPING"):
             status = "RUNNING"
-        # Skills count
-        try:
-            from core.agents import AgentStore
-            store = AgentStore()
-            agents_count = len(await store.list_agents())
-        except Exception:
-            agents_count = 0
-        # Skills count
-        try:
-            from core.skills import SkillsStore
-            ss = SkillsStore()
-            skills = await ss.list_skills()
-            skills_count = len(skills)
-        except Exception:
-            skills_count = 0
-        # Recent log entries
+        # Recent log entries (for activity feed)
         snapshot = list(_LOG_BUFFER)
         log_entries = _filter_log_entries(snapshot)[-20:]
         return _render_partial(
@@ -1160,10 +1147,24 @@ def create_admin_app(
             status=status,
             channels=channels,
             scheduler_jobs=scheduler_jobs,
-            agents_count=agents_count,
-            skills_count=skills_count,
             log_entries=log_entries,
         )
+
+    @app.get("/version", dependencies=[Depends(auth)])
+    async def version() -> HTMLResponse:
+        """Latest release version from GitHub."""
+        try:
+            async with httpx.AsyncClient(timeout=5) as client:
+                resp = await client.get(
+                    "https://api.github.com/repos/mattmezza/humux/releases/latest",
+                    headers={"Accept": "application/vnd.github.v3+json"},
+                )
+                if resp.is_success:
+                    tag = resp.json().get("tag_name", "") or ""
+                    return HTMLResponse(tag)
+        except Exception:
+            pass
+        return HTMLResponse("dev")
 
     async def _voice_context() -> dict:
         """Global speech (STT/TTS) settings for the Voice card. Not per-agent —

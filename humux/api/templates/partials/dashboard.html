@@ -10,10 +10,7 @@
         <h2 class="text-sm text-accent font-semibold mb-1">Agent</h2>
         <p class="text-xs text-muted">
           {% if running %}
-            Running with {{ channels|length }} channel{{ 's' if channels|length != 1 else '' }}
-            {% if scheduler_jobs > 0 %}
-              · {{ scheduler_jobs }} scheduled job{{ 's' if scheduler_jobs != 1 else '' }}
-            {% endif %}
+            Running{% if scheduler_jobs > 0 %} · {{ scheduler_jobs }} scheduled job{{ 's' if scheduler_jobs != 1 else '' }}{% endif %}
           {% else %}
             Not running
           {% endif %}
@@ -34,47 +31,50 @@
     </div>
   </div>
 
-  {# Quick stats #}
-  <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+  {# Token usage (placeholder — tracked server-side once available) #}
+  <div class="grid grid-cols-3 gap-3">
     <div class="card px-4 py-3">
-      <div class="text-xs text-muted mb-0.5">Skills</div>
-      <div class="text-lg text-accent font-semibold">{{ skills_count }}</div>
+      <div class="text-xs text-muted mb-0.5">Tokens · 24h</div>
+      <div class="text-lg text-accent font-semibold">—</div>
+      <div class="text-[10px] text-muted mt-0.5">Not tracked yet</div>
     </div>
     <div class="card px-4 py-3">
-      <div class="text-xs text-muted mb-0.5">Scheduled</div>
-      <div class="text-lg text-accent font-semibold">{{ scheduler_jobs }}</div>
+      <div class="text-xs text-muted mb-0.5">Tokens · 7d</div>
+      <div class="text-lg text-accent font-semibold">—</div>
+      <div class="text-[10px] text-muted mt-0.5">Not tracked yet</div>
     </div>
     <div class="card px-4 py-3">
-      <div class="text-xs text-muted mb-0.5">Channels</div>
-      <div class="text-lg text-accent font-semibold">{{ channels|length }}</div>
-    </div>
-    <div class="card px-4 py-3">
-      <div class="text-xs text-muted mb-0.5">Agents</div>
-      <div class="text-lg text-accent font-semibold">{{ agents_count }}</div>
+      <div class="text-xs text-muted mb-0.5">Tokens · 30d</div>
+      <div class="text-lg text-accent font-semibold">—</div>
+      <div class="text-[10px] text-muted mt-0.5">Not tracked yet</div>
     </div>
   </div>
 
-  {# Recent log entries #}
+  {# Recent activity #}
   <div class="card p-4">
     <div class="flex items-center justify-between mb-3">
       <h3 class="text-xs text-muted uppercase tracking-wider">Recent activity</h3>
-      <a href="/admin?tab=inspect&inspectsub=logs" class="text-xs text-accent hover:underline">View all</a>
     </div>
     {% if log_entries %}
     <div class="space-y-1 max-h-[240px] overflow-y-auto">
       {% for entry in log_entries[:20] %}
-      <div class="text-xs flex items-start gap-2 font-mono">
+      {% set ts = entry.get('time', '') %}
+      {% set msg = entry.get('message', '') %}
+      <a href="/admin?tab=inspect&amp;inspectsub=logs" class="flex items-start gap-2 text-xs font-mono no-underline hover:bg-surface-hover rounded px-1 py-0.5 -mx-1 transition-colors">
         <span class="shrink-0 text-muted"
               style="color:{% if entry.level == 'ERROR' %}#c66{% elif entry.level == 'WARNING' %}#ca6{% else %}#888{% endif %}">
           {{ entry.level|truncate(4, True, '') }}
         </span>
-        <span class="text-muted shrink-0">{{ entry.time }}</span>
-        <span class="text-gray-300 truncate">{{ entry.message }}</span>
-      </div>
+        <span class="text-muted shrink-0">{{ ts }}</span>
+        <span class="text-gray-300 truncate">{{ msg }}</span>
+      </a>
       {% endfor %}
     </div>
+    <div class="mt-2 text-right">
+      <a href="/admin?tab=inspect&amp;inspectsub=logs" class="text-xs text-accent hover:underline">View all in Inspect →</a>
+    </div>
     {% else %}
-    <p class="text-xs text-muted">No recent activity.</p>
+    <p class="text-xs text-muted">No recent activity. <a href="/admin?tab=inspect&amp;inspectsub=logs" class="text-accent hover:underline">Go to Inspect</a></p>
     {% endif %}
   </div>
 

@@ -10,6 +10,7 @@
   <link rel="manifest" href="/static/manifest.json">
   <link rel="apple-touch-icon" href="/static/icon-192.png">
   <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <style>[x-cloak]{display:none!important}</style>
 
   <title>{% block title %}Agent Admin — humux{% endblock %}</title>
   <link rel="stylesheet" href="/static/style.css">
@@ -50,14 +51,43 @@
   </main>
 
   {# Footer #}
-  <footer class="border-t border-border px-8 py-3 text-xs text-muted">
+  <footer class="border-t border-border px-8 py-3 text-xs text-muted" x-data="{ showAbout: false }">
     <div class="max-w-7xl mx-auto flex items-center justify-between gap-4">
-      <span>humux v0.20.0</span>
+      <span>humux <span id="footer-version" hx-get="/version" hx-trigger="load" hx-swap="innerHTML">…</span></span>
       <nav class="flex items-center gap-4">
         <a href="https://docs.humux.dev" target="_blank" class="hover:text-accent transition-colors">Docs</a>
         <a href="https://github.com/mattmezza/humux" target="_blank" class="hover:text-accent transition-colors">GitHub</a>
-        <a href="https://humux.dev" target="_blank" class="hover:text-accent transition-colors">About</a>
+        <button @click="showAbout = true" class="hover:text-accent transition-colors cursor-pointer bg-transparent border-0 text-xs text-muted p-0">About</button>
       </nav>
+    </div>
+
+    {# About modal #}
+    <div x-show="showAbout" class="fixed" style="inset:0;background:rgba(0,0,0,0.65);display:flex;align-items:center;justify-content:center;z-index:50;"
+         x-cloak>
+      <div class="card" style="max-width:440px;width:100%;" @click.outside="showAbout = false">
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="20" height="20">
+              <rect width="32" height="32" rx="6" fill="#060606"/>
+              <text x="16" y="22" font-family="'JetBrains Mono',monospace" font-size="18" font-weight="bold" fill="#6c9" text-anchor="middle">h</text>
+            </svg>
+            <span class="text-sm font-semibold text-accent">humux</span>
+          </div>
+          <button class="btn btn-sm" @click="showAbout = false">Close</button>
+        </div>
+        <p class="text-xs text-muted mb-3">
+          <strong class="text-gray-200">Human Multiplexer</strong> — a self-hosted personal AI agent.
+          humux is a product by
+          <a href="https://matteo.merola.co/software" target="_blank" class="text-accent hover:underline">Merola Software &amp; Services</a>.
+        </p>
+        <div class="flex items-center gap-3 text-xs mb-4">
+          <a href="https://github.com/mattmezza/humux" target="_blank" class="text-accent hover:underline">GitHub</a>
+          <a href="https://docs.humux.dev" target="_blank" class="text-accent hover:underline">Documentation</a>
+        </div>
+        <p class="text-[10px] text-muted border-t border-border pt-3">
+          Released under the MIT License · 2026 Merola Software &amp; Services
+        </p>
+      </div>
     </div>
   </footer>
 
