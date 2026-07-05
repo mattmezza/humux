@@ -619,26 +619,27 @@ TOOLS = [
     {
         "name": "manage_jobs",
         "description": (
-            "Create, list, or cancel scheduled jobs. "
-            "Use action='create' to schedule a one-time or recurring task. "
-            "Use action='list' to see all active jobs. "
-            "Use action='cancel' to stop a job from running."
+            "Manage the full lifecycle of scheduled jobs. "
+            "action='create' schedules a one-time or recurring task. "
+            "action='list' shows jobs (active by default). "
+            "action='get' returns one job. "
+            "action='update' edits a job's fields; set status='paused' to pause "
+            "or status='active' to resume. "
+            "action='cancel' permanently stops a job."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "action": {
                     "type": "string",
-                    "enum": ["create", "list", "cancel"],
-                    "description": (
-                        "What to do: create a new job, list existing jobs, or cancel a job"
-                    ),
+                    "enum": ["create", "list", "get", "update", "cancel"],
+                    "description": ("create, list, get, update, or cancel a job"),
                 },
                 "job_id": {
                     "type": "string",
                     "description": (
                         "For create: a short unique identifier (lowercase, dashes ok). "
-                        "For cancel: the ID of the job to cancel."
+                        "For get/update/cancel: the ID of the target job."
                     ),
                 },
                 "task": {
@@ -670,6 +671,22 @@ TOOLS = [
                 "description": {
                     "type": "string",
                     "description": "Short human-readable description of this job",
+                },
+                "status": {
+                    "type": "string",
+                    "enum": ["active", "paused"],
+                    "description": (
+                        "update only: 'paused' halts the job without deleting it; "
+                        "'active' resumes it."
+                    ),
+                },
+                "filter_status": {
+                    "type": "string",
+                    "description": "list only: only return jobs with this status.",
+                },
+                "include_done": {
+                    "type": "boolean",
+                    "description": "list only: also include done/cancelled jobs.",
                 },
             },
             "required": ["action"],
@@ -3178,26 +3195,93 @@ class AgentCore:
         """
         action = params.get("action", "")
 
-        if action == "list":
-            jobs = await self.job_store.list_jobs()
+        def _view(j: dict) -> dict:
             return {
-                "ok": True,
-                "jobs": [
-                    {
-                        "id": j["id"],
-                        "type": j["type"],
-                        "schedule": j["schedule"],
-                        "cron": j.get("cron"),
-                        "run_at": j.get("run_at"),
-                        "task": j["task"],
-                        "channel": j["channel"],
-                        "status": j["status"],
-                        "description": j.get("description", ""),
-                        "created_by": j.get("created_by", ""),
-                    }
-                    for j in jobs
-                ],
+                "id": j["id"],
+                "type": j["type"],
+                "schedule": j["schedule"],
+                "cron": j.get("cron"),
+                "run_at": j.get("run_at"),
+                "task": j["task"],
+                "channel": j["channel"],
+                "status": j["status"],
+                "description": j.get("description", ""),
+                "created_by": j.get("created_by", ""),
             }
+
+        if action == "list":
+            jobs = await self.job_store.list_jobs(
+                status=params.get("filter_status"),
+                include_done=bool(params.get("include_done")),
+            )
+            return {"ok": True, "jobs": [_view(j) for j in jobs]}
+
+        if action == "get":
+            job_id = params.get("job_id", "").strip()
+            if not job_id:
+                return {"error": "Missing job_id for get action."}
+            job = await self.job_store.get_job(job_id)
+            if not job:
+                return {"error": f"Job not found: {job_id}"}
+            return {"ok": True, "job": _view(job)}
+
+        if action == "update":
+            job_id = params.get("job_id", "").strip()
+            if not job_id:
+                return {"error": "Missing job_id for update action."}
+            existing = await self.job_store.get_job(job_id)
+            if not existing:
+                return {"error": f"Job not found: {job_id}"}
+
+            status = params.get("status")
+            if status is not None and status not in ("active", "paused"):
+                return {"error": "status must be 'active' or 'paused'."}
+
+            cron_expr = params.get("cron")
+            run_at_str = params.get("run_at")
+            if cron_expr and run_at_str:
+                return {"error": "Specify only one of 'cron' or 'run_at'."}
+
+            schedule = existing["schedule"]
+            new_cron = existing.get("cron")
+            new_run_at = existing.get("run_at")
+            if cron_expr:
+                from core.scheduler import _parse_cron
+
+                try:
+                    _parse_cron(cron_expr)
+                except ValueError as exc:
+                    return {"error": str(exc)}
+                schedule, new_cron, new_run_at = "cron", cron_expr, None
+            elif run_at_str:
+                try:
+                    run_at = datetime.fromisoformat(run_at_str)
+                except ValueError:
+                    return {"error": f"Invalid datetime format: {run_at_str!r}. Use ISO format."}
+                if run_at.tzinfo is None:
+                    run_at = run_at.replace(tzinfo=ZoneInfo(self.config.agent.timezone))
+                schedule, new_run_at, new_cron = "once", run_at.isoformat(), None
+
+            task = params.get("task")
+            channel = params.get("channel")
+            description = params.get("description")
+            # Omit agent/origin_* so upsert's COALESCE keeps the captured routing (#71).
+            await self.job_store.upsert_job(
+                job_id=job_id,
+                type="agent",
+                schedule=schedule,
+                cron=new_cron,
+                run_at=new_run_at,
+                task=task if task is not None else existing["task"],
+                channel=channel if channel is not None else existing["channel"],
+                status=status if status is not None else existing["status"],
+                description=(
+                    description if description is not None else existing.get("description", "")
+                ),
+            )
+            await self.scheduler.sync_job(job_id)
+            updated = await self.job_store.get_job(job_id)
+            return {"ok": True, "job": _view(updated)}
 
         if action == "cancel":
             job_id = params.get("job_id", "").strip()
@@ -3341,7 +3425,11 @@ class AgentCore:
             else:
                 return {"error": "Must specify 'cron' for recurring or 'run_at' for one-time jobs."}
 
-        return {"error": f"Unknown action: {action!r}. Use 'create', 'list', or 'cancel'."}
+        return {
+            "error": (
+                f"Unknown action: {action!r}. Use 'create', 'list', 'get', 'update', or 'cancel'."
+            )
+        }
 
     async def _tool_remember(self, params: dict, request_state: dict | None = None) -> dict:
         """Save a long-term memory via the structured store (#13).

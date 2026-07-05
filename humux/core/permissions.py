@@ -745,11 +745,18 @@ def format_approval_message(tool_name: str, params: dict) -> str:
             run_at = params.get("run_at")
             schedule = f"cron: {cron}" if cron else f"once at {run_at}" if run_at else "?"
             return f"Create scheduled job ({schedule})\n{task}"
+        if action == "update":
+            job_id = params.get("job_id", "?")
+            status = params.get("status")
+            verb = {"paused": "Pause", "active": "Resume"}.get(status, "Update")
+            return f"{verb} scheduled job: {job_id}"
         if action == "cancel":
             job_id = params.get("job_id", "?")
             return f"Cancel scheduled job: {job_id}"
+        if action == "get":
+            return f"Get scheduled job: {params.get('job_id', '?')}"
         if action == "list":
-            return "List all scheduled jobs"
+            return "List scheduled jobs"
         return f"Manage jobs: {action}"
     if tool_name == "bash":
         cmd = _preview(params.get("command", "?"))

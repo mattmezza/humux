@@ -33,7 +33,7 @@ emails, messages, calendar events, scheduled jobs — ALWAYS use that tool (`sen
 those actions via `bash`.
 
 Use `bash` for everything else on the CLI: read/query operations, CLI writes with no
-structured tool (`gh`, `git`, `jobs.py`, `browser.py`), and file listing/searching/
+structured tool (`gh`, `git`, `browser.py`), and file listing/searching/
 builds/tests in the workspace. It is permission-gated: documented read commands run
 without asking; anything acting outwardly asks the owner first. If a command is blocked,
 read the error and adjust — don't retry it unchanged.

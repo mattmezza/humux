@@ -619,6 +619,54 @@ async def test_reupsert_without_origin_keeps_it(agent, monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_manage_jobs_lifecycle(agent, monkeypatch) -> None:
+    """Issue #188: the tool covers the whole lifecycle — create → update (retask
+    + pause) → get reflects the change and keeps origin → cancel — so the agent
+    never needs the origin-dropping jobs.py CLI."""
+    monkeypatch.setattr(agent.scheduler, "sync_job", _no_sync)
+    state = {
+        "origin": {"channel": "telegram:coach", "user_id": "u7", "chat_id": "-100200:5"},
+        "agent_name": "coach",
+    }
+    res = await agent._tool_manage_jobs(
+        {
+            "action": "create",
+            "job_id": "brief",
+            "task": "morning brief",
+            "cron": "0 7 * * *",
+        },
+        state,
+    )
+    assert res.get("ok") is True
+
+    upd = await agent._tool_manage_jobs(
+        {"action": "update", "job_id": "brief", "task": "evening brief", "status": "paused"}
+    )
+    assert upd["job"]["task"] == "evening brief"
+    assert upd["job"]["status"] == "paused"
+
+    got = await agent._tool_manage_jobs({"action": "get", "job_id": "brief"})
+    assert got["job"]["task"] == "evening brief"
+    assert got["job"]["status"] == "paused"
+    stored = await agent.job_store.get_job("brief")
+    assert stored["agent"] == "coach"  # origin survived the update (#71)
+    assert stored["origin_chat_id"] == "-100200:5"
+
+    # update with no origin re-passed must not wipe routing; resume works
+    await agent._tool_manage_jobs({"action": "update", "job_id": "brief", "status": "active"})
+    stored = await agent.job_store.get_job("brief")
+    assert stored["status"] == "active"
+    assert stored["agent"] == "coach"
+
+    # get/update on a missing id 404s
+    miss = await agent._tool_manage_jobs({"action": "get", "job_id": "nope"})
+    assert "not found" in miss.get("error", "").lower()
+
+    cancelled = await agent._tool_manage_jobs({"action": "cancel", "job_id": "brief"})
+    assert cancelled.get("ok") is True
+
+
+@pytest.mark.asyncio
 async def test_cancelled_job_id_can_be_recreated(agent, monkeypatch) -> None:
     """A done/cancelled id is free to recreate (only live ids block)."""
     monkeypatch.setattr(agent, "_request_approval", _approve)
