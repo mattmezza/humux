@@ -65,9 +65,9 @@ my-tool list --format json
 For write operations, add rules to the permission engine:
 
 ```python
-"run_command:my-tool*create*": "ASK"
-"run_command:my-tool*delete*": "ASK"
-"run_command:my-tool*list*": "ALWAYS"
+"bash:my-tool*create*": "ASK"
+"bash:my-tool*delete*": "ASK"
+"bash:my-tool*list*": "ALWAYS"
 ```
 
 Done. The agent can now use the new tool immediately.

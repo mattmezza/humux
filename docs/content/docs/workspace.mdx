@@ -1,6 +1,6 @@
 ---
 title: Coding harness
-description: File read/write/edit/list/grep/run tools that let the agent work on a real codebase, confined to one workspace directory.
+description: read/write/edit file tools plus a workspace-aware bash tool that let the agent work on a real codebase, confined to one workspace directory.
 ---
 
 # Coding harness
@@ -10,61 +10,94 @@ be described in chat and applied by hand. The **coding harness** gives it a smal
 of file tools so it can read, edit, search, and run commands on a real codebase
 directly, like a built-in coding assistant.
 
-It is deliberately minimal. Out of scope for this first iteration: AST/structural
-editing, language-server integration, a plugin system, and a terminal/REPL.
+It is deliberately minimal — 4 base tools (`read`, `write`, `edit`, `bash`). Out of
+scope: AST/structural editing, language-server integration, a plugin system, and a
+terminal/REPL. Listing and searching files goes through `bash` (`ls`, `find`, `rg`)
+instead of dedicated tools.
 
 ## Tools
 
-All paths are relative to the configured workspace root (or absolute *inside* it).
+All file paths are relative to the configured workspace root (or absolute *inside* it).
 
 | Tool | Approval | What it does |
 | --- | --- | --- |
-| `read_file(path, offset=0, limit=100)` | pre-approved | Read a file (or a line range), returned with line numbers. Large files paginate via `offset`/`limit`. |
-| `list_dir(path=".")` | pre-approved | List one level: `[{name, type, size}]`. |
-| `grep(pattern, path=".", include="")` | pre-approved | Recursive regex search; `include` is a filename glob (e.g. `*.py`). Returns `[{file, line, content}]`. |
-| `write_file(path, content)` | **asks first** | Write a file, creating parent directories. Overwrites. |
-| `edit_file(path, old_string, new_string, multiple=false)` | **asks first** | Find-and-replace. `old_string` must match exactly and, unless `multiple` is true, be unique. |
-| `run_command_in_dir(command, workdir=".")` | **asks first** | Run a shell command (linter, tests, build) in a workspace directory. Returns `stdout`, `stderr`, `exit_code`. |
+| `read(path, offset=0, limit=100)` | pre-approved | Read a file (or a line range). Each line comes back as `LINE#HH:content` — the `LINE#HH` prefix is a **hashline anchor** usable in `edit`. Large files paginate via `offset`/`limit`. |
+| `write(path, content)` | **asks first** | Write a file, creating parent directories. Overwrites. |
+| `edit(path, edits=[...])` | **asks first** | Apply one or more edits in a single call, all-or-nothing (see below). |
+| `bash(command, purpose, workdir=".")` | rule-gated | Run a shell command. Allowlisted commands behave like the old `run_command`; anything else runs **workspace-confined** and asks on every call. |
 
-Reads are pre-approved (`ALWAYS`); `write_file`/`edit_file` are write-actions that ask
-for your approval on every call, surfaced through the same [permission](/docs/permissions)
-flow as email/calendar/message sends. `run_command_in_dir` shares the `run_command`
-permission rules: the hard `NEVER` rails always apply, a command you've globally marked
-`ALWAYS` (e.g. `git log`) runs without a prompt, and anything else asks.
+Reads are pre-approved (`ALWAYS`); `write`/`edit` are write-actions that ask for your
+approval on every call, surfaced through the same [permission](/docs/permissions) flow
+as email/calendar/message sends.
+
+### Multi-edit and hashline anchors
+
+`edit` takes an array of edits, validated together and applied atomically — nothing is
+written unless every edit succeeds. Each edit is one of:
+
+```json
+{"path": "src/main.py", "edits": [
+  {"oldText": "foo()", "newText": "bar()"},
+  {"pos": "12#KT", "end": "15#BH", "lines": ["replacement", "lines"]}
+]}
+```
+
+- `{oldText, newText}` — exact-substring replace. `oldText` must be unique in the file
+  unless `"all": true` replaces every occurrence.
+- `{pos, end?, lines}` — replace the line (or inclusive range) addressed by a `LINE#HH`
+  anchor from `read` with the given lines (`[]` deletes). The 2-char hash covers the
+  line *and its neighbours*, so if the file changed since the read the anchor no longer
+  matches and the edit is rejected instead of landing on the wrong line.
+
+Anchors let the model make targeted changes without quoting whole code blocks back,
+which keeps context usage down (inspired by
+[pi-hashline-edit](https://github.com/RimuruW/pi-hashline-edit)).
+
+## One `bash` tool, two rails
+
+`bash` replaces the old `run_command` + `run_command_in_dir` pair:
+
+- A command matching the **prefix allowlist** (`himalaya`, `gh`, `git`, `wacli`,
+  `sqlite3`, `rg`, …) runs exactly as `run_command` always did: read-style commands are
+  pre-approved by [permission rules](/docs/permissions) (`bash:git*log*` etc.), risky
+  ones ask.
+- Any **other** command (builds, tests, `make`, `npm`, …) requires the workspace: it
+  runs with its working directory confined to the workspace root (or `workdir` inside
+  it) and asks for approval on **every** call — approvals for these are never
+  auto-learned into `ALWAYS` rules.
+
+The hard `NEVER` rails apply to both rails. Note the confinement scope: the workspace
+bounds the **working directory**, not what an approved command may touch — the command
+runs with the full privileges of the humux process. Its real boundary is your approval.
 
 ## Confinement
 
-The **file** tools (`read_file`/`write_file`/`edit_file`/`list_dir`/`grep`) are confined
-to the single **workspace directory** you configure. The check is `realpath`-based: a
-path is resolved (following symlinks and collapsing `..`) and must land on the workspace
-root or a descendant of it. So neither `../../etc/passwd` nor a symlink pointing outside
-the workspace can escape — both are blocked (`NEVER`).
-
-`run_command_in_dir` confines only the **working directory** it runs in — *not* the
-command itself. The command runs through the shell with the full privileges of the humux
-process, so it can still read paths outside the workspace (e.g. `cat /etc/passwd`). Its
-real boundary is the permission gate (the `run_command` rules above), not the workspace.
-Enable it only if you're comfortable with that.
+The **file** tools (`read`/`write`/`edit`) are confined to the single **workspace
+directory** you configure. The check is `realpath`-based: a path is resolved (following
+symlinks and collapsing `..`) and must land on the workspace root or a descendant of
+it. So neither `../../etc/passwd` nor a symlink pointing outside the workspace can
+escape — both are blocked.
 
 There is **no default workspace**. With the harness disabled, or with a blank
-directory, the tools are hidden from the agent entirely and the handlers refuse — the
-agent cannot reach the filesystem until you point it at a directory.
+directory, the file tools are hidden from the agent entirely and the handlers refuse —
+and non-allowlisted `bash` commands have nowhere to run.
 
-## One shared root with `run_command`
+## One shared root
 
-When the harness is on, the generic `run_command` tool runs **in the workspace root**,
-the same tree the file tools resolve against. So a repo cloned with
-`run_command git clone <url>` lands inside the workspace and is immediately visible to
-`read_file`/`grep`, editable with `write_file`/`edit_file`, and committable with `git`
-— no need to bridge two directories or hand-author git blobs to commit a change. The
-root is created on first use if it doesn't exist yet.
+When the harness is on, `bash` runs **in the workspace root**, the same tree the file
+tools resolve against. So a repo cloned with `bash git clone <url>` lands inside the
+workspace and is immediately visible to `read`, editable with `edit`, and committable
+with `git` — no need to bridge two directories. The root is created on first use if it
+doesn't exist yet.
 
-## Per-agent subdirectory convention
+## Per-agent home directory
 
-The system prompt tells the agent to namespace everything it creates under a
-subdirectory named after its [agent](/docs/agents) slug — e.g. an agent named `coach`
-clones and writes under `coach/…`, the default identity under `default/…`. This keeps
-multiple agents from colliding in the workspace root when they share one directory.
+The system prompt gives each agent a home directory named after its
+[agent](/docs/agents) slug — e.g. an agent named `coach` clones and writes under
+`coach/…`, the default identity under `default/…`. This keeps multiple agents from
+colliding in the workspace root when they share one directory. The public
+[artifacts](/docs/artifacts) directory follows the same convention
+(`artifacts/<slug>/`).
 
 ## Configuration
 

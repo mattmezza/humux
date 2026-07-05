@@ -63,7 +63,6 @@ agent:
   model: "claude-sonnet-4-5-20250514"
   timezone: "Europe/Zurich"
   skills_dir: "skills/"
-  skills_index_mode: "inject"   # "inject" (full index each turn) | "on_demand" (search_skills/list_skills)
   agents_dir: "agents/"
 
 channels:
@@ -135,7 +134,7 @@ reply_decision:
 
 #### `agent`
 
-Core agent settings including name, owner, LLM provider, model, and timezone. The `skills_dir` points to the directory containing markdown skill files. `skills_index_mode` chooses how the skills index reaches the model: `"inject"` (default) puts the full index in every turn's preamble, while `"on_demand"` replaces it with a short pointer and lets the model fetch entries lazily via the `search_skills`/`list_skills` tools (see [Skills](/docs/skills#serving-the-index-on-demand)). `agents_dir` is an optional seed directory for [agents](/docs/agents) — empty by default (no agents ship), but any `.md` files dropped there are auto-seeded. Which agent is the default (the one that answers when nothing else routes) is a per-row flag, not a config key — set it on the Agents tab.
+Core agent settings including name, owner, LLM provider, model, and timezone. The `skills_dir` points to the directory containing markdown skill files. `agents_dir` is an optional seed directory for [agents](/docs/agents) — empty by default (no agents ship), but any `.md` files dropped there are auto-seeded. Which agent is the default (the one that answers when nothing else routes) is a per-row flag, not a config key — set it on the Agents tab.
 
 #### `channels`
 
@@ -189,7 +188,7 @@ Memory system settings. `extraction_model` is the cheap/fast model used for post
 
 #### `workspace`
 
-The [coding harness](/docs/workspace) — file `read_file`/`write_file`/`edit_file`/`list_dir`/`grep`/`run_command_in_dir` tools, all confined to `directory`. Reads are pre-approved; writes and commands ask for approval each time. Paths escaping `directory` (via `..` or a symlink) are blocked. Off by default, and managed from the admin **Workspace** tab; a blank `directory` keeps the tools inert even when `enabled` is true — there is no default root.
+The [coding harness](/docs/workspace) — file `read`/`write`/`edit` tools confined to `directory`, plus workspace-confined execution of non-allowlisted `bash` commands. Reads are pre-approved; writes and commands ask for approval each time. Paths escaping `directory` (via `..` or a symlink) are blocked. Off by default, and managed from the admin **Workspace** tab; a blank `directory` keeps the tools inert even when `enabled` is true — there is no default root.
 
 #### `reply_decision`
 

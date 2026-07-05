@@ -127,7 +127,7 @@ class SkillsEngine:
         return "\n\n".join(sections)
 ```
 
-Skills are advertised in the `<available_skills>` block, which is rebuilt fresh each turn and injected at the start of the user message (alongside the live date/time and memories), not baked into the snapshotted static prompt. So a skill created mid-session — e.g. via the skill-creator skill — is visible to the model on the very next turn without a `/new`. The LLM uses the index to pick a skill, then `load_skill` pulls its full content to construct correct CLI commands.
+Skills are advertised in the `<available_skills>` block, which is rebuilt fresh each turn and injected at the start of the user message (alongside the live date/time and memories), not baked into the snapshotted static prompt. So a skill created mid-session — e.g. via the skill-creator skill — is visible to the model on the very next turn without a `/new`. The LLM uses the index to pick a skill, then reads its full content via `bash` (`python3 /app/tools/skills.py show <name>` — a pre-approved read) to construct correct CLI commands. Skills are domain knowledge, not tools: there is no dedicated skill-loading LLM tool.
 
 ## How skills reach the model
 
@@ -151,45 +151,26 @@ show up on the next turn without a `/new`:
 [Current date & time: ...]
 
 <available_skills>
-- himalaya-email: send and read email over IMAP/SMTP
+Skills are reusable instructions for specific tasks. Before acting on a task a
+skill covers, read it with bash: `python3 /app/tools/skills.py show <name>`.
+<skill name="himalaya-email">send and read email over IMAP/SMTP</skill>
 ...
 </available_skills>
 ```
 
-The model picks a skill from the index, then calls `load_skill` to pull its full
-content.
+The model picks a skill from the index, then reads its full body on demand via
+`bash` — either the `skills.py show` CLI or a direct `sqlite3` query against the
+skills DB (both pre-approved reads). The index is scoped to the active agent's
+skill allowlist, so an agent never discovers a skill it can't load.
 
-## Serving the index on-demand
+## Loading a skill from Telegram
 
-Injecting the full index every turn is fine at a few dozen skills, but it does not
-scale indefinitely — every allowed skill's `name: summary` line sits in context
-whether or not the current request needs it. When the catalogue grows, switch the
-index to **on-demand** mode:
-
-```yaml
-agent:
-  skills_index_mode: "on_demand"   # default: "inject"
-```
-
-In on-demand mode the `<available_skills>` block carries only a short pointer
-instead of the full list, and the model pulls entries lazily through two tools —
-exactly how the secrets vault advertises `list_secrets` rather than dumping every
-secret name into the prompt:
-
-| Tool | Returns |
-|------|---------|
-| `search_skills(query, limit?)` | The top matching skills as `name + summary` (keyword-ranked over name and summary) |
-| `list_skills()` | Every available skill as `name + summary` (browse the whole catalogue) |
-
-Both are scoped to the active agent's skill allowlist, the same scope that
-`load_skill` enforces — an agent never discovers a skill it can't load. The flow
-becomes: `search_skills` → pick a name → `load_skill` → act. This extends the
-existing lazy pattern (bodies are already loaded on demand) up one level to the
-index itself.
-
-`"inject"` stays the default, so behaviour is unchanged until you opt in. The two
-discovery tools are only offered in on-demand mode; in inject mode the full index
-is already in context, so they would be redundant.
+Every skill is also exposed as a Telegram command: `/zz_skill_<name>` (hyphens fold
+to underscores, e.g. `/zz_skill_artifact_hosting`). The `zz_` prefix clusters the
+skill commands at the end of the bot's command menu. Invoking one posts the skill
+body into the chat **and** records it into the conversation history, so the agent
+has the full content in context on its next turn — useful to prime a conversation
+with a skill instead of waiting for the model to fetch it.
 
 ## Tips for writing good skills
 

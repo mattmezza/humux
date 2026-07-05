@@ -14,7 +14,7 @@ An agent bundles:
 - its own **identity** — `character` (who the agent is + its tone & behaviour);
 - an optional **name** it goes by (e.g. *Forge*), overriding the global assistant name;
 - a **skill allowlist** — which skills it may load (empty = all);
-- a **tool scope** — which function-tools are advertised (empty = all; `load_skill` is always available);
+- a **tool scope** — which function-tools are advertised (empty = all; memory and vault tools are always available);
 - a **voice** — a TTS voice override (empty = the configured default);
 - a **secret scope** — which [vault](/docs/secrets) secrets it may use, enforced as a reference-only ACL (an agent may use a secret only if it is shared or named in this scope);
 - **tool identities** — its own credentials and sessions for the external CLI tools (its own GitHub token, its own browser profile), so each agent acts as a distinct identity (see [Tool identities](#tool-identities));
@@ -135,7 +135,7 @@ An unknown name fails loudly and lists the available agents.
 ## How activation affects the prompt
 
 When an agent is active, `_build_system_prompt` swaps in the agent's `character`,
-narrows the advertised skills index to the allowlist (and refuses `load_skill`
+narrows the advertised skills index to the allowlist (and refuses skill loads
 for skills outside it), filters the function-tool set to the tool scope, and uses the
 agent's voice for TTS. Switching applies to **new** turns; an open session keeps its
 snapshotted identity until you send `/new`.
@@ -182,7 +182,7 @@ Supported tools:
 | `gh` (GitHub) | Pick the agent's identity explicitly with **GitHub identity → Personal Access Token or GitHub App** (raw frontmatter `gh: {enabled: true, auth: "pat"}` or `auth: "app"`). **PAT:** type a new token (stored encrypted in the **infra vault**, machine-key so it works headless and in [scheduled jobs](/docs/scheduler), namespaced `GH_TOKEN_<SLUG>`) or reuse an existing infra-vault secret (`gh: {auth: "pat", token_secret: SOME_INFRA_SECRET}`). **GitHub App:** give the agent its **own** app — `gh: {auth: "app", app_id: "123", installation_id: "456", private_key_secret: SOME_PEM_SECRET}` (paste the PEM as an infra secret first, then reference it) — so it runs as a distinct `<app>[bot]`. Leave the app fields blank to use the system-wide App bot. So you can run **multiple apps, one per agent**, mixed freely with PAT agents. An agent **never** borrows the owner's PAT. Optionally set an **allowed repos** list (`gh: {..., repos: [owner/a, owner/b]}`) — a best-effort `--repo` gate; the app installation's own repo selection is the hard boundary, and a subagent can only narrow this list, never widen it. |
 | `browser` | The agent's own **profile** — an isolated Chromium session dir, so its logged-in sessions don't leak to other agents. Used by default (the agent need not pass `--profile`). Blank = the agent slug. |
 
-How it flows into the agent: when an agent runs `run_command`, its tool environment is
+How it flows into the agent: when an agent runs `bash`, its tool environment is
 swapped in for that call, and the `<tools>` section of the system prompt notes which
 identity is active (*"`gh` is authenticated with this agent's own token"*). An agent
 with **no** `tool_config` entry for a tool inherits the system config unchanged, so existing

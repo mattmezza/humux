@@ -18,13 +18,13 @@ step — just a URL you can open on any device.
 
 There is no dedicated artifact tool. An artifact is plain files the agent writes under
 `{workspace}/artifacts/<slug>/` using the [coding-harness](/docs/configuration#workspace)
-`write_file` tool, and the admin app serves that directory at `/artifacts/<slug>/`:
+`write` tool, and the admin app serves that directory at `/artifacts/<slug>/`:
 
 - **A single page** — write a complete HTML document to `artifacts/<slug>/index.html`.
 - **A multi-file site** — write `artifacts/<slug>/index.html` plus sibling `style.css`,
   `app.js`, images, etc. Files link each other with relative URLs (`href="style.css"`).
 - **A generated file** — produce a PDF/image/slides on disk inside `artifacts/<slug>/`
-  (e.g. with `pandoc` via `run_command_in_dir`) and link to it.
+  (e.g. with `pandoc` via `bash`) and link to it.
 
 The page is then live at:
 
@@ -36,15 +36,15 @@ http://your-host:8000/artifacts/q3-report/
 [`HUMUX_BASE_URL`](/docs/configuration) to your reachable admin URL so the links work from
 your phone, not just `localhost`.
 
-Because artifacts are just workspace files, the **same** `write_file` / `edit_file` /
-`list_dir` patterns the agent uses for code also publish and update artifacts — and the
-agent can `read_file` one back before sharing. The capability is taught by the
+Because artifacts are just workspace files, the **same** `write` / `edit` patterns the
+agent uses for code also publish and update artifacts — and the agent can `read` one
+back before sharing. The capability is taught by the
 `artifact-hosting` skill rather than a built-in tool.
 
 ### Requires the workspace harness
 
 Artifacts live in the workspace, so publishing needs the
-[workspace harness](/docs/configuration#workspace) enabled (it provides the `write_file`
+[workspace harness](/docs/configuration#workspace) enabled (it provides the `write`
 tool and the directory). If the workspace is off, there is no place to write artifacts and
 the `/artifacts/` route serves nothing.
 
@@ -62,7 +62,7 @@ For HTML, the agent climbs only as high as the request needs:
 ### Lifetime
 
 There is **no TTL or automatic expiry** — artifacts are files, so they live until removed.
-The agent overwrites a slug to update it in place, browses with `list_dir`, and cleans up
+The agent overwrites a slug to update it in place, browses with `ls` via bash, and cleans up
 old ones as a filesystem operation. Manage them like any other workspace files.
 
 ## Security & hygiene
@@ -79,7 +79,7 @@ old ones as a filesystem operation. Manage them like any other workspace files.
   (agent-authored) JavaScript therefore **cannot read the admin origin's `localStorage`** —
   where the admin API key lives — or its cookies. CDN scripts, inline scripts, forms and
   popups still work.
-- **Writing asks first.** Publishing an artifact is a `write_file` into the workspace, which
+- **Writing asks first.** Publishing an artifact is a `write` into the workspace, which
   asks the owner for approval like any other workspace write.
 - **Served without authentication** by design — anyone with the link can open it.
 
@@ -90,7 +90,7 @@ artifacts:
   enabled: true   # toggles the public /artifacts/ route (files live in the workspace)
 
 workspace:
-  enabled: true            # required — provides write_file + the artifacts directory
+  enabled: true            # required — provides the write tool + the artifacts directory
   directory: "~/pa-workspace"
 ```
 
