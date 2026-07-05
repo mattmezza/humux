@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import contextvars
 import importlib
 import json
@@ -159,11 +160,14 @@ def _openai_usage(response: Any) -> dict[str, int] | None:
         return None
     prompt = getattr(u, "prompt_tokens", 0) or 0
     completion = getattr(u, "completion_tokens", 0) or 0
+    # DeepSeek ships prompt_cache_hit/miss_tokens (#199 review).
+    cache_hit = getattr(u, "prompt_cache_hit_tokens", 0) or 0
+    cache_miss = getattr(u, "prompt_cache_miss_tokens", 0) or 0
     return {
         "input_tokens": prompt,
         "output_tokens": completion,
-        "cache_read_input_tokens": 0,
-        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": cache_hit,
+        "cache_creation_input_tokens": cache_miss,
         "context_tokens": prompt,
     }
 
@@ -411,8 +415,8 @@ class LLMClient:
                         cache_read_input_tokens=usage.get("cache_read_input_tokens", 0),
                         cache_creation_input_tokens=usage.get("cache_creation_input_tokens", 0),
                     ))
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logging.getLogger(__name__).warning("Failed to record token usage (anthropic): %s", exc)
             return LLMResponse(
                 text="\n".join(text_parts).strip(),
                 tool_calls=tool_calls,
@@ -460,8 +464,8 @@ class LLMClient:
                     cache_read_input_tokens=usage.get("cache_read_input_tokens", 0),
                     cache_creation_input_tokens=usage.get("cache_creation_input_tokens", 0),
                 ))
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.getLogger(__name__).warning("Failed to record token usage (openai): %s", exc)
         return LLMResponse(
             text=(message.content or "").strip(),
             tool_calls=tool_calls,
