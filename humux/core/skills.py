@@ -126,8 +126,8 @@ class SkillsEngine:
 
     async def index_entries(self, allow: list[str] | None = None) -> list[dict]:
         """The skills index as ``{name, summary}`` rows, scoped to ``allow``
-        (an agent's allowlist; ``None``/empty = all). Backs the index block and
-        the ``list_skills``/``search_skills`` discovery tools."""
+        (an agent's allowlist; ``None``/empty = all). Backs the index block,
+        the admin skills view, and the Telegram skill commands."""
         skills = await self.store.list_skills()
         if allow:
             allowed = set(allow)

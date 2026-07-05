@@ -23,7 +23,7 @@ non-write WhatsApp interaction.
    idle. It typically completes in under 10 seconds. **Do this every time** the
    user asks about new or recent messages.
 
-2. **Send WhatsApp messages with `wacli send text` via `run_command`.** WhatsApp is
+2. **Send WhatsApp messages with `wacli send text` via `bash`.** WhatsApp is
    a tool, not a channel — there is no `send_message` route for it. Sending asks for
    confirmation first (it is a write op):
 

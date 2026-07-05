@@ -1,7 +1,7 @@
 # Image generation — generate_image
 
 Generate an image from a text prompt and deliver it to the user as a native
-photo. Use the `generate_image` tool (not `run_command`) whenever the user asks
+photo. Use the `generate_image` tool (not `bash`) whenever the user asks
 for a picture, illustration, diagram, concept art, logo, sticker, or any visual.
 
 The tool sends the image to the user automatically. **Do not** paste the file
