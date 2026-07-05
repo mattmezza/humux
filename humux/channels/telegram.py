@@ -358,6 +358,20 @@ class TelegramChannel:
         )
         return name or "Unknown"
 
+    def _entity_targets_me(self, message, text: str, handle: str, ent) -> bool:
+        """True when a single addressing entity names THIS bot (exact handle match,
+        not a substring, so ``@coach`` never matches ``@coachbot``)."""
+        etype = getattr(ent, "type", "")
+        if etype in ("mention", "bot_command") and handle:
+            seg = self._entity_text(message, text, ent).lower()
+            # "@coachbot" (mention) is an exact match; "/jobs@coachbot"
+            # (bot_command) ends with the handle.
+            return seg == handle or seg.endswith(handle)
+        if etype == "text_mention":
+            u = getattr(ent, "user", None)
+            return u is not None and self._bot_id is not None and u.id == self._bot_id
+        return False
+
     def _addressed_to_me(self, message) -> bool:
         """True when this message is addressed to THIS bot: a reply to one of the
         bot's own messages, an @mention, a text-mention, or a ``/cmd@bot`` command.
@@ -368,6 +382,11 @@ class TelegramChannel:
         never makes the wrong bot reply, which would re-open the N×-reply storm
         the respond-gate exists to close. A loose substring match is used only as
         a last resort when Telegram supplied no entities at all.
+
+        Only the FIRST addressing entity (by position) counts: it names the
+        addressee. A later mention of this bot means it is referenced as a third
+        party ("@AgentA, review the PR @AgentB just made") — not addressed — so
+        one instruction naming several bots is acted on by the first alone (#185).
         """
         reply = getattr(message, "reply_to_message", None)
         if reply is not None:
@@ -379,18 +398,15 @@ class TelegramChannel:
             getattr(message, "caption_entities", None) or []
         )
         handle = f"@{self._bot_username}" if self._bot_username else ""
-        for ent in entities:
-            etype = getattr(ent, "type", "")
-            if etype in ("mention", "bot_command") and handle:
-                seg = self._entity_text(message, text, ent).lower()
-                # "@coachbot" (mention) is an exact match; "/jobs@coachbot"
-                # (bot_command) ends with the handle.
-                if seg == handle or seg.endswith(handle):
-                    return True
-            elif etype == "text_mention":
-                u = getattr(ent, "user", None)
-                if u is not None and self._bot_id is not None and u.id == self._bot_id:
-                    return True
+        # Only mention/command/text-mention entities *address* someone; the earliest
+        # one is the addressee, and it alone decides.
+        _addr_types = ("mention", "bot_command", "text_mention")
+        addressing = sorted(
+            (e for e in entities if getattr(e, "type", "") in _addr_types),
+            key=lambda e: getattr(e, "offset", 0),
+        )
+        if addressing:
+            return self._entity_targets_me(message, text, handle, addressing[0])
         # Entity-less last resort (forwards / odd clients): when Telegram gave us
         # entities we trust them — an absent match means not addressed. Require a
         # boundary so "@coach" can't match inside "@coachbot".

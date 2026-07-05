@@ -69,6 +69,9 @@ upgrade. Turn it on (per agent) for a group where you've added several agent-bot
 group or supergroup each bot then:
 
 - **replies only when addressed** — @mentioned, or you reply to one of its messages.
+  When one message names several bots (`@AgentA, review the PR @AgentB just made`),
+  only the **first** one mentioned is addressed; a later mention is treated as a
+  reference, so the other bots stay silent instead of all acting on it.
   Otherwise it stays silent but still records the message, so it has the full
   conversation in context the next time it *is* addressed. This is also the cost
   control: a group message naively hits every bot = N× LLM calls; the gate means
