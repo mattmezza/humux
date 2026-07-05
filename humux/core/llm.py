@@ -400,6 +400,19 @@ class LLMClient:
                 reasoning_log.info("%s", reasoning)
             usage = _anthropic_usage(response)
             payload["usage"] = usage  # backfill real context size for Inspect (#116)
+            if usage:
+                try:
+                    from core.metrics import record_usage
+                    asyncio.ensure_future(record_usage(
+                        provider=self.provider,
+                        model=resolved_model,
+                        input_tokens=usage.get("input_tokens", 0),
+                        output_tokens=usage.get("output_tokens", 0),
+                        cache_read_input_tokens=usage.get("cache_read_input_tokens", 0),
+                        cache_creation_input_tokens=usage.get("cache_creation_input_tokens", 0),
+                    ))
+                except Exception:
+                    pass
             return LLMResponse(
                 text="\n".join(text_parts).strip(),
                 tool_calls=tool_calls,
@@ -436,6 +449,19 @@ class LLMClient:
             reasoning_log.info("%s", reasoning)
         usage = _openai_usage(response)
         payload["usage"] = usage  # backfill real context size for Inspect (#116)
+        if usage:
+            try:
+                from core.metrics import record_usage
+                asyncio.ensure_future(record_usage(
+                    provider=self.provider,
+                    model=resolved_model,
+                    input_tokens=usage.get("input_tokens", 0),
+                    output_tokens=usage.get("output_tokens", 0),
+                    cache_read_input_tokens=usage.get("cache_read_input_tokens", 0),
+                    cache_creation_input_tokens=usage.get("cache_creation_input_tokens", 0),
+                ))
+            except Exception:
+                pass
         return LLMResponse(
             text=(message.content or "").strip(),
             tool_calls=tool_calls,

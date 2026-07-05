@@ -1123,6 +1123,45 @@ def create_admin_app(
             scheduler_jobs=scheduler_jobs,
         )
 
+    @app.get("/partials/dashboard", dependencies=[Depends(auth)])
+    async def partial_dashboard() -> HTMLResponse:
+        """Dashboard overview with token usage stats (#199)."""
+        from core.metrics import TokenUsageStore
+
+        agent = agent_state.agent
+        if agent:
+            running = True
+            channels = list(agent.channels.keys())
+            scheduler_jobs = len(agent.scheduler.scheduler.get_jobs())
+        else:
+            running = False
+            channels = []
+            scheduler_jobs = 0
+        status = agent_state.status
+        if running and status not in ("STARTING", "RESTARTING", "STOPPING"):
+            status = "RUNNING"
+
+        store = TokenUsageStore()
+        tok_24h = await store.totals_since(24)
+        tok_7d = await store.totals_since(24 * 7)
+        tok_30d = await store.totals_since(24 * 30)
+
+        # Recent log entries
+        snapshot = list(_LOG_BUFFER)
+        log_entries = _filter_log_entries(snapshot)[-20:]
+
+        return _render_partial(
+            "partials/dashboard.html",
+            running=running,
+            status=status,
+            channels=channels,
+            scheduler_jobs=scheduler_jobs,
+            tok_24h=tok_24h,
+            tok_7d=tok_7d,
+            tok_30d=tok_30d,
+            log_entries=log_entries,
+        )
+
     async def _voice_context() -> dict:
         """Global speech (STT/TTS) settings for the Voice card. Not per-agent —
         identity/character/accounts now live on the default agent row (#115 flw)."""
