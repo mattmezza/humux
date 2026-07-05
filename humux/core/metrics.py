@@ -68,15 +68,19 @@ class TokenUsageStore:
         """Aggregate token usage for the last *hours*.
 
         Returns:
-            total_input, total_output, and per-provider breakdown.
+            total_input, total_output, total_cache_read, total_cache_creation,
+            and per-provider breakdown.
         """
         await self._ensure_schema()
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
             # Grand totals
             cursor = await db.execute(
-                "SELECT COALESCE(SUM(input_tokens), 0) AS total_input, "
-                "COALESCE(SUM(output_tokens), 0) AS total_output "
+                "SELECT "
+                "COALESCE(SUM(input_tokens), 0) AS total_input, "
+                "COALESCE(SUM(output_tokens), 0) AS total_output, "
+                "COALESCE(SUM(cache_read_input_tokens), 0) AS total_cache_read, "
+                "COALESCE(SUM(cache_creation_input_tokens), 0) AS total_cache_creation "
                 "FROM token_usage "
                 "WHERE recorded_at >= datetime('now', ?)",
                 (f"-{hours} hours",),
@@ -84,21 +88,38 @@ class TokenUsageStore:
             row = await cursor.fetchone()
             total_input = row["total_input"] if row else 0
             total_output = row["total_output"] if row else 0
+            total_cache_read = row["total_cache_read"] if row else 0
+            total_cache_creation = row["total_cache_creation"] if row else 0
 
             # Per-provider breakdown
             cursor = await db.execute(
                 "SELECT provider, "
                 "COALESCE(SUM(input_tokens), 0) AS total_input, "
-                "COALESCE(SUM(output_tokens), 0) AS total_output "
+                "COALESCE(SUM(output_tokens), 0) AS total_output, "
+                "COALESCE(SUM(cache_read_input_tokens), 0) AS total_cache_read, "
+                "COALESCE(SUM(cache_creation_input_tokens), 0) AS total_cache_creation "
                 "FROM token_usage "
                 "WHERE recorded_at >= datetime('now', ?) "
                 "GROUP BY provider ORDER BY total_input DESC",
                 (f"-{hours} hours",),
             )
-            breakdown = {r["provider"]: {"input": r["total_input"], "output": r["total_output"]}
-                         for r in await cursor.fetchall()}
+            rows = await cursor.fetchall()
+            breakdown = {}
+            for r in rows:
+                breakdown[r["provider"]] = {
+                    "input": r["total_input"],
+                    "output": r["total_output"],
+                    "cache_read": r["total_cache_read"],
+                    "cache_creation": r["total_cache_creation"],
+                }
 
-        return {"total_input": total_input, "total_output": total_output, "breakdown": breakdown}
+        return {
+            "total_input": total_input,
+            "total_output": total_output,
+            "total_cache_read": total_cache_read,
+            "total_cache_creation": total_cache_creation,
+            "breakdown": breakdown,
+        }
 
 
 # Module-level convenience: one store instance shared across the process.

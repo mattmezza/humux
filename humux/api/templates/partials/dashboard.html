@@ -33,20 +33,23 @@
 
   {# Token usage — real data from TokenUsageStore #}
   <div class="grid grid-cols-3 gap-3">
+    {% set cr_24h = (tok_24h.total_cache_read / (tok_24h.total_cache_read + tok_24h.total_cache_creation) * 100)|round(1) if (tok_24h.total_cache_read + tok_24h.total_cache_creation) > 0 else 0 %}
+    {% set cr_7d = (tok_7d.total_cache_read / (tok_7d.total_cache_read + tok_7d.total_cache_creation) * 100)|round(1) if (tok_7d.total_cache_read + tok_7d.total_cache_creation) > 0 else 0 %}
+    {% set cr_30d = (tok_30d.total_cache_read / (tok_30d.total_cache_read + tok_30d.total_cache_creation) * 100)|round(1) if (tok_30d.total_cache_read + tok_30d.total_cache_creation) > 0 else 0 %}
     <div class="card px-4 py-3">
       <div class="text-xs text-muted mb-0.5">Tokens · 24h</div>
       <div class="text-lg text-accent font-semibold">{{ fmt_tokens(tok_24h.total_input + tok_24h.total_output) }}</div>
-      <div class="text-[10px] text-muted mt-0.5">{{ fmt_tokens(tok_24h.total_input) }} in / {{ fmt_tokens(tok_24h.total_output) }} out</div>
+      <div class="text-[10px] text-muted mt-0.5">{{ fmt_tokens(tok_24h.total_input) }} in / {{ fmt_tokens(tok_24h.total_output) }} out{% if cr_24h > 0 %} / {{ cr_24h }}% cached{% endif %}</div>
     </div>
     <div class="card px-4 py-3">
       <div class="text-xs text-muted mb-0.5">Tokens · 7d</div>
       <div class="text-lg text-accent font-semibold">{{ fmt_tokens(tok_7d.total_input + tok_7d.total_output) }}</div>
-      <div class="text-[10px] text-muted mt-0.5">{{ fmt_tokens(tok_7d.total_input) }} in / {{ fmt_tokens(tok_7d.total_output) }} out</div>
+      <div class="text-[10px] text-muted mt-0.5">{{ fmt_tokens(tok_7d.total_input) }} in / {{ fmt_tokens(tok_7d.total_output) }} out{% if cr_7d > 0 %} / {{ cr_7d }}% cached{% endif %}</div>
     </div>
     <div class="card px-4 py-3">
       <div class="text-xs text-muted mb-0.5">Tokens · 30d</div>
       <div class="text-lg text-accent font-semibold">{{ fmt_tokens(tok_30d.total_input + tok_30d.total_output) }}</div>
-      <div class="text-[10px] text-muted mt-0.5">{{ fmt_tokens(tok_30d.total_input) }} in / {{ fmt_tokens(tok_30d.total_output) }} out</div>
+      <div class="text-[10px] text-muted mt-0.5">{{ fmt_tokens(tok_30d.total_input) }} in / {{ fmt_tokens(tok_30d.total_output) }} out{% if cr_30d > 0 %} / {{ cr_30d }}% cached{% endif %}</div>
     </div>
   </div>
 
@@ -56,9 +59,10 @@
     <h3 class="text-xs text-muted uppercase tracking-wider mb-2">Provider breakdown (24h)</h3>
     <div class="space-y-1">
       {% for provider, counts in tok_24h.breakdown.items() %}
+      {% set pcr = (counts.cache_read / (counts.cache_read + counts.cache_creation) * 100)|round(1) if (counts.cache_read + counts.cache_creation) > 0 else 0 %}
       <div class="flex items-center justify-between text-xs">
         <span class="text-gray-300">{{ provider }}</span>
-        <span class="text-muted">{{ counts.input }} in / {{ counts.output }} out</span>
+        <span class="text-muted">{{ fmt_tokens(counts.input) }} in / {{ fmt_tokens(counts.output) }} out{% if pcr > 0 %} / {{ pcr }}% cached{% endif %}</span>
       </div>
       {% endfor %}
     </div>
