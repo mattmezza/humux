@@ -205,6 +205,7 @@ def test_legacy_rules_migrate_to_new_tool_names(tmp_path) -> None:
         rows = [
             ("", "run_command:mytool sub*", "ALWAYS"),
             ("coder", "run_command:make*", "NEVER"),
+            ("", "run_command*rm -rf*", "NEVER"),  # wildcard swallows the colon
             ("", "write_file", "ALWAYS"),
             ("", "load_skill", "ALWAYS"),
             ("", "list_dir", "ALWAYS"),
@@ -214,11 +215,15 @@ def test_legacy_rules_migrate_to_new_tool_names(tmp_path) -> None:
     engine = PermissionEngine(db_path=db)
     assert engine.check("bash", {"command": "mytool sub x"}) == PermissionLevel.ALWAYS
     assert engine.check("bash", {"command": "make test"}, scope="coder") == PermissionLevel.NEVER
+    # The wildcard NEVER rail keeps matching after the rename — it would silently
+    # stop firing if the migration only handled the exact "run_command:" prefix.
+    assert engine.check("bash", {"command": "sudo rm -rf /"}) == PermissionLevel.NEVER
     assert engine.check("write", {"path": "f"}) == PermissionLevel.ALWAYS
     with _sq.connect(db) as conn:
         patterns = {r[0] for r in conn.execute("SELECT pattern FROM permissions").fetchall()}
     assert "load_skill" not in patterns and "list_dir" not in patterns
     assert "run_command:mytool sub*" not in patterns
+    assert "bash*rm -rf*" in patterns
 
 
 def test_learn_always_rule_skips_whole_tool_key(tmp_path) -> None:

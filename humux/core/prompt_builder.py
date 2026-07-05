@@ -230,11 +230,13 @@ def build_prompt_sections(
             "An encrypted secrets vault is available. Before logging into a site or calling "
             "an authenticated API, call the `list_secrets` tool to see which secrets you may "
             "use (it returns names + descriptions only, never values). Use a secret BY "
-            "REFERENCE inside `bash` commands as {{secret:NAME}} (or {{secret:NAME.field}} for a "
-            "structured login). If the secret you need isn't listed, call `request_secret` to "
-            "ask the owner for it. NEVER print, echo, or place a secret value or a "
-            "{{secret:...}} placeholder in a message, email, calendar event, or any other "
-            "output — substitution happens only inside `bash` commands.\n"
+            "REFERENCE inside an ALLOWLISTED `bash` command as {{secret:NAME}} (or "
+            "{{secret:NAME.field}} for a structured login) — e.g. a `curl` call. Substitution "
+            "happens ONLY for allowlisted commands; a placeholder in any other command runs "
+            "through literally, so don't rely on it there. If the secret you need isn't listed, "
+            "call `request_secret` to ask the owner. NEVER print, echo, or place a secret value "
+            "or a {{secret:...}} placeholder in a message, email, calendar event, or any other "
+            "output.\n"
             "</secrets>"
         )
     # Voice is a base capability, not a skill or a function-tool: when TTS is on

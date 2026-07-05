@@ -76,8 +76,9 @@ def test_scoped_tools_filters_but_keeps_memory_and_vault() -> None:
 
 
 def test_legacy_tool_names_normalized() -> None:
-    # Agent docs saved before the #178 rename keep working: old tool names map
-    # to their successors and removed tools drop out.
+    # Agent docs saved before the #178 rename keep working: execution tools map
+    # 1:1; the read-only list_dir/grep and the removed skill tools DROP OUT —
+    # never widened to the execution-capable bash.
     p = Agent(
         name="old",
         tools=[
@@ -94,6 +95,14 @@ def test_legacy_tool_names_normalized() -> None:
     assert p.tools == ["bash", "read", "write", "edit", "send_email"]
     assert p.allows_tool("bash") and p.allows_tool("read") and p.allows_tool("send_email")
     assert not p.allows_tool("spawn_subagent")
+
+
+def test_legacy_scope_of_only_removed_tools_stays_restrictive() -> None:
+    # An agent scoped to ONLY removed tools must not widen to "all" (tools == []).
+    p = Agent(name="locked", tools=["load_skill", "search_skills", "list_dir", "grep"])
+    assert p.tools == ["remember"]
+    assert not p.allows_tool("bash")
+    assert not p.allows_tool("send_email")
 
 
 def test_gateable_tools_in_sync_with_tools() -> None:

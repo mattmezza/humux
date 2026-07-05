@@ -2195,13 +2195,17 @@ def create_admin_app(
         skills_store = await _skills_store_from_config(config_store)
         await skills_store.ensure_seeded()
         skills = await skills_store.list_skills()
-        skill_lines = [
-            f'<skill name="{name}">{summary}</skill>'
-            for skill in skills
-            if (name := str(skill.get("name", "")).strip())
-            for summary in [str(skill.get("summary", "")).strip()]
-        ]
-        skills_index = "\n".join(skill_lines)
+        # Render via the shared helper so the preview matches the live prompt
+        # (including the on-demand loading header), never drifting from it (#178).
+        from core.skills import render_skills_index
+
+        skills_index = render_skills_index(
+            [
+                {"name": name, "summary": str(skill.get("summary", "")).strip()}
+                for skill in skills
+                if (name := str(skill.get("name", "")).strip())
+            ]
+        )
 
         memories = ""
         if body.include_memories:

@@ -763,7 +763,8 @@ TOOLS = [
         "description": (
             "List the names of stored secrets you may use (with descriptions). "
             "Returns NAMES ONLY — never values. Use a listed name by reference as "
-            "{{secret:NAME}} inside bash commands."
+            "{{secret:NAME}} inside an allowlisted bash command (substitution runs "
+            "only for allowlisted commands)."
         ),
         "input_schema": {"type": "object", "properties": {}},
     },
@@ -2379,6 +2380,14 @@ class AgentCore:
         if level == PermissionLevel.NEVER:
             log.warning("Permission DENIED (NEVER): %s — %s", name, params)
             return {"error": "This action is not allowed."}
+
+        # A non-allowlisted bash command runs workspace-confined with no executor
+        # prefix guard, so it must ASK every time — a wildcard ALWAYS rule (the
+        # #148 read rules `bash:cat*`, `bash:ls*`, …) must NOT auto-approve it, or
+        # `cat ~/.ssh/id_rsa` would read outside the workspace with no prompt.
+        # NEVER still blocks (checked above); YOLO still applies (explicit opt-in).
+        if unlisted_bash and level == PermissionLevel.ALWAYS:
+            level = PermissionLevel.ASK
 
         # YOLO bypass: when the owner put this agent+chat in YOLO, skip the approval
         # prompt for ASK actions — auto-approved without persisting a rule. The

@@ -319,32 +319,41 @@ class PermissionEngine:
             self._migrate_tool_renames(db)
         self._ready = True
 
-    # Tool renames (#178): run_command→bash, read_file→read, write_file→write,
-    # edit_file→edit; run_command_in_dir folded into bash; list_dir/grep/
-    # load_skill/search_skills/list_skills removed. Persisted rules (owner-added
-    # and auto-learned) must follow, or every learned approval is lost and stale
-    # NEVER rails stop matching. Idempotent — a store with no legacy pattern is
+    # Tool renames (#178): persisted rules (owner-added and auto-learned) must
+    # follow the same table the agent tool-scope migration uses (one source of
+    # truth — LEGACY_TOOL_RENAMES), or a learned approval is lost and a stale
+    # NEVER rail stops matching. Idempotent — a store with no legacy pattern is
     # untouched — so it can run on every boot.
-    _LEGACY_RENAMES = {
-        "read_file": "read",
-        "write_file": "write",
-        "edit_file": "edit",
-        "run_command": "bash",
-        "run_command_in_dir": "bash",
-    }
-    _LEGACY_DROPPED = frozenset({"list_dir", "grep", "load_skill", "search_skills", "list_skills"})
+    @staticmethod
+    def _rename_pattern(pattern: str) -> str | None:
+        """The #178-migrated form of a rule ``pattern``, or ``None`` to drop it.
+
+        A ``tool`` prefix is the part before the first ``:`` (the ``run_command``
+        namespace) or ``*`` (a wildcard like ``run_command*rm*`` an owner wrote in
+        the admin UI, whose ``*`` swallows the colon). Renaming that leading token
+        catches every shape; the whole-pattern lookup handles a bare tool name.
+        """
+        from core.agents import LEGACY_TOOL_RENAMES
+
+        if pattern in LEGACY_TOOL_RENAMES:  # bare tool name (e.g. "write_file")
+            return LEGACY_TOOL_RENAMES[pattern]
+        # Split off the leading tool token at the first ':' or '*'.
+        idx = min((i for i in (pattern.find(":"), pattern.find("*")) if i >= 0), default=-1)
+        if idx < 0:
+            return pattern  # no separator, not a bare match → unchanged
+        head, rest = pattern[:idx], pattern[idx:]
+        if head not in LEGACY_TOOL_RENAMES:
+            return pattern
+        new_head = LEGACY_TOOL_RENAMES[head]
+        return None if new_head is None else new_head + rest
 
     @classmethod
     def _migrate_tool_renames(cls, db: sqlite3.Connection) -> None:
         rows = db.execute("SELECT scope, pattern, level FROM permissions").fetchall()
         for scope, pattern, level in rows:
-            new = None
-            if pattern.startswith("run_command:"):
-                new = "bash:" + pattern[len("run_command:") :]
-            elif pattern in cls._LEGACY_RENAMES:
-                new = cls._LEGACY_RENAMES[pattern]
-            elif pattern not in cls._LEGACY_DROPPED:
-                continue
+            new = cls._rename_pattern(pattern)
+            if new == pattern:
+                continue  # nothing to migrate
             db.execute("DELETE FROM permissions WHERE scope = ? AND pattern = ?", (scope, pattern))
             if new:
                 db.execute(

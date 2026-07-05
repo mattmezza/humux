@@ -17,6 +17,27 @@ CREATE TABLE IF NOT EXISTS skills (
 """
 
 
+# One-line instruction prepended to the skills index (#178), telling the model
+# skills are read on demand via bash. Shared by the runtime prompt and the admin
+# prompt-preview so the preview can't drift from what the model actually sees.
+SKILLS_INDEX_HEADER = (
+    "Skills are reusable instructions for specific tasks. Before acting on a task "
+    "a skill covers, read it with bash: `python3 /app/tools/skills.py show <name>`."
+)
+
+
+def render_skills_index(entries: list[dict]) -> str:
+    """Render index ``{name, summary}`` rows as the ``<available_skills>`` body
+    (header line + one ``<skill>`` element each). Empty rows → empty string."""
+    if not entries:
+        return ""
+    lines = [SKILLS_INDEX_HEADER]
+    lines += [
+        f'<skill name="{e["name"]}">{(e.get("summary") or "").strip()}</skill>' for e in entries
+    ]
+    return "\n".join(lines)
+
+
 def _extract_summary(content: str) -> str:
     for line in content.splitlines():
         stripped = line.strip()
@@ -143,16 +164,7 @@ class SkillsEngine:
         + how to load, and the model pulls a body on demand via bash (the
         ``skills.py show`` read is pre-approved).
         """
-        entries = await self.index_entries(allow=allow)
-        if not entries:
-            return ""
-        lines = [
-            "Skills are reusable instructions for specific tasks. Before acting on a "
-            "task a skill covers, read it with bash: "
-            "`python3 /app/tools/skills.py show <name>`."
-        ]
-        lines += [f'<skill name="{e["name"]}">{e["summary"]}</skill>' for e in entries]
-        return "\n".join(lines)
+        return render_skills_index(await self.index_entries(allow=allow))
 
     async def get_skill_content(self, name: str) -> str:
         skill = await self.store.get_skill(name)

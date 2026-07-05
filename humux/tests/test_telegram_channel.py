@@ -317,6 +317,42 @@ async def test_zz_skill_command_loads_into_history_and_chat() -> None:
 
 
 @pytest.mark.asyncio
+async def test_zz_skill_command_gated_when_not_responding() -> None:
+    # A record-only turn (respond=False: unaddressed group message, or a sender
+    # who failed the _may_act gate) must NOT trigger skill loading (#178 review).
+    ch = _dedup_channel()
+    ch._turn_routing = lambda u, m, c: {
+        "user_id": str(u.effective_user.id),
+        "speaker_tag": "",
+        "respond": False,
+        "addressed": False,
+    }
+    ch.agent = _skills_agent([{"name": "himalaya-email", "summary": "s"}])
+    ch.send = AsyncMock()
+    await ch._on_text(_text_update("/zz_skill_himalaya_email"), None)
+    await asyncio.sleep(0)
+    ch.agent.process.assert_not_awaited()
+    ch.send.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_register_commands_skips_colliding_slugs() -> None:
+    # Two skills whose slugs fold to the same command must not produce a duplicate
+    # BotCommand — Telegram rejects the whole list if it does (#178 review).
+    ch = object.__new__(TelegramChannel)
+    ch.channel_name = "telegram"
+    ch.app = SimpleNamespace(bot=AsyncMock())
+    ch.agent = _skills_agent(
+        [{"name": "web-search", "summary": "a"}, {"name": "web_search", "summary": "b"}]
+    )
+    await ch.register_commands()
+    (commands,) = ch.app.bot.set_my_commands.await_args.args
+    slugs = [c.command for c in commands]
+    assert len(slugs) == len(set(slugs))  # no duplicate command names
+    assert slugs.count("zz_skill_web_search") == 1
+
+
+@pytest.mark.asyncio
 async def test_zz_skill_unknown_name_reports_error() -> None:
     ch = _dedup_channel()
     ch.agent = _skills_agent([])

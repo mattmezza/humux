@@ -292,11 +292,23 @@ class TelegramChannel:
         the bot from polling."""
         commands = list(_MENU_COMMANDS)
         try:
-            # Telegram caps setMyCommands at 100 entries; keep the control
-            # commands and fill the rest with skills (alphabetical, from the DB).
-            for e in (await self.agent.skills.index_entries())[: 100 - len(commands)]:
+            # Telegram caps setMyCommands at 100 entries AND rejects the whole
+            # list if two commands share a name — two skills whose slugs collide
+            # (hyphen vs underscore, or a shared 32-char prefix) would drop the
+            # entire menu. Skip a duplicate slug so the menu still publishes; the
+            # skipped skill just has no command (its full name is still in the
+            # prompt index). Keep the control-command names reserved.
+            seen = {c.command for c in commands}
+            for e in await self.agent.skills.index_entries():
+                if len(commands) >= 100:
+                    break
+                slug = self._skill_command(e["name"])
+                if slug in seen:
+                    log.warning("Skill command slug collision, skipping: %s", e["name"])
+                    continue
+                seen.add(slug)
                 desc = (e.get("summary") or f"Load the {e['name']} skill")[:256]
-                commands.append(BotCommand(self._skill_command(e["name"]), desc))
+                commands.append(BotCommand(slug, desc))
         except Exception:
             log.warning("Could not build skill commands (%s)", self.channel_name, exc_info=True)
         try:
@@ -471,9 +483,18 @@ class TelegramChannel:
         base, _, target = first.partition("@") if first.startswith("/") else ("", "", "")
         if base.lower().startswith("/zz_skill_"):
             # Skill loader command (#178): post the skill body into the chat and
-            # record it in history so the agent has it in context next turn.
+            # record it in history so the agent has it in context next turn. It
+            # makes the bot emit content, so it goes through the SAME sender ACL
+            # (#29 whitelist + #129 per-chat gate) as every acting path — the
+            # respond-gate above only runs it when routing["respond"], which is
+            # False for unaddressed group messages and bot senders.
             # "/cmd@otherbot" is aimed at a different bot — stay silent then.
-            if not (target and self._bot_username and target.lower() != self._bot_username):
+            aimed_elsewhere = target and self._bot_username and target.lower() != self._bot_username
+            if (
+                respond
+                and not aimed_elsewhere
+                and await self._may_act(sender_id, convo_user, str(chat_id))
+            ):
                 asyncio.create_task(
                     self._handle_skill_command(
                         base.lower()[len("/zz_skill_") :], convo_user, str(chat_id)

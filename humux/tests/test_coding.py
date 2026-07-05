@@ -373,6 +373,19 @@ async def test_unlisted_bash_runs_workspace_confined(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_unlisted_bash_ignores_wildcard_always_rule(tmp_path):
+    """A wildcard ALWAYS rule (bash:cat*) must NOT auto-approve a non-allowlisted
+    command — it would read outside the workspace with no prompt (#178)."""
+    agent = _yolo_gate_agent(tmp_path)
+    # `cat` is not an executor prefix → unlisted rail; bash:cat* is a seeded ALWAYS
+    # rule, but the unlisted rail forces ASK, so approval is still requested.
+    await agent._execute_tool_inner(
+        _call("bash", {"command": "cat /etc/passwd", "purpose": "read"}), "telegram", "u1", {}
+    )
+    agent._request_approval.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_unlisted_bash_without_workspace_errors(tmp_path):
     """No workspace → a non-allowlisted command surfaces the allowlist error."""
     agent = _yolo_gate_agent(tmp_path)
