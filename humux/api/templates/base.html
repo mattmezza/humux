@@ -3,7 +3,15 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Agent Admin{% endblock %}</title>
+  <meta name="theme-color" content="#1e293b">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="humux">
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+
+  <title>{% block title %}Agent Admin — humux{% endblock %}</title>
   <link rel="stylesheet" href="/static/style.css">
   <script src="https://unpkg.com/htmx.org@2.0.4" integrity="sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+" crossorigin="anonymous"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
@@ -15,6 +23,11 @@
   <div id="toast" style="position: fixed; right: 24px; bottom: 24px; display: none; z-index: 100; max-width: 360px;"></div>
 
   <script>
+    // Register service worker for PWA installability (#177)
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/static/sw.js');
+    }
+
     // Global: set HTMX auth header from localStorage
     document.body.addEventListener('htmx:configRequest', function(e) {
       const key = localStorage.getItem('admin_api_key') || '';
