@@ -91,9 +91,19 @@ _jinja_env = Environment(
     autoescape=True,
     auto_reload=True,
 )
+def _fmt_tokens(n: int) -> str:
+    """Format a token count with k/M/G suffix (#199)."""
+    if n >= 1_000_000_000:
+        return f"{n / 1_000_000_000:.2f}".rstrip("0").rstrip(".") + "G"
+    if n >= 1_000_000:
+        return f"{n / 1_000_000:.2f}".rstrip("0").rstrip(".") + "M"
+    if n >= 1_000:
+        return f"{n / 1_000:.2f}".rstrip("0").rstrip(".") + "k"
+    return str(n)
+
+
 _jinja_env.globals["step_ctx"] = {}  # default empty dict for wizard templates
-
-
+_jinja_env.globals["fmt_tokens"] = _fmt_tokens
 def _render(template_name: str, **ctx: object) -> HTMLResponse:
     """Render a Jinja2 template and return an HTMLResponse."""
     tmpl = _jinja_env.get_template(template_name)
@@ -1122,6 +1132,61 @@ def create_admin_app(
             channels=channels,
             scheduler_jobs=scheduler_jobs,
         )
+
+    @app.get("/partials/dashboard", dependencies=[Depends(auth)])
+    async def partial_dashboard() -> HTMLResponse:
+        """Dashboard overview with token usage stats (#199)."""
+        from core.metrics import TokenUsageStore
+
+        agent = agent_state.agent
+        if agent:
+            running = True
+            channels = list(agent.channels.keys())
+            scheduler_jobs = len(agent.scheduler.scheduler.get_jobs())
+        else:
+            running = False
+            channels = []
+            scheduler_jobs = 0
+        status = agent_state.status
+        if running and status not in ("STARTING", "RESTARTING", "STOPPING"):
+            status = "RUNNING"
+
+        store = TokenUsageStore()
+        tok_24h = await store.totals_since(24)
+        tok_7d = await store.totals_since(24 * 7)
+        tok_30d = await store.totals_since(24 * 30)
+
+        # Recent log entries
+        snapshot = list(_LOG_BUFFER)
+        log_entries = _filter_log_entries(snapshot)[-20:]
+
+        return _render_partial(
+            "partials/dashboard.html",
+            running=running,
+            status=status,
+            channels=channels,
+            scheduler_jobs=scheduler_jobs,
+            tok_24h=tok_24h,
+            tok_7d=tok_7d,
+            tok_30d=tok_30d,
+            log_entries=log_entries,
+        )
+
+    @app.get("/version", dependencies=[Depends(auth)])
+    async def version() -> HTMLResponse:
+        """Latest release version from GitHub."""
+        try:
+            async with httpx.AsyncClient(timeout=5) as client:
+                resp = await client.get(
+                    "https://api.github.com/repos/mattmezza/humux/releases/latest",
+                    headers={"Accept": "application/vnd.github.v3+json"},
+                )
+                if resp.is_success:
+                    tag = resp.json().get("tag_name", "") or ""
+                    return HTMLResponse(tag)
+        except Exception:
+            pass
+        return HTMLResponse("dev")
 
     async def _voice_context() -> dict:
         """Global speech (STT/TTS) settings for the Voice card. Not per-agent —
