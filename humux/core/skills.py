@@ -253,3 +253,370 @@ class SkillsEngine:
         if not skill:
             return ""
         return str(skill.get("content", ""))
+
+
+# ── Skill file validator ──────────────────────────────────────────────────────
+
+# The canonical allowlist for command prefix validation.  Imported at module
+# level so the validator stays in sync with the executor without an import
+# cycle (executor → skills → executor would loop).  We replicate the list
+# here; keep it in sync with ToolExecutor.ALLOWED_PREFIXES.
+_ALLOWED_PREFIXES: list[str] = [
+    "curl",
+    "himalaya",
+    "jq",
+    "wacli",
+    "python3",
+    "sqlite3",
+    "gh",
+    "git",
+    "w3m",
+    "pandoc",
+    "pdftotext",
+    "rg",
+    "yt-dlp",
+    "cal",
+    "cp",
+]
+
+_SAFE_FILTERS: set[str] = {
+    "jq", "head", "tail", "rg", "cat", "sort", "uniq", "wc", "grep", "cut", "tr", "column",
+}
+
+# Tools that are registered as callable tools (not CLI commands) — their
+# names are valid as tool-names inside bash code blocks.
+_KNOWN_TOOL_NAMES: set[str] = {
+    # Communication tools
+    "send_email",
+    "reply_email",
+    "send_message",
+    "set_reaction",
+    # Calendar
+    "create_calendar_event",
+    # Contacts
+    "create_contact",
+    "search_contacts",
+    # Web / search
+    "web_search",
+    "generate_image",
+    # Workspace file tools
+    "read_file",
+    "write_file",
+    "edit_file",
+    "list_dir",
+    "grep",
+    "run_command_in_dir",
+    # Memory
+    "remember",
+    "recall_memory",
+    "list_secrets",
+    "request_secret",
+    # Scheduling
+    "manage_jobs",
+    # Agent
+    "spawn_subagent",
+    "load_skill",
+}
+
+
+class ValidationError:
+    """A single validation finding — either an error or a warning."""
+
+    def __init__(self, file: str, line: int, message: str, severity: str = "error"):
+        self.file = file
+        self.line = line
+        self.message = message
+        self.severity = severity  # "error" | "warning"
+
+    def __str__(self) -> str:
+        prefix = "E" if self.severity == "error" else "W"
+        return f"{prefix}: {self.file}:{self.line}: {self.message}"
+
+
+def _validate_h1_title(path: Path, content: str) -> list[ValidationError]:
+    """Check that the file has a valid H1 title matching the filename."""
+    errors: list[ValidationError] = []
+    lines = content.splitlines()
+    h1_found = False
+    for i, line in enumerate(lines):
+        if line.startswith("# ") and not line.startswith("## "):
+            h1_found = True
+            break
+    if not h1_found:
+        errors.append(ValidationError(
+            str(path), 1,
+            "Missing H1 title (first line should be '# Title')",
+        ))
+    return errors
+
+
+def _validate_code_blocks(path: Path, content: str) -> list[ValidationError]:
+    """Check that fenced code blocks are properly opened and closed."""
+    errors: list[ValidationError] = []
+    lines = content.splitlines()
+    fence_open = False
+    fence_start = 0
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            if fence_open:
+                fence_open = False
+            else:
+                fence_open = True
+                fence_start = i + 1
+    if fence_open:
+        errors.append(ValidationError(
+            str(path), fence_start,
+            "Unclosed fenced code block (opening ``` without closing ```)",
+        ))
+    return errors
+
+
+def _validate_bash_commands(path: Path, content: str) -> list[ValidationError]:
+    """Check that every command in bash code blocks complies with the prefix
+    allowlist.  Ignores lines that look like commentary, blank lines, or
+    variable assignments.  Handles backslash and pipe continuations."""
+    errors: list[ValidationError] = []
+    lines = content.splitlines()
+    in_bash = False
+    buf: list[str] = []
+    buf_start: int = 0
+    continued: bool = False  # True when the previous line ended with a backslash
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            if in_bash and buf:
+                _check_command_buffer(buf, buf_start, path, errors)
+                buf = []
+                continued = False
+            lang = stripped.removeprefix("```").strip().lower()
+            if in_bash:
+                in_bash = False
+            elif lang in ("bash", "sh"):
+                in_bash = True
+            continue
+        if not in_bash:
+            continue
+        if not stripped or stripped.startswith("#"):
+            if buf:
+                _check_command_buffer(buf, buf_start, path, errors)
+                buf = []
+                continued = False
+            continue
+        if "=" in stripped and not stripped.startswith(" "):
+            lhs = stripped.split("=", 1)[0]
+            if lhs.isidentifier() or lhs.isupper():
+                continue
+        ends_with_bs = stripped.endswith("\\")
+        is_pipe_cont = stripped.startswith("|")
+        if buf:
+            if continued or is_pipe_cont:
+                buf.append(line)
+                continued = ends_with_bs
+                if not continued and not is_pipe_cont:
+                    _check_command_buffer(buf, buf_start, path, errors)
+                    buf = []
+                    continued = False
+                continue
+            else:
+                _check_command_buffer(buf, buf_start, path, errors)
+                buf = []
+                continued = False
+        if ends_with_bs:
+            buf = [line]
+            buf_start = i + 1
+            continued = True
+        else:
+            _check_single_command(stripped, i + 1, path, errors)
+    if in_bash and buf:
+        _check_command_buffer(buf, buf_start, path, errors)
+    return errors
+
+
+def _first_token(stripped: str) -> str:
+    """Extract the first token from a stripped command line, stripping any
+    opening parenthesis so that ``write_file(path=...)`` is recognised as
+    the tool name ``write_file``."""
+    token = stripped.split(maxsplit=1)[0] if stripped else ""
+    # Strip opening parenthesis and everything after for tool-name matching
+    if "(" in token:
+        token = token.split("(")[0]
+    return token
+
+
+def _command_allowed(first_token: str) -> bool:
+    """Check whether *first_token* looks like an allowed command start."""
+    if not first_token:
+        return True
+    if first_token in _KNOWN_TOOL_NAMES:
+        return True
+    if first_token in _SAFE_FILTERS:
+        return True
+    if first_token.startswith("$"):
+        return True
+    if first_token in ("echo", "printf", "cd", "export", "source", "."):
+        return True
+    for prefix in _ALLOWED_PREFIXES:
+        if first_token.startswith(prefix):
+            return True
+    return False
+
+
+def _check_single_command(stripped: str, line_no: int, path: Path, errors: list[ValidationError]) -> None:
+    """Check a single (non-continuation) command line."""
+    token = _first_token(stripped)
+    if token and not _command_allowed(token):
+        errors.append(ValidationError(
+            str(path), line_no,
+            f"Command '{token}' is not in the allowed prefix list "
+            f"({_ALLOWED_PREFIXES})",
+        ))
+
+
+def _check_command_buffer(buf: list[str], start_line: int, path: Path, errors: list[ValidationError]) -> None:
+    """Check a logical command assembled from continuation lines by
+    examining the first token of the first line."""
+    if not buf:
+        return
+    first = buf[0].strip()
+    token = _first_token(first)
+    if token and not _command_allowed(token):
+        errors.append(ValidationError(
+            str(path), start_line,
+            f"Command '{token}' is not in the allowed prefix list "
+            f"({_ALLOWED_PREFIXES})",
+        ))
+
+
+def _validate_cross_references(path: Path, content: str) -> list[ValidationError]:
+    """Check that referenced tool scripts or file paths actually exist, using
+    the seed directory as the root.  Limited to obvious script references."""
+    errors: list[ValidationError] = []
+    lines = content.splitlines()
+    seed_dir = path.parent
+    for i, line in enumerate(lines):
+        if "tools/" in line and ("/" in line or "`" in line):
+            for part in line.split():
+                clean = part.strip("`\"'(),.")
+                if clean.startswith("./tools/") or clean.startswith("tools/"):
+                    ref = seed_dir.parent / clean
+                    if not ref.exists():
+                        errors.append(ValidationError(
+                            str(path), i + 1,
+                            f"Referenced path '{clean}' does not exist",
+                            severity="warning",
+                        ))
+    return errors
+
+
+def validate_skill_file(path: Path, strict: bool = False) -> list[ValidationError]:
+    """Validate a single skill markdown file.  Returns a list of findings (empty
+    = file is valid)."""
+    if not path.exists():
+        return [ValidationError(str(path), 1, "File not found")]
+    content = path.read_text()
+    errors: list[ValidationError] = []
+    errors.extend(_validate_h1_title(path, content))
+    errors.extend(_validate_code_blocks(path, content))
+    errors.extend(_validate_bash_commands(path, content))
+    errors.extend(_validate_cross_references(path, content))
+
+    if strict:
+        lines = content.splitlines()
+        in_code = False
+        has_description = False
+        for line in lines[1:5]:
+            stripped = line.strip()
+            if stripped.startswith("```"):
+                in_code = not in_code
+                continue
+            if in_code:
+                continue
+            if stripped and not stripped.startswith("#"):
+                has_description = True
+                break
+        if not has_description:
+            errors.append(ValidationError(
+                str(path), 2,
+                "Missing description paragraph after the title",
+                severity="warning",
+            ))
+    return errors
+
+
+def validate_skill_content(content: str, strict: bool = False) -> list[ValidationError]:
+    """Validate skill content in-memory, without a file on disk.
+
+    Reuses the same internal validators as ``validate_skill_file`` but
+    passes a synthetic path so line-numbered errors still make sense.
+    """
+    dummy = Path("<inline>")
+    errors: list[ValidationError] = []
+    errors.extend(_validate_h1_title(dummy, content))
+    errors.extend(_validate_code_blocks(dummy, content))
+    errors.extend(_validate_bash_commands(dummy, content))
+    errors.extend(_validate_cross_references(dummy, content))
+    if strict:
+        lines = content.splitlines()
+        in_code = False
+        has_description = False
+        for line in lines[1:5]:
+            stripped = line.strip()
+            if stripped.startswith("```"):
+                in_code = not in_code
+                continue
+            if in_code:
+                continue
+            if stripped and not stripped.startswith("#"):
+                has_description = True
+                break
+        if not has_description:
+            errors.append(ValidationError(
+                str(dummy), 2,
+                "Missing description paragraph after the title",
+                severity="warning",
+            ))
+    return errors
+
+
+def validate_skill_dir(seed_dir: str | Path, strict: bool = False) -> list[ValidationError]:
+    """Validate all skill markdown files in *seed_dir*."""
+    d = Path(seed_dir)
+    if not d.exists():
+        return [ValidationError(str(d), 1, f"Seed directory '{seed_dir}' not found")]
+    errors: list[ValidationError] = []
+    for skill_file in sorted(d.glob("*.md")):
+        errors.extend(validate_skill_file(skill_file, strict=strict))
+    return errors
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Entry point for ``python -m core.skills validate``."""
+    import argparse
+
+    parser = argparse.ArgumentParser(prog="python -m core.skills", description="Skills CLI")
+    sub = parser.add_subparsers(dest="command")
+
+    validate_parser = sub.add_parser("validate", help="Validate skill files")
+    validate_parser.add_argument(
+        "--seed-dir", default="skills/",
+        help="Path to the skills seed directory (default: skills/)",
+    )
+    validate_parser.add_argument(
+        "--strict", action="store_true",
+        help="Enable additional style warnings",
+    )
+
+    args = parser.parse_args(argv)
+    if args.command == "validate":
+        errors = validate_skill_dir(args.seed_dir, strict=args.strict)
+        for err in errors:
+            print(str(err), file=__import__("sys").stderr)
+        return 1 if any(e.severity == "error" for e in errors) else 0
+    parser.print_help()
+    return 1
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(main())

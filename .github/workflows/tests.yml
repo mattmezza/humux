@@ -15,6 +15,9 @@ jobs:
       - name: Install dependencies
         working-directory: ./humux
         run: uv sync
+      - name: Validate skill files
+        working-directory: ./humux
+        run: uv run python -m core.skills validate --strict
       - name: Run tests
         working-directory: ./humux
         run: uv run pytest -n auto

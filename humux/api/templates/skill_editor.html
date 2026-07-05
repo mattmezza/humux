@@ -2,7 +2,7 @@
 {% block title %}{% if is_new %}New Skill{% else %}Edit Skill{% endif %} — humux{% endblock %}
 
 {% block body %}
-<div>
+<div x-data="skillEditor()">
   <a class="text-xs text-muted hover:text-accent inline-flex items-center gap-1 mb-2" href="/admin?tab=skills">← Back to Skills</a>
   <div class="flex items-center justify-between gap-2 mb-4 flex-wrap">
     <div>
@@ -20,7 +20,8 @@
         </div>
         <div class="mb-3">
           <label class="label">Markdown content</label>
-          <textarea id="skill-content" class="textarea" style="min-height: 420px;" placeholder="# Skill title
+          <textarea id="skill-content" class="textarea" style="min-height: 420px;"
+                    placeholder="# Skill title
 
 ## Overview
 Describe what this skill enables.
@@ -29,8 +30,24 @@ Describe what this skill enables.
 Include executable CLI examples.
 
 ## Notes
-Edge cases, pitfalls, safety constraints.">{{ skill_content }}</textarea>
+Edge cases, pitfalls, safety constraints."
+                    x-on:input.debounce.500ms="validate($el.value)"
+                    x-model.fill="content">{{ skill_content }}</textarea>
           <div class="hint">First non-empty line becomes the summary shown in the list.</div>
+          <template x-if="validationErrors.length > 0">
+            <div class="mt-2 space-y-0.5">
+              <template x-for="err in validationErrors" :key="err.line + err.message">
+                <div class="text-xs"
+                     x-bind:class="err.severity === 'warning' ? 'text-yellow-500' : 'text-red-500'">
+                  <span x-text="'L' + err.line + ':'"></span>
+                  <span x-text="err.message"></span>
+                </div>
+              </template>
+            </div>
+          </template>
+          <template x-if="validationErrors.length === 0 && validatedOnce">
+            <div class="mt-2 text-xs text-green-500">No issues found.</div>
+          </template>
         </div>
         <div class="flex items-center gap-2">
           <button class="btn btn-sm" type="button" onclick="saveSkill()">Save</button>
@@ -68,6 +85,34 @@ Edge cases, pitfalls, safety constraints.">{{ skill_content }}</textarea>
 
 {% block scripts %}
 <script>
+  function skillEditor() {
+    return {
+      content: {{ skill_content|tojson }},
+      validationErrors: [],
+      validatedOnce: false,
+      validate(content) {
+        const apiKey = localStorage.getItem('admin_api_key') || '';
+        fetch('/skills/validate', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + apiKey
+          },
+          body: JSON.stringify({name: '', content: content})
+        })
+        .then(r => r.json())
+        .then(data => {
+          this.validationErrors = data.errors || [];
+          this.validatedOnce = true;
+        })
+        .catch(() => {
+          this.validationErrors = [];
+          this.validatedOnce = false;
+        });
+      }
+    };
+  }
+
   function saveSkill() {
     const name = document.getElementById('skill-name').value.trim();
     const content = document.getElementById('skill-content').value.trim();
