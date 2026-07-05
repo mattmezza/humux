@@ -279,6 +279,7 @@
     {{ search_enabled|default('false', true)|tojson|forceescape }},
     {{ search_provider|default('tavily', true)|tojson|forceescape }},
     {{ search_api_key|default('', true)|tojson|forceescape }},
+    {{ search_searxng_url|default('', true)|tojson|forceescape }},
     {{ search_max_results|default('5', true)|tojson|forceescape }}
   )">
     <div class="flex items-center justify-between gap-3 mb-1">
@@ -288,17 +289,18 @@
         Enabled
       </label>
     </div>
-    <p class="text-muted text-xs mb-3">Lets the agent look things up online via the <code>web_search</code> tool. Currently supports Tavily. When disabled the tool is hidden from the model.</p>
+    <p class="text-muted text-xs mb-3">Lets the agent look things up online via the <code>web_search</code> tool. Choose Tavily (hosted, needs an API key) or a self-hosted SearXNG instance (needs a URL, zero cost). When disabled the tool is hidden from the model.</p>
 
     <div class="space-y-3" x-show="enabled === 'true' || enabled === true">
       <div>
         <label class="label">Provider</label>
         <select class="input-sm" style="max-width:300px" x-model="provider">
           <option value="tavily">Tavily</option>
+          <option value="searxng">SearXNG (self-hosted)</option>
         </select>
       </div>
 
-      <div>
+      <div x-show="provider === 'tavily'">
         <label class="label">API Key</label>
         {% if search_vaulted %}
         <div class="text-xs text-muted py-1" style="max-width:500px">🔒 Stored in the vault as <code>${vault:TAVILY_API_KEY}</code> — manage it from the <button type="button" class="text-accent hover:underline" @click="$dispatch('switch-tab', 'secrets')">Vaults</button> tab.</div>
@@ -310,6 +312,13 @@
         {% endif %}
       </div>
 
+      <div x-show="provider === 'searxng'">
+        <label class="label">Instance URL</label>
+        <input type="text" class="input-sm" style="max-width:500px"
+               x-model="searxngUrl" placeholder="http://searxng:8080">
+        <p class="text-muted text-xs mt-1">Base URL of your SearXNG instance (JSON format must be enabled). The bundled <code>docker-compose.searxng.yml</code> exposes it at <code>http://searxng:8080</code>.</p>
+      </div>
+
       <div>
         <label class="label">Max results</label>
         <input type="number" class="input-sm" style="max-width:120px" x-model="maxResults" min="1" max="20">
@@ -319,7 +328,7 @@
 
     <div class="flex items-center gap-2 mt-4">
       <button class="btn-primary btn-sm" @click="save()">Save</button>
-      <button class="btn btn-sm" :disabled="testing || !apiKey" x-show="enabled === 'true' || enabled === true" @click="test()">
+      <button class="btn btn-sm" :disabled="testing || (provider === 'searxng' ? !searxngUrl : !apiKey)" x-show="enabled === 'true' || enabled === true" @click="test()">
         <span x-show="!testing">Test connection</span>
         <span x-show="testing">Testing…</span>
       </button>

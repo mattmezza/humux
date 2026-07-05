@@ -318,9 +318,19 @@ class CompactionConfig(BaseModel):
 
 class SearchConfig(BaseModel):
     enabled: bool = False
-    provider: str = "tavily"
-    api_key: str = ""
+    provider: str = "tavily"  # "tavily" | "searxng"
+    api_key: str = ""  # Tavily only
+    searxng_url: str = ""  # SearXNG instance base URL, e.g. http://searxng:8080
     max_results: int = 5
+
+
+def search_ready(cfg: SearchConfig) -> bool:
+    """True when web search is enabled and the active provider is configured."""
+    if not cfg.enabled:
+        return False
+    if cfg.provider == "searxng":
+        return bool(cfg.searxng_url.strip())
+    return bool(cfg.api_key.strip())  # tavily
 
 
 class VisionConfig(BaseModel):

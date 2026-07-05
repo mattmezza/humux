@@ -22,7 +22,7 @@ from tavily import TavilyClient
 from core import coding, imagegen
 from core.agents import Agent, AgentStore, default_agent_from_values, topic_base_id
 from core.compaction import compact_messages, should_compact
-from core.config import Config
+from core.config import Config, search_ready
 from core.embeddings import LOCAL_PROVIDERS, EmbeddingClient, LocalEmbeddingClient
 from core.executor import ToolExecutor
 from core.goal_decomposition import DecomposedGoal, classify_complexity, decompose_goal
@@ -1036,15 +1036,20 @@ class AgentCore:
         # prune oldest keys if that ever shows up in memory.
         self._reply_times: dict[tuple[str, str], list[float]] = {}
 
-        # Web search (Tavily)
-        if config.search.enabled and config.search.api_key:
-            self.search_client: TavilyClient | None = TavilyClient(
-                api_key=config.search.api_key,
+        # Web search — Tavily needs an SDK client; SearXNG is just an async HTTP
+        # GET (no client). self.search_enabled gates the tool for both providers.
+        self.search_client: TavilyClient | None = None
+        self.search_enabled = search_ready(config.search)
+        if self.search_enabled and config.search.provider == "tavily":
+            self.search_client = TavilyClient(api_key=config.search.api_key)
+        if config.search.enabled:
+            log.info(
+                "Web search %s (provider: %s)",
+                "enabled" if self.search_enabled else "misconfigured",
+                config.search.provider,
             )
-            log.info("Web search enabled (provider: %s)", config.search.provider)
         else:
-            self.search_client = None
-            log.info("Web search disabled (no API key or not enabled)")
+            log.info("Web search disabled")
 
     async def process(
         self,
@@ -1581,7 +1586,7 @@ class AgentCore:
             imagegen_enabled=self.config.tools.imagegen.enabled,
             workspace_enabled=self.config.workspace.enabled
             and bool(self.config.workspace.directory.strip()),
-            search_enabled=self.search_client is not None,
+            search_enabled=self.search_enabled,
         )
 
     async def _turn_preamble(
@@ -3998,15 +4003,18 @@ class AgentCore:
         return int(usage.get("input_tokens", 0) or 0) + int(usage.get("output_tokens", 0) or 0)
 
     async def _tool_web_search(self, params: dict) -> dict:
-        """Search the web via Tavily API."""
-        if not self.search_client:
-            return {"error": "Web search is not configured. Set search.api_key in config."}
+        """Search the web via the configured provider (Tavily or SearXNG)."""
+        if not self.search_enabled:
+            return {"error": "Web search is not configured."}
 
         query = params.get("query", "").strip()
         if not query:
             return {"error": "Empty search query."}
 
         max_results = self.config.search.max_results
+
+        if self.config.search.provider == "searxng":
+            return await self._searxng_search(query, max_results)
 
         try:
             response = await asyncio.to_thread(
@@ -4033,6 +4041,38 @@ class AgentCore:
             "query": query,
             "results": results,
         }
+
+    async def _searxng_search(self, query: str, max_results: int) -> dict:
+        """Search via a self-hosted SearXNG instance's JSON API. Returns the same
+        {query, results:[{title,url,content}]} shape as the Tavily path."""
+        import httpx
+
+        base = self.config.search.searxng_url.rstrip("/")
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(20.0)) as client:
+                resp = await client.get(
+                    f"{base}/search",
+                    params={
+                        "q": query,
+                        "format": "json",
+                        "engines": "google,bing,duckduckgo",
+                    },
+                )
+                resp.raise_for_status()
+                data = resp.json()
+        except Exception as exc:
+            log.exception("SearXNG search failed for query: %s", query)
+            return {"error": f"Search failed: {exc}"}
+
+        results = [
+            {
+                "title": item.get("title", ""),
+                "url": item.get("url", ""),
+                "content": item.get("content", ""),
+            }
+            for item in data.get("results", [])[:max_results]
+        ]
+        return {"query": query, "results": results}
 
     async def _tool_generate_image(self, params: dict, request_state: dict) -> dict:
         """Generate an image and queue it for native-media delivery (issue #55).

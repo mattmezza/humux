@@ -281,7 +281,7 @@ humux follows a **Python orchestrator + CLI tools** design. Python handles the a
 | **Browser** | Playwright (Chromium) |
 | **Voice STT** | faster-whisper (CTranslate2) |
 | **Voice TTS** | edge-tts / Kokoro 82M |
-| **Web search** | Tavily |
+| **Web search** | Tavily or self-hosted SearXNG |
 | **Scheduler** | APScheduler |
 | **Storage** | SQLite (8 databases) |
 | **Admin UI** | FastAPI + Jinja2 + HTMX + Alpine.js + Tailwind CSS v4 |
@@ -380,7 +380,7 @@ humux uses a dual-layer config system:
 | **Voice** | faster-whisper (STT), edge-tts / Kokoro 82M (TTS) |
 | **Browser** | Playwright (Chromium), headless or CDP sidecar |
 | **Scheduler** | APScheduler |
-| **Search** | Tavily |
+| **Search** | Tavily or self-hosted SearXNG |
 | **Container** | Docker (single image, multi-stage) |
 | **CI/CD** | GitHub Actions (lint, test, build, publish to ghcr.io) |
 

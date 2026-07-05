@@ -571,11 +571,12 @@
 
     // Web search tool (lives in the Tools tab). save() writes the search.*
     // config; test() checks the Tavily key via the shared test-connection route.
-    function searchTool(enabled, provider, apiKey, maxResults) {
+    function searchTool(enabled, provider, apiKey, searxngUrl, maxResults) {
       return {
         enabled: enabled ?? 'false',
         provider: provider || 'tavily',
         apiKey: apiKey || '',
+        searxngUrl: searxngUrl || '',
         maxResults: maxResults || '5',
         result: '',
         resultOk: false,
@@ -586,6 +587,7 @@
             'search.enabled': String(this.enabled === true || this.enabled === 'true'),
             'search.provider': this.provider,
             'search.api_key': this.apiKey,
+            'search.searxng_url': this.searxngUrl,
             'search.max_results': String(this.maxResults)
           };
           fetch('/config', {
@@ -611,7 +613,11 @@
               'Content-Type': 'application/json',
               'Authorization': 'Bearer ' + (localStorage.getItem('admin_api_key') || '')
             },
-            body: JSON.stringify({service: 'tavily', api_key: this.apiKey})
+            body: JSON.stringify(
+              this.provider === 'searxng'
+                ? {service: 'searxng', url: this.searxngUrl}
+                : {service: 'tavily', api_key: this.apiKey}
+            )
           })
             .then(r => r.json())
             .then(d => { this.testResult = d.ok ? 'Connection OK' : ('Failed: ' + (d.error || 'unknown')); })

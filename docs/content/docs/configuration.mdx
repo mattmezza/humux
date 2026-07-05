@@ -104,8 +104,9 @@ admin:
 
 search:
   enabled: true
-  provider: "tavily"
-  api_key: "${TAVILY_API_KEY}"
+  provider: "tavily"           # "tavily" | "searxng"
+  api_key: "${TAVILY_API_KEY}" # Tavily only
+  searxng_url: ""              # SearXNG only, e.g. http://searxng:8080
   max_results: 5
 
 vision:
@@ -168,7 +169,26 @@ Admin UI settings. The API key is required for authentication.
 
 #### `search`
 
-Web search configuration via Tavily.
+Web search for the agent's `web_search` tool. Two interchangeable backends —
+the tool's contract to the model is identical either way, so switching is a
+single config change with no code modification.
+
+- **`tavily`** (default): hosted metasearch with cleaned, LLM-ready content.
+  Set `api_key` (a `${vault:TAVILY_API_KEY}` ref keeps it out of config). Free
+  tier of 1K queries/mo.
+- **`searxng`**: a self-hosted [SearXNG](https://docs.searxng.org) instance —
+  no API key, no per-query cost. Set `searxng_url` to the instance base URL
+  (e.g. `http://searxng:8080`). Results are snippet-only (title + URL +
+  ~200-char excerpt); fetch full pages with the browser / `w3m` / `curl` tools
+  when needed. Stand one up with the bundled override:
+
+  ```bash
+  docker compose -f docker-compose.yml -f docker-compose.searxng.yml up -d
+  ```
+
+  The override pre-enables the JSON API (no manual `settings.yml` editing) and
+  exposes it at `http://searxng:8080`. Pick the provider and test reachability
+  from the admin UI (Tools → Web search) or the setup wizard.
 
 #### `vision`
 
