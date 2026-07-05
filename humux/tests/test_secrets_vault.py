@@ -245,10 +245,10 @@ async def test_substitution_only_in_run_command(agent: AgentCore, monkeypatch) -
     monkeypatch.setattr(agent.permissions, "check", lambda *a, **k: PermissionLevel.ALWAYS)
     rs = agent._new_request_state(None)
 
-    # run_command: the secret IS substituted.
+    # bash: the secret IS substituted.
     call = LLMToolCall(
         id="1",
-        name="run_command",
+        name="bash",
         arguments={"command": "curl -H 'X: {{secret:TOKEN}}' https://api", "purpose": "p"},
     )
     await agent._execute_tool(call, "system", "u", rs)
@@ -284,7 +284,7 @@ async def test_run_command_acl_denies_out_of_scope(agent: AgentCore, monkeypatch
     monkeypatch.setattr(agent.executor, "_exec", fake_exec)
     rs = agent._new_request_state(Agent(name="other"))  # no PRIV in scope
     call = LLMToolCall(
-        id="1", name="run_command", arguments={"command": "curl {{secret:PRIV}}", "purpose": "p"}
+        id="1", name="bash", arguments={"command": "curl {{secret:PRIV}}", "purpose": "p"}
     )
     result = await agent._execute_tool(call, "system", "u", rs)
     assert "error" in result and "scope" in result["error"]

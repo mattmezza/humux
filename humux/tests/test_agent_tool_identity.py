@@ -47,9 +47,7 @@ async def _run(agent: AgentCore, ag: Agent | None, monkeypatch) -> dict:
     monkeypatch.setattr(agent.executor, "_exec", fake_exec)
     monkeypatch.setattr(agent.permissions, "check", lambda *a, **k: PermissionLevel.ALWAYS)
     rs = agent._new_request_state(ag)
-    call = LLMToolCall(
-        id="1", name="run_command", arguments={"command": "gh issue list", "purpose": "p"}
-    )
+    call = LLMToolCall(id="1", name="bash", arguments={"command": "gh issue list", "purpose": "p"})
     await agent._execute_tool(call, "system", "u", rs)
     return captured
 

@@ -47,7 +47,7 @@ def test_browser_headless_and_cdp_env() -> None:
 
 
 def _level(engine: PermissionEngine, command: str) -> str:
-    return engine.check("run_command", {"command": command})
+    return engine.check("bash", {"command": command})
 
 
 def test_browser_read_is_always_act_asks(tmp_path) -> None:
@@ -69,16 +69,16 @@ def test_browser_act_is_write_action(tmp_path) -> None:
     eng = PermissionEngine(db_path=str(tmp_path / "c.db"))
     # act must re-ask every time (write), read must not.
     assert eng.is_write_action(
-        "run_command", {"command": "python3 tools/browser.py act --url https://x.com --steps []"}
+        "bash", {"command": "python3 tools/browser.py act --url https://x.com --steps []"}
     )
     assert not eng.is_write_action(
-        "run_command", {"command": "python3 tools/browser.py read --url https://x.com"}
+        "bash", {"command": "python3 tools/browser.py read --url https://x.com"}
     )
 
 
 def test_per_domain_rule_overrides_default(tmp_path) -> None:
     eng = PermissionEngine(db_path=str(tmp_path / "c.db"))
-    eng.add_rule("run_command:*browser.py act*github.com*", PermissionLevel.ALWAYS)
+    eng.add_rule("bash:*browser.py act*github.com*", PermissionLevel.ALWAYS)
     # github.com is now pre-approved; other domains still ask.
     assert (
         _level(eng, "python3 tools/browser.py act --url https://github.com/x --steps []")
@@ -129,11 +129,11 @@ def test_approval_image_for_browser_act(tmp_path, monkeypatch) -> None:
     preview.write_bytes(b"\x89PNG")
 
     act_cmd = {"command": "python3 tools/browser.py act --url https://x --profile acme --steps []"}
-    got = agent._approval_image("run_command", act_cmd)
+    got = agent._approval_image("bash", act_cmd)
     assert got is not None and Path(got).resolve() == preview.resolve()
     # No preview file -> None; read command -> None; non-run_command -> None.
     other = {"command": "python3 tools/browser.py act --url https://x --profile ghost --steps []"}
-    assert agent._approval_image("run_command", other) is None
+    assert agent._approval_image("bash", other) is None
     read_cmd = {"command": "python3 tools/browser.py read --url https://x"}
-    assert agent._approval_image("run_command", read_cmd) is None
+    assert agent._approval_image("bash", read_cmd) is None
     assert agent._approval_image("send_email", {"to": "a"}) is None

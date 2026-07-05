@@ -804,7 +804,7 @@ agent_name: Forge
 role: Fitness coach
 skills: [scheduling, memory]
 tools:
-  - run_command
+  - bash
   - send_message
 secrets: []
 bot_token: "123:ABC"
@@ -843,7 +843,7 @@ Extra prose in the body.
     assert a.agent_name == "Forge", a.agent_name
     assert a.role == "Fitness coach", a.role
     assert a.skills == ["scheduling", "memory"], a.skills
-    assert a.tools == ["run_command", "send_message"], a.tools
+    assert a.tools == ["bash", "send_message"], a.tools
     assert a.bot_token == "123:ABC", a.bot_token
     assert a.allowed_user_ids == [111, 222], a.allowed_user_ids
     # #133: per-agent group-room settings; enabled kept, ignore_bots defaults to True.
@@ -859,7 +859,10 @@ Extra prose in the body.
     assert "Forge" in a.character and "motivating" in a.character and "Extra prose" in a.character
     assert a.character.index("Forge") < a.character.index("motivating")  # personalia first
     assert a.allows_skill("scheduling") and not a.allows_skill("email")
-    assert a.allows_tool("run_command") and not a.allows_tool("send_email")
+    assert a.allows_tool("bash") and not a.allows_tool("send_email")
+    # Legacy tool names in a stored doc normalise to their #178 successors.
+    legacy = Agent(name="old", tools=["run_command", "edit_file", "grep", "load_skill"])
+    assert legacy.tools == ["bash", "edit"], legacy.tools
     assert a.tool_setting("gh") == {"enabled": True}, a.tool_setting("gh")
     assert a.tool_setting("browser") == {"enabled": True, "profile": "forge"}
     assert a.tool_setting("weather") is None  # no entry = inherit system config

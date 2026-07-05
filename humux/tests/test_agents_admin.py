@@ -87,7 +87,7 @@ def test_agent_crud_and_activation(tmp_path) -> None:
             "voice": "en-US-GuyNeural",
             "character": "You are Forge. Direct.",
             "skills": ["memory"],
-            "tools": ["run_command"],
+            "tools": ["bash"],
             "secrets": ["agent:coach:*"],
         },
         headers=AUTH,
@@ -98,7 +98,7 @@ def test_agent_crud_and_activation(tmp_path) -> None:
     # Read back via JSON API.
     got = client.get("/agents/coach", headers=AUTH).json()
     assert got["voice"] == "en-US-GuyNeural"
-    assert got["skills"] == ["memory"] and got["tools"] == ["run_command"]
+    assert got["skills"] == ["memory"] and got["tools"] == ["bash"]
 
     # Make it the default → the flag moves off "assistant" onto coach.
     r = client.post("/agents/default", json={"name": "coach"}, headers=AUTH)

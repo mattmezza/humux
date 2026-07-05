@@ -270,3 +270,69 @@ async def test_approval_request_chunks_and_keyboard_rides_last() -> None:
     assert all(len(c.args[1]) <= TELEGRAM_LIMIT for c in calls)
     assert all(c.kwargs.get("reply_markup") is None for c in calls[:-1])
     assert calls[-1].kwargs.get("reply_markup") is not None
+
+
+# --- /zz_skill_* commands (#178) ---
+
+
+def _skills_agent(entries, content="BODY"):
+    """Stub AgentCore with a skills engine returning ``entries``."""
+    agent = SimpleNamespace()
+    agent.skills = SimpleNamespace(
+        index_entries=AsyncMock(return_value=entries),
+        get_skill_content=AsyncMock(return_value=content),
+    )
+    agent.process = AsyncMock()
+    return agent
+
+
+@pytest.mark.asyncio
+async def test_register_commands_appends_skill_entries() -> None:
+    ch = object.__new__(TelegramChannel)
+    ch.channel_name = "telegram"
+    ch.app = SimpleNamespace(bot=AsyncMock())
+    ch.agent = _skills_agent([{"name": "artifact-hosting", "summary": "Publish pages"}])
+    await ch.register_commands()
+    (commands,) = ch.app.bot.set_my_commands.await_args.args
+    by_name = {c.command: c.description for c in commands}
+    assert by_name["zz_skill_artifact_hosting"] == "Publish pages"
+    for c in commands:  # every generated name must be Telegram-valid
+        assert re.fullmatch(r"[a-z0-9_]{1,32}", c.command), c.command
+
+
+@pytest.mark.asyncio
+async def test_zz_skill_command_loads_into_history_and_chat() -> None:
+    ch = _dedup_channel()
+    ch.agent = _skills_agent([{"name": "artifact-hosting", "summary": "s"}], content="SKILL BODY")
+    ch.send = AsyncMock()
+    await ch._on_text(_text_update("/zz_skill_artifact_hosting"), None)
+    await asyncio.sleep(0)
+    ch._handle_text.assert_not_awaited()  # handled as a command, not a turn
+    ch.agent.process.assert_awaited_once()
+    kwargs = ch.agent.process.await_args.kwargs
+    assert kwargs["respond"] is False  # record-only: rides into history
+    assert "SKILL BODY" in kwargs["message"]
+    ch.send.assert_awaited_once()
+    assert "SKILL BODY" in ch.send.await_args.args[1]
+
+
+@pytest.mark.asyncio
+async def test_zz_skill_unknown_name_reports_error() -> None:
+    ch = _dedup_channel()
+    ch.agent = _skills_agent([])
+    ch.send = AsyncMock()
+    await ch._on_text(_text_update("/zz_skill_nope"), None)
+    await asyncio.sleep(0)
+    ch.agent.process.assert_not_awaited()
+    assert "Unknown skill" in ch.send.await_args.args[1]
+
+
+@pytest.mark.asyncio
+async def test_zz_skill_aimed_at_other_bot_is_ignored() -> None:
+    ch = _dedup_channel()  # _bot_username = "coachbot"
+    ch.agent = _skills_agent([{"name": "weather", "summary": "s"}])
+    ch.send = AsyncMock()
+    await ch._on_text(_text_update("/zz_skill_weather@otherbot"), None)
+    await asyncio.sleep(0)
+    ch.send.assert_not_awaited()
+    ch.agent.process.assert_not_awaited()
