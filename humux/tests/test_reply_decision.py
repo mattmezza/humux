@@ -18,9 +18,13 @@ class _LLMStub:
     def __init__(self, response: str):
         self._response = response
         self.calls = 0
+        self.last_prompt = ""
+        self.last_max_tokens = 0
 
     async def generate_text(self, *, model: str, prompt: str, max_tokens: int = 1024) -> str:
         self.calls += 1
+        self.last_prompt = prompt
+        self.last_max_tokens = max_tokens
         return self._response
 
 
@@ -59,6 +63,32 @@ async def test_fail_open_on_blank_and_junk() -> None:
     quiet = _LLMStub("SKIP")
     assert await should_reply(quiet, "m", "   ", "Coach") is True
     assert quiet.calls == 0
+
+
+@pytest.mark.asyncio
+async def test_history_and_siblings_feed_the_prompt() -> None:
+    llm = _LLMStub("REPLY")
+    history = [
+        {"role": "user", "content": "Chef, what's for dinner?"},
+        {"role": "assistant", "content": "Pasta."},
+    ]
+    await should_reply(
+        llm, "m", "and dessert?", "Coach", history=history, others=["Chef", "Coach"]
+    )
+    p = llm.last_prompt
+    assert "Chef, what's for dinner?" in p  # recent turns are included
+    assert "user: " in p and "assistant: " in p
+    assert "Other assistants that may be in this chat: Chef." in p  # self filtered out
+    # Generous budget so a thinking model isn't truncated before REPLY/SKIP.
+    assert llm.last_max_tokens >= 256
+
+
+@pytest.mark.asyncio
+async def test_prompt_omits_hints_when_absent() -> None:
+    llm = _LLMStub("REPLY")
+    await should_reply(llm, "m", "hi", "Coach")
+    assert "(none)" in llm.last_prompt  # no history → placeholder, no crash
+    assert "Other assistants" not in llm.last_prompt  # no siblings → hint dropped
 
 
 # -- AgentCore gate: helpers + integration ------------------------------------
