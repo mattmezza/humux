@@ -314,6 +314,7 @@ async def test_zz_skill_command_loads_into_history_and_chat() -> None:
     ch = _dedup_channel()
     ch.agent = _skills_agent([{"name": "artifact-hosting", "summary": "s"}], content="SKILL BODY")
     ch.send = AsyncMock()
+    ch.react = AsyncMock()
     await ch._on_text(_text_update("/zz_skill_artifact_hosting"), None)
     await asyncio.sleep(0)
     ch._handle_text.assert_not_awaited()  # handled as a command, not a turn
@@ -321,8 +322,11 @@ async def test_zz_skill_command_loads_into_history_and_chat() -> None:
     kwargs = ch.agent.process.await_args.kwargs
     assert kwargs["respond"] is False  # record-only: rides into history
     assert "SKILL BODY" in kwargs["message"]
-    ch.send.assert_awaited_once()
-    assert "SKILL BODY" in ch.send.await_args.args[1]
+    ch.send.assert_not_awaited()  # content no longer sent to chat (#187)
+    ch.react.assert_awaited_once()
+    args = ch.react.await_args.args
+    assert args[2] == "checkmark"  # emoji
+    assert isinstance(args[1], int)  # message_id
 
 
 @pytest.mark.asyncio
