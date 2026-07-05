@@ -162,7 +162,8 @@ release:
 	case "$$ver" in *.*.*) ;; *.*) ver="$$ver.0" ;; *) ver="$$ver.0.0" ;; esac; \
 	sed -i.bak -E "s/^version = \".*\"/version = \"$$ver\"/" pyproject.toml && rm -f pyproject.toml.bak; \
 	echo "Set pyproject.toml version to $$ver"
-	@git diff --quiet pyproject.toml || (git add pyproject.toml && git commit -m "chore: bump version to $(name)")
+	$(UV) lock
+	@git diff --quiet pyproject.toml || (git add pyproject.toml uv.lock && git commit -m "chore: bump version to $(name)")
 	git push
 	gh release create "$(name)" --generate-notes --latest
 
