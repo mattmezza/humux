@@ -17,8 +17,47 @@
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
   {% block head %}{% endblock %}
 </head>
-<body class="py-8" style="padding-left: 32px; padding-right: 32px;">
-  {% block body %}{% endblock %}
+<body class="min-h-screen flex flex-col">
+
+  {# Header bar #}
+  <header class="sticky top-0 z-40 bg-[#0a0a0a]/95 backdrop-blur border-b border-border px-8 py-2.5">
+    <div class="max-w-7xl mx-auto flex items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <a href="/" class="flex items-center gap-2 no-underline">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="22" height="22">
+            <rect width="32" height="32" rx="6" fill="#060606"/>
+            <text x="16" y="22" font-family="'JetBrains Mono',monospace" font-size="18" font-weight="bold" fill="#6c9" text-anchor="middle">h</text>
+          </svg>
+          <span class="text-sm font-semibold tracking-wide">humux</span>
+        </a>
+        <span id="status-badge"
+              hx-get="/partials/status" hx-trigger="load, refresh-status from:body" hx-swap="innerHTML">
+          <span class="text-muted text-xs">Loading...</span>
+        </span>
+      </div>
+      <nav class="flex items-center gap-4 text-xs text-muted">
+        <a href="https://docs.humux.dev" target="_blank" class="hover:text-accent transition-colors">Docs</a>
+        <a href="https://github.com/mattmezza/humux" target="_blank" class="hover:text-accent transition-colors">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  {# Main content #}
+  <main class="flex-1 px-8 py-6">
+    {% block body %}{% endblock %}
+  </main>
+
+  {# Footer #}
+  <footer class="border-t border-border px-8 py-3 text-xs text-muted">
+    <div class="max-w-7xl mx-auto flex items-center justify-between gap-4">
+      <span>humux v0.20.0</span>
+      <nav class="flex items-center gap-4">
+        <a href="https://docs.humux.dev" target="_blank" class="hover:text-accent transition-colors">Docs</a>
+        <a href="https://github.com/mattmezza/humux" target="_blank" class="hover:text-accent transition-colors">GitHub</a>
+        <a href="https://humux.dev" target="_blank" class="hover:text-accent transition-colors">About</a>
+      </nav>
+    </div>
+  </footer>
 
   <div id="toast" style="position: fixed; right: 24px; bottom: 24px; display: none; z-index: 100; max-width: 360px;"></div>
 

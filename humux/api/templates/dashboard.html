@@ -3,18 +3,25 @@
 
 {% block body %}
 <div>
-<!--
-  <div class="flex items-center justify-between gap-3 mb-2 flex-wrap">
-    <h1 class="text-xl text-accent">
-
-    </h1>
-  </div>
-    -->
-
-  {# Status bar — loaded via HTMX, refreshes on lifecycle events #}
-  <div id="status-bar" class="flex items-center gap-3 py-2 mb-4 flex-wrap"
-       hx-get="/partials/status" hx-trigger="load, refresh-status from:body" hx-swap="innerHTML">
-    <span class="text-muted text-xs">Loading...</span>
+  {# Quick-action cards #}
+  <div class="flex items-center gap-3 mb-5 flex-wrap">
+    <a href="/admin/skills/new" class="card px-4 py-2.5 text-xs hover:border-accent/40 transition-colors flex items-center gap-2 no-underline">
+      <span class="text-accent text-sm">+</span>
+      <span>New skill</span>
+    </a>
+    <a href="/admin?tab=jobs" class="card px-4 py-2.5 text-xs hover:border-accent/40 transition-colors flex items-center gap-2 no-underline">
+      <span class="text-muted text-sm">⚙</span>
+      <span>Jobs</span>
+    </a>
+    <a href="/admin?tab=inspect" class="card px-4 py-2.5 text-xs hover:border-accent/40 transition-colors flex items-center gap-2 no-underline">
+      <span class="text-muted text-sm">⬇</span>
+      <span>Inspect</span>
+    </a>
+    <button class="card px-4 py-2.5 text-xs hover:border-accent/40 transition-colors flex items-center gap-2 cursor-pointer"
+            onclick="openAgentModal()">
+      <span class="text-muted text-sm">▶</span>
+      <span>Agent control</span>
+    </button>
   </div>
 
   {# Restart-required banner — shown after saving a setting the agent only reads at
