@@ -9,6 +9,7 @@ Non-Google CalDAV providers still use Basic Auth (username/password).
 from __future__ import annotations
 
 import json
+from pathlib import Path
 import sqlite3
 import sys
 import time
@@ -17,7 +18,13 @@ import caldav
 import requests
 
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
-CONFIG_DB_PATH = "data/config.db"
+
+# Resolve relative to script location, not CWD (see issue #180).
+_ROOT = Path(__file__).resolve().parent.parent
+if Path("/app/data").exists():
+    CONFIG_DB_PATH = "/app/data/config.db"
+else:
+    CONFIG_DB_PATH = str(_ROOT / "data/config.db")
 TOKEN_DB_KEY = "calendar.google_oauth_token"
 
 # In-memory cache: (access_token, expiry_timestamp)

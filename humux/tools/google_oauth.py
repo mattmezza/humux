@@ -34,7 +34,12 @@ SCOPES = ["https://www.googleapis.com/auth/calendar"]
 REDIRECT_PORT = 8085
 REDIRECT_URI = f"http://localhost:{REDIRECT_PORT}"
 
-CONFIG_DB_PATH = "data/config.db"
+# Resolve relative to script location, not CWD (see issue #180).
+_ROOT = Path(__file__).resolve().parent.parent
+if Path("/app/data").exists():
+    CONFIG_DB_PATH = "/app/data/config.db"
+else:
+    CONFIG_DB_PATH = str(_ROOT / "data/config.db")
 TOKEN_DB_KEY = "calendar.google_oauth_token"
 
 
