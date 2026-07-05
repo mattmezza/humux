@@ -172,6 +172,12 @@ body into the chat **and** records it into the conversation history, so the agen
 has the full content in context on its next turn — useful to prime a conversation
 with a skill instead of waiting for the model to fetch it.
 
+The command menu is **scoped to the bot's agent allowlist**: a per-agent bot only
+advertises (and only loads) the skills in its [agent](/docs/agents)'s `skills`
+allowlist, and invoking a command for a withheld skill is refused. The menu is
+published at startup, so changing an agent's allowlist needs a restart to take
+effect in the ☰ menu — the invocation-time check is live regardless.
+
 ## Tips for writing good skills
 
 - **Be specific** — include exact command syntax with flags

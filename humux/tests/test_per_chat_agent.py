@@ -90,6 +90,7 @@ def _fake_agent(history: ConversationHistory, agents: AgentStore):
     for name in (
         "_load_agent",
         "_resolve_agent",
+        "allowed_skills_for",
         "bind_chat_agent",
     ):
         setattr(fa, name, types.MethodType(getattr(AgentCore, name), fa))
@@ -144,6 +145,29 @@ async def test_resolve_agent_bot_per_agent_channel(tmp_path) -> None:
     # Unknown agent in the channel name → fall through to the ordinary ladder.
     p2 = await fa._resolve_agent("telegram:ghost", "u1", "c2")
     assert p2 is not None and p2.name == "writer"  # the default
+
+
+@pytest.mark.asyncio
+async def test_allowed_skills_for_uses_serving_agent(tmp_path) -> None:
+    # The skill-command scope (#178) follows the same resolution as a turn: the
+    # per-agent bot's own agent, then a chat binding, then the default.
+    h = ConversationHistory(db_path=str(tmp_path / "h.db"))
+    seed = tmp_path / "seed"
+    seed.mkdir()
+    (seed / "coach.md").write_text("---\nrole: Coach\nskills: [scheduling]\n---\n")
+    (seed / "writer.md").write_text("---\nrole: Writer\n---\n")  # no allowlist = all
+    store = AgentStore(db_path=str(tmp_path / "p.db"), seed_dir=str(seed))
+    await store.ensure_seeded()
+    await store.set_default("writer")
+    fa = _fake_agent(h, store)
+
+    # Per-agent bot → that agent's allowlist, even with empty ids (startup).
+    assert await fa.allowed_skills_for("telegram:coach") == ["scheduling"]
+    # Default bot with no binding → the default agent (writer, unrestricted).
+    assert await fa.allowed_skills_for("telegram", "u1", "c1") == []
+    # A chat bound to coach → coach's allowlist.
+    await h.set_chat_agent("telegram", "u1", "coach", "c1")
+    assert await fa.allowed_skills_for("telegram", "u1", "c1") == ["scheduling"]
 
 
 @pytest.mark.asyncio

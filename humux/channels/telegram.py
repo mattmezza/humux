@@ -292,6 +292,11 @@ class TelegramChannel:
         the bot from polling."""
         commands = list(_MENU_COMMANDS)
         try:
+            # Only advertise skills this bot's agent is allowed to load (#178): a
+            # per-agent bot binds to its own agent, the default bot to the default
+            # — scope the menu to that agent's allowlist so a skill outside it gets
+            # no command (needs a restart to change, like the rest of the menu).
+            allow = await self.agent.allowed_skills_for(self.channel_name)
             # Telegram caps setMyCommands at 100 entries AND rejects the whole
             # list if two commands share a name — two skills whose slugs collide
             # (hyphen vs underscore, or a shared 32-char prefix) would drop the
@@ -299,7 +304,7 @@ class TelegramChannel:
             # skipped skill just has no command (its full name is still in the
             # prompt index). Keep the control-command names reserved.
             seen = {c.command for c in commands}
-            for e in await self.agent.skills.index_entries():
+            for e in await self.agent.skills.index_entries(allow=allow):
                 if len(commands) >= 100:
                     break
                 slug = self._skill_command(e["name"])
@@ -649,13 +654,17 @@ class TelegramChannel:
 
         The body is recorded in history as a record-only inbound turn (so the
         agent sees the full content on its next turn) and posted to the chat.
+        Scoped to the serving agent's skill allowlist — a command for a skill the
+        agent can't load (e.g. one added after the menu was published) is refused,
+        so this stays an enforcement point, not just an advertising filter.
         """
         try:
-            entries = await self.agent.skills.index_entries()
+            allow = await self.agent.allowed_skills_for(self.channel_name, convo_user, chat_id)
+            entries = await self.agent.skills.index_entries(allow=allow)
             cmd = f"zz_skill_{slug}"
             name = next((e["name"] for e in entries if self._skill_command(e["name"]) == cmd), None)
             if name is None:
-                await self.send(chat_id, f"Unknown skill: {slug}")
+                await self.send(chat_id, f"Skill not available: {slug}")
                 return
             content = await self.agent.skills.get_skill_content(name)
             await self.agent.process(

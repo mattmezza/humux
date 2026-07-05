@@ -1486,6 +1486,20 @@ class AgentCore:
             log.exception("Failed to resolve the default agent")
             return None
 
+    async def allowed_skills_for(
+        self, channel: str, user_id: str = "", chat_id: str = ""
+    ) -> list[str] | None:
+        """The skill allowlist of the agent serving this context (#178).
+
+        Same resolution the turn uses: a per-agent bot binds to its own agent, a
+        chat binding wins, else the default. ``None`` or an empty list means *no
+        restriction* (all skills). Used to scope the ``/zz_skill_*`` command menu
+        and its handler so an agent never advertises — or loads — a skill outside
+        its allowlist. With empty ids (startup) it resolves the bot's own agent.
+        """
+        agent = await self._resolve_agent(channel, user_id, chat_id)
+        return agent.skills if agent else None
+
     async def may_act_in_chat(
         self, channel: str, user_id: str, chat_id: str, sender_id: int
     ) -> bool:
