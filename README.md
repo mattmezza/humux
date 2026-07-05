@@ -188,9 +188,9 @@ Secrets are referenced as `${vault:NAME}` in config and `{{secret:NAME}}` in com
 
 <summary><strong>Coding harness</strong> — The agent works on real code</summary>
 
-- `read_file`, `write_file`, `edit_file`, `list_dir`, `grep`, `run_command_in_dir`
+- 4 base tools: `read`, `write`, `edit` (multi-edit with hashline anchors), `bash`
 - Confined to one configurable workspace directory — path traversal blocked
-- `run_command` shares that root, so a cloned repo is readable, editable and committable in place
+- `bash` shares that root, so a cloned repo is readable, editable and committable in place; builds/tests run workspace-confined with per-call approval
 - Each agent namespaces its files under a `<slug>/` subdirectory
 - Reads pre-approved, writes ask permission
 

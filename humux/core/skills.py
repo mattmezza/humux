@@ -17,6 +17,27 @@ CREATE TABLE IF NOT EXISTS skills (
 """
 
 
+# One-line instruction prepended to the skills index (#178), telling the model
+# skills are read on demand via bash. Shared by the runtime prompt and the admin
+# prompt-preview so the preview can't drift from what the model actually sees.
+SKILLS_INDEX_HEADER = (
+    "Skills are reusable instructions for specific tasks. Before acting on a task "
+    "a skill covers, read it with bash: `python3 /app/tools/skills.py show <name>`."
+)
+
+
+def render_skills_index(entries: list[dict]) -> str:
+    """Render index ``{name, summary}`` rows as the ``<available_skills>`` body
+    (header line + one ``<skill>`` element each). Empty rows → empty string."""
+    if not entries:
+        return ""
+    lines = [SKILLS_INDEX_HEADER]
+    lines += [
+        f'<skill name="{e["name"]}">{(e.get("summary") or "").strip()}</skill>' for e in entries
+    ]
+    return "\n".join(lines)
+
+
 def _extract_summary(content: str) -> str:
     for line in content.splitlines():
         stripped = line.strip()
@@ -126,8 +147,8 @@ class SkillsEngine:
 
     async def index_entries(self, allow: list[str] | None = None) -> list[dict]:
         """The skills index as ``{name, summary}`` rows, scoped to ``allow``
-        (an agent's allowlist; ``None``/empty = all). Backs the index block and
-        the ``list_skills``/``search_skills`` discovery tools."""
+        (an agent's allowlist; ``None``/empty = all). Backs the index block,
+        the admin skills view, and the Telegram skill commands."""
         skills = await self.store.list_skills()
         if allow:
             allowed = set(allow)
@@ -135,39 +156,15 @@ class SkillsEngine:
         return [{"name": s["name"], "summary": (s.get("summary") or "").strip()} for s in skills]
 
     async def get_index_block(self, allow: list[str] | None = None) -> str:
-        """Render the skills index. When ``allow`` is given (an agent's
-        allowlist), only those skills are advertised; ``None``/empty = all."""
-        entries = await self.index_entries(allow=allow)
-        if not entries:
-            return ""
-        return "\n".join(
-            f"- {e['name']}: {e['summary']}" if e["summary"] else f"- {e['name']}" for e in entries
-        )
+        """Render the skills index as an XML-style listing (#178). When ``allow``
+        is given (an agent's allowlist), only those skills are advertised;
+        ``None``/empty = all.
 
-    async def search_index(
-        self, query: str, allow: list[str] | None = None, limit: int = 10
-    ) -> list[dict]:
-        """Top-``limit`` index entries matching ``query`` (keyword scored over
-        name + summary), scoped to ``allow``. An empty query returns the first
-        ``limit`` entries (a cheap browse). No match → empty list.
-
-        ponytail: lexical scoring only; the issue defers embedding ranking until
-        keyword search measurably falls short.
+        Skills are domain knowledge, not tools: the index carries name + summary
+        + how to load, and the model pulls a body on demand via bash (the
+        ``skills.py show`` read is pre-approved).
         """
-        entries = await self.index_entries(allow=allow)
-        terms = [t for t in query.lower().split() if t]
-        if not terms:
-            return entries[:limit]
-        scored = []
-        for e in entries:
-            haystack = f"{e['name']} {e['summary']}".lower()
-            score = sum(haystack.count(t) for t in terms)
-            if any(t in e["name"].lower() for t in terms):
-                score += 5  # a name hit beats a summary hit
-            if score:
-                scored.append((score, e))
-        scored.sort(key=lambda se: (-se[0], se[1]["name"]))
-        return [e for _, e in scored[:limit]]
+        return render_skills_index(await self.index_entries(allow=allow))
 
     async def get_skill_content(self, name: str) -> str:
         skill = await self.store.get_skill(name)

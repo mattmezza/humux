@@ -12,58 +12,36 @@ from core.tools import active_tool_prompts
 
 
 def _allowlist_note() -> str:
-    """A short, always-shown block listing the run_command prefix allowlist, so the
+    """A short, always-shown block listing the bash prefix allowlist, so the
     model builds valid commands on the first try instead of discovering the whitelist
     by trial-and-error (#153). Derived from ToolExecutor.ALLOWED_PREFIXES — the one
     source of truth — so it can never drift from what the guard actually permits."""
     prefixes = ", ".join(f"`{p}`" for p in ToolExecutor.ALLOWED_PREFIXES)
     filters = ", ".join(f"`{f}`" for f in sorted(ToolExecutor._SAFE_FILTERS))
     return (
-        "\n\n`run_command` is allowlisted: every piped/chained segment must start with "
-        f"one of these prefixes — {prefixes}. After a real pipe you may also use a "
-        f'read-only filter ({filters}). Anything else returns "Command not allowed"; '
-        "subshells and live command substitution are rejected (single-quote a Markdown "
-        "body so its backticks stay literal). Copy a file with `cp`."
+        "\n\nAllowlisted `bash` prefixes (run pre-approved when read-only): "
+        f"{prefixes}. After a real pipe you may also use a read-only filter "
+        f"({filters}). Any other command needs the coding workspace and asks the "
+        "owner each time. Subshells and live command substitution are rejected "
+        "(single-quote a Markdown body so its backticks stay literal)."
     )
 
 
 DEFAULT_TOOL_USAGE_BLOCK = """For write actions that have a dedicated structured tool —
-sending or replying to emails, sending messages, creating calendar events, and
-creating/listing/cancelling scheduled jobs — ALWAYS use that tool (`send_email`,
-`reply_email`, `send_message`, `create_calendar_event`, `manage_jobs`). They handle
-quoting, piping and permissions correctly; never reproduce these specific actions via
-`run_command`.
+emails, messages, calendar events, scheduled jobs — ALWAYS use that tool (`send_email`,
+`reply_email`, `send_message`, `create_calendar_event`, `manage_jobs`); never reproduce
+those actions via `bash`.
 
-Use `run_command` for everything else that runs on the CLI — BOTH read/query operations
-(listing or searching emails, reading messages, contacts, weather, memory queries, etc.)
-AND CLI write operations that have no structured tool: e.g. `gh` issue/PR creation, `git`
-commit/push, advanced job edits via the `jobs.py` CLI, and the `browser.py` tool. For
-builds/tests/linters inside the workspace use `run_command_in_dir` instead.
+Use `bash` for everything else on the CLI: read/query operations, CLI writes with no
+structured tool (`gh`, `git`, `jobs.py`, `browser.py`), and file listing/searching/
+builds/tests in the workspace. It is permission-gated: documented read commands run
+without asking; anything acting outwardly asks the owner first. If a command is blocked,
+read the error and adjust — don't retry it unchanged.
 
-`run_command` is permission-gated by the owner. Read/query commands documented in the
-skills generally run without asking; anything that sends, deletes, moves, invites, or
-otherwise acts outwardly asks the owner for approval first. If a command is blocked you
-get an error — read it and adjust or ask the owner; do not retry the same command over
-and over.
-
-Always use the skill documentation to construct the correct command. If you don't have
-the skill content in context, call `load_skill` with the skill name first. Parse JSON
-output when available (himalaya `-o json`, sqlite3 `-json`). Never guess at command
-syntax — always refer to the skill file.
-
-You may create or update skills using the `skills.py` CLI after loading the
-`skill-creator` skill."""
-
-# Shown instead of the full skills index when ``agent.skills_index_mode`` is
-# "on_demand" (#50). Mirrors the <secrets> pointer: advertise the discovery tool,
-# not the whole list — the model pulls matches lazily via search_skills.
-SKILLS_DISCOVERY_POINTER = (
-    "Skills (reusable instructions for specific tasks) are available but not listed "
-    "here, to keep this prompt small. When a request might need one, call the "
-    "`search_skills` tool with a short query to find matching skills (returns name + "
-    "summary), or `list_skills` to browse them all. Then call `load_skill` with a "
-    "name to read that skill's full instructions before acting."
-)
+Skills document the exact command syntax. Before acting on a task a skill covers, read
+it: `python3 /app/tools/skills.py show <name>` via bash. Never guess syntax — refer to
+the skill. Parse JSON output when available (himalaya `-o json`, sqlite3 `-json`). You
+may create or update skills with the `skills.py` CLI (see the `skill-creator` skill)."""
 
 DEFAULT_HISTORY_HANDLING_BLOCK = """Previous messages in this conversation
 have already been handled.
@@ -157,7 +135,6 @@ def build_prompt_sections(
     include_memories: bool = True,
     include_reflections: bool = True,
     include_skills: bool = True,
-    skills_on_demand: bool = False,
 ) -> PromptSections:
     """Build all prompt sections with current config and dynamic context.
 
@@ -221,11 +198,10 @@ def build_prompt_sections(
     if tool_blocks:
         tools_section = "<tools>\n" + "\n\n".join(tool_blocks) + "\n</tools>"
 
-    # Coding workspace (#149/#151): when the harness is on, tell the agent that
-    # `run_command` and the file tools share ONE tree (a repo cloned via git is
-    # readable/editable/committable in place), expose that root path (it was
-    # previously undiscoverable — `pwd` is blocked), and require every agent to
-    # namespace its files under a slug subdir so agents don't collide.
+    # Coding workspace (#149/#151/#178): when the harness is on, tell the agent
+    # that `bash` and the file tools share ONE tree, expose the root path (it is
+    # otherwise undiscoverable), and give it a home directory named after its
+    # slug so agents don't collide.
     workspace_section = ""
     ws = config.workspace
     if ws.enabled and ws.directory.strip():
@@ -233,18 +209,14 @@ def build_prompt_sections(
         slug = agent.name if agent and agent.name else "default"
         workspace_section = (
             "<workspace>\n"
-            f"A coding workspace is enabled, rooted at `{root}`. This is the working "
-            "directory for `run_command` (so `git clone`, `git`, `gh` and builds run "
-            "here) AND the root the file tools (read_file/write_file/edit_file/list_dir/"
-            "grep) and run_command_in_dir resolve paths against — the SAME tree. A repo "
-            "you clone with `run_command` is therefore immediately visible to "
-            "read_file/grep, editable with write_file/edit_file, and committable with "
-            "`git` — never hand-author git blobs to commit a change.\n"
-            f"Namespace everything you create under a subdirectory named after your "
-            f"identity slug: `{slug}/`. Clone repos, write files and generate content "
-            f"under `{slug}/…` (e.g. `git clone <url> {slug}/<repo>`, then read/edit "
-            f"`{slug}/<repo>/<file>`), so multiple agents never collide in the workspace "
-            "root. File-tool paths are relative to the workspace root.\n"
+            f"A coding workspace is enabled, rooted at `{root}`. `bash` runs here, and "
+            "the file tools (read/write/edit) resolve paths against the SAME tree — a "
+            "repo you clone with `bash` is immediately readable, editable and "
+            "committable with `git`. List and search files via `bash` (ls, find, rg).\n"
+            f"Your home directory is `{slug}/` (i.e. `{root}/{slug}/`): clone repos, "
+            f"write files and generate content under `{slug}/…`, so agents never "
+            "collide in the workspace root. File-tool paths are relative to the "
+            "workspace root.\n"
             "</workspace>"
         )
 
@@ -258,11 +230,13 @@ def build_prompt_sections(
             "An encrypted secrets vault is available. Before logging into a site or calling "
             "an authenticated API, call the `list_secrets` tool to see which secrets you may "
             "use (it returns names + descriptions only, never values). Use a secret BY "
-            "REFERENCE inside `run_command` as {{secret:NAME}} (or {{secret:NAME.field}} for a "
-            "structured login). If the secret you need isn't listed, call `request_secret` to "
-            "ask the owner for it. NEVER print, echo, or place a secret value or a "
-            "{{secret:...}} placeholder in a message, email, calendar event, or any other "
-            "output — substitution happens only inside `run_command`.\n"
+            "REFERENCE inside an ALLOWLISTED `bash` command as {{secret:NAME}} (or "
+            "{{secret:NAME.field}} for a structured login) — e.g. a `curl` call. Substitution "
+            "happens ONLY for allowlisted commands; a placeholder in any other command runs "
+            "through literally, so don't rely on it there. If the secret you need isn't listed, "
+            "call `request_secret` to ask the owner. NEVER print, echo, or place a secret value "
+            "or a {{secret:...}} placeholder in a message, email, calendar event, or any other "
+            "output.\n"
             "</secrets>"
         )
     # Voice is a base capability, not a skill or a function-tool: when TTS is on
@@ -305,9 +279,7 @@ def build_prompt_sections(
         memory_section = f"<memories>\n{memories}\n</memories>"
 
     skills_section = ""
-    if skills_on_demand:
-        skills_section = f"<available_skills>\n{SKILLS_DISCOVERY_POINTER}\n</available_skills>"
-    elif include_skills and skills_index:
+    if include_skills and skills_index:
         skills_section = f"<available_skills>\n{skills_index}\n</available_skills>"
 
     reflections_section = ""

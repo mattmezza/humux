@@ -102,7 +102,7 @@ class _AgentStub:
     def __init__(self):
         self.channels = {"telegram": object()}
         self.scheduler = SimpleNamespace(scheduler=SimpleNamespace(get_jobs=lambda: [1, 2]))
-        perm_rules = {"run_command:jq*": "ALWAYS"}
+        perm_rules = {"bash:jq*": "ALWAYS"}
         self.permissions = SimpleNamespace(
             rules=perm_rules,
             add_rule=lambda pattern, level, scope="": perm_rules.__setitem__(pattern, level),
@@ -272,7 +272,7 @@ class TestVoicePreview:
         resp = client.get("/partials/permissions", headers=AUTH)
         assert resp.status_code == 200
         assert "text/html" in resp.headers["content-type"]
-        assert "run_command" in resp.text
+        assert "bash" in resp.text
 
     def test_workspace_partial(self):
         client = _client(setup_complete=True)
@@ -727,7 +727,7 @@ class TestPermissionsAPI:
         client = _client(setup_complete=True)
         resp = client.get("/permissions", headers=AUTH)
         assert resp.status_code == 200
-        assert "run_command:jq*" in resp.json()["rules"]
+        assert "bash:jq*" in resp.json()["rules"]
 
     def test_upsert_permission_returns_html(self):
         client = _client(setup_complete=True)

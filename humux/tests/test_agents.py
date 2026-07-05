@@ -28,7 +28,7 @@ character: |
     assert p.role == "Fitness coach"
     assert p.voice == "en-US-GuyNeural"
     assert p.skills == ["scheduling", "memory"]
-    assert p.tools == ["run_command"]
+    assert p.tools == ["bash"]
     assert p.secrets == ["agent:fitness:key"]
     # #98: legacy personalia folds into character (prepended), so both land there.
     assert "Forge" in p.character and "Direct" in p.character
@@ -59,34 +59,61 @@ def test_markdown_roundtrip() -> None:
 def test_allow_semantics() -> None:
     blank = Agent(name="d")  # empty allowlists = everything
     assert blank.allows_skill("anything") and blank.allows_tool("anything")
-    scoped = Agent(name="s", skills=["memory"], tools=["run_command"])
+    scoped = Agent(name="s", skills=["memory"], tools=["bash"])
     assert scoped.allows_skill("memory") and not scoped.allows_skill("email")
-    assert scoped.allows_tool("run_command") and not scoped.allows_tool("send_email")
+    assert scoped.allows_tool("bash") and not scoped.allows_tool("send_email")
 
 
-def test_scoped_tools_filters_but_keeps_load_skill() -> None:
+def test_scoped_tools_filters_but_keeps_memory_and_vault() -> None:
     from core.agent import TOOLS
 
     assert scoped_tools(None) is TOOLS  # no agent = all tools
-    p = Agent(name="s", tools=["run_command"])
+    p = Agent(name="s", tools=["bash"])
     names = {t["name"] for t in scoped_tools(p)}
-    assert "run_command" in names
+    assert "bash" in names
     assert "send_email" not in names
-    assert "load_skill" in names  # always retained — core mechanic
+    assert "recall_memory" in names  # always retained — core mechanic
+
+
+def test_legacy_tool_names_normalized() -> None:
+    # Agent docs saved before the #178 rename keep working: execution tools map
+    # 1:1; the read-only list_dir/grep and the removed skill tools DROP OUT —
+    # never widened to the execution-capable bash.
+    p = Agent(
+        name="old",
+        tools=[
+            "run_command",
+            "read_file",
+            "write_file",
+            "edit_file",
+            "list_dir",
+            "grep",
+            "load_skill",
+            "send_email",
+        ],
+    )
+    assert p.tools == ["bash", "read", "write", "edit", "send_email"]
+    assert p.allows_tool("bash") and p.allows_tool("read") and p.allows_tool("send_email")
+    assert not p.allows_tool("spawn_subagent")
+
+
+def test_legacy_scope_of_only_removed_tools_stays_restrictive() -> None:
+    # An agent scoped to ONLY removed tools must not widen to "all" (tools == []).
+    p = Agent(name="locked", tools=["load_skill", "search_skills", "list_dir", "grep"])
+    assert p.tools == ["remember"]
+    assert not p.allows_tool("bash")
+    assert not p.allows_tool("send_email")
 
 
 def test_gateable_tools_in_sync_with_tools() -> None:
     # The admin UI lists GATEABLE_TOOLS for the scope checkboxes; it must stay
     # in sync with the real tool set (every tool except the always-on ones:
-    # load_skill, the vault discovery/request tools — issue #19 — and
-    # recall_memory / remember, which mirror always-on scoped memory access — #47/#13).
+    # the vault discovery/request tools — issue #19 — and recall_memory /
+    # remember, which mirror always-on scoped memory access — #47/#13).
     from api.admin import GATEABLE_TOOLS
     from core.agent import TOOLS
 
     always_on = {
-        "load_skill",
-        "search_skills",
-        "list_skills",
         "recall_memory",
         "remember",
         "list_secrets",

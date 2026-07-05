@@ -98,6 +98,26 @@ _MIGRATIONS = (
 SEED_DEFAULT_SLUG = "assistant"
 
 
+# The one #178 tool-rename table, shared by the agent tool-scope migration
+# (Agent.__post_init__) and the permission-rule migration (PermissionEngine).
+# ``None`` = the tool was removed and its scope entry / rules are DROPPED, never
+# widened: list_dir/grep were read-only, so mapping them to the execution-capable
+# `bash` would grant a shell an owner deliberately withheld; the skill-loader
+# tools became always-on bash/CLI reads. Renames are 1:1 and capability-preserving.
+LEGACY_TOOL_RENAMES: dict[str, str | None] = {
+    "run_command": "bash",
+    "run_command_in_dir": "bash",
+    "read_file": "read",
+    "write_file": "write",
+    "edit_file": "edit",
+    "list_dir": None,
+    "grep": None,
+    "load_skill": None,
+    "search_skills": None,
+    "list_skills": None,
+}
+
+
 @dataclass(slots=True)
 class Agent:
     """A swappable agent identity + its scopes."""
@@ -147,6 +167,29 @@ class Agent:
     # spawned as a subagent, and it's hidden from the roster. Store-managed via
     # ``set_enabled`` — NOT written by ``upsert`` (editing keeps the on/off state).
     enabled: bool = True
+
+    def __post_init__(self) -> None:
+        # Tool renames (#178): agent docs saved before the rename keep working.
+        # Migration NEVER widens a scope (an allowlist is a security boundary):
+        # execution tools rename 1:1 (run_command/run_command_in_dir → bash,
+        # read_file/write_file/edit_file → read/write/edit); the read-only
+        # list_dir/grep and the removed skill tools are DROPPED, not mapped to
+        # bash — mapping them would grant shell execution an owner withheld.
+        legacy = LEGACY_TOOL_RENAMES
+        if self.tools and any(t in legacy for t in self.tools):
+            seen: set[str] = set()
+            out: list[str] = []
+            for t in self.tools:
+                new = legacy.get(t, t)  # unknown tool → keep as-is
+                if new and new not in seen:
+                    seen.add(new)
+                    out.append(new)
+            # A scope that mapped to nothing (e.g. only the removed skill tools)
+            # must stay restrictive: `tools == []` means "all tools", so widening
+            # a deliberately-narrow agent to everything is the wrong direction.
+            # Keep it non-empty with an always-on tool → only always-on tools are
+            # offered, no gateable ones (see AgentCore.scoped_tools).
+            self.tools = out or ["remember"]
 
     def chat_permits(self, chat_id: str, sender_id: int) -> bool:
         """Whether ``sender_id`` may trigger this agent (or DM it) in ``chat_id``.
@@ -777,7 +820,7 @@ agent_name: Forge
 role: Fitness coach
 skills: [scheduling, memory]
 tools:
-  - run_command
+  - bash
   - send_message
 secrets: []
 bot_token: "123:ABC"
@@ -816,7 +859,7 @@ Extra prose in the body.
     assert a.agent_name == "Forge", a.agent_name
     assert a.role == "Fitness coach", a.role
     assert a.skills == ["scheduling", "memory"], a.skills
-    assert a.tools == ["run_command", "send_message"], a.tools
+    assert a.tools == ["bash", "send_message"], a.tools
     assert a.bot_token == "123:ABC", a.bot_token
     assert a.allowed_user_ids == [111, 222], a.allowed_user_ids
     # #133: per-agent group-room settings; enabled kept, ignore_bots defaults to True.
@@ -832,7 +875,15 @@ Extra prose in the body.
     assert "Forge" in a.character and "motivating" in a.character and "Extra prose" in a.character
     assert a.character.index("Forge") < a.character.index("motivating")  # personalia first
     assert a.allows_skill("scheduling") and not a.allows_skill("email")
-    assert a.allows_tool("run_command") and not a.allows_tool("send_email")
+    assert a.allows_tool("bash") and not a.allows_tool("send_email")
+    # Legacy tool names in a stored doc normalise to their #178 successors; the
+    # read-only grep and the removed load_skill are DROPPED (never widened to bash).
+    legacy = Agent(name="old", tools=["run_command", "edit_file", "grep", "load_skill"])
+    assert legacy.tools == ["bash", "edit"], legacy.tools
+    # A scope of only-removed tools must stay restrictive, not widen to "all".
+    only_removed = Agent(name="r", tools=["load_skill", "list_dir", "grep"])
+    assert only_removed.tools == ["remember"], only_removed.tools
+    assert not only_removed.allows_tool("bash") and not only_removed.allows_tool("send_email")
     assert a.tool_setting("gh") == {"enabled": True}, a.tool_setting("gh")
     assert a.tool_setting("browser") == {"enabled": True, "profile": "forge"}
     assert a.tool_setting("weather") is None  # no entry = inherit system config

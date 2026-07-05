@@ -80,7 +80,7 @@ class AgentConfig(BaseModel):
     thinking_level: str = ""  # "" (off) | "low" | "medium" | "high" — only for reasoning models
     # Hard ceiling on tokens the model may emit per response. The agentic loop
     # truncates mid-tool-call when this is too small for the output (e.g. a large
-    # file written via write_file), so keep it generous. 8192 is safe across providers;
+    # file written via the write tool), so keep it generous. 8192 is safe across providers;
     # raise it on the LLM admin tab for capable models (Claude allows up to
     # 128000 — note large non-streaming outputs can approach provider timeouts).
     max_tokens: int = 8192
@@ -91,11 +91,6 @@ class AgentConfig(BaseModel):
     timezone: str = "Europe/Zurich"
     skills_dir: str = "skills/"
     skills_db_path: str = "data/skills.db"
-    # How the skills index reaches the model (#50):
-    #   "inject"    — the full index rides every turn's preamble (default; unchanged)
-    #   "on_demand" — the preamble omits it; the model calls search_skills/list_skills
-    # Any unrecognised value falls back to "inject" (the safe default).
-    skills_index_mode: str = "inject"
     agents_dir: str = "agents/"
     agents_db_path: str = "data/agents.db"
     character: str = ""  # identity + tone (legacy `personalia` was merged in — #98)
@@ -405,7 +400,7 @@ class ImageGenToolConfig(BaseModel):
 class WhatsAppToolConfig(BaseModel):
     """WhatsApp via the local `wacli` CLI (issue #97) — a tool, not a channel.
 
-    The agent reads and sends WhatsApp by running `wacli` through `run_command`.
+    The agent reads and sends WhatsApp by running `wacli` through `bash`.
     Linking (QR scan), sync and logout are managed from the Tools tab.
     """
 
@@ -426,14 +421,14 @@ class ToolsConfig(BaseModel):
 
 
 class WorkspaceConfig(BaseModel):
-    """Coding harness — confined file read/write/edit/list/grep tools (issue #76).
+    """Coding harness — confined file read/write/edit tools (issue #76, #178).
 
-    Off by default. When enabled, the agent gets ``read_file``/``write_file``/
-    ``edit_file``/``list_dir``/``grep``/``run_command_in_dir`` tools, all confined
-    to ``directory``. Reads are pre-approved; writes ask first. An empty/blank
-    ``directory`` keeps the tools inert even if ``enabled`` is true — there is no
-    default root, so the agent can never touch the filesystem until the owner
-    points it at one (e.g. ``~/projects``). See core/coding.py.
+    Off by default. When enabled, the agent gets ``read``/``write``/``edit``
+    tools confined to ``directory``, and non-allowlisted ``bash`` commands run
+    there under per-call approval. Reads are pre-approved; writes ask first. An
+    empty/blank ``directory`` keeps the tools inert even if ``enabled`` is true —
+    there is no default root, so the agent can never touch the filesystem until
+    the owner points it at one (e.g. ``~/projects``). See core/coding.py.
     """
 
     enabled: bool = False
@@ -444,7 +439,7 @@ class ArtifactsConfig(BaseModel):
     """Public serving toggle for agent-published web artifacts (issue #82).
 
     Artifacts are files the agent writes under ``{workspace}/artifacts/{slug}/``
-    with the coding-harness ``write_file`` tool — there is no separate storage,
+    with the coding-harness ``write`` tool — there is no separate storage,
     TTL or directory here. This flag only gates the public, no-auth
     ``/artifacts/`` route; serving also requires the workspace harness to be on
     (it provides the write path). See core/artifacts.py.

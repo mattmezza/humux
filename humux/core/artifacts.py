@@ -1,7 +1,7 @@
 """Serve agent-published web artifacts from the workspace (issue #82).
 
 An artifact is no longer a dedicated tool with its own storage and TTL. It is
-just files the agent writes — with the coding-harness ``write_file`` tool — under
+just files the agent writes — with the coding-harness ``write`` tool — under
 ``{workspace}/artifacts/{slug}/``. This module only resolves a *public* request
 ``/artifacts/{slug}/{path}`` to a servable file, keeping the same hardening the
 old ``ArtifactStore`` had: traversal, dotfiles, symlinks and hardlinks are all

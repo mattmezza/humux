@@ -271,16 +271,53 @@ class TelegramChannel:
             self._bot_id = None
             self._bot_username = None
 
+    @staticmethod
+    def _skill_command(name: str) -> str:
+        """The ``/zz_skill_*`` command slug for a skill name.
+
+        Telegram command names allow only ``[a-z0-9_]`` (max 32 chars), so
+        hyphens etc. fold to ``_``. The ``zz_skill_`` prefix clusters every
+        skill at the end of the command list (#178).
+        """
+        return ("zz_skill_" + re.sub(r"[^a-z0-9_]+", "_", name.lower()))[:32]
+
     async def register_commands(self) -> None:
-        """Publish the ``_MENU_COMMANDS`` list to Telegram's ☰ menu / autocomplete.
+        """Publish the ``_MENU_COMMANDS`` list — plus one ``/zz_skill_<name>``
+        entry per skill (#178) — to Telegram's ☰ menu / autocomplete.
 
         A full replace (setMyCommands), so editing the list is enough to add,
         remove, or rename commands across versions. Per-bot: in a group each bot
         shows its own commands, ``@bot``-suffixed, which is exactly the addressed
         form the runtime routes on. Best-effort — a failure here must never stop
         the bot from polling."""
+        commands = list(_MENU_COMMANDS)
         try:
-            await self.app.bot.set_my_commands(_MENU_COMMANDS)
+            # Only advertise skills this bot's agent is allowed to load (#178): a
+            # per-agent bot binds to its own agent, the default bot to the default
+            # — scope the menu to that agent's allowlist so a skill outside it gets
+            # no command (needs a restart to change, like the rest of the menu).
+            allow = await self.agent.allowed_skills_for(self.channel_name)
+            # Telegram caps setMyCommands at 100 entries AND rejects the whole
+            # list if two commands share a name — two skills whose slugs collide
+            # (hyphen vs underscore, or a shared 32-char prefix) would drop the
+            # entire menu. Skip a duplicate slug so the menu still publishes; the
+            # skipped skill just has no command (its full name is still in the
+            # prompt index). Keep the control-command names reserved.
+            seen = {c.command for c in commands}
+            for e in await self.agent.skills.index_entries(allow=allow):
+                if len(commands) >= 100:
+                    break
+                slug = self._skill_command(e["name"])
+                if slug in seen:
+                    log.warning("Skill command slug collision, skipping: %s", e["name"])
+                    continue
+                seen.add(slug)
+                desc = (e.get("summary") or f"Load the {e['name']} skill")[:256]
+                commands.append(BotCommand(slug, desc))
+        except Exception:
+            log.warning("Could not build skill commands (%s)", self.channel_name, exc_info=True)
+        try:
+            await self.app.bot.set_my_commands(commands)
         except Exception:
             log.warning(
                 "Could not set Telegram command menu (%s)", self.channel_name, exc_info=True
@@ -449,6 +486,27 @@ class TelegramChannel:
         respond = routing["respond"]
         first = text.split(maxsplit=1)[0] if text else ""
         base, _, target = first.partition("@") if first.startswith("/") else ("", "", "")
+        if base.lower().startswith("/zz_skill_"):
+            # Skill loader command (#178): post the skill body into the chat and
+            # record it in history so the agent has it in context next turn. It
+            # makes the bot emit content, so it goes through the SAME sender ACL
+            # (#29 whitelist + #129 per-chat gate) as every acting path — the
+            # respond-gate above only runs it when routing["respond"], which is
+            # False for unaddressed group messages and bot senders.
+            # "/cmd@otherbot" is aimed at a different bot — stay silent then.
+            aimed_elsewhere = target and self._bot_username and target.lower() != self._bot_username
+            if (
+                respond
+                and not aimed_elsewhere
+                and await self._may_act(sender_id, convo_user, str(chat_id))
+            ):
+                asyncio.create_task(
+                    self._handle_skill_command(
+                        base.lower()[len("/zz_skill_") :], convo_user, str(chat_id)
+                    ),
+                    name=f"tg-skill-{convo_user}",
+                )
+            return
         if base.lower() in _AGENT_COMMANDS:
             # A recognised command is explicit and self-contained: send it bare, with
             # no speaker tag or reply-quote (either would stop the agent-side match).
@@ -590,6 +648,35 @@ class TelegramChannel:
             ),
             name=f"tg-photo-{convo_user}",
         )
+
+    async def _handle_skill_command(self, slug: str, convo_user: str, chat_id: str) -> None:
+        """/zz_skill_<name>: load a skill from the store into the conversation (#178).
+
+        The body is recorded in history as a record-only inbound turn (so the
+        agent sees the full content on its next turn) and posted to the chat.
+        Scoped to the serving agent's skill allowlist — a command for a skill the
+        agent can't load (e.g. one added after the menu was published) is refused,
+        so this stays an enforcement point, not just an advertising filter.
+        """
+        try:
+            allow = await self.agent.allowed_skills_for(self.channel_name, convo_user, chat_id)
+            entries = await self.agent.skills.index_entries(allow=allow)
+            cmd = f"zz_skill_{slug}"
+            name = next((e["name"] for e in entries if self._skill_command(e["name"]) == cmd), None)
+            if name is None:
+                await self.send(chat_id, f"Skill not available: {slug}")
+                return
+            content = await self.agent.skills.get_skill_content(name)
+            await self.agent.process(
+                message=f"[Skill '{name}' loaded]\n{content}",
+                channel=self.channel_name,
+                user_id=convo_user,
+                chat_id=chat_id,
+                respond=False,
+            )
+            await self.send(chat_id, content)
+        except Exception:
+            log.exception("Skill command failed: %s", slug)
 
     async def _on_jobs_command(self, update: Update, context) -> None:
         """/jobs — list active subagent runs with inline cancel buttons (issue #15)."""

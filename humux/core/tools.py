@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 
 # Advertisement injected into the system prompt when `gh` is active.
 _GH_PROMPT = """<tool name="gh">
-The GitHub CLI `gh` is installed and authenticated. Run it with the `run_command`
+The GitHub CLI `gh` is installed and authenticated. Run it with the `bash`
 tool for GitHub operations. Read operations run without asking; creating issues,
 PRs or releases ask for confirmation first.
 Examples:
@@ -48,7 +48,7 @@ and the shell doesn't run them; double quotes leave them live and get rejected.
 
 # Advertisement injected into the system prompt when `browser` is active.
 _BROWSER_PROMPT = """<tool name="browser">
-A headless browser (`/app/tools/browser.py`, Playwright) is available via `run_command`
+A headless browser (`/app/tools/browser.py`, Playwright) is available via `bash`
 for JS-heavy pages and acting on the user's behalf. Prefer an existing API/CLI
 over the browser whenever one exists — it is a last resort.
 Verbs (always pass `--url`; add `--profile NAME` to reuse a logged-in session):
@@ -82,14 +82,14 @@ pending/awaiting-approval don't upgrade to "confirmed"; if it returns `done:fals
 `read`/`screenshot` run without asking; `act` asks approval each call (shows a screenshot
 on chat) and takes `--steps`, a JSON array of single-key objects, e.g.
   [{"fill":["#user","alice"]},{"click":"#login"}]   (fill/click/select/press/wait/goto).
-For the full reference — steps syntax, guided first-time login + 2FA, profiles — run
-`load_skill browser`.
+For the full reference — steps syntax, guided first-time login + 2FA, profiles — read
+the `browser` skill (`python3 /app/tools/skills.py show browser`).
 </tool>"""
 
 
 # Advertisement injected into the system prompt when `whatsapp` is active (#97).
 _WHATSAPP_PROMPT = """<tool name="whatsapp">
-WhatsApp is available through the `wacli` CLI — run it with the `run_command` tool.
+WhatsApp is available through the `wacli` CLI — run it with the `bash` tool.
 Read operations (sync, messages, contacts, chats, groups) run without asking;
 sending a message asks for confirmation first.
 Send a message:
@@ -100,7 +100,8 @@ Read (sync first whenever checking for new/recent messages):
   wacli --json messages search "invoice" --chat <jid>
   wacli --json contacts search "Marco"
 JIDs: users are `<phone>@s.whatsapp.net` (digits only, no `+`); groups `<id>@g.us`.
-Run `load_skill wacli-whatsapp` for the full command reference.
+Read the `wacli-whatsapp` skill (`python3 /app/tools/skills.py show wacli-whatsapp`)
+for the full command reference.
 </tool>"""
 
 

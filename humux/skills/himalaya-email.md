@@ -143,7 +143,7 @@ himalaya flag add -a personal 123 Flagged
   with literal newlines.
 - Accounts are identified by NAME (`-a personal`), which is all any command needs. The
   config file holding the addresses lives outside the workspace and is not readable —
-  don't `cat`/`grep`/`read_file` it. If you genuinely need an account's own address,
+  don't `cat`/`grep`/`read` it. If you genuinely need an account's own address,
   read it off any message: `himalaya envelope list -a NAME -s 1 -o json` (the `to`/`from`
   field). To just see which accounts exist, run `himalaya account list`.
 - Server-side search lags delivery: a message you just sent may not match a `subject`/

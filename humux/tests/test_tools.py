@@ -64,35 +64,17 @@ def test_static_prompt_has_no_datetime() -> None:
     assert cfg.agent.timezone in sections.intro
 
 
-def test_skills_on_demand_renders_pointer_not_index() -> None:
-    # The on-demand branch backs the admin prompt-preview; it must show the
-    # discovery pointer and never the full index, even when an index is supplied.
+def test_skills_index_rendered_when_supplied() -> None:
     sections = build_prompt_sections(
         config=Config(),
         history_mode="session",
-        skills_index="- weather: fetch the forecast\n- email: send mail",
+        skills_index='<skill name="weather">fetch the forecast</skill>',
         memories="",
         reflections="",
         decomposed_goal=None,
-        skills_on_demand=True,
     )
     assert "<available_skills>" in sections.available_skills
-    assert "search_skills" in sections.available_skills
-    assert "list_skills" in sections.available_skills
-    assert "- weather: fetch the forecast" not in sections.available_skills  # index omitted
-    # Default (inject) still renders the index.
-    assert "- weather: fetch the forecast" in _sections_with_index().available_skills
-
-
-def _sections_with_index():
-    return build_prompt_sections(
-        config=Config(),
-        history_mode="session",
-        skills_index="- weather: fetch the forecast",
-        memories="",
-        reflections="",
-        decomposed_goal=None,
-    )
+    assert '<skill name="weather">fetch the forecast</skill>' in sections.available_skills
 
 
 def test_tools_section_only_when_enabled() -> None:
@@ -380,30 +362,23 @@ async def test_skills_index_resent_only_when_changed(agent) -> None:
 
 
 @pytest.mark.asyncio
-async def test_on_demand_preamble_swaps_index_for_pointer(agent) -> None:
+async def test_preamble_carries_xml_skills_index(agent) -> None:
     await agent.skills.store.upsert_skill("weather", "fetch the forecast")
-
-    # Default (inject) mode lists the skill in full.
-    inject = await agent._turn_preamble(None, query="hi")
-    assert "- weather: fetch the forecast" in inject
-
-    # On-demand mode replaces the listing with the discovery pointer.
-    agent.config.agent.skills_index_mode = "on_demand"
-    on_demand = await agent._turn_preamble(None, query="hi")
-    assert "<available_skills>" in on_demand
-    assert "search_skills" in on_demand and "list_skills" in on_demand
-    assert "- weather: fetch the forecast" not in on_demand  # full index omitted
+    preamble = await agent._turn_preamble(None, query="hi")
+    assert "<available_skills>" in preamble
+    assert '<skill name="weather">fetch the forecast</skill>' in preamble
+    assert "skills.py show" in preamble  # loading instructions ride along
 
 
 @pytest.mark.asyncio
-async def test_on_demand_pointer_resent_only_when_missing(agent) -> None:
-    """The static pointer is deduped by the same history gate as the index."""
-    agent.config.agent.skills_index_mode = "on_demand"
+async def test_skills_index_resent_only_when_missing(agent) -> None:
+    """The index block is deduped by the history gate."""
+    await agent.skills.store.upsert_skill("weather", "fetch the forecast")
     ch, uid, cid = "telegram", "u1", ""
     key = (ch, uid, cid)
 
     first = await agent._turn_preamble(None, query="hi", session_key=key)
-    assert "<available_skills>" in first and "search_skills" in first
+    assert "<available_skills>" in first
     await agent.history.append_session_message(ch, uid, {"role": "user", "content": first}, cid)
 
     second = await agent._turn_preamble(None, query="again", session_key=key)
@@ -425,98 +400,6 @@ def test_feature_gate_drops_web_search_when_disabled() -> None:
 
     assert "web_search" not in names(False)
     assert "web_search" in names(True)
-
-
-def test_feature_gate_offers_discovery_tools_only_on_demand() -> None:
-    from core.agent import TOOLS, apply_feature_gates
-
-    def names(on_demand):
-        return {
-            t["name"]
-            for t in apply_feature_gates(
-                TOOLS,
-                secrets_available=True,
-                skills_on_demand=on_demand,
-            )
-        }
-
-    inject = names(False)
-    assert "search_skills" not in inject and "list_skills" not in inject
-    on_demand = names(True)
-    assert "search_skills" in on_demand and "list_skills" in on_demand
-
-
-@pytest.mark.asyncio
-async def test_search_and_list_skills_dispatch_scoped(agent) -> None:
-    from core.agents import Agent
-    from core.llm import LLMToolCall
-
-    await agent.skills.store.upsert_skill("email", "# email\nsend and read email")
-    await agent.skills.store.upsert_skill("weather", "# weather\nfetch the forecast")
-
-    # An agent allowlisted to email only must not discover weather (#50 scoping).
-    rs = agent._new_request_state(Agent(name="p", skills=["email"]))
-
-    search = await agent._execute_tool(
-        LLMToolCall(id="1", name="search_skills", arguments={"query": "weather"}),
-        "system",
-        "u",
-        rs,
-    )
-    assert search["skills"] == []  # weather is out of scope
-
-    listed = await agent._execute_tool(
-        LLMToolCall(id="2", name="list_skills", arguments={}),
-        "system",
-        "u",
-        rs,
-    )
-    assert {s["name"] for s in listed["skills"]} == {"email"}
-
-    # load_skill still reaches an in-scope skill end-to-end.
-    loaded = await agent._execute_tool(
-        LLMToolCall(id="3", name="load_skill", arguments={"name": "email"}),
-        "system",
-        "u",
-        rs,
-    )
-    assert "send and read email" in loaded["content"]
-
-
-@pytest.mark.asyncio
-async def test_search_skills_limit_coercion_at_dispatch(agent) -> None:
-    """`limit` is LLM-controlled: a non-numeric value must fall back, and 0 must
-    not silently return nothing (the max(1, ...) floor)."""
-    from core.llm import LLMToolCall
-
-    await agent.skills.store.upsert_skill("email", "send and read email")
-
-    async def call(**limit_arg):
-        res = await agent._execute_tool(
-            LLMToolCall(id="x", name="search_skills", arguments={"query": "email", **limit_arg}),
-            "system",
-            "u",
-            agent._new_request_state(),
-        )
-        return res["skills"]
-
-    assert [s["name"] for s in await call(limit="not-a-number")] == ["email"]  # graceful fallback
-    assert [s["name"] for s in await call(limit=0)] == ["email"]  # floored, not empty
-    assert [s["name"] for s in await call()] == ["email"]  # missing limit → default
-
-
-def test_tools_for_turn_gates_discovery_on_config(agent) -> None:
-    """The config -> tools seam: skills_index_mode flips whether the discovery
-    tools are offered to the model (catches a typo'd comparison string)."""
-
-    def names():
-        return {t["name"] for t in agent._tools_for_turn(None)}
-
-    agent.config.agent.skills_index_mode = "inject"
-    assert "search_skills" not in names() and "list_skills" not in names()
-
-    agent.config.agent.skills_index_mode = "on_demand"
-    assert "search_skills" in names() and "list_skills" in names()
 
 
 # ---------------------------------------------------------------------------
@@ -920,7 +803,7 @@ async def test_run_command_missing_command_is_recoverable(agent) -> None:
     from core.llm import LLMToolCall
 
     res = await agent._execute_tool(
-        LLMToolCall(id="x", name="run_command", arguments={"purpose": "p"}),
+        LLMToolCall(id="x", name="bash", arguments={"purpose": "p"}),
         "system",
         "u",
         agent._new_request_state(),
@@ -938,7 +821,7 @@ async def test_execute_tool_catches_inner_exception(agent, monkeypatch) -> None:
 
     monkeypatch.setattr(agent, "_execute_tool_inner", boom)
     res = await agent._execute_tool(
-        LLMToolCall(id="x", name="run_command", arguments={"command": "ls"}),
+        LLMToolCall(id="x", name="bash", arguments={"command": "ls"}),
         "system",
         "u",
         agent._new_request_state(),
@@ -953,7 +836,7 @@ async def test_repeat_failure_breaker_stops_after_n(agent) -> None:
     from core.llm import LLMToolCall
 
     state = agent._new_request_state()
-    call = LLMToolCall(id="x", name="run_command", arguments={"purpose": "p"})  # no command
+    call = LLMToolCall(id="x", name="bash", arguments={"purpose": "p"})  # no command
     errors = [
         (await agent._execute_tool(call, "system", "u", state))["error"]
         for _ in range(_MAX_REPEAT_FAILURES + 2)

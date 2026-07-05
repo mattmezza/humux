@@ -123,6 +123,15 @@ class ToolExecutor:
                 return True
         return False
 
+    def command_allowed(self, command: str) -> bool:
+        """Public check: whether ``command`` passes the prefix allowlist.
+
+        The agent uses this to route a ``bash`` call: allowlisted commands run
+        on the pre-approved rail; anything else runs workspace-confined under
+        per-call approval (#178).
+        """
+        return self._command_allowed(command)
+
     def _command_allowed(self, command: str) -> bool:
         """True if EVERY pipeline/sequence segment is allowlisted.
 

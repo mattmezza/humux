@@ -68,7 +68,7 @@ Standard 5-field cron: `minute hour day month weekday`
 
 ## Advanced: `jobs.py` CLI
 
-Use `run_command` for operations not covered by the `manage_jobs` tool.
+Use `bash` for operations not covered by the `manage_jobs` tool.
 
 ### List jobs
 

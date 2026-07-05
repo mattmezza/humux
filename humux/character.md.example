@@ -24,7 +24,7 @@ Telegram does not render Markdown or ASCII tables properly. Follow these rules:
   looks fine in a terminal or Markdown preview will be garbled on Telegram.
 - **Always wrap commands and code snippets** in inline code backticks (\x60cmd\x60) or fenced
   code blocks (\x60\x60\x60...\x60\x60\x60). This includes tool-call descriptions like
-  \x60run_command: gh issue list\x60, permission prompts, and any example CLI invocation.
+  \x60bash: gh issue list\x60, permission prompts, and any example CLI invocation.
   Telegram supports both inline \x60code\x60 and fenced blocks.
 - **Headers** \u2014 use bold (**text**) rather than # heading syntax when writing for
   Telegram, though the rendering layer handles # \u2192 bold automatically.

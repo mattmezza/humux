@@ -57,7 +57,7 @@ class _AgentStub:
     def __init__(self):
         self.channels = {"telegram": object()}
         self.scheduler = SimpleNamespace(scheduler=SimpleNamespace(get_jobs=lambda: [1, 2]))
-        self.permissions = SimpleNamespace(rules={"run_command:jq*": "ALWAYS"})
+        self.permissions = SimpleNamespace(rules={"bash:jq*": "ALWAYS"})
 
 
 def _client(setup_complete: bool = True) -> TestClient:

@@ -40,7 +40,7 @@ from core.log_streams import set_stream, subagent_stream
 from core.memory import MemoryStore
 from core.models import IMAGE_MIME_TYPES, AgentResponse, Attachment
 from core.permissions import PermissionEngine, PermissionLevel, format_approval_message
-from core.prompt_builder import SKILLS_DISCOVERY_POINTER, build_prompt_sections
+from core.prompt_builder import build_prompt_sections
 from core.reply_decision import should_reply
 from core.scheduler import AgentScheduler
 from core.secret_store import SecretStore
@@ -105,7 +105,7 @@ _TRUNCATION_NOTICE = (
     "Your previous response was cut off at the output token limit before this "
     "tool call's arguments were complete, so the call was NOT run. Produce a "
     "smaller output: write large content (HTML, files) to disk incrementally — "
-    "e.g. in chunks via run_command — or split the work across turns, rather "
+    "e.g. in chunks via bash — or split the work across turns, rather "
     "than passing it all in one tool argument."
 )
 _MAX_TRUNCATION_RETRIES = 3
@@ -133,7 +133,7 @@ def _truncation_tool_results(response) -> list[dict]:
     ]
 
 
-# A malformed tool call (e.g. run_command with no `command`) used to raise out of
+# A malformed tool call (e.g. bash with no `command`) used to raise out of
 # the loop and kill the turn/subagent (#78). The agentic loop is also unbounded —
 # a model can repeat the same failing call until the token budget is gone. Both
 # are handled at the one point every tool call routes through (_execute_tool):
@@ -190,7 +190,7 @@ VOICE_MARKER = "[respond_with_voice]"
 _VOICE_MARKER_RE = re.compile(r"\[respond_with_voice(?::([^\]]*))?\]")
 
 # Cap an approval prompt's text on the fail-closed retry so an over-long
-# description (e.g. a huge run_command) fits a channel's message limit. Well
+# description (e.g. a huge bash command) fits a channel's message limit. Well
 # under Telegram's 4096 even with the channel's "Permission request:" prefix.
 # ponytail: fixed cap; the channel-layer delivery fix (#77-style) may supersede.
 _APPROVAL_TEXT_CAP = 3500
@@ -291,22 +291,33 @@ def _control_command(message: str) -> str:
 # -- Tool definitions the LLM can call --
 
 TOOLS = [
-    # Generic CLI executor — the LLM constructs commands using skill knowledge
+    # Generic CLI executor — the LLM constructs commands using skill knowledge.
+    # One tool, two rails (#178): allowlisted commands run as before (reads
+    # pre-approved via rules); any other command asks the owner and runs
+    # confined to the coding workspace (the old run_command_in_dir).
     {
-        "name": "run_command",
+        "name": "bash",
         "description": (
-            "Execute a CLI command — general/system commands, read/query operations, and "
-            "CLI writes that have no dedicated structured tool. For builds/tests/linters "
-            "inside the workspace use run_command_in_dir instead. Use skill documentation "
-            "to construct correct syntax. Returns stdout, stderr, and exit_code."
+            "Execute a shell command — reads/queries, CLI writes that have no "
+            "dedicated structured tool, listing/searching files (ls, find, rg), and "
+            "builds/tests/linters in the workspace. Allowlisted commands run "
+            "pre-approved; anything else asks the owner and requires the coding "
+            "workspace. Use skill documentation to construct correct syntax. "
+            "Returns stdout, stderr, and exit_code."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
-                "command": {"type": "string", "description": "The full CLI command to run"},
+                "command": {"type": "string", "description": "The full shell command to run"},
                 "purpose": {
                     "type": "string",
                     "description": "Brief explanation of what this command does",
+                },
+                "workdir": {
+                    "type": "string",
+                    "description": (
+                        "Working directory inside the workspace (default: the workspace root)"
+                    ),
                 },
             },
             "required": ["command", "purpose"],
@@ -372,7 +383,7 @@ TOOLS = [
     {
         "name": "send_message",
         "description": "Send a message to a contact via Telegram. "
-        "For WhatsApp, use the wacli CLI via run_command (`wacli send text`).",
+        "For WhatsApp, use the wacli CLI via bash (`wacli send text`).",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -547,52 +558,6 @@ TOOLS = [
             },
             "required": ["prompt"],
         },
-    },
-    {
-        "name": "load_skill",
-        "description": "Load a named skill document by name.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "name": {"type": "string", "description": "Skill name to load"},
-            },
-            "required": ["name"],
-        },
-    },
-    # Skill discovery (#50) — only advertised when skills_index_mode == "on_demand"
-    # (the full index is NOT injected then). Return name + summary, never bodies;
-    # the model then calls load_skill to read the chosen skill in full.
-    {
-        "name": "search_skills",
-        "description": (
-            "Find skills relevant to the current task. Returns the top matching skills "
-            "as name + summary (NOT their full content). Pass a short natural-language "
-            "query or keywords describing what you need to do, then call `load_skill` "
-            "with a returned name to read that skill's full instructions."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "query": {
-                    "type": "string",
-                    "description": "What you want to do (keywords or a short phrase)",
-                },
-                "limit": {
-                    "type": "integer",
-                    "description": "Max skills to return (default 10).",
-                },
-            },
-            "required": ["query"],
-        },
-    },
-    {
-        "name": "list_skills",
-        "description": (
-            "List every skill available to you as name + summary (NOT full content). "
-            "Use this to browse the whole catalogue; prefer `search_skills` when you "
-            "know what you're after. Call `load_skill` with a name to read one in full."
-        ),
-        "input_schema": {"type": "object", "properties": {}},
     },
     {
         "name": "remember",
@@ -798,7 +763,8 @@ TOOLS = [
         "description": (
             "List the names of stored secrets you may use (with descriptions). "
             "Returns NAMES ONLY — never values. Use a listed name by reference as "
-            "{{secret:NAME}} inside run_command."
+            "{{secret:NAME}} inside an allowlisted bash command (substitution runs "
+            "only for allowlisted commands)."
         ),
         "input_schema": {"type": "object", "properties": {}},
     },
@@ -828,15 +794,17 @@ TOOLS = [
             "required": ["name", "reason"],
         },
     },
-    # Coding harness (#76) — direct file ops confined to the configured workspace.
-    # Offered only when workspace.enabled and a directory is set. All paths are
-    # relative to the workspace root (or absolute inside it); escaping it is blocked.
+    # Coding harness (#76, #178) — direct file ops confined to the configured
+    # workspace. Offered only when workspace.enabled and a directory is set. All
+    # paths are relative to the workspace root (or absolute inside it); escaping
+    # it is blocked. Listing/searching goes through bash (ls, find, rg).
     {
-        "name": "read_file",
+        "name": "read",
         "description": (
-            "Read a file (or a slice of it) from the workspace and return its "
-            "content with line numbers. Large files are paginated — use 'offset' "
-            "and 'limit' to page through. Paths are relative to the workspace root."
+            "Read a file (or a slice of it) from the workspace. Each line comes "
+            "back as 'LINE#HH:content' — the LINE#HH prefix is an anchor you can "
+            "pass to edit. Large files are paginated — use 'offset' and 'limit' "
+            "to page through. Paths are relative to the workspace root."
         ),
         "input_schema": {
             "type": "object",
@@ -855,11 +823,11 @@ TOOLS = [
         },
     },
     {
-        "name": "write_file",
+        "name": "write",
         "description": (
             "Write content to a file in the workspace, creating intermediate "
             "directories as needed. Overwrites the file if it exists. Asks the "
-            "owner for approval first. Prefer edit_file for small changes to an "
+            "owner for approval first. Prefer edit for small changes to an "
             "existing file."
         ),
         "input_schema": {
@@ -872,88 +840,53 @@ TOOLS = [
         },
     },
     {
-        "name": "edit_file",
+        "name": "edit",
         "description": (
-            "Find-and-replace within a workspace file — the diff-like way to make "
-            "a targeted change. 'old_string' must match exactly (including "
-            "whitespace) and, unless 'multiple' is true, must be unique in the "
-            "file: include enough surrounding context to pin down one spot. Asks "
-            "the owner for approval first."
+            "Apply one or more edits to a workspace file in a single call "
+            "(all-or-nothing). Each edit is either {oldText, newText} — replace an "
+            'exact substring, unique in the file unless "all": true — or '
+            "{pos, end?, lines} — replace the line (or inclusive range) anchored by "
+            "a 'LINE#HH' prefix from read with the given lines ([] deletes). Stale "
+            "anchors (file changed since the read) are rejected. Asks the owner "
+            "for approval first."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "path": {"type": "string", "description": "File path within the workspace"},
-                "old_string": {"type": "string", "description": "Exact text to replace"},
-                "new_string": {"type": "string", "description": "Replacement text"},
-                "multiple": {
-                    "type": "boolean",
-                    "description": (
-                        "Replace all occurrences (default false = require one unique match)"
-                    ),
+                "edits": {
+                    "type": "array",
+                    "description": "Edits to apply atomically (all succeed or none apply)",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "oldText": {
+                                "type": "string",
+                                "description": "Exact text to replace (text edit)",
+                            },
+                            "newText": {"type": "string", "description": "Replacement text"},
+                            "all": {
+                                "type": "boolean",
+                                "description": "Replace every occurrence of oldText",
+                            },
+                            "pos": {
+                                "type": "string",
+                                "description": "Anchor 'LINE#HH' of the (first) line to replace",
+                            },
+                            "end": {
+                                "type": "string",
+                                "description": "Anchor of the last line of the range (inclusive)",
+                            },
+                            "lines": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Replacement lines for the anchored range",
+                            },
+                        },
+                    },
                 },
             },
-            "required": ["path", "old_string", "new_string"],
-        },
-    },
-    {
-        "name": "list_dir",
-        "description": (
-            "List files and directories one level under a workspace path. Returns "
-            "name, type (file|dir), and size."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": "Directory path within the workspace (default '.')",
-                },
-            },
-        },
-    },
-    {
-        "name": "grep",
-        "description": (
-            "Search workspace files for a regular-expression pattern (recursive). "
-            "Optionally restrict to files matching a glob via 'include' (e.g. "
-            "'*.py'). Returns file, line number, and the matching line."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "pattern": {"type": "string", "description": "Regular expression to search for"},
-                "path": {
-                    "type": "string",
-                    "description": "File or directory to search under (default '.')",
-                },
-                "include": {
-                    "type": "string",
-                    "description": "Optional filename glob filter, e.g. '*.py'",
-                },
-            },
-            "required": ["pattern"],
-        },
-    },
-    {
-        "name": "run_command_in_dir",
-        "description": (
-            "Run a shell command in a workspace directory — for linters, tests, "
-            "builds, formatters (NOT a general-purpose CLI; for arbitrary or system "
-            "commands use run_command). The working directory must be inside the "
-            "workspace. Returns stdout, stderr, and exit_code. Asks the owner for "
-            "approval first."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "command": {"type": "string", "description": "The full shell command to run"},
-                "workdir": {
-                    "type": "string",
-                    "description": "Directory within the workspace to run in (default '.')",
-                },
-            },
-            "required": ["command"],
+            "required": ["path", "edits"],
         },
     },
 ]
@@ -971,22 +904,13 @@ def _agent_scope(agent: Agent | None) -> str:
 def scoped_tools(agent: Agent | None) -> list[dict]:
     """Filter the function-tool schemas by the active agent's tool scope.
 
-    ``load_skill`` is always retained — it is the core mechanic agents rely on
-    to read their allowlisted skills. An empty scope (or no agent) = all tools.
+    An empty scope (or no agent) = all tools.
     """
     if agent is None or not agent.tools:
         return TOOLS
-    # ``load_skill`` and the vault discovery/request tools are always retained:
-    # they are the mechanics agents rely on to read skills and obtain secrets.
-    # ``search_skills``/``list_skills`` mirror ``load_skill`` (an agent needs them
-    # to discover its own allowlisted skills in on-demand mode — #50); the feature
-    # gate below still drops them when that mode is off. ``recall_memory`` too —
-    # memory is injected for every agent (scope-filtered), so its on-demand
-    # counterpart exposes nothing extra and stays available (#47).
+    # The memory and vault discovery/request tools are always retained: they are
+    # the mechanics agents rely on to recall facts and obtain secrets.
     _always = {
-        "load_skill",
-        "search_skills",
-        "list_skills",
         "recall_memory",
         "remember",
         "list_secrets",
@@ -999,7 +923,6 @@ def apply_feature_gates(
     tools: list[dict],
     *,
     secrets_available: bool,
-    skills_on_demand: bool = False,
     subagents_enabled: bool = True,
     imagegen_enabled: bool = False,
     workspace_enabled: bool = False,
@@ -1007,14 +930,10 @@ def apply_feature_gates(
 ) -> list[dict]:
     """Drop tools whose backing feature is unavailable/disabled, so the model is
     never offered a capability it can't use (defence in depth — the tool handlers
-    also refuse). The skill-discovery tools are offered only in on-demand index
-    mode (#50); in the default inject mode the full index is already in context,
-    so they'd be noise."""
+    also refuse)."""
     out = tools
     if not secrets_available:
         out = [t for t in out if t["name"] not in ("list_secrets", "request_secret")]
-    if not skills_on_demand:
-        out = [t for t in out if t["name"] not in ("search_skills", "list_skills")]
     if not subagents_enabled:
         out = [t for t in out if t["name"] != "spawn_subagent"]
     if not imagegen_enabled:
@@ -1022,19 +941,7 @@ def apply_feature_gates(
     if not search_enabled:
         out = [t for t in out if t["name"] != "web_search"]
     if not workspace_enabled:
-        out = [
-            t
-            for t in out
-            if t["name"]
-            not in (
-                "read_file",
-                "write_file",
-                "edit_file",
-                "list_dir",
-                "grep",
-                "run_command_in_dir",
-            )
-        ]
+        out = [t for t in out if t["name"] not in ("read", "write", "edit")]
     return out
 
 
@@ -1579,6 +1486,20 @@ class AgentCore:
             log.exception("Failed to resolve the default agent")
             return None
 
+    async def allowed_skills_for(
+        self, channel: str, user_id: str = "", chat_id: str = ""
+    ) -> list[str] | None:
+        """The skill allowlist of the agent serving this context (#178).
+
+        Same resolution the turn uses: a per-agent bot binds to its own agent, a
+        chat binding wins, else the default. ``None`` or an empty list means *no
+        restriction* (all skills). Used to scope the ``/zz_skill_*`` command menu
+        and its handler so an agent never advertises — or loads — a skill outside
+        its allowlist. With empty ids (startup) it resolves the bot's own agent.
+        """
+        agent = await self._resolve_agent(channel, user_id, chat_id)
+        return agent.skills if agent else None
+
     async def may_act_in_chat(
         self, channel: str, user_id: str, chat_id: str, sender_id: int
     ) -> bool:
@@ -1614,13 +1535,10 @@ class AgentCore:
 
     def _tools_for_turn(self, agent: Agent | None) -> list[dict]:
         """The function-tool schemas offered to the model this turn: the agent's
-        tool scope, with feature-gated tools dropped — including the skill-discovery
-        tools when the index is not in on-demand mode (#50). The single seam that
-        translates ``skills_index_mode`` into the advertised tool set."""
+        tool scope, with feature-gated tools dropped."""
         return apply_feature_gates(
             scoped_tools(agent),
             secrets_available=self.secret_store is not None,
-            skills_on_demand=self.config.agent.skills_index_mode == "on_demand",
             subagents_enabled=self.config.subagents.enabled,
             imagegen_enabled=self.config.tools.imagegen.enabled,
             workspace_enabled=self.config.workspace.enabled
@@ -1660,7 +1578,7 @@ class AgentCore:
         preamble = f"[Current date & time: {stamp}]"
 
         # Web artifacts (#82): the workspace 'artifacts/' folder is published to the
-        # public internet with no auth. The agent can write_file anywhere in the
+        # public internet with no auth. The agent can write anywhere in the
         # workspace, so it must KNOW this folder is special before it (or a request)
         # drops something private there — and it needs the base URL to share a link,
         # which isn't otherwise visible to the model. One always-on preamble line
@@ -1686,22 +1604,11 @@ class AgentCore:
         # turns: any of those that drop or change the block simply won't find it,
         # and the failure direction is a harmless re-send, never a blind turn.
         # Injection mode and tests pass ``None`` → always include.
-        # On-demand mode (#50): omit the full index; carry only a short, static
-        # pointer to the search_skills/list_skills tools. The pointer is identical
-        # every turn, so the same history gate that dedups the index also dedups it
-        # (sent once per session, re-sent after a /new/compaction).
         try:
-            if self.config.agent.skills_index_mode == "on_demand":
-                block = f"<available_skills>\n{SKILLS_DISCOVERY_POINTER}\n</available_skills>"
-            else:
-                skills_index = await self.skills.get_index_block(
-                    allow=agent.skills if agent else None
-                )
-                block = (
-                    f"<available_skills>\n{skills_index}\n</available_skills>"
-                    if skills_index
-                    else ""
-                )
+            skills_index = await self.skills.get_index_block(allow=agent.skills if agent else None)
+            block = (
+                f"<available_skills>\n{skills_index}\n</available_skills>" if skills_index else ""
+            )
             if block and (
                 session_key is None or not await self._skills_block_in_history(session_key, block)
             ):
@@ -2435,6 +2342,15 @@ class AgentCore:
         agent_scope = request_state.get("agent_name") or ""
 
         is_write_action = self.permissions.is_write_action(name, params)
+        # A bash command outside the executor's prefix allowlist runs workspace-
+        # confined under per-call approval (the old run_command_in_dir, folded in
+        # by #178): treat it as a write action so it is never exact-learned into
+        # an ALWAYS rule — builds/tests re-ask each time.
+        unlisted_bash = name == "bash" and not self.executor.command_allowed(
+            str(params.get("command") or "")
+        )
+        if unlisted_bash:
+            is_write_action = True
         # Write-state is tracked per distinct action (tool + params), so a
         # failure, skip, or completion of one write never blocks a different one.
         write_sig = self._write_signature(name, params) if is_write_action else None
@@ -2446,9 +2362,12 @@ class AgentCore:
         # against brand-new job ids (issue #11). ``spawn_subagent`` is likewise
         # exempt: each spawn is a distinct run (its own run id), so the agent may
         # legitimately fan out the same task more than once in a turn (#15).
+        # A non-allowlisted bash command is exempt too: re-running tests/builds
+        # in a turn is legitimate (it is a write action only so it always asks).
         if (
             is_write_action
-            and name not in ("manage_jobs", "spawn_subagent", "run_command_in_dir")
+            and name not in ("manage_jobs", "spawn_subagent")
+            and not unlisted_bash
             and write_sig in executed_writes
         ):
             return {
@@ -2475,6 +2394,14 @@ class AgentCore:
         if level == PermissionLevel.NEVER:
             log.warning("Permission DENIED (NEVER): %s — %s", name, params)
             return {"error": "This action is not allowed."}
+
+        # A non-allowlisted bash command runs workspace-confined with no executor
+        # prefix guard, so it must ASK every time — a wildcard ALWAYS rule (the
+        # #148 read rules `bash:cat*`, `bash:ls*`, …) must NOT auto-approve it, or
+        # `cat ~/.ssh/id_rsa` would read outside the workspace with no prompt.
+        # NEVER still blocks (checked above); YOLO still applies (explicit opt-in).
+        if unlisted_bash and level == PermissionLevel.ALWAYS:
+            level = PermissionLevel.ASK
 
         # YOLO bypass: when the owner put this agent+chat in YOLO, skip the approval
         # prompt for ASK actions — auto-approved without persisting a rule. The
@@ -2522,7 +2449,7 @@ class AgentCore:
             if not is_write_action:
                 # Learn an exact-command ALWAYS rule so this read auto-approves
                 # next time — but never from a degenerate key. A bare
-                # `run_command` (command arg missing) would whitelist every
+                # `bash` (command arg missing) would whitelist every
                 # command and nullify the allowlist (#79); learn_always_rule
                 # refuses those and keeps asking.
                 self.permissions.learn_always_rule(
@@ -2532,11 +2459,34 @@ class AgentCore:
                 )
 
         # --- Dispatch ---
-        if name == "run_command":
-            log.info("Tool call: run_command — %s", params.get("purpose", ""))
+        if name == "bash":
+            log.info("Tool call: bash — %s", params.get("purpose", ""))
             command = params.get("command")
             if not command:
-                return {"error": "run_command requires a non-empty 'command' argument."}
+                return {"error": "bash requires a non-empty 'command' argument."}
+            # Optional working directory — must live inside the workspace (#178).
+            workspace = self._workspace_cwd()
+            cwd = workspace
+            workdir = str(params.get("workdir") or "").strip()
+            if workdir and workdir != ".":
+                if workspace is None:
+                    return {"error": "workdir requires the coding workspace to be enabled."}
+                try:
+                    resolved = coding.resolve_in_workspace(workspace, workdir)
+                except coding.WorkspaceError as exc:
+                    return {"error": str(exc)}
+                if not resolved.is_dir():
+                    return {"error": f"Not a directory: {workdir}"}
+                cwd = str(resolved)
+            if unlisted_bash:
+                # Outside the prefix allowlist: runs ONLY workspace-confined, under
+                # the per-call approval that already happened above (the old
+                # run_command_in_dir path, #76/#178). No secret substitution here —
+                # the {{secret:}} boundary stays on the allowlisted rail.
+                if workspace is None:
+                    # No workspace → surface the executor's allowlist guidance.
+                    return await self.executor.run_command(command)
+                return await self.executor.run_in_dir(command, cwd)
             # Secret substitution boundary (issue #19): {{secret:NAME}} is resolved
             # ONLY here, for the model's generic command tool, after an ACL check.
             # Structured tools (send_email/send_message/…) build their commands
@@ -2571,9 +2521,7 @@ class AgentCore:
                 store = self.secret_store
                 resolve = store.infra_resolve if store else (lambda _n: None)
                 agent_env = effective_tool_env(self.config, agent, resolve)
-            return await self.executor.run_command(
-                command, tool_env=agent_env, cwd=self._workspace_cwd()
-            )
+            return await self.executor.run_command(command, tool_env=agent_env, cwd=cwd)
 
         if name == "send_email":
             result = await self._tool_send_email(params, request_state)
@@ -2618,35 +2566,6 @@ class AgentCore:
         if name == "generate_image":
             return await self._tool_generate_image(params, request_state)
 
-        if name == "load_skill":
-            skill_name = str(params.get("name", "")).strip()
-            if not skill_name:
-                return {"error": "Missing skill name."}
-            allowed = (request_state or {}).get("allowed_skills")
-            if allowed and skill_name not in allowed:
-                return {"error": f"Skill '{skill_name}' is not available to the active agent."}
-            content = await self.skills.get_skill_content(skill_name)
-            if not content:
-                return {"error": f"Skill not found: {skill_name}"}
-            return {"name": skill_name, "content": content}
-
-        if name == "search_skills":
-            query = str(params.get("query", "")).strip()
-            log.info("Tool call: search_skills — %r", query)
-            allowed = (request_state or {}).get("allowed_skills")
-            limit = params.get("limit")
-            try:
-                limit = int(limit) if limit else 10
-            except TypeError, ValueError:
-                limit = 10
-            matches = await self.skills.search_index(query, allow=allowed, limit=max(1, limit))
-            return {"skills": matches}
-
-        if name == "list_skills":
-            log.info("Tool call: list_skills")
-            allowed = (request_state or {}).get("allowed_skills")
-            return {"skills": await self.skills.index_entries(allow=allowed)}
-
         if name == "remember":
             return await self._tool_remember(params, request_state)
 
@@ -2688,27 +2607,19 @@ class AgentCore:
         if name == "request_secret":
             return await self._tool_request_secret(params, channel, user_id, request_state)
 
-        # Coding harness (#76)
-        if name == "read_file":
-            return self._tool_read_file(params)
-        if name == "list_dir":
-            return self._tool_list_dir(params)
-        if name == "grep":
-            return self._tool_grep(params)
-        if name == "write_file":
-            result = self._tool_write_file(params)
+        # Coding harness (#76, #178)
+        if name == "read":
+            return self._tool_read(params)
+        if name == "write":
+            result = self._tool_write(params)
             if is_write_action and self._is_tool_success(result):
                 executed_writes.add(write_sig)
             return result
-        if name == "edit_file":
-            result = self._tool_edit_file(params)
+        if name == "edit":
+            result = self._tool_edit(params)
             if is_write_action and self._is_tool_success(result):
                 executed_writes.add(write_sig)
             return result
-        if name == "run_command_in_dir":
-            # Exempt from executed_writes dedup (see below): re-running tests/builds
-            # in a turn is legitimate, so it is not added to executed_writes.
-            return await self._tool_run_command_in_dir(params)
 
         return {"error": f"Unknown tool: {name}"}
 
@@ -2729,9 +2640,7 @@ class AgentCore:
     ) -> dict:
         """Fresh per-turn state tracking write actions and approval decisions.
 
-        ``allowed_skills`` carries the active agent's skill allowlist so
-        ``load_skill`` can refuse skills outside scope (defence in depth — the
-        index already hides them). ``depth``/``origin``/``agent_obj`` carry the
+        ``depth``/``origin``/``agent_obj`` carry the
         context a ``spawn_subagent`` call needs to narrow scope, cap recursion,
         and post a background result back to the originating chat (issue #15).
         """
@@ -2741,8 +2650,7 @@ class AgentCore:
             "approvals": {},
             # Media produced mid-turn (e.g. generate_image) to deliver natively (#55).
             "pending_attachments": [],
-            "allowed_skills": agent.skills if agent else None,
-            # Secret scope for {{secret:}} ACL in run_command (issue #19).
+            # Secret scope for {{secret:}} ACL in bash commands (issue #19).
             "agent_secrets": list(agent.secrets) if agent else [],
             "agent_name": agent.name if agent else "",
             # Subagent plumbing (issue #15).
@@ -3076,12 +2984,12 @@ class AgentCore:
         return ws.directory
 
     def _workspace_cwd(self) -> str | None:
-        """Workspace root as a run_command working directory, or None (#151).
+        """Workspace root as a bash working directory, or None (#151).
 
-        Unifies the two filesystem roots: when the harness is on, `run_command`
+        Unifies the two filesystem roots: when the harness is on, `bash`
         (git clone, git, gh) runs in the SAME tree the file tools resolve under,
-        so a cloned repo is immediately visible to read_file/grep and its edits
-        are committable. Created on demand (like write_file) so a fresh, correctly
+        so a cloned repo is immediately visible to read/rg, editable with
+        write/edit, and committable. Created on demand so a fresh, correctly
         configured workspace works without the owner pre-making the directory.
         """
         ws = self._workspace_dir()
@@ -3094,14 +3002,14 @@ class AgentCore:
         except OSError:
             return None  # unwritable path — fall back to the process cwd
 
-    def _tool_read_file(self, params: dict) -> dict:
+    def _tool_read(self, params: dict) -> dict:
         workspace = self._workspace_dir()
         if workspace is None:
             return {"error": "The coding workspace is not enabled (workspace.enabled)."}
         path = str(params.get("path", "")).strip()
         if not path:
             return {"error": "Missing 'path'."}
-        log.info("Tool call: read_file — %s", path)
+        log.info("Tool call: read — %s", path)
         try:
             return coding.read_file(
                 workspace, path, _as_int(params.get("offset"), 0), _as_int(params.get("limit"), 100)
@@ -3111,44 +3019,14 @@ class AgentCore:
         except OSError as exc:
             return {"error": f"Could not read file: {exc}"}
 
-    def _tool_list_dir(self, params: dict) -> dict:
-        workspace = self._workspace_dir()
-        if workspace is None:
-            return {"error": "The coding workspace is not enabled (workspace.enabled)."}
-        path = str(params.get("path", ".")).strip() or "."
-        log.info("Tool call: list_dir — %s", path)
-        try:
-            return coding.list_dir(workspace, path)
-        except coding.WorkspaceError as exc:
-            return {"error": str(exc)}
-        except OSError as exc:
-            return {"error": f"Could not list directory: {exc}"}
-
-    def _tool_grep(self, params: dict) -> dict:
-        workspace = self._workspace_dir()
-        if workspace is None:
-            return {"error": "The coding workspace is not enabled (workspace.enabled)."}
-        pattern = str(params.get("pattern", ""))
-        if not pattern:
-            return {"error": "Missing 'pattern'."}
-        path = str(params.get("path", ".")).strip() or "."
-        include = str(params.get("include", "") or "")
-        log.info("Tool call: grep — %r in %s (%s)", pattern, path, include or "*")
-        try:
-            return coding.grep(workspace, pattern, path, include)
-        except coding.WorkspaceError as exc:
-            return {"error": str(exc)}
-        except OSError as exc:
-            return {"error": f"Search failed: {exc}"}
-
-    def _tool_write_file(self, params: dict) -> dict:
+    def _tool_write(self, params: dict) -> dict:
         workspace = self._workspace_dir()
         if workspace is None:
             return {"error": "The coding workspace is not enabled (workspace.enabled)."}
         path = str(params.get("path", "")).strip()
         if not path:
             return {"error": "Missing 'path'."}
-        log.info("Tool call: write_file — %s", path)
+        log.info("Tool call: write — %s", path)
         try:
             return coding.write_file(workspace, path, str(params.get("content", "")))
         except coding.WorkspaceError as exc:
@@ -3156,44 +3034,21 @@ class AgentCore:
         except OSError as exc:
             return {"error": f"Could not write file: {exc}"}
 
-    def _tool_edit_file(self, params: dict) -> dict:
+    def _tool_edit(self, params: dict) -> dict:
         workspace = self._workspace_dir()
         if workspace is None:
             return {"error": "The coding workspace is not enabled (workspace.enabled)."}
         path = str(params.get("path", "")).strip()
         if not path:
             return {"error": "Missing 'path'."}
-        log.info("Tool call: edit_file — %s", path)
+        log.info("Tool call: edit — %s", path)
+        edits = params.get("edits")
         try:
-            return coding.edit_file(
-                workspace,
-                path,
-                str(params.get("old_string", "")),
-                str(params.get("new_string", "")),
-                bool(params.get("multiple", False)),
-            )
+            return coding.edit_file(workspace, path, edits)
         except coding.WorkspaceError as exc:
             return {"error": str(exc)}
         except OSError as exc:
             return {"error": f"Could not edit file: {exc}"}
-
-    async def _tool_run_command_in_dir(self, params: dict) -> dict:
-        workspace = self._workspace_dir()
-        if workspace is None:
-            return {"error": "The coding workspace is not enabled (workspace.enabled)."}
-        command = str(params.get("command", "")).strip()
-        if not command:
-            return {"error": "Missing 'command'."}
-        workdir = str(params.get("workdir", ".")).strip() or "."
-        # Confine the working directory to the workspace before executing.
-        try:
-            resolved = coding.resolve_in_workspace(workspace, workdir)
-        except coding.WorkspaceError as exc:
-            return {"error": str(exc)}
-        if not resolved.is_dir():
-            return {"error": f"Not a directory: {workdir}"}
-        log.info("Tool call: run_command_in_dir — %s (in %s)", command, workdir)
-        return await self.executor.run_in_dir(command, str(resolved))
 
     async def _notify_secret_request(
         self, channel: str, user_id: str, name: str, reason: str, link: str
@@ -4185,7 +4040,7 @@ class AgentCore:
         per-profile preview; we surface it so the user sees the page next to the
         Approve/Deny buttons. Returns None for non-browser actions or no preview.
         """
-        if tool_name != "run_command" or not isinstance(params, dict):
+        if tool_name != "bash" or not isinstance(params, dict):
             return None
         cmd = params.get("command", "")
         if "browser.py act" not in cmd:
@@ -4238,7 +4093,7 @@ class AgentCore:
             return "approved"
         except Exception:
             # The prompt couldn't be delivered (commonly: too long for the
-            # channel's message limit — a huge run_command). Retry once with a
+            # channel's message limit — a huge bash command). Retry once with a
             # clipped, image-less prompt so a legitimate long action stays
             # approvable. The request_id still maps to the real action, so
             # truncating the *display* text changes nothing that executes.

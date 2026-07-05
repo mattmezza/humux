@@ -40,7 +40,7 @@ def test_per_domain_rule_add_affects_permissions_then_delete(tmp_path, monkeypat
 
     # The rule really changes the permission decision for that domain.
     decision = agent.permissions.check(
-        "run_command",
+        "bash",
         {"command": "python3 tools/browser.py act --url https://github.com/x --steps []"},
     )
     assert decision == PermissionLevel.ALWAYS

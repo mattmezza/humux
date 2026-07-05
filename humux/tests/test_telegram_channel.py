@@ -270,3 +270,147 @@ async def test_approval_request_chunks_and_keyboard_rides_last() -> None:
     assert all(len(c.args[1]) <= TELEGRAM_LIMIT for c in calls)
     assert all(c.kwargs.get("reply_markup") is None for c in calls[:-1])
     assert calls[-1].kwargs.get("reply_markup") is not None
+
+
+# --- /zz_skill_* commands (#178) ---
+
+
+def _skills_agent(entries, content="BODY", allow=None):
+    """Stub AgentCore with a skills engine returning ``entries``.
+
+    ``allow`` is the serving agent's skill allowlist (None/[] = all); index_entries
+    honours it exactly as the real engine does, so command scoping is exercised.
+    """
+
+    async def _index_entries(allow=None):
+        return [e for e in entries if e["name"] in allow] if allow else entries
+
+    agent = SimpleNamespace()
+    agent.skills = SimpleNamespace(
+        index_entries=_index_entries,
+        get_skill_content=AsyncMock(return_value=content),
+    )
+    agent.process = AsyncMock()
+    agent.allowed_skills_for = AsyncMock(return_value=allow)
+    return agent
+
+
+@pytest.mark.asyncio
+async def test_register_commands_appends_skill_entries() -> None:
+    ch = object.__new__(TelegramChannel)
+    ch.channel_name = "telegram"
+    ch.app = SimpleNamespace(bot=AsyncMock())
+    ch.agent = _skills_agent([{"name": "artifact-hosting", "summary": "Publish pages"}])
+    await ch.register_commands()
+    (commands,) = ch.app.bot.set_my_commands.await_args.args
+    by_name = {c.command: c.description for c in commands}
+    assert by_name["zz_skill_artifact_hosting"] == "Publish pages"
+    for c in commands:  # every generated name must be Telegram-valid
+        assert re.fullmatch(r"[a-z0-9_]{1,32}", c.command), c.command
+
+
+@pytest.mark.asyncio
+async def test_zz_skill_command_loads_into_history_and_chat() -> None:
+    ch = _dedup_channel()
+    ch.agent = _skills_agent([{"name": "artifact-hosting", "summary": "s"}], content="SKILL BODY")
+    ch.send = AsyncMock()
+    await ch._on_text(_text_update("/zz_skill_artifact_hosting"), None)
+    await asyncio.sleep(0)
+    ch._handle_text.assert_not_awaited()  # handled as a command, not a turn
+    ch.agent.process.assert_awaited_once()
+    kwargs = ch.agent.process.await_args.kwargs
+    assert kwargs["respond"] is False  # record-only: rides into history
+    assert "SKILL BODY" in kwargs["message"]
+    ch.send.assert_awaited_once()
+    assert "SKILL BODY" in ch.send.await_args.args[1]
+
+
+@pytest.mark.asyncio
+async def test_zz_skill_command_gated_when_not_responding() -> None:
+    # A record-only turn (respond=False: unaddressed group message, or a sender
+    # who failed the _may_act gate) must NOT trigger skill loading (#178 review).
+    ch = _dedup_channel()
+    ch._turn_routing = lambda u, m, c: {
+        "user_id": str(u.effective_user.id),
+        "speaker_tag": "",
+        "respond": False,
+        "addressed": False,
+    }
+    ch.agent = _skills_agent([{"name": "himalaya-email", "summary": "s"}])
+    ch.send = AsyncMock()
+    await ch._on_text(_text_update("/zz_skill_himalaya_email"), None)
+    await asyncio.sleep(0)
+    ch.agent.process.assert_not_awaited()
+    ch.send.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_register_commands_skips_colliding_slugs() -> None:
+    # Two skills whose slugs fold to the same command must not produce a duplicate
+    # BotCommand — Telegram rejects the whole list if it does (#178 review).
+    ch = object.__new__(TelegramChannel)
+    ch.channel_name = "telegram"
+    ch.app = SimpleNamespace(bot=AsyncMock())
+    ch.agent = _skills_agent(
+        [{"name": "web-search", "summary": "a"}, {"name": "web_search", "summary": "b"}]
+    )
+    await ch.register_commands()
+    (commands,) = ch.app.bot.set_my_commands.await_args.args
+    slugs = [c.command for c in commands]
+    assert len(slugs) == len(set(slugs))  # no duplicate command names
+    assert slugs.count("zz_skill_web_search") == 1
+
+
+@pytest.mark.asyncio
+async def test_zz_skill_unknown_name_reports_error() -> None:
+    ch = _dedup_channel()
+    ch.agent = _skills_agent([])
+    ch.send = AsyncMock()
+    await ch._on_text(_text_update("/zz_skill_nope"), None)
+    await asyncio.sleep(0)
+    ch.agent.process.assert_not_awaited()
+    assert "not available" in ch.send.await_args.args[1]
+
+
+@pytest.mark.asyncio
+async def test_zz_skill_out_of_allowlist_refused() -> None:
+    # A command for a skill outside the serving agent's allowlist is refused even
+    # if it exists in the store — the handler is an enforcement point (#178).
+    ch = _dedup_channel()
+    ch.agent = _skills_agent(
+        [{"name": "himalaya-email", "summary": "s"}, {"name": "wacli-whatsapp", "summary": "s"}],
+        allow=["himalaya-email"],  # wacli-whatsapp withheld from this agent
+    )
+    ch.send = AsyncMock()
+    await ch._on_text(_text_update("/zz_skill_wacli_whatsapp"), None)
+    await asyncio.sleep(0)
+    ch.agent.process.assert_not_awaited()  # body never loaded
+    assert "not available" in ch.send.await_args.args[1]
+
+
+@pytest.mark.asyncio
+async def test_register_commands_scoped_to_agent_allowlist() -> None:
+    # The published menu only advertises skills the bot's agent may load (#178).
+    ch = object.__new__(TelegramChannel)
+    ch.channel_name = "telegram:coach"
+    ch.app = SimpleNamespace(bot=AsyncMock())
+    ch.agent = _skills_agent(
+        [{"name": "himalaya-email", "summary": "s"}, {"name": "wacli-whatsapp", "summary": "s"}],
+        allow=["himalaya-email"],
+    )
+    await ch.register_commands()
+    (commands,) = ch.app.bot.set_my_commands.await_args.args
+    slugs = {c.command for c in commands}
+    assert "zz_skill_himalaya_email" in slugs
+    assert "zz_skill_wacli_whatsapp" not in slugs  # out of allowlist → no command
+
+
+@pytest.mark.asyncio
+async def test_zz_skill_aimed_at_other_bot_is_ignored() -> None:
+    ch = _dedup_channel()  # _bot_username = "coachbot"
+    ch.agent = _skills_agent([{"name": "weather", "summary": "s"}])
+    ch.send = AsyncMock()
+    await ch._on_text(_text_update("/zz_skill_weather@otherbot"), None)
+    await asyncio.sleep(0)
+    ch.send.assert_not_awaited()
+    ch.agent.process.assert_not_awaited()

@@ -49,7 +49,7 @@ async def test_reflect_stores_lesson(store) -> None:
             "lesson": "Weather API timed out; should retry with a different provider",
             "tool_issues": [
                 {
-                    "tool": "run_command",
+                    "tool": "bash",
                     "issue": "API timeout",
                     "suggestion": "Use backup weather API",
                 }
@@ -60,7 +60,7 @@ async def test_reflect_stores_lesson(store) -> None:
     llm = _LLMStub(response)
     tool_log = [
         {
-            "name": "run_command",
+            "name": "bash",
             "args": {"command": "curl weather.api"},
             "result": {"error": "timeout"},
         },
@@ -140,7 +140,7 @@ async def test_reflect_handles_llm_error(store) -> None:
 @pytest.mark.asyncio
 async def test_reflect_handles_invalid_json(store) -> None:
     llm = _LLMStub("This is not valid JSON")
-    tool_log = [{"name": "run_command", "args": {}, "result": {"ok": True}}]
+    tool_log = [{"name": "bash", "args": {}, "result": {"ok": True}}]
     stored = await store.reflect_on_task(
         llm=llm,
         model="test-model",
@@ -163,7 +163,7 @@ async def test_reflect_deduplicates_lessons(store) -> None:
         }
     )
     llm = _LLMStub(response)
-    tool_log = [{"name": "run_command", "args": {}, "result": {"error": "timeout"}}]
+    tool_log = [{"name": "bash", "args": {}, "result": {"error": "timeout"}}]
 
     stored1 = await store.reflect_on_task(
         llm=llm, model="m", user_msg="Weather?", agent_msg="Failed", tool_log=tool_log
@@ -190,7 +190,7 @@ async def test_reflect_validates_outcome(store) -> None:
         }
     )
     llm = _LLMStub(response)
-    tool_log = [{"name": "run_command", "args": {}, "result": {"ok": True}}]
+    tool_log = [{"name": "bash", "args": {}, "result": {"ok": True}}]
 
     stored = await store.reflect_on_task(
         llm=llm, model="m", user_msg="msg", agent_msg="resp", tool_log=tool_log
@@ -218,7 +218,7 @@ async def test_reflect_validates_category(store) -> None:
         }
     )
     llm = _LLMStub(response)
-    tool_log = [{"name": "run_command", "args": {}, "result": {"ok": True}}]
+    tool_log = [{"name": "bash", "args": {}, "result": {"ok": True}}]
 
     stored = await store.reflect_on_task(
         llm=llm, model="m", user_msg="msg", agent_msg="resp", tool_log=tool_log
@@ -260,7 +260,7 @@ async def test_format_for_prompt_with_reflections(store) -> None:
                 json.dumps(
                     [
                         {
-                            "tool": "run_command",
+                            "tool": "bash",
                             "issue": "wrong case",
                             "suggestion": "Use INBOX not inbox",
                         }
@@ -338,15 +338,15 @@ class TestFormatToolLog:
         assert "web_search: OK" in result
 
     def test_failed_tool(self):
-        log = [{"name": "run_command", "result": {"error": "command not found"}}]
+        log = [{"name": "bash", "result": {"error": "command not found"}}]
         result = ReflectionStore._format_tool_log(log)
-        assert "run_command: ERROR" in result
+        assert "bash: ERROR" in result
         assert "command not found" in result
 
     def test_truncates_long_results(self):
-        log = [{"name": "run_command", "result": {"stdout": "x" * 1000}}]
+        log = [{"name": "bash", "result": {"stdout": "x" * 1000}}]
         result = ReflectionStore._format_tool_log(log)
-        assert "run_command: OK" in result
+        assert "bash: OK" in result
 
 
 # -- #156: dedup / phantom-tool hygiene --

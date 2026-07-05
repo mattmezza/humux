@@ -142,7 +142,7 @@ Subject: Meeting tomorrow
 WhatsApp is a **tool**, not a channel (issue #97). humux does not run an inbound WhatsApp
 bot; instead the agent reads and sends WhatsApp on demand by running
 [wacli](https://github.com/openclaw/wacli) — a local WhatsApp CLI written in Go — through
-the `run_command` tool. No cloud APIs or business verification needed. Reads run without
+the `bash` tool. No cloud APIs or business verification needed. Reads run without
 asking; sending a message asks for confirmation first. See the **wacli-whatsapp** skill for
 the full command reference.
 
@@ -167,7 +167,7 @@ Enable the tool per agent in the **Agents** editor, like any other tool.
 
 ### How it works
 
-- wacli is invoked on demand via `run_command` — there is no always-on subprocess or webhook
+- wacli is invoked on demand via `bash` — there is no always-on subprocess or webhook
 - Authentication (device linking) is done via QR code through the Tools tab
 - The agent reads with `wacli messages/contacts/chats/groups` and sends with `wacli send text`
 
