@@ -1383,9 +1383,20 @@ class AgentCore:
                     channel,
                 )
                 return AgentResponse(text="")
-            identity = agent.name if agent else "the assistant"
+            identity = (agent.agent_name or agent.name) if agent else "the assistant"
             llm = self._background_llm(rd_cfg.provider, rd_cfg.thinking_level)
-            if not await should_reply(llm, rd_cfg.model, message, identity):
+            # Feed the gate the recent turns (so follow-ups / pronouns read) and
+            # the sibling bots' names (so "addressed to someone else" is anchored
+            # to real agents). Both best-effort — the gate works without them.
+            history = await self.history.get_messages(channel, user_id, chat_id)
+            others = [
+                a.agent_name or a.name
+                for a in await self.agents.list_agents()
+                if a.enabled and a.bot_token and a.name != (agent.name if agent else "")
+            ]
+            if not await should_reply(
+                llm, rd_cfg.model, message, identity, history=history, others=others
+            ):
                 self._release_reply(channel, cap_chat, reserved)
                 return AgentResponse(text="")
 
