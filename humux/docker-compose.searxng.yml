@@ -1,0 +1,24 @@
+# SearXNG search backend (issue #64) — a self-hosted, zero-cost alternative to
+# Tavily. Layer this over the main compose file to run SearXNG alongside humux:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.searxng.yml up -d
+#
+# Then in the admin UI (Tools → Web search) or setup wizard, pick provider
+# "SearXNG" and set the instance URL to  http://searxng:8080  (the agent reaches
+# the sidecar by service name on the shared compose network). The JSON API is
+# pre-enabled via ./searxng/settings.yml — no manual configuration needed.
+services:
+  searxng:
+    image: searxng/searxng:latest
+    container_name: humux-searxng
+    restart: unless-stopped
+    ports:
+      # Optional: exposes the browsable UI on the host. Drop this line to keep
+      # SearXNG reachable only from the agent on the internal compose network.
+      - "8080:8080"
+    volumes:
+      - ./searxng:/etc/searxng:rw
+    environment:
+      # Public base URL of the instance (used for absolute links); harmless at
+      # personal scale even if you don't expose it.
+      - SEARXNG_BASE_URL=http://localhost:8080/

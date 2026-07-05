@@ -1,0 +1,21 @@
+# SearXNG settings for the bundled humux sidecar (issue #64).
+# Inherits SearXNG's shipped defaults and overrides only what humux needs:
+# the JSON API (off by default upstream) and a couple of sane personal-scale knobs.
+# No manual editing required — `docker compose -f docker-compose.yml -f
+# docker-compose.searxng.yml up` gives a working JSON backend at http://searxng:8080.
+use_default_settings: true
+
+server:
+  # CHANGE THIS to any random string before exposing the instance publicly.
+  secret_key: "humux-searxng-change-me"
+  # ponytail: limiter off = no Redis sidecar needed at personal volumes. Turn it
+  # on (and add a redis service) only if the instance is public / high-traffic.
+  limiter: false
+  image_proxy: true
+
+search:
+  # The whole point of this override: expose the machine-readable JSON API the
+  # agent's web_search tool calls. html stays on for the browsable UI.
+  formats:
+    - html
+    - json

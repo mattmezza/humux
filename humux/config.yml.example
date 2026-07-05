@@ -111,8 +111,10 @@ admin:
 
 search:
   enabled: true
-  provider: "tavily"
-  api_key: "${TAVILY_API_KEY}"
+  provider: "tavily"            # "tavily" (hosted, needs api_key) | "searxng" (self-hosted, needs searxng_url)
+  api_key: "${TAVILY_API_KEY}"  # Tavily only
+  searxng_url: ""               # SearXNG only — instance base URL, e.g. http://searxng:8080.
+                                # Stand one up: docker compose -f docker-compose.yml -f docker-compose.searxng.yml up -d
   max_results: 5
 
 # Vision fallback — when the active model can't read images, route image
