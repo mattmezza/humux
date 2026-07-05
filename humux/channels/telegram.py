@@ -734,7 +734,15 @@ class TelegramChannel:
         user_id = user.id
         # The pressed button rides the approval message, which lives in the same
         # topic as the turn — fold it so the resume routes back there (#183).
-        folded = self._fold(chat, getattr(query, "message", None))
+        msg = getattr(query, "message", None)
+        folded = self._fold(chat, msg)
+        if msg is not None and not hasattr(msg, "is_topic_message"):
+            # An InaccessibleMessage (button older than ~48h) has lost its topic;
+            # fall back to the sender's last known chat when that is a topic of
+            # this same chat, so a Stop/Approve still reaches the topic's turn.
+            prev = self._last_chat_for_user.get(user_id)
+            if isinstance(prev, str) and prev.startswith(f"{folded}:"):
+                folded = prev
         if folded is not None:
             self._last_chat_for_user[user_id] = folded
         # Same gate as an inbound turn (#129): a button press (approve/deny/cancel)
@@ -831,15 +839,24 @@ class TelegramChannel:
             log.info("Reaction skipped on %s/%s: %s", cid, message_id, exc)
 
     async def send_approval_request(
-        self, user_id: str, request_id: str, description: str, image_path: str | None = None
+        self,
+        user_id: str,
+        request_id: str,
+        description: str,
+        image_path: str | None = None,
+        chat_id: str | None = None,
     ) -> None:
         """Send a permission approval prompt with Approve/Deny inline buttons.
 
         When ``image_path`` is given (e.g. a browser screenshot), send it as a
         photo with the buttons so the user can watch and approve from their phone.
+        ``chat_id`` is the asking turn's own chat (a folded topic id in a forum,
+        #183) so the prompt lands in the conversation that triggered it; without
+        it (older callers, subagent paths) fall back to the sender's last chat.
         """
         target_id = int(user_id)
-        chat_id = self._last_chat_for_user.get(target_id, target_id)
+        if not chat_id:
+            chat_id = self._last_chat_for_user.get(target_id, target_id)
         keyboard = InlineKeyboardMarkup(
             [
                 [
@@ -913,11 +930,15 @@ class TelegramChannel:
         # a permission prompt it is waiting, not thinking, so the placeholder label
         # must say so instead of a stale "Thinking…". send_approval_request /
         # _on_approval_callback flip ``waiting`` and poke ``changed`` to re-render.
-        # ponytail: one entry per routed chat, assumes turns in a chat don't overlap
-        # (approvals are interactive/serial anyway) — key by (chat, turn) if they do.
+        # Keyed by the FOLDED id, not the routed base chat: two topics of one
+        # forum group are separate conversations since #183 and can run turns
+        # concurrently — a base-chat key would make them share (and clobber)
+        # one placeholder state.
+        # ponytail: one entry per conversation, assumes turns in a conversation
+        # don't overlap (they're serialized by the per-chat lock anyway).
         state = {"waiting": False, "changed": asyncio.Event()}
         waits = self.__dict__.setdefault("_typing_waits", {})
-        waits[str(cid)] = state
+        waits[str(chat_id)] = state
 
         async def _placeholder():
             # Wait out the delay; a turn that finishes first never posts (no flash).
@@ -977,7 +998,7 @@ class TelegramChannel:
             yield
         finally:
             turn_over.set()
-            waits.pop(str(cid), None)
+            waits.pop(str(chat_id), None)
             typing_task.cancel()
             for t in (typing_task, placeholder_task):
                 try:
@@ -988,9 +1009,9 @@ class TelegramChannel:
     def _set_typing_waiting(self, chat_id: int | str, waiting: bool) -> None:
         """Flip the active turn's placeholder between "Thinking…" and "Waiting for
         your approval…" (#147). No-op when no turn is showing a placeholder for
-        this chat (e.g. a subagent or admin-API approval with no _typing wrapper)."""
-        cid, _ = self._route(chat_id)
-        state = self.__dict__.get("_typing_waits", {}).get(str(cid))
+        this chat (e.g. a subagent or admin-API approval with no _typing wrapper).
+        Keyed by the folded conversation id — same key ``_typing`` stores (#183)."""
+        state = self.__dict__.get("_typing_waits", {}).get(str(chat_id))
         if state is None:
             return
         state["waiting"] = waiting

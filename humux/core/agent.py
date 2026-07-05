@@ -20,7 +20,7 @@ from zoneinfo import ZoneInfo
 from tavily import TavilyClient
 
 from core import coding, imagegen
-from core.agents import Agent, AgentStore, default_agent_from_values
+from core.agents import Agent, AgentStore, default_agent_from_values, topic_base_id
 from core.compaction import compact_messages, should_compact
 from core.config import Config
 from core.embeddings import LOCAL_PROVIDERS, EmbeddingClient, LocalEmbeddingClient
@@ -1352,7 +1352,11 @@ class AgentCore:
             # in the same chat (each its own task) see the reservation and trip
             # the cap — closing the check-then-act race that would otherwise let
             # a burst sail past the cap. A SKIP releases its slot below.
-            reserved = self._reserve_reply(channel, chat_id, rd_cfg)
+            # The cap is per GROUP, not per topic (#183): a folded topic id would
+            # give a bot-loop one fresh budget per topic, reopening the storm the
+            # cap exists to close (#36/#53).
+            cap_chat = topic_base_id(chat_id) or chat_id
+            reserved = self._reserve_reply(channel, cap_chat, rd_cfg)
             if reserved is None:
                 log.warning(
                     "Reply suppressed: rate cap %d/%ds hit for chat=%s channel=%s",
@@ -1365,7 +1369,7 @@ class AgentCore:
             identity = agent.name if agent else "the assistant"
             llm = self._background_llm(rd_cfg.provider, rd_cfg.thinking_level)
             if not await should_reply(llm, rd_cfg.model, message, identity):
-                self._release_reply(channel, chat_id, reserved)
+                self._release_reply(channel, cap_chat, reserved)
                 return AgentResponse(text="")
 
         # Goal decomposition — classify and (if complex) decompose the request.
@@ -1475,8 +1479,8 @@ class AgentCore:
         # agent serves that agent in every topic; a topic binding still wins.
         bound = await self.history.get_chat_agent(channel, user_id, chat_id)
         if not bound:
-            base = str(chat_id).partition(":")[0]
-            if base != str(chat_id):
+            base = topic_base_id(chat_id)
+            if base is not None:
                 bound = await self.history.get_chat_agent(channel, user_id, base)
         if bound:
             agent = await self._load_agent(bound)
@@ -2429,7 +2433,12 @@ class AgentCore:
                 decision = approvals[match_key]
             else:
                 decision = await self._request_approval(
-                    name, params, channel, user_id, scope=agent_scope
+                    name,
+                    params,
+                    channel,
+                    user_id,
+                    scope=agent_scope,
+                    chat_id=str(request_state.get("origin", {}).get("chat_id") or ""),
                 )
                 if is_write_action:
                     write_decisions[write_sig] = decision
@@ -3980,7 +3989,13 @@ class AgentCore:
         return result
 
     async def _request_approval(
-        self, tool_name: str, params: dict, channel: str, user_id: str, scope: str = ""
+        self,
+        tool_name: str,
+        params: dict,
+        channel: str,
+        user_id: str,
+        scope: str = "",
+        chat_id: str = "",
     ) -> str:
         """Ask the user to approve a single tool call via their channel.
 
@@ -3993,6 +4008,7 @@ class AgentCore:
             tool_name,
             params,
             scope=scope,
+            chat_id=chat_id,
         )
 
     async def _batch_approve_writes(
@@ -4035,7 +4051,12 @@ class AgentCore:
             return
         lines = "\n\n".join(f"{i}. {desc}" for i, (_, desc) in enumerate(pending, 1))
         description = f"Approve these {len(pending)} actions?\n\n{lines}"
-        decision = await self._await_approval(description, channel, user_id)
+        decision = await self._await_approval(
+            description,
+            channel,
+            user_id,
+            chat_id=str(request_state.get("origin", {}).get("chat_id") or ""),
+        )
         for sig, _ in pending:
             write_decisions[sig] = decision
 
@@ -4070,6 +4091,7 @@ class AgentCore:
         tool_name: str | None = None,
         params: dict | None = None,
         scope: str = "",
+        chat_id: str = "",
     ) -> str:
         """Send an approval prompt to the channel and wait for the response.
 
@@ -4091,6 +4113,7 @@ class AgentCore:
                 request_id,
                 description,
                 image_path=self._approval_image(tool_name, params),
+                chat_id=chat_id,
             )
         except AttributeError:
             # Channel doesn't support approval requests — auto-approve
@@ -4105,7 +4128,9 @@ class AgentCore:
             # truncating the *display* text changes nothing that executes.
             log.warning("Approval send failed; retrying with truncated prompt", exc_info=True)
             try:
-                await ch.send_approval_request(user_id, request_id, _truncate_approval(description))
+                await ch.send_approval_request(
+                    user_id, request_id, _truncate_approval(description), chat_id=chat_id
+                )
             except Exception:
                 # Still undeliverable — fail CLOSED. A gate that cannot ask the
                 # user must never silently approve (#79). Drop the pending

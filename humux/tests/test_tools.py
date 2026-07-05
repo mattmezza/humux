@@ -413,7 +413,7 @@ def _job_call(call_id: str, **params):
     return LLMToolCall(id=call_id, name="manage_jobs", arguments={"action": "create", **params})
 
 
-async def _approve(name, params, channel, user_id, scope=""):
+async def _approve(name, params, channel, user_id, scope="", chat_id=""):
     return "approved"
 
 
@@ -647,7 +647,7 @@ async def test_skipping_one_write_does_not_block_a_different_one(agent, monkeypa
     """Skipping a write blocks only that exact action, not other writes."""
     decisions = {"ping mum": "skipped", "ping dad": "approved"}
 
-    async def fake_approval(name, params, channel, user_id, scope=""):
+    async def fake_approval(name, params, channel, user_id, scope="", chat_id=""):
         return decisions.get(params.get("task"), "approved")
 
     monkeypatch.setattr(agent, "_request_approval", fake_approval)
@@ -681,7 +681,7 @@ async def test_batch_approval_asks_once_for_multiple_writes(agent, monkeypatch) 
     """Several writes in one turn must trigger exactly one approval prompt."""
     prompts = {"n": 0}
 
-    async def fake_await(description, channel, user_id, tool_name=None, params=None):
+    async def fake_await(description, channel, user_id, tool_name=None, params=None, chat_id=""):
         prompts["n"] += 1
         return "approved"
 
@@ -706,7 +706,7 @@ async def test_batch_approval_asks_once_for_multiple_writes(agent, monkeypatch) 
 async def test_batch_approval_denied_blocks_every_write(agent, monkeypatch) -> None:
     """Denying the batch blocks all of its writes, not just one."""
 
-    async def deny(description, channel, user_id, tool_name=None, params=None):
+    async def deny(description, channel, user_id, tool_name=None, params=None, chat_id=""):
         return "denied"
 
     monkeypatch.setattr(agent, "_await_approval", deny)
@@ -729,7 +729,7 @@ async def test_single_write_is_not_batched(agent, monkeypatch) -> None:
     """A lone write is left to the per-call path, not the batch prompt."""
     prompts = {"n": 0}
 
-    async def fake_await(description, channel, user_id, tool_name=None, params=None):
+    async def fake_await(description, channel, user_id, tool_name=None, params=None, chat_id=""):
         prompts["n"] += 1
         return "approved"
 
@@ -867,7 +867,9 @@ class _FailingChannel:
     def __init__(self) -> None:
         self.calls: list[str] = []
 
-    async def send_approval_request(self, user_id, request_id, description, image_path=None):
+    async def send_approval_request(
+        self, user_id, request_id, description, image_path=None, chat_id=None
+    ):
         self.calls.append(description)
         raise RuntimeError("message too long")
 

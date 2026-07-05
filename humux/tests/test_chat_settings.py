@@ -41,15 +41,23 @@ def test_chat_permits_topic_inherits_group_setting() -> None:
     a = Agent(name="coach", chat_settings={"-100": {"mode": "users", "users": [7]}})
     assert a.chat_permits("-100:5", 7) is True
     assert a.chat_permits("-100:5", 8) is False
+    # Through the real load-path normalizer: the explicit everyone override must
+    # survive _as_chat_settings, or the topic could never relax the group gate.
     a = Agent(
         name="coach",
-        chat_settings={
-            "-100": {"mode": "nobody", "users": []},
-            "-100:5": {"mode": "everyone", "users": []},
-        },
+        chat_settings=_as_chat_settings(
+            {
+                "-100": {"mode": "nobody", "users": []},
+                "-100:5": {"mode": "everyone", "users": []},
+            }
+        ),
     )
     assert a.chat_permits("-100:5", 7) is True  # topic override wins
     assert a.chat_permits("-100:6", 7) is False  # sibling topic inherits the group
+    # A colon in a non-numeric id (e.g. "cli:<session>") is NOT a topic id — it
+    # must never fall back to another entry's setting.
+    a = Agent(name="coach", chat_settings={"cli": {"mode": "nobody", "users": []}})
+    assert a.chat_permits("cli:abc123", 7) is True
 
 
 # ---- _as_chat_settings: coercion + normalisation ----------------------------
@@ -60,9 +68,15 @@ def test_as_chat_settings_from_json_string_and_ids() -> None:
     assert got == {"c": {"mode": "users", "users": [5, 6]}}  # non-numeric dropped
 
 
-def test_as_chat_settings_drops_everyone_and_junk() -> None:
-    assert _as_chat_settings({"c": {"mode": "everyone", "users": [1]}}) == {}
-    assert _as_chat_settings({"c": {"mode": "bogus"}}) == {}  # bogus → everyone → dropped
+def test_as_chat_settings_keeps_explicit_everyone_drops_junk() -> None:
+    # An explicit "everyone" is KEPT (#183): a topic entry with everyone is how a
+    # topic relaxes a gated group — dropping it would silently re-gate the topic.
+    assert _as_chat_settings({"c": {"mode": "everyone", "users": [1]}}) == {
+        "c": {"mode": "everyone", "users": [1]}
+    }
+    assert _as_chat_settings({"c": {"mode": "bogus"}}) == {
+        "c": {"mode": "everyone", "users": []}  # bogus coerces to everyone
+    }
     assert _as_chat_settings("not json") == {}
     assert _as_chat_settings(42) == {}
     assert _as_chat_settings({"c": "not-a-dict"}) == {}

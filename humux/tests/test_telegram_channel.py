@@ -272,6 +272,30 @@ async def test_approval_request_chunks_and_keyboard_rides_last() -> None:
     assert calls[-1].kwargs.get("reply_markup") is not None
 
 
+@pytest.mark.asyncio
+async def test_approval_request_routes_to_turn_topic() -> None:
+    # The asking turn's own chat id (a folded topic id, #183) wins over the
+    # sender's last chat, so the prompt lands in the topic that triggered it —
+    # not wherever the user (or a sibling topic) last wrote.
+    ch = _channel_with_mock_bot()
+    ch._last_chat_for_user = {123: "-100:9"}  # stale: user last wrote in topic 9
+    await ch.send_approval_request("123", "req1", "do thing?", chat_id="-100:5")
+    args, kwargs = ch.app.bot.send_message.call_args
+    assert args[0] == -100
+    assert kwargs.get("message_thread_id") == 5
+
+
+@pytest.mark.asyncio
+async def test_approval_request_falls_back_to_last_chat() -> None:
+    # Without an explicit chat (subagent/older paths) the last-chat routing stays.
+    ch = _channel_with_mock_bot()
+    ch._last_chat_for_user = {123: "-100:9"}
+    await ch.send_approval_request("123", "req1", "do thing?")
+    args, kwargs = ch.app.bot.send_message.call_args
+    assert args[0] == -100
+    assert kwargs.get("message_thread_id") == 9
+
+
 # --- /zz_skill_* commands (#178) ---
 
 
