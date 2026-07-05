@@ -35,7 +35,7 @@ from pydantic import BaseModel, Field
 
 from core.artifacts import ARTIFACT_CSP, NOT_FOUND_HTML, resolve, serving_base, valid_id
 from core.compaction import effective_window
-from core.config import CompactionConfig
+from core.config import CompactionConfig, search_ready
 from core.config_store import ConfigStore
 from core.goal_decomposition import classify_complexity, decompose_goal
 from core.llm import LLMClient, get_sent_payload
@@ -262,6 +262,8 @@ async def _wizard_step_context(step: str, config_store: ConfigStore) -> dict[str
         val = await config_store.get("search.api_key")
         if val and not _is_vault_ref(val):
             ctx["tavily_key"] = val
+        ctx["searxng_url"] = await config_store.get("search.searxng_url") or ""
+        ctx["search_provider"] = await config_store.get("search.provider") or "tavily"
     elif step == "admin":
         val = await config_store.get("admin.password_hash")
         if val:
@@ -1416,6 +1418,7 @@ def create_admin_app(
         search_provider = await config_store.get("search.provider") or "tavily"
         search_api_key = await config_store.get("search.api_key") or ""
         search_vaulted = _is_vault_ref(search_api_key)
+        search_searxng_url = await config_store.get("search.searxng_url") or ""
         search_max_results = await config_store.get("search.max_results") or "5"
 
         # Web artifacts (issue #82) — only the public-serving toggle remains; the
@@ -1500,6 +1503,7 @@ def create_admin_app(
             search_provider=search_provider,
             search_api_key="" if search_vaulted else search_api_key,
             search_vaulted=search_vaulted,
+            search_searxng_url=search_searxng_url,
             search_max_results=search_max_results,
         )
 
@@ -2156,7 +2160,8 @@ def create_admin_app(
                 agent.memory.hygiene_enabled = mem_cfg.hygiene_enabled
                 agent.memory.hygiene_similarity_threshold = mem_cfg.hygiene_similarity_threshold
                 agent.reflections.max_reflections = new_config.task_reflection.max_reflections
-                if new_config.search.enabled and new_config.search.api_key:
+                agent.search_enabled = search_ready(new_config.search)
+                if agent.search_enabled and new_config.search.provider == "tavily":
                     from tavily import TavilyClient
 
                     agent.search_client = TavilyClient(api_key=new_config.search.api_key)
@@ -3665,6 +3670,8 @@ def create_admin_app(
             return await _test_telegram(payload.get("bot_token", ""))
         if service == "tavily":
             return await _test_tavily(payload.get("api_key", ""))
+        if service == "searxng":
+            return await _test_searxng(payload.get("url", ""))
         return {"ok": False, "error": f"Unknown service: {service}"}
 
     @app.post("/setup/list-models")
@@ -4294,3 +4301,23 @@ async def _test_tavily(api_key: str) -> dict:
         return {"ok": True, "results": len(result.get("results", []))}
     except Exception as exc:
         return {"ok": False, "error": str(exc)}
+
+
+async def _test_searxng(url: str) -> dict:
+    if not url.strip():
+        return {"ok": False, "error": "Instance URL is empty"}
+    try:
+        import httpx
+
+        base = url.strip().rstrip("/")
+        async with httpx.AsyncClient(timeout=httpx.Timeout(15.0)) as client:
+            resp = await client.get(
+                f"{base}/search",
+                params={"q": "test", "format": "json"},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        return {"ok": True, "results": len(data.get("results", []))}
+    except Exception as exc:
+        # A 403/JSON error usually means the instance hasn't enabled the JSON format.
+        return {"ok": False, "error": f"{exc} (is JSON format enabled in settings.yml?)"}
