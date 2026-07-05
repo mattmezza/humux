@@ -52,6 +52,9 @@
         <label class="label">Character &amp; tone <span class="text-muted">— who the agent is + tone & behaviour</span></label>
         <textarea class="textarea" x-model="character" style="min-height:260px; font-size:0.8rem; line-height:1.5"
                   placeholder="You are a strength &amp; conditioning coach…&#10;&#10;## Tone&#10;- Direct and motivating…"></textarea>
+        <div class="hint flex justify-between"><span></span>
+          <span class="text-[10px] text-muted" x-text="'~' + window.estimateTokens(character) + ' tokens'"></span>
+        </div>
       </div>
 
       {# Per-agent voice override — only the voices valid for the active global

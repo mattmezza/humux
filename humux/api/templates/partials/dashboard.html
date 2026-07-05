@@ -10,7 +10,7 @@
         <h2 class="text-sm text-accent font-semibold mb-1">Agent</h2>
         <p class="text-xs text-muted">
           {% if running %}
-            Running{% if scheduler_jobs > 0 %} · {{ scheduler_jobs }} scheduled job{{ 's' if scheduler_jobs != 1 else '' }}{% endif %}
+            Running{% if scheduler_jobs > 0 %} · <a href="/admin?tab=jobs" class="text-accent hover:underline">{{ scheduler_jobs }} scheduled job{{ 's' if scheduler_jobs != 1 else '' }}</a>{% endif %}
           {% else %}
             Not running
           {% endif %}
@@ -33,20 +33,23 @@
 
   {# Token usage — real data from TokenUsageStore #}
   <div class="grid grid-cols-3 gap-3">
+    {% set cr_24h = (tok_24h.total_cache_read / (tok_24h.total_cache_read + tok_24h.total_cache_creation) * 100)|round(1) if (tok_24h.total_cache_read + tok_24h.total_cache_creation) > 0 else 0 %}
+    {% set cr_7d = (tok_7d.total_cache_read / (tok_7d.total_cache_read + tok_7d.total_cache_creation) * 100)|round(1) if (tok_7d.total_cache_read + tok_7d.total_cache_creation) > 0 else 0 %}
+    {% set cr_30d = (tok_30d.total_cache_read / (tok_30d.total_cache_read + tok_30d.total_cache_creation) * 100)|round(1) if (tok_30d.total_cache_read + tok_30d.total_cache_creation) > 0 else 0 %}
     <div class="card px-4 py-3">
       <div class="text-xs text-muted mb-0.5">Tokens · 24h</div>
-      <div class="text-lg text-accent font-semibold">{{ tok_24h.total_input + tok_24h.total_output }}</div>
-      <div class="text-[10px] text-muted mt-0.5">{{ tok_24h.total_input }} in / {{ tok_24h.total_output }} out</div>
+      <div class="text-lg text-accent font-semibold">{{ fmt_tokens(tok_24h.total_input + tok_24h.total_output) }}</div>
+      <div class="text-[10px] text-muted mt-0.5">{{ fmt_tokens(tok_24h.total_input) }} in / {{ fmt_tokens(tok_24h.total_output) }} out{% if cr_24h > 0 %} / {{ cr_24h }}% cached{% endif %}</div>
     </div>
     <div class="card px-4 py-3">
       <div class="text-xs text-muted mb-0.5">Tokens · 7d</div>
-      <div class="text-lg text-accent font-semibold">{{ tok_7d.total_input + tok_7d.total_output }}</div>
-      <div class="text-[10px] text-muted mt-0.5">{{ tok_7d.total_input }} in / {{ tok_7d.total_output }} out</div>
+      <div class="text-lg text-accent font-semibold">{{ fmt_tokens(tok_7d.total_input + tok_7d.total_output) }}</div>
+      <div class="text-[10px] text-muted mt-0.5">{{ fmt_tokens(tok_7d.total_input) }} in / {{ fmt_tokens(tok_7d.total_output) }} out{% if cr_7d > 0 %} / {{ cr_7d }}% cached{% endif %}</div>
     </div>
     <div class="card px-4 py-3">
       <div class="text-xs text-muted mb-0.5">Tokens · 30d</div>
-      <div class="text-lg text-accent font-semibold">{{ tok_30d.total_input + tok_30d.total_output }}</div>
-      <div class="text-[10px] text-muted mt-0.5">{{ tok_30d.total_input }} in / {{ tok_30d.total_output }} out</div>
+      <div class="text-lg text-accent font-semibold">{{ fmt_tokens(tok_30d.total_input + tok_30d.total_output) }}</div>
+      <div class="text-[10px] text-muted mt-0.5">{{ fmt_tokens(tok_30d.total_input) }} in / {{ fmt_tokens(tok_30d.total_output) }} out{% if cr_30d > 0 %} / {{ cr_30d }}% cached{% endif %}</div>
     </div>
   </div>
 
@@ -56,9 +59,10 @@
     <h3 class="text-xs text-muted uppercase tracking-wider mb-2">Provider breakdown (24h)</h3>
     <div class="space-y-1">
       {% for provider, counts in tok_24h.breakdown.items() %}
+      {% set pcr = (counts.cache_read / (counts.cache_read + counts.cache_creation) * 100)|round(1) if (counts.cache_read + counts.cache_creation) > 0 else 0 %}
       <div class="flex items-center justify-between text-xs">
         <span class="text-gray-300">{{ provider }}</span>
-        <span class="text-muted">{{ counts.input }} in / {{ counts.output }} out</span>
+        <span class="text-muted">{{ fmt_tokens(counts.input) }} in / {{ fmt_tokens(counts.output) }} out{% if pcr > 0 %} / {{ pcr }}% cached{% endif %}</span>
       </div>
       {% endfor %}
     </div>
@@ -66,7 +70,7 @@
   {% endif %}
 
   {# Recent activity #}
-  <div class="card p-4">
+  <div class="card p-4 overflow-hidden">
     <div class="flex items-center justify-between mb-3">
       <h3 class="text-xs text-muted uppercase tracking-wider">Recent activity</h3>
     </div>
@@ -75,13 +79,13 @@
       {% for entry in log_entries[:20] %}
       {% set ts = entry.get('time', '') %}
       {% set msg = entry.get('message', '') %}
-      <a href="/admin?tab=inspect&amp;inspectsub=logs" class="flex items-start gap-2 text-xs font-mono no-underline hover:bg-surface-hover rounded px-1 py-0.5 -mx-1 transition-colors">
+      <a href="/admin?tab=inspect&amp;inspectsub=logs" class="flex items-start gap-2 text-xs font-mono no-underline hover:bg-surface-hover rounded px-1 py-0.5 -mx-1 transition-colors min-w-0">
         <span class="shrink-0 text-muted"
               style="color:{% if entry.level == 'ERROR' %}#c66{% elif entry.level == 'WARNING' %}#ca6{% else %}#888{% endif %}">
           {{ entry.level|truncate(4, True, '') }}
         </span>
         <span class="text-muted shrink-0">{{ ts }}</span>
-        <span class="text-gray-300 truncate">{{ msg }}</span>
+        <span class="text-gray-300 truncate min-w-0">{{ msg }}</span>
       </a>
       {% endfor %}
     </div>

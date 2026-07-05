@@ -52,10 +52,11 @@
   </div>
 
   {# Your personalia #}
-  <div class="card" x-data="{ persResult: '', persOk: false }">
+  <div class="card" x-data="{ personal: '', persResult: '', persOk: false }" x-init="personal = $refs.persEditor.value">
     <h2 class="text-base mb-1">Your personalia</h2>
     <p class="text-muted text-xs mb-3">Facts about you that the agent should know — preferences, routines, contacts, anything that helps it assist you better. Markdown format.</p>
-    <textarea class="textarea" id="you-pers-editor"
+    <textarea class="textarea" id="you-pers-editor" x-ref="persEditor"
+              x-model="personal"
               style="min-height:300px; font-size:0.8rem; line-height:1.5; tab-size:2"
               @keydown.tab.prevent="
                 const start = $el.selectionStart;
@@ -63,6 +64,10 @@
                 $el.value = $el.value.substring(0, start) + '  ' + $el.value.substring(end);
                 $el.selectionStart = $el.selectionEnd = start + 2;
               ">{{ you_personalia }}</textarea>
+    <div class="flex justify-between items-center mt-1">
+      <span></span>
+      <span class="text-[10px] text-muted" x-text="'~' + window.estimateTokens(personal) + ' tokens'"></span>
+    </div>
     <div class="flex justify-end mt-3">
       <button class="btn-primary btn-sm"
               @click="

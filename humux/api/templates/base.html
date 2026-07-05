@@ -10,6 +10,7 @@
   <link rel="manifest" href="/static/manifest.json">
   <link rel="apple-touch-icon" href="/static/icon-192.png">
   <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <style>[x-cloak]{display:none!important}</style>
 
   <title>{% block title %}Agent Admin — humux{% endblock %}</title>
   <link rel="stylesheet" href="/static/style.css">
@@ -17,8 +18,85 @@
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
   {% block head %}{% endblock %}
 </head>
-<body class="py-8" style="padding-left: 32px; padding-right: 32px;">
-  {% block body %}{% endblock %}
+<body class="min-h-screen flex flex-col">
+
+  {# Header bar #}
+  <header class="sticky top-0 z-40 bg-[#0a0a0a]/95 backdrop-blur border-b border-border px-8 py-2.5">
+    <div class="max-w-7xl mx-auto flex items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <a href="/" class="flex items-center gap-2 no-underline">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="22" height="22">
+            <rect width="32" height="32" rx="6" fill="#060606"/>
+            <text x="16" y="22" font-family="'JetBrains Mono',monospace" font-size="18" font-weight="bold" fill="#6c9" text-anchor="middle">h</text>
+          </svg>
+          <span class="text-sm font-semibold tracking-wide">humux</span>
+        </a>
+        <span id="status-badge"
+              hx-get="/partials/status" hx-trigger="load, refresh-status from:body" hx-swap="innerHTML">
+          <span class="text-muted text-xs">Loading...</span>
+        </span>
+      </div>
+      <nav class="flex items-center gap-4 text-xs text-muted">
+        <a href="https://docs.humux.dev" target="_blank" class="hover:text-accent transition-colors">Docs</a>
+        <a href="https://github.com/mattmezza/humux" target="_blank" class="hover:text-accent transition-colors">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  {# Main content #}
+  <main class="flex-1 px-8 py-6">
+    <div class="max-w-7xl mx-auto">
+      {% block body %}{% endblock %}
+    </div>
+  </main>
+
+  {# Footer #}
+  <footer class="border-t border-border px-8 py-3 text-xs text-muted" x-data="{ showAbout: false }">
+    <div class="max-w-7xl mx-auto flex items-center justify-between gap-4">
+      <span>humux <span id="footer-version" hx-get="/version" hx-trigger="load" hx-swap="innerHTML">…</span></span>
+      <nav class="flex items-center gap-4">
+        <a href="https://docs.humux.dev" target="_blank" class="hover:text-accent transition-colors">Docs</a>
+        <a href="https://github.com/mattmezza/humux" target="_blank" class="hover:text-accent transition-colors">GitHub</a>
+        <button @click="showAbout = true" class="hover:text-accent transition-colors cursor-pointer bg-transparent border-0 text-xs text-muted p-0">About</button>
+      </nav>
+    </div>
+
+    {# About modal #}
+    <div x-show="showAbout"
+         class="fixed inset-0 z-50 flex items-center justify-center"
+         style="background:rgba(0,0,0,0.65);"
+         x-cloak
+         @keydown.window.escape="showAbout = false">
+      <div class="card mx-4" style="max-width:440px;width:100%;" @click.outside="showAbout = false">
+        <div class="flex items-start justify-between mb-4 gap-3">
+          <a :href="'https://humux.dev?ref=' + window.location.hostname" target="_blank" class="flex items-center gap-2 no-underline hover:opacity-80 transition-opacity group">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="22" height="22">
+              <rect width="32" height="32" rx="6" fill="#060606"/>
+              <text x="16" y="22" font-family="'JetBrains Mono',monospace" font-size="18" font-weight="bold" fill="#6c9" text-anchor="middle">h</text>
+            </svg>
+            <div>
+              <span class="text-sm font-semibold text-accent group-hover:underline">humux</span>
+              <span class="font-mono text-[10px] text-muted block leading-tight">/ˈhjuːmʌks/</span>
+            </div>
+          </a>
+          <button class="btn btn-sm shrink-0" @click="showAbout = false">Close</button>
+        </div>
+        <p class="text-xs text-muted mb-3">
+          <strong class="text-gray-200">Human Multiplexer</strong> — a self-hosted personal AI agent.
+          humux is a product by
+          <a href="https://matteo.merola.co/software" target="_blank" class="text-accent hover:underline">Merola Software &amp; Services</a>.
+        </p>
+        <div class="flex items-center gap-3 text-xs mb-4">
+          <a href="https://github.com/mattmezza/humux" target="_blank" class="text-accent hover:underline">GitHub</a>
+          <a href="https://docs.humux.dev" target="_blank" class="text-accent hover:underline">Documentation</a>
+          <a :href="'https://humux.dev?ref=' + window.location.hostname" target="_blank" class="text-accent hover:underline">humux.dev</a>
+        </div>
+        <p class="text-[10px] text-muted border-t border-border pt-3">
+          Released under the MIT License · 2026 Merola Software &amp; Services
+        </p>
+      </div>
+    </div>
+  </footer>
 
   <div id="toast" style="position: fixed; right: 24px; bottom: 24px; display: none; z-index: 100; max-width: 360px;"></div>
 
@@ -1275,6 +1353,21 @@
         window.showToast(msg, false);
       }
     });
+
+    // Global: format a token count with k/M/G suffix (#199).
+    // 12530 → "12.53k", 1.23M → "1230000", 100.4M → "100400000", 1.34G → "1340000000"
+    function formatTokens(n) {
+      if (n >= 1e9) return (n / 1e9).toFixed(2).replace(/\.?0+$/, '') + 'G';
+      if (n >= 1e6) return (n / 1e6).toFixed(2).replace(/\.?0+$/, '') + 'M';
+      if (n >= 1e3) return (n / 1e3).toFixed(2).replace(/\.?0+$/, '') + 'k';
+      return String(n);
+    }
+    // Estimate tokens from character count (chars / 3.5).
+    function estimateTokens(text) {
+      return formatTokens(Math.round((text || '').length / 3.5));
+    }
+    window.formatTokens = formatTokens;
+    window.estimateTokens = estimateTokens;
 
     // Global: listen for HX-Trigger showToast events from the server
     document.body.addEventListener('showToast', function(e) {
