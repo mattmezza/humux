@@ -1,6 +1,6 @@
 {
-  "name": "Humux Admin",
-  "short_name": "Humux",
+  "name": "humux",
+  "short_name": "humux",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#1e293b",
