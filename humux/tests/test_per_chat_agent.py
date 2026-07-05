@@ -197,17 +197,37 @@ async def test_bind_chat_agent_clears_session_system(tmp_path) -> None:
 # ---- Telegram chat id folding ----------------------------------------------
 
 
-def _fold(chat):
-    return TelegramChannel._fold(types.SimpleNamespace(), chat)
+def _fold(chat, message=None):
+    return TelegramChannel._fold(types.SimpleNamespace(), chat, message)
 
 
 def test_fold_uses_chat_id() -> None:
-    # Forum topics were dropped (#133): a message's context is just its chat id.
+    # No topic on the message → the context is just the chat id.
     assert _fold(types.SimpleNamespace(id=-100123)) == -100123
 
 
 def test_fold_no_chat_returns_none() -> None:
     assert _fold(None) is None
+
+
+def test_fold_topic_message_encodes_thread() -> None:
+    # A forum-topic message folds to "<chat>:<thread>" so each topic is its own
+    # conversation and the reply routes back to that topic (#183).
+    msg = types.SimpleNamespace(message_thread_id=45, is_topic_message=True)
+    assert _fold(types.SimpleNamespace(id=-100123), msg) == "-100123:45"
+
+
+def test_fold_ignores_thread_of_plain_reply() -> None:
+    # A reply in a non-forum group carries message_thread_id but is NOT a topic
+    # message — it must keep the bare chat id (same conversation, no re-route).
+    msg = types.SimpleNamespace(message_thread_id=45, is_topic_message=False)
+    assert _fold(types.SimpleNamespace(id=-100123), msg) == -100123
+
+
+def test_fold_general_topic_keeps_bare_id() -> None:
+    # The General topic has no thread id set — bare chat id, as before forums.
+    msg = types.SimpleNamespace(message_thread_id=None, is_topic_message=False)
+    assert _fold(types.SimpleNamespace(id=-100123), msg) == -100123
 
 
 def test_route_roundtrip() -> None:

@@ -184,19 +184,31 @@ class TelegramChannel:
 
     # -- Context id helpers --------------------------------------------------
 
-    def _fold(self, chat) -> int | str | None:
+    def _fold(self, chat, message=None) -> int | str | None:
         """The context id for a chat — its id, or ``None`` when there is no chat
-        (the caller falls back to the sender's user id)."""
-        return chat.id if chat else None
+        (the caller falls back to the sender's user id).
+
+        A message in a forum topic folds to ``"<chat>:<thread>"`` (#183) so each
+        topic is its own conversation and the reply routes back to that topic
+        (``_route`` splits the id into chat + ``message_thread_id``). The General
+        topic has ``is_topic_message`` unset, so it keeps the bare chat id —
+        same as before forums, and same as every non-forum chat.
+        """
+        if not chat:
+            return None
+        thread = getattr(message, "message_thread_id", None)
+        if thread and getattr(message, "is_topic_message", False):
+            return f"{chat.id}:{thread}"
+        return chat.id
 
     @staticmethod
     def _route(chat_id: int | str) -> tuple[int | str, dict]:
-        """Split a legacy folded ``"<chat>:<thread>"`` id for the Bot API.
+        """Split a folded ``"<chat>:<thread>"`` id for the Bot API.
 
-        Forum topics were dropped (#133), so new ids are never folded — but a chat
-        id stored while topics were on can still be ``"<chat>:<thread>"``, so this
-        stays to route it. Returns ``(chat_id, kwargs)`` where kwargs carries
-        ``message_thread_id`` when a thread is encoded, else empty (unchanged).
+        ``_fold`` encodes a forum-topic message as ``"<chat>:<thread>"`` (#183);
+        this splits it back so the reply lands in that topic. Returns
+        ``(chat_id, kwargs)`` where kwargs carries ``message_thread_id`` when a
+        thread is encoded, else empty (unchanged).
         """
         base, sep, thread = str(chat_id).partition(":")
         if sep and thread.isdigit() and base.lstrip("-").isdigit():
@@ -455,7 +467,7 @@ class TelegramChannel:
         if not user or not message:
             return
         sender_id = user.id
-        folded = self._fold(chat)
+        folded = self._fold(chat, message)
         routing = self._turn_routing(update, message, context)
         convo_user = routing["user_id"]
         self._remember_chat(convo_user, folded)
@@ -503,7 +515,10 @@ class TelegramChannel:
             ):
                 asyncio.create_task(
                     self._handle_skill_command(
-                        base.lower()[len("/zz_skill_") :], convo_user, str(chat_id), message.message_id
+                        base.lower()[len("/zz_skill_") :],
+                        convo_user,
+                        str(chat_id),
+                        message.message_id,
                     ),
                     name=f"tg-skill-{convo_user}",
                 )
@@ -539,7 +554,7 @@ class TelegramChannel:
         if not user or not message:
             return
         sender_id = user.id
-        folded = self._fold(chat)
+        folded = self._fold(chat, message)
         routing = self._turn_routing(update, message, context)
         convo_user = routing["user_id"]
         self._remember_chat(convo_user, folded)
@@ -596,7 +611,7 @@ class TelegramChannel:
         if not user or not message:
             return
         sender_id = user.id
-        folded = self._fold(chat)
+        folded = self._fold(chat, message)
         routing = self._turn_routing(update, message, context)
         convo_user = routing["user_id"]
         self._remember_chat(convo_user, folded)
@@ -650,7 +665,9 @@ class TelegramChannel:
             name=f"tg-photo-{convo_user}",
         )
 
-    async def _handle_skill_command(self, slug: str, convo_user: str, chat_id: str, message_id: int) -> None:
+    async def _handle_skill_command(
+        self, slug: str, convo_user: str, chat_id: str, message_id: int
+    ) -> None:
         """/zz_skill_<name>: load a skill from the store into the conversation (#178, #187).
 
         The body is recorded in history as a record-only inbound turn (so the
@@ -715,7 +732,9 @@ class TelegramChannel:
         await query.answer()  # Acknowledge the button press
 
         user_id = user.id
-        folded = self._fold(chat)
+        # The pressed button rides the approval message, which lives in the same
+        # topic as the turn — fold it so the resume routes back there (#183).
+        folded = self._fold(chat, getattr(query, "message", None))
         if folded is not None:
             self._last_chat_for_user[user_id] = folded
         # Same gate as an inbound turn (#129): a button press (approve/deny/cancel)

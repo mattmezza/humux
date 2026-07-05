@@ -14,7 +14,7 @@ def _dedup_channel() -> TelegramChannel:
     ch.channel_name = "telegram"
     ch._bot_username = "coachbot"
     ch._last_inbound = {}
-    ch._fold = lambda chat: None
+    ch._fold = lambda chat, message=None: None
     ch._remember_chat = lambda *a: None
     ch._reply_context = lambda m: ""
     ch._may_act = AsyncMock(return_value=True)
