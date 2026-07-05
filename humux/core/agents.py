@@ -196,8 +196,18 @@ class Agent:
 
         No stored setting = everyone allowed (unchanged behaviour). ``nobody``
         blocks all; ``users`` allows only the listed Telegram ids (#129).
+
+        A forum-topic id (``"<chat>:<thread>"``, #183) with no setting of its own
+        falls back to the group's setting, so a gate on the group covers every
+        topic; a topic-specific setting still wins.
         """
-        setting = self.chat_settings.get(chat_id) if isinstance(self.chat_settings, dict) else None
+        if not isinstance(self.chat_settings, dict):
+            return True
+        setting = self.chat_settings.get(chat_id)
+        if setting is None:
+            base = topic_base_id(chat_id)
+            if base is not None:
+                setting = self.chat_settings.get(base)
         if not isinstance(setting, dict):
             return True
         mode = setting.get("mode", "everyone")
@@ -279,14 +289,28 @@ def _as_tool_config(value: object) -> dict:
     return {}
 
 
+def topic_base_id(chat_id: object) -> str | None:
+    """The group id behind a folded Telegram forum-topic id (#183), or ``None``.
+
+    A topic id is ``"<chat>:<thread>"`` with both halves numeric — the same
+    validation the Telegram channel's ``_route`` applies, so a colon in an
+    unrelated id (e.g. a ``"cli:<session>"`` chat) never reads as a topic.
+    """
+    base, sep, thread = str(chat_id).partition(":")
+    if sep and thread.isdigit() and base.lstrip("-").isdigit():
+        return base
+    return None
+
+
 def _as_chat_settings(value: object) -> dict:
     """Coerce a frontmatter / form / DB-column value into per-chat settings (#129).
 
     Shape: ``{chat_id: {"mode": everyone|nobody|users, "users": [int]}}``. Accepts
-    a parsed dict (frontmatter/form) or a JSON string (DB column). ``everyone``
-    entries are dropped (that is the default — an absent chat is unrestricted), so
-    the stored dict stays lean. Non-numeric user ids and malformed entries are
-    discarded so a broken value never breaks load.
+    a parsed dict (frontmatter/form) or a JSON string (DB column). An explicit
+    ``everyone`` entry is kept: since #183 an absent topic entry inherits the
+    group's setting, so "everyone" on a topic is how it relaxes a gated group —
+    dropping it would silently re-gate the topic. Non-numeric user ids and
+    malformed entries are discarded so a broken value never breaks load.
     """
     if isinstance(value, str) and value.strip():
         try:
@@ -302,8 +326,6 @@ def _as_chat_settings(value: object) -> dict:
         mode = str(spec.get("mode", "everyone") or "everyone").strip().lower()
         if mode not in ("everyone", "nobody", "users"):
             mode = "everyone"
-        if mode == "everyone":
-            continue  # the default — no need to store it
         users: list[int] = []
         for u in spec.get("users") or []:
             try:

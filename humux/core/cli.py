@@ -165,7 +165,12 @@ class CliChannel:
         print(f"\n{text}\n")
 
     async def send_approval_request(
-        self, user_id: str, request_id: str, description: str, image_path: str | None = None
+        self,
+        user_id: str,
+        request_id: str,
+        description: str,
+        image_path: str | None = None,
+        chat_id: str | None = None,  # unused: the CLI has one conversation on screen
     ) -> None:
         if self.yolo:  # --yolo: approve everything, no prompt (this call only, no rule)
             sys.stderr.write(f"\r\033[K\033[2m  · [yolo] auto-approved: {description}\033[0m\n")
