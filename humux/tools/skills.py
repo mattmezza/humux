@@ -23,17 +23,22 @@ from core.skills import SkillsStore  # noqa: E402
 
 NAME_PATTERN = re.compile(r"^[a-z0-9-]+$")
 
+# Resolve paths relative to this script's location, not CWD (which is the
+# workspace when run via bash). This ensures the CLI always finds the correct
+# DB and seed dir regardless of the calling context.  See issue #180.
+_ROOT = Path(__file__).resolve().parent.parent
+
 
 def _default_db_path() -> str:
     if Path("/app/data").exists():
         return "/app/data/skills.db"
-    return "data/skills.db"
+    return str(_ROOT / "data/skills.db")
 
 
 def _default_seed_dir() -> str:
     if Path("/app/skills").exists():
         return "/app/skills"
-    return "skills"
+    return str(_ROOT / "skills")
 
 
 def _validate_name(name: str) -> str:

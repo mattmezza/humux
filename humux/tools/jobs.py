@@ -26,10 +26,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from core.job_store import VALID_STATUSES, VALID_TYPES, JobStore  # noqa: E402
 
-DB_PATH = "data/jobs.db"
-# Also check the Docker path
+# Resolve relative to script location, not CWD (see issue #180).
+_ROOT = Path(__file__).resolve().parent.parent
+_DEFAULT_DB = str(_ROOT / "data/jobs.db")
 if Path("/app/data").exists():
     DB_PATH = "/app/data/jobs.db"
+else:
+    DB_PATH = _DEFAULT_DB
 
 
 def _get_store() -> JobStore:

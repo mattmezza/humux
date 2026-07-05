@@ -20,9 +20,14 @@ import vobject
 import yaml
 from dotenv import load_dotenv
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+# Resolve relative to script location, not CWD (see issue #180).
+_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_ROOT))
 from core.config import _resolve_env_vars  # noqa: E402
 from tools.contacts_auth import get_google_access_token  # noqa: E402
+
+_DEFAULT_CONFIG_DB = str(_ROOT / "data/config.db")
+_DEFAULT_CONFIG = str(_ROOT / "config.yml")
 
 
 def _load_contacts_providers_from_db(db_path: str) -> dict[str, dict]:
@@ -46,7 +51,7 @@ def _load_contacts_providers_from_db(db_path: str) -> dict[str, dict]:
 
 
 def _load_contacts_providers(
-    config_path: str = "config.yml", db_path: str = "data/config.db"
+    config_path: str = _DEFAULT_CONFIG, db_path: str = _DEFAULT_CONFIG_DB
 ) -> dict[str, dict]:
     providers = _load_contacts_providers_from_db(db_path)
     if providers:
@@ -330,8 +335,8 @@ def _is_google(provider: dict) -> bool:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Contacts CLI")
-    parser.add_argument("--config", default="config.yml", help="Path to config.yml")
-    parser.add_argument("--db", default="data/config.db", help="Path to config DB")
+    parser.add_argument("--config", default=_DEFAULT_CONFIG, help="Path to config.yml")
+    parser.add_argument("--db", default=_DEFAULT_CONFIG_DB, help="Path to config DB")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     list_cmd = sub.add_parser("list", help="List all contacts")

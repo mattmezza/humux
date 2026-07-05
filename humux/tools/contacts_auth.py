@@ -6,11 +6,18 @@ import json
 import sqlite3
 import sys
 import time
+from pathlib import Path
 
 import requests
 
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
-CONFIG_DB_PATH = "data/config.db"
+
+# Resolve relative to script location, not CWD (see issue #180).
+_ROOT = Path(__file__).resolve().parent.parent
+if Path("/app/data").exists():
+    CONFIG_DB_PATH = "/app/data/config.db"
+else:
+    CONFIG_DB_PATH = str(_ROOT / "data/config.db")
 TOKEN_DB_KEY = "contacts.google_oauth_token"
 
 _token_cache: tuple[str, float] | None = None
