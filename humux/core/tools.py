@@ -39,7 +39,8 @@ Examples:
   gh api repos/owner/name/commits
   gh search issues "is:open label:bug" --repo owner/name
 Always pass `--repo owner/name` unless the working directory is a checkout of the
-target repository. Use `--json <fields>` (e.g. `gh issue list --json number,title,labels`) or `gh api` and parse JSON when you need fields.
+target repository. Use `--json <fields>`
+(e.g. `gh issue list --json number,title,labels`) or `gh api` and parse JSON when you need fields.
 Single-quote issue/PR bodies that contain Markdown (`--body '…```code```…'`):
 single quotes make backticks and `$(…)` literal so the command guard keeps them
 and the shell doesn't run them; double quotes leave them live and get rejected.

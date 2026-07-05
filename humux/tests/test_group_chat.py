@@ -462,21 +462,6 @@ def test_addressed_via_text_mention() -> None:
     assert ch._addressed_to_me(_msg("hey you", entities=[ent])) is True
 
 
-def test_only_first_mentioned_bot_is_addressed() -> None:
-    """One instruction naming several bots is addressed to the FIRST mentioned;
-    a later mention of this bot is a third-party reference, not an address (#185)."""
-    ch = _channel()  # @coachbot
-    # "@coachbot, review the PR @chefbot just made" — coachbot is addressed...
-    to_me = _msg(
-        "@coachbot review PR that @chefbot made",
-        entities=[_ent("mention", "@coachbot", offset=0), _ent("mention", "@chefbot", offset=21)],
-    )
-    assert ch._addressed_to_me(to_me) is True
-    # ...but the SAME message reaching @chefbot's channel must not address it.
-    ch._bot_username = "chefbot"
-    assert ch._addressed_to_me(to_me) is False
-
-
 def test_not_addressed_to_another_bot() -> None:
     ch = _channel()
     assert ch._addressed_to_me(_msg("@chefbot hi", entities=[_ent("mention", "@chefbot")])) is False

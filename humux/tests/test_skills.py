@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from core.skills import SkillsEngine, validate_skill_file, validate_skill_dir, ValidationError
+from core.skills import SkillsEngine, ValidationError, validate_skill_dir, validate_skill_file
 
 
 @pytest.mark.asyncio
@@ -117,7 +117,7 @@ def test_piped_allowed_commands(tmp_path) -> None:
 
 def test_known_tool_name_is_valid(tmp_path) -> None:
     path = tmp_path / "good.md"
-    path.write_text("# Skill\n\n```bash\nwrite_file(path=\"test.txt\", content=\"hello\")\n```\n")
+    path.write_text('# Skill\n\n```bash\nwrite_file(path="test.txt", content="hello")\n```\n')
     errors = validate_skill_file(path)
     assert errors == []
 
@@ -125,21 +125,26 @@ def test_known_tool_name_is_valid(tmp_path) -> None:
 def test_unlabeled_block_not_checked(tmp_path) -> None:
     """Unlabeled code blocks (tables, tool call examples) are not validated."""
     path = tmp_path / "good.md"
-    path.write_text("# Skill\n\n```\n| Col1 | Col2 |\n|------|------|\n| A    | B    |\n```\n\n```\nwrite_file(path=\"test.txt\", content=\"hello\")\n```\n")
+    path.write_text(
+        "# Skill\n\n```\n| Col1 | Col2 |\n|------|------|\n| A    | B    |\n```\n"
+        '\n```\nwrite_file(path="test.txt", content="hello")\n```\n'
+    )
     errors = validate_skill_file(path)
     assert errors == []
 
 
 def test_python3_tool_invocation(tmp_path) -> None:
     path = tmp_path / "good.md"
-    path.write_text("# Skill\n\n```bash\npython3 ./tools/browser.py read --url https://example.com\n```\n")
+    path.write_text(
+        "# Skill\n\n```bash\npython3 ./tools/browser.py read --url https://example.com\n```\n"
+    )
     errors = validate_skill_file(path)
     assert errors == []
 
 
 def test_python3_c_script(tmp_path) -> None:
     path = tmp_path / "good.md"
-    path.write_text("# Skill\n\n```bash\npython3 -c \"import sys; print(sys.version)\"\n```\n")
+    path.write_text('# Skill\n\n```bash\npython3 -c "import sys; print(sys.version)"\n```\n')
     errors = validate_skill_file(path)
     assert errors == []
 
@@ -148,7 +153,9 @@ def test_backslash_continuation(tmp_path) -> None:
     """Continuation lines after \\ should be treated as part of the same command."""
     path = tmp_path / "good.md"
     path.write_text(
-        "# Skill\n\n```bash\npython3 /app/tools/browser.py act --url https://site/login \\\n  --steps '[{\"click\":\"#btn\"}]'\n```\n"
+        "# Skill\n\n```bash\n"
+        "python3 /app/tools/browser.py act --url https://site/login \\"
+        '\n  --steps \'[{"click":"#btn"}]\'\n```\n'
     )
     errors = validate_skill_file(path)
     assert errors == []
@@ -158,7 +165,9 @@ def test_long_python_invocation(tmp_path) -> None:
     """Multi-line python3 command with continuation."""
     path = tmp_path / "good.md"
     path.write_text(
-        "# Skill\n\n```bash\npython3 /app/tools/skills.py upsert --name weather --stdin --write-seed \\\n  < skills/weather.md\n```\n"
+        "# Skill\n\n```bash\n"
+        "python3 /app/tools/skills.py upsert --name weather --stdin --write-seed \\"
+        "\n  < skills/weather.md\n```\n"
     )
     errors = validate_skill_file(path)
     assert errors == []
@@ -168,7 +177,8 @@ def test_pipe_continuation(tmp_path) -> None:
     """Pipe at end of line is fine."""
     path = tmp_path / "good.md"
     path.write_text(
-        "# Skill\n\n```bash\nhimalaya envelope list -a personal -s 10 -o json \\\n  | jq '.[].subject'\n```\n"
+        "# Skill\n\n```bash\n"
+        "himalaya envelope list -a personal -s 10 -o json \\\n  | jq '.[].subject'\n```\n"
     )
     errors = validate_skill_file(path)
     assert errors == []
@@ -222,4 +232,3 @@ def test_validate_nonexistent_file(tmp_path) -> None:
 def test_validate_nonexistent_dir(tmp_path) -> None:
     errors = validate_skill_dir(tmp_path / "no_such_dir")
     assert any("not found" in str(e) for e in errors)
-

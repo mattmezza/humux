@@ -7,7 +7,6 @@ time-windowed aggregates for the overview dashboard.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
 from pathlib import Path
 
 import aiosqlite
@@ -59,8 +58,14 @@ class TokenUsageStore:
                 "(provider, model, input_tokens, output_tokens, "
                 "cache_read_input_tokens, cache_creation_input_tokens) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
-                (provider, model, input_tokens, output_tokens,
-                 cache_read_input_tokens, cache_creation_input_tokens),
+                (
+                    provider,
+                    model,
+                    input_tokens,
+                    output_tokens,
+                    cache_read_input_tokens,
+                    cache_creation_input_tokens,
+                ),
             )
             await db.commit()
 

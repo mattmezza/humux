@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+import httpx
 import requests as http_requests
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
@@ -91,6 +92,8 @@ _jinja_env = Environment(
     autoescape=True,
     auto_reload=True,
 )
+
+
 def _fmt_tokens(n: int) -> str:
     """Format a token count with k/M/G suffix (#199)."""
     if n >= 1_000_000_000:
@@ -104,6 +107,8 @@ def _fmt_tokens(n: int) -> str:
 
 _jinja_env.globals["step_ctx"] = {}  # default empty dict for wizard templates
 _jinja_env.globals["fmt_tokens"] = _fmt_tokens
+
+
 def _render(template_name: str, **ctx: object) -> HTMLResponse:
     """Render a Jinja2 template and return an HTMLResponse."""
     tmpl = _jinja_env.get_template(template_name)

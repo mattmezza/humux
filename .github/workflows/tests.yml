@@ -7,6 +7,18 @@ on:
       - '.github/workflows/tests.yml'
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - name: Install dependencies
+        working-directory: ./humux
+        run: uv sync
+      - name: Lint with ruff
+        working-directory: ./humux
+        run: uv run ruff check .
+
   pytest:
     runs-on: ubuntu-latest
     steps:

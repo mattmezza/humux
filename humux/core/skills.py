@@ -98,7 +98,9 @@ class SkillsStore:
         inserted = 0
         async with aiosqlite.connect(self.db_path) as db:
             cursor = await db.execute("SELECT name, content, seed_hash FROM skills")
-            existing = {row[0]: {"content": row[1], "seed_hash": row[2]} for row in await cursor.fetchall()}
+            existing = {
+                row[0]: {"content": row[1], "seed_hash": row[2]} for row in await cursor.fetchall()
+            }
 
             for skill_file in sorted(self.seed_dir.glob("*.md")):
                 content = skill_file.read_text().strip()
@@ -111,7 +113,8 @@ class SkillsStore:
                 if name not in existing:
                     # New skill — insert with hash.
                     await db.execute(
-                        "INSERT INTO skills (name, content, summary, seed_hash) VALUES (?, ?, ?, ?)",
+                        "INSERT INTO skills"
+                        " (name, content, summary, seed_hash) VALUES (?, ?, ?, ?)",
                         (name, content, summary, file_hash),
                     )
                     inserted += 1
@@ -280,7 +283,18 @@ _ALLOWED_PREFIXES: list[str] = [
 ]
 
 _SAFE_FILTERS: set[str] = {
-    "jq", "head", "tail", "rg", "cat", "sort", "uniq", "wc", "grep", "cut", "tr", "column",
+    "jq",
+    "head",
+    "tail",
+    "rg",
+    "cat",
+    "sort",
+    "uniq",
+    "wc",
+    "grep",
+    "cut",
+    "tr",
+    "column",
 }
 
 # Tools that are registered as callable tools (not CLI commands) — their
@@ -343,10 +357,13 @@ def _validate_h1_title(path: Path, content: str) -> list[ValidationError]:
             h1_found = True
             break
     if not h1_found:
-        errors.append(ValidationError(
-            str(path), 1,
-            "Missing H1 title (first line should be '# Title')",
-        ))
+        errors.append(
+            ValidationError(
+                str(path),
+                1,
+                "Missing H1 title (first line should be '# Title')",
+            )
+        )
     return errors
 
 
@@ -365,10 +382,13 @@ def _validate_code_blocks(path: Path, content: str) -> list[ValidationError]:
                 fence_open = True
                 fence_start = i + 1
     if fence_open:
-        errors.append(ValidationError(
-            str(path), fence_start,
-            "Unclosed fenced code block (opening ``` without closing ```)",
-        ))
+        errors.append(
+            ValidationError(
+                str(path),
+                fence_start,
+                "Unclosed fenced code block (opening ``` without closing ```)",
+            )
+        )
     return errors
 
 
@@ -462,18 +482,24 @@ def _command_allowed(first_token: str) -> bool:
     return False
 
 
-def _check_single_command(stripped: str, line_no: int, path: Path, errors: list[ValidationError]) -> None:
+def _check_single_command(
+    stripped: str, line_no: int, path: Path, errors: list[ValidationError]
+) -> None:
     """Check a single (non-continuation) command line."""
     token = _first_token(stripped)
     if token and not _command_allowed(token):
-        errors.append(ValidationError(
-            str(path), line_no,
-            f"Command '{token}' is not in the allowed prefix list "
-            f"({_ALLOWED_PREFIXES})",
-        ))
+        errors.append(
+            ValidationError(
+                str(path),
+                line_no,
+                f"Command '{token}' is not in the allowed prefix list ({_ALLOWED_PREFIXES})",
+            )
+        )
 
 
-def _check_command_buffer(buf: list[str], start_line: int, path: Path, errors: list[ValidationError]) -> None:
+def _check_command_buffer(
+    buf: list[str], start_line: int, path: Path, errors: list[ValidationError]
+) -> None:
     """Check a logical command assembled from continuation lines by
     examining the first token of the first line."""
     if not buf:
@@ -481,11 +507,13 @@ def _check_command_buffer(buf: list[str], start_line: int, path: Path, errors: l
     first = buf[0].strip()
     token = _first_token(first)
     if token and not _command_allowed(token):
-        errors.append(ValidationError(
-            str(path), start_line,
-            f"Command '{token}' is not in the allowed prefix list "
-            f"({_ALLOWED_PREFIXES})",
-        ))
+        errors.append(
+            ValidationError(
+                str(path),
+                start_line,
+                f"Command '{token}' is not in the allowed prefix list ({_ALLOWED_PREFIXES})",
+            )
+        )
 
 
 def _validate_cross_references(path: Path, content: str) -> list[ValidationError]:
@@ -501,11 +529,14 @@ def _validate_cross_references(path: Path, content: str) -> list[ValidationError
                 if clean.startswith("./tools/") or clean.startswith("tools/"):
                     ref = seed_dir.parent / clean
                     if not ref.exists():
-                        errors.append(ValidationError(
-                            str(path), i + 1,
-                            f"Referenced path '{clean}' does not exist",
-                            severity="warning",
-                        ))
+                        errors.append(
+                            ValidationError(
+                                str(path),
+                                i + 1,
+                                f"Referenced path '{clean}' does not exist",
+                                severity="warning",
+                            )
+                        )
     return errors
 
 
@@ -536,11 +567,14 @@ def validate_skill_file(path: Path, strict: bool = False) -> list[ValidationErro
                 has_description = True
                 break
         if not has_description:
-            errors.append(ValidationError(
-                str(path), 2,
-                "Missing description paragraph after the title",
-                severity="warning",
-            ))
+            errors.append(
+                ValidationError(
+                    str(path),
+                    2,
+                    "Missing description paragraph after the title",
+                    severity="warning",
+                )
+            )
     return errors
 
 
@@ -571,11 +605,14 @@ def validate_skill_content(content: str, strict: bool = False) -> list[Validatio
                 has_description = True
                 break
         if not has_description:
-            errors.append(ValidationError(
-                str(dummy), 2,
-                "Missing description paragraph after the title",
-                severity="warning",
-            ))
+            errors.append(
+                ValidationError(
+                    str(dummy),
+                    2,
+                    "Missing description paragraph after the title",
+                    severity="warning",
+                )
+            )
     return errors
 
 
@@ -599,11 +636,13 @@ def main(argv: list[str] | None = None) -> int:
 
     validate_parser = sub.add_parser("validate", help="Validate skill files")
     validate_parser.add_argument(
-        "--seed-dir", default="skills/",
+        "--seed-dir",
+        default="skills/",
         help="Path to the skills seed directory (default: skills/)",
     )
     validate_parser.add_argument(
-        "--strict", action="store_true",
+        "--strict",
+        action="store_true",
         help="Enable additional style warnings",
     )
 
@@ -619,4 +658,5 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(main())

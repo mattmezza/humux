@@ -9,10 +9,10 @@ Non-Google CalDAV providers still use Basic Auth (username/password).
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import sqlite3
 import sys
 import time
+from pathlib import Path
 
 import caldav
 import requests
