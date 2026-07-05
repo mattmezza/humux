@@ -104,6 +104,7 @@ REACTION_EMOJI: dict[str, str] = {
     "thinking": "🤔",
     "eyes": "👀",
     "check": "👌",  # no native ✅ reaction — 👌 reads as "acknowledged/approved"
+    "checkmark": "✅",
     "cross": "👎",  # no native ❌ reaction — 👎 reads as "denied"
     "star": "🤩",  # no native ⭐ reaction — 🤩 "star-struck"
     "rocket": "⚡",  # no native 🚀 reaction — ⚡ "fast/launch"
@@ -502,7 +503,7 @@ class TelegramChannel:
             ):
                 asyncio.create_task(
                     self._handle_skill_command(
-                        base.lower()[len("/zz_skill_") :], convo_user, str(chat_id)
+                        base.lower()[len("/zz_skill_") :], convo_user, str(chat_id), message.message_id
                     ),
                     name=f"tg-skill-{convo_user}",
                 )
@@ -649,11 +650,12 @@ class TelegramChannel:
             name=f"tg-photo-{convo_user}",
         )
 
-    async def _handle_skill_command(self, slug: str, convo_user: str, chat_id: str) -> None:
-        """/zz_skill_<name>: load a skill from the store into the conversation (#178).
+    async def _handle_skill_command(self, slug: str, convo_user: str, chat_id: str, message_id: int) -> None:
+        """/zz_skill_<name>: load a skill from the store into the conversation (#178, #187).
 
         The body is recorded in history as a record-only inbound turn (so the
-        agent sees the full content on its next turn) and posted to the chat.
+        agent sees the full content on its next turn). A ✅ reaction on the
+        original message acknowledges the load without cluttering the chat.
         Scoped to the serving agent's skill allowlist — a command for a skill the
         agent can't load (e.g. one added after the menu was published) is refused,
         so this stays an enforcement point, not just an advertising filter.
@@ -674,7 +676,7 @@ class TelegramChannel:
                 chat_id=chat_id,
                 respond=False,
             )
-            await self.send(chat_id, content)
+            await self.react(chat_id, message_id, "checkmark")
         except Exception:
             log.exception("Skill command failed: %s", slug)
 
