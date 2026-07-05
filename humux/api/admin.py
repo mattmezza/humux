@@ -2840,6 +2840,24 @@ def create_admin_app(
         skills = await store.list_skills()
         return _render_partial("partials/skills.html", skills=skills)
 
+    @app.post("/skills/validate", dependencies=[Depends(auth)])
+    async def validate_skill(body: SkillUpsertIn) -> dict:
+        """Validate skill content and return structured errors (#144)."""
+        from core.skills import validate_skill_content
+
+        errors = validate_skill_content(body.content)
+        return {
+            "valid": len(errors) == 0,
+            "errors": [
+                {
+                    "line": e.line,
+                    "message": e.message,
+                    "severity": e.severity,
+                }
+                for e in errors
+            ],
+        }
+
     # ── Agents API ───────────────────────────────────────────────────
 
     async def _agents_partial() -> HTMLResponse:

@@ -544,6 +544,41 @@ def validate_skill_file(path: Path, strict: bool = False) -> list[ValidationErro
     return errors
 
 
+def validate_skill_content(content: str, strict: bool = False) -> list[ValidationError]:
+    """Validate skill content in-memory, without a file on disk.
+
+    Reuses the same internal validators as ``validate_skill_file`` but
+    passes a synthetic path so line-numbered errors still make sense.
+    """
+    dummy = Path("<inline>")
+    errors: list[ValidationError] = []
+    errors.extend(_validate_h1_title(dummy, content))
+    errors.extend(_validate_code_blocks(dummy, content))
+    errors.extend(_validate_bash_commands(dummy, content))
+    errors.extend(_validate_cross_references(dummy, content))
+    if strict:
+        lines = content.splitlines()
+        in_code = False
+        has_description = False
+        for line in lines[1:5]:
+            stripped = line.strip()
+            if stripped.startswith("```"):
+                in_code = not in_code
+                continue
+            if in_code:
+                continue
+            if stripped and not stripped.startswith("#"):
+                has_description = True
+                break
+        if not has_description:
+            errors.append(ValidationError(
+                str(dummy), 2,
+                "Missing description paragraph after the title",
+                severity="warning",
+            ))
+    return errors
+
+
 def validate_skill_dir(seed_dir: str | Path, strict: bool = False) -> list[ValidationError]:
     """Validate all skill markdown files in *seed_dir*."""
     d = Path(seed_dir)
