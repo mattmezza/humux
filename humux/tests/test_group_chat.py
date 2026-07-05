@@ -407,6 +407,37 @@ def test_addressed_via_command_entity() -> None:
     assert ch._addressed_to_me(msg) is True
 
 
+def test_only_first_mentioned_bot_is_addressed() -> None:
+    """One instruction naming several bots is addressed to the FIRST mentioned;
+    a later mention of this bot is a third-party reference, not an address (#185)."""
+    ch = _channel()  # @coachbot
+    # "@coachbot, review the PR @chefbot just made" — coachbot is addressed...
+    to_me = _msg(
+        "@coachbot review PR that @chefbot made",
+        entities=[_ent("mention", "@coachbot", offset=0), _ent("mention", "@chefbot", offset=21)],
+    )
+    assert ch._addressed_to_me(to_me) is True
+    # ...but the SAME message reaching @chefbot's channel must not address it.
+    ch._bot_username = "chefbot"
+    assert ch._addressed_to_me(to_me) is False
+
+
+def test_non_addressing_entity_does_not_shadow_the_mention() -> None:
+    """A bare "/remind" or an email before the @mention names nobody, so it must
+    not steal the addressee slot from the real mention that follows (#185)."""
+    ch = _channel()  # @coachbot
+    bare_cmd = _msg(
+        "/remind @coachbot buy milk",
+        entities=[_ent("bot_command", "/remind", offset=0), _ent("mention", "@coachbot", offset=8)],
+    )
+    assert ch._addressed_to_me(bare_cmd) is True
+    email_first = _msg(
+        "from admin@x.com ping @coachbot",
+        entities=[_ent("email", "admin@x.com", offset=5), _ent("mention", "@coachbot", offset=22)],
+    )
+    assert ch._addressed_to_me(email_first) is True
+
+
 def test_addressed_via_photo_caption_mention() -> None:
     """A photo caption @mention must be read via parse_caption_entity (a caption
     message has no .text, where parse_entity raises) — and stay UTF-16-safe so an
