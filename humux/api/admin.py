@@ -1121,6 +1121,50 @@ def create_admin_app(
             scheduler_jobs=scheduler_jobs,
         )
 
+    @app.get("/partials/dashboard", dependencies=[Depends(auth)])
+    async def partial_dashboard() -> HTMLResponse:
+        """Dashboard overview partial (#197)."""
+        agent = agent_state.agent
+        if agent:
+            running = True
+            channels = list(agent.channels.keys())
+            scheduler_jobs = len(agent.scheduler.scheduler.get_jobs())
+        else:
+            running = False
+            channels = []
+            scheduler_jobs = 0
+        status = agent_state.status
+        if running and status not in ("STARTING", "RESTARTING", "STOPPING"):
+            status = "RUNNING"
+        # Skills count
+        try:
+            from core.agents import AgentStore
+            store = AgentStore()
+            agents_count = len(await store.list_agents())
+        except Exception:
+            agents_count = 0
+        # Skills count
+        try:
+            from core.skills import SkillsStore
+            ss = SkillsStore()
+            skills = await ss.list_skills()
+            skills_count = len(skills)
+        except Exception:
+            skills_count = 0
+        # Recent log entries
+        snapshot = list(_LOG_BUFFER)
+        log_entries = _filter_log_entries(snapshot)[-20:]
+        return _render_partial(
+            "partials/dashboard.html",
+            running=running,
+            status=status,
+            channels=channels,
+            scheduler_jobs=scheduler_jobs,
+            agents_count=agents_count,
+            skills_count=skills_count,
+            log_entries=log_entries,
+        )
+
     async def _voice_context() -> dict:
         """Global speech (STT/TTS) settings for the Voice card. Not per-agent —
         identity/character/accounts now live on the default agent row (#115 flw)."""

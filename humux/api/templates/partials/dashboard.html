@@ -1,0 +1,81 @@
+{# Dashboard overview partial — initial landing view #}
+{% set status_label = status or (running and 'RUNNING' or 'STOPPED') %}
+
+<div class="space-y-6">
+
+  {# Agent status card #}
+  <div class="card px-5 py-4">
+    <div class="flex items-center justify-between gap-4 flex-wrap">
+      <div>
+        <h2 class="text-sm text-accent font-semibold mb-1">Agent</h2>
+        <p class="text-xs text-muted">
+          {% if running %}
+            Running with {{ channels|length }} channel{{ 's' if channels|length != 1 else '' }}
+            {% if scheduler_jobs > 0 %}
+              · {{ scheduler_jobs }} scheduled job{{ 's' if scheduler_jobs != 1 else '' }}
+            {% endif %}
+          {% else %}
+            Not running
+          {% endif %}
+        </p>
+      </div>
+      <div class="flex items-center gap-2">
+        {% if status_label == 'RUNNING' %}
+          <span class="badge-ok">{{ status_label }}</span>
+        {% elif status_label in ['STARTING', 'RESTARTING'] %}
+          <span class="badge-warn">{{ status_label }}</span>
+        {% elif status_label == 'STOPPING' %}
+          <span class="badge-warn">{{ status_label }}</span>
+        {% else %}
+          <span class="badge-off">{{ status_label }}</span>
+        {% endif %}
+        <button class="btn btn-sm" type="button" onclick="openAgentModal()">Manage</button>
+      </div>
+    </div>
+  </div>
+
+  {# Quick stats #}
+  <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+    <div class="card px-4 py-3">
+      <div class="text-xs text-muted mb-0.5">Skills</div>
+      <div class="text-lg text-accent font-semibold">{{ skills_count }}</div>
+    </div>
+    <div class="card px-4 py-3">
+      <div class="text-xs text-muted mb-0.5">Scheduled</div>
+      <div class="text-lg text-accent font-semibold">{{ scheduler_jobs }}</div>
+    </div>
+    <div class="card px-4 py-3">
+      <div class="text-xs text-muted mb-0.5">Channels</div>
+      <div class="text-lg text-accent font-semibold">{{ channels|length }}</div>
+    </div>
+    <div class="card px-4 py-3">
+      <div class="text-xs text-muted mb-0.5">Agents</div>
+      <div class="text-lg text-accent font-semibold">{{ agents_count }}</div>
+    </div>
+  </div>
+
+  {# Recent log entries #}
+  <div class="card p-4">
+    <div class="flex items-center justify-between mb-3">
+      <h3 class="text-xs text-muted uppercase tracking-wider">Recent activity</h3>
+      <a href="/admin?tab=inspect&inspectsub=logs" class="text-xs text-accent hover:underline">View all</a>
+    </div>
+    {% if log_entries %}
+    <div class="space-y-1 max-h-[240px] overflow-y-auto">
+      {% for entry in log_entries[:20] %}
+      <div class="text-xs flex items-start gap-2 font-mono">
+        <span class="shrink-0 text-muted"
+              style="color:{% if entry.level == 'ERROR' %}#c66{% elif entry.level == 'WARNING' %}#ca6{% else %}#888{% endif %}">
+          {{ entry.level|truncate(4, True, '') }}
+        </span>
+        <span class="text-muted shrink-0">{{ entry.time }}</span>
+        <span class="text-gray-300 truncate">{{ entry.message }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-xs text-muted">No recent activity.</p>
+    {% endif %}
+  </div>
+
+</div>
