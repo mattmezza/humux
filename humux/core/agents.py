@@ -196,8 +196,16 @@ class Agent:
 
         No stored setting = everyone allowed (unchanged behaviour). ``nobody``
         blocks all; ``users`` allows only the listed Telegram ids (#129).
+
+        A forum-topic id (``"<chat>:<thread>"``, #183) with no setting of its own
+        falls back to the group's setting, so a gate on the group covers every
+        topic; a topic-specific setting still wins.
         """
-        setting = self.chat_settings.get(chat_id) if isinstance(self.chat_settings, dict) else None
+        if not isinstance(self.chat_settings, dict):
+            return True
+        setting = self.chat_settings.get(chat_id)
+        if setting is None:
+            setting = self.chat_settings.get(str(chat_id).partition(":")[0])
         if not isinstance(setting, dict):
             return True
         mode = setting.get("mode", "everyone")

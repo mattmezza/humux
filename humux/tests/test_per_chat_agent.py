@@ -131,6 +131,21 @@ async def test_resolve_agent_ladder(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_resolve_agent_topic_inherits_group_binding(tmp_path) -> None:
+    # A forum-topic id "<chat>:<thread>" (#183) with no binding of its own
+    # inherits the group's binding; a topic-specific binding still wins.
+    h = ConversationHistory(db_path=str(tmp_path / "h.db"))
+    store = await _seed_agents(tmp_path)
+    fa = _fake_agent(h, store)
+    await h.set_chat_agent("telegram", "-100", "coach", "-100")
+    p = await fa._resolve_agent("telegram", "-100", "-100:45")
+    assert p is not None and p.name == "coach"  # inherited from the group
+    await h.set_chat_agent("telegram", "-100", "writer", "-100:45")
+    p = await fa._resolve_agent("telegram", "-100", "-100:45")
+    assert p is not None and p.name == "writer"  # topic binding wins
+
+
+@pytest.mark.asyncio
 async def test_resolve_agent_bot_per_agent_channel(tmp_path) -> None:
     # Rung 0 (#29): a "telegram:<name>" channel binds straight to that agent,
     # outranking the per-chat binding and the default.

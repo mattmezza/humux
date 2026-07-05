@@ -1470,8 +1470,14 @@ class AgentCore:
                 return agent
             # Unknown/deleted agent — fall through to the ordinary ladder.
 
-        # 1. Per-chat binding.
+        # 1. Per-chat binding. A forum-topic id ("<chat>:<thread>", #183) with no
+        # binding of its own inherits the group's binding, so a group bound to an
+        # agent serves that agent in every topic; a topic binding still wins.
         bound = await self.history.get_chat_agent(channel, user_id, chat_id)
+        if not bound:
+            base = str(chat_id).partition(":")[0]
+            if base != str(chat_id):
+                bound = await self.history.get_chat_agent(channel, user_id, base)
         if bound:
             agent = await self._load_agent(bound)
             if agent:

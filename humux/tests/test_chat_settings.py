@@ -35,6 +35,23 @@ def test_chat_permits_users_allowlist() -> None:
     assert a.chat_permits("c", 8) is False
 
 
+def test_chat_permits_topic_inherits_group_setting() -> None:
+    # A forum-topic id "<chat>:<thread>" (#183) with no setting of its own falls
+    # back to the group's setting; a topic-specific setting still wins.
+    a = Agent(name="coach", chat_settings={"-100": {"mode": "users", "users": [7]}})
+    assert a.chat_permits("-100:5", 7) is True
+    assert a.chat_permits("-100:5", 8) is False
+    a = Agent(
+        name="coach",
+        chat_settings={
+            "-100": {"mode": "nobody", "users": []},
+            "-100:5": {"mode": "everyone", "users": []},
+        },
+    )
+    assert a.chat_permits("-100:5", 7) is True  # topic override wins
+    assert a.chat_permits("-100:6", 7) is False  # sibling topic inherits the group
+
+
 # ---- _as_chat_settings: coercion + normalisation ----------------------------
 
 
