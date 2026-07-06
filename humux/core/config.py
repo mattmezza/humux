@@ -7,6 +7,7 @@ config (which channels are enabled, scheduler jobs, etc.) lives in YAML.
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 from collections.abc import Callable
@@ -39,16 +40,31 @@ def _resolve_env_vars(obj: object) -> object:
 
 _VAULT_RE = re.compile(r"\$\{vault:([A-Za-z0-9_:-]+)\}")
 
+log = logging.getLogger(__name__)
+
 
 def resolve_vault_vars(obj: object, resolve: Callable[[str], str | None]) -> object:
     """Recursively resolve ``${vault:NAME}`` references via ``resolve``.
 
     ``resolve(name)`` returns the decrypted infra-vault value, falling back to
-    the environment (so ``.env`` stays a fallback). A miss leaves the reference
-    literally in place rather than blanking the field.
+    the environment (so ``.env`` stays a fallback). A miss blanks the field and
+    logs loudly: leaving the literal ``${vault:NAME}`` in place fed the raw
+    placeholder into consumers (e.g. a PEM parser → cryptic ``MalformedFraming``)
+    instead of a clean "no value", masking a sealed vault / misnamed key.
     """
+
+    def _sub(m: re.Match) -> str:
+        val = resolve(m.group(1))
+        if val is None:
+            log.warning(
+                "Unresolved ${vault:%s} — infra vault sealed or key missing? Blanking the field.",
+                m.group(1),
+            )
+            return ""
+        return val
+
     if isinstance(obj, str):
-        return _VAULT_RE.sub(lambda m: resolve(m.group(1)) or m.group(0), obj)
+        return _VAULT_RE.sub(_sub, obj)
     if isinstance(obj, dict):
         return {k: resolve_vault_vars(v, resolve) for k, v in obj.items()}
     if isinstance(obj, list):
