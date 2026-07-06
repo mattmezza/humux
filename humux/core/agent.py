@@ -635,7 +635,11 @@ TOOLS = [
             "action='get' returns one job. "
             "action='update' edits a job's fields; set status='paused' to pause "
             "or status='active' to resume. "
-            "action='cancel' permanently stops a job."
+            "action='cancel' permanently stops a job. "
+            "When the job runs, its result is delivered back to THIS chat by "
+            "default — the one you're in right now — so a reminder lands where it "
+            "was asked for. The user does not need to say 'in this chat'; leave "
+            "'channel' unset unless they explicitly want it delivered elsewhere."
         ),
         "input_schema": {
             "type": "object",
@@ -676,7 +680,11 @@ TOOLS = [
                 },
                 "channel": {
                     "type": "string",
-                    "description": "Channel to deliver the result on (default: telegram)",
+                    "description": (
+                        "Usually omit this. By default the result is delivered to "
+                        "the chat the job was created in (this conversation). Only "
+                        "set it to override that with a specific delivery channel."
+                    ),
                 },
                 "description": {
                     "type": "string",
