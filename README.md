@@ -44,6 +44,7 @@ No cloud dependency. No data leaving your server. One `docker compose up` and yo
 - **Telegram** — full bot with text, voice messages, reactions, inline approvals
 - **WhatsApp** — read and send via [wacli](https://github.com/openclaw/wacli) CLI, link once and it stays authenticated
 - **Multi-agent groups** — several agent-bots share one Telegram group, each replies only when addressed, never loops with other bots
+- **Multi-message replies** — the agent can answer with several messages in one turn, like a person texting: multiple bubbles, or a mix of text, voice notes, reactions and images
 - **Reply decision** — in group chats the agent decides per message whether to reply, with a hard rate cap that guarantees runaway loops end
 - **Steerable mid-turn** — redirect a long-running turn by just sending a follow-up; it's folded in before the agent's next step (reacts 👀 to confirm) instead of making you wait for it to finish on the wrong track
 - **Per-chat settings** — gate per Telegram chat who can trigger an agent and who may DM it
