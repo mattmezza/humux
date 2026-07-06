@@ -72,9 +72,7 @@ async def test_history_and_siblings_feed_the_prompt() -> None:
         {"role": "user", "content": "Chef, what's for dinner?"},
         {"role": "assistant", "content": "Pasta."},
     ]
-    await should_reply(
-        llm, "m", "and dessert?", "Coach", history=history, others=["Chef", "Coach"]
-    )
+    await should_reply(llm, "m", "and dessert?", "Coach", history=history, others=["Chef", "Coach"])
     p = llm.last_prompt
     assert "Chef, what's for dinner?" in p  # recent turns are included
     assert "user: " in p and "assistant: " in p
@@ -161,7 +159,11 @@ async def test_process_suppresses_on_skip(agent, monkeypatch) -> None:
     _stub_dispatch(agent, monkeypatch)
 
     resp = await agent.process(
-        message="lol same", channel="telegram", user_id="111", chat_id="-999"
+        message="lol same",
+        channel="telegram",
+        user_id="111",
+        chat_id="-999",
+        addressed=False,
     )
     assert resp.text == ""
     # The reserved slot is released on SKIP, so a quiet chat keeps its budget.
@@ -174,7 +176,11 @@ async def test_process_replies_in_group_and_records_slot(agent, monkeypatch) -> 
     _stub_dispatch(agent, monkeypatch, text="here you go")
 
     resp = await agent.process(
-        message="can you help me?", channel="telegram", user_id="111", chat_id="-999"
+        message="can you help me?",
+        channel="telegram",
+        user_id="111",
+        chat_id="-999",
+        addressed=False,
     )
     assert resp.text == "here you go"
     # A real reply keeps its reserved slot — the backstop counts it.
@@ -218,7 +224,13 @@ async def test_concurrent_burst_is_bounded_by_cap(agent, monkeypatch) -> None:
 
     resps = await asyncio.gather(
         *(
-            agent.process(message=f"loop {i}", channel="telegram", user_id="111", chat_id="-999")
+            agent.process(
+                message=f"loop {i}",
+                channel="telegram",
+                user_id="111",
+                chat_id="-999",
+                addressed=False,
+            )
             for i in range(50)
         )
     )
@@ -237,6 +249,10 @@ async def test_process_suppresses_when_rate_capped(agent, monkeypatch) -> None:
     monkeypatch.setattr(agent, "_background_llm", lambda *a, **k: _BoomLLM())
     _stub_dispatch(agent, monkeypatch)
     resp = await agent.process(
-        message="still going", channel="telegram", user_id="111", chat_id="-999"
+        message="still going",
+        channel="telegram",
+        user_id="111",
+        chat_id="-999",
+        addressed=False,
     )
     assert resp.text == ""
