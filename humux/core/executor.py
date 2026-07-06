@@ -45,11 +45,18 @@ class ToolExecutor:
         "python3 /app/tools/contacts.py",
         "sqlite3",
         "python3 /app/tools/",
+        # Scripts bundled with Agent Skills (#65) — seed-shipped and installed.
+        # Community skills say `python`; the python:slim image ships both names.
+        "python3 /app/skills/",
+        "python /app/skills/",
+        "python3 /app/data/skills/",
+        "python /app/data/skills/",
         "gh",
         "git",
         "w3m",
         "pandoc",
         "pdftotext",
+        "pdftoppm",  # ships with poppler-utils like pdftotext; pptx/pdf skills use it
         "rg",
         "yt-dlp",
         "cal",
