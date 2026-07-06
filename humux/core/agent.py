@@ -1376,6 +1376,7 @@ class AgentCore:
         rd_cfg = self.config.reply_decision
         if (
             rd_cfg.enabled
+            and not addressed  # explicit @mention of THIS bot always replies (#185)
             and channel != "system"
             and (not rd_cfg.group_only or self._is_group_chat(user_id, chat_id))
         ):
