@@ -19,10 +19,12 @@ async def test_top_agents_sorted_by_total(tmp_path) -> None:
 
     tot = await store.totals_since(24)
     agents = tot["top_agents"]
-    # scribe (505) > coach (165) > (unknown) (2), most-consuming first.
-    assert [a["agent"] for a in agents] == ["scribe", "coach", "(unknown)"]
+    # Only attributed agents, most-consuming first: scribe (505) > coach (165).
+    # The un-attributed row (no agent) is excluded from the "top agent" ranking...
+    assert [a["agent"] for a in agents] == ["scribe", "coach"]
     assert agents[0]["total"] == 505
-    assert tot["total_input"] == 651  # cached/uncached still aggregated
+    # ...but still counts in the grand totals (which sum the whole table).
+    assert tot["total_input"] == 651
 
 
 @pytest.mark.asyncio
