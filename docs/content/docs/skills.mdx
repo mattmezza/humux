@@ -116,6 +116,39 @@ The admin UI includes a skill editor where you can create, edit, and delete skil
 python3 /app/tools/skills.py upsert --name my-skill --stdin
 ```
 
+### 4. Install from the Agent Skills ecosystem
+
+humux understands the [Agent Skills](https://agentskills.io) format: a directory
+holding a `SKILL.md` with YAML frontmatter (`name`, `description`) plus optional
+bundled files (`scripts/`, `references/`, ...). That means skills from community
+repos like [`anthropics/skills`](https://github.com/anthropics/skills) install
+as-is:
+
+```bash
+python3 /app/tools/skills.py install https://github.com/anthropics/skills \
+    --path skills/docx
+```
+
+or via the **Install from a git repo** form on the admin Skills tab. Installed
+skills land in `data/skills/<name>/` (the writable volume — the `skills/` seed
+dir is mounted read-only in Docker) and are **read-only**: update them by
+re-running install (or the ⟳ button in the admin UI), which re-fetches from the
+recorded origin; customize them by deleting and creating your own copy.
+
+Spec-format skills can also live directly in `skills/<name>/SKILL.md` as seeds,
+next to the flat `.md` files — both formats coexist.
+
+Bundled files stay on disk; the skill body the model loads starts with a pointer
+to the skill's base directory, and files are read with:
+
+```bash
+python3 /app/tools/skills.py cat docx scripts/example.py
+```
+
+Community skills may reference commands outside humux's executor allowlist —
+the validator surfaces those as warnings at install time, and the executor
+still blocks them at runtime.
+
 ## How skills are loaded
 
 ```python

@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
+import re
+import shutil
+import subprocess
+import tempfile
 from pathlib import Path
 
 import aiosqlite
+import yaml
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS skills (
@@ -13,13 +19,24 @@ CREATE TABLE IF NOT EXISTS skills (
     content TEXT NOT NULL,
     summary TEXT DEFAULT '',
     seed_hash TEXT DEFAULT NULL,
+    origin TEXT DEFAULT NULL,
     created_at DATETIME DEFAULT (datetime('now')),
     updated_at DATETIME DEFAULT (datetime('now'))
 );
 """
 
-# Migration: add seed_hash to existing tables (safe no-op if already present).
+# Migrations: add columns to existing tables (safe no-op if already present).
 _MIGRATE_SEED_HASH = "ALTER TABLE skills ADD COLUMN seed_hash TEXT DEFAULT NULL;"
+# origin = "<repo-url>#<path-in-repo>" for skills installed from a git repo
+# (#65). Origin-tagged skills are read-only: update = re-install from origin.
+_MIGRATE_ORIGIN = "ALTER TABLE skills ADD COLUMN origin TEXT DEFAULT NULL;"
+
+# Marker file inside an installed skill directory recording where it came from,
+# so a rebuilt DB re-seeds with provenance intact (#65). One line: "url#path".
+ORIGIN_MARKER = ".origin"
+
+# Skill name rules (mirrors tools/skills.py): safe as a directory name.
+_NAME_PATTERN = re.compile(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?$")
 
 
 # One-line instruction prepended to the skills index (#178), telling the model
@@ -54,12 +71,79 @@ def _extract_summary(content: str) -> str:
     return ""
 
 
+def split_frontmatter(raw: str) -> tuple[dict, str]:
+    """Split Agent Skills YAML frontmatter from the body (#65).
+
+    Returns ``(meta, body)``; ``meta`` is ``{}`` when there is no frontmatter
+    or it fails to parse (the whole text is then the body).
+    """
+    if not raw.startswith("---"):
+        return {}, raw
+    parts = raw.split("\n---", 2)
+    if len(parts) < 2:
+        return {}, raw
+    try:
+        meta = yaml.safe_load(parts[0][3:])
+    except yaml.YAMLError:
+        return {}, raw
+    if not isinstance(meta, dict):
+        return {}, raw
+    body = parts[1]
+    if len(parts) == 3:
+        body += "\n---" + parts[2]
+    return meta, body.lstrip("\n")
+
+
+def _seed_summary(raw: str) -> str:
+    """Summary for a seed file: frontmatter ``description`` beats the
+    first-line heuristic. Agent Skills caps descriptions at 1024 chars; the
+    index wants one line, so trim harder."""
+    meta, body = split_frontmatter(raw)
+    desc = str(meta.get("description") or "").strip()
+    return " ".join(desc.split())[:300] if desc else _extract_summary(body)
+
+
+def _bundled_files_header(name: str, base_dir: Path) -> str:
+    """One-line pointer prepended to a directory skill's content so the model
+    can reach the files bundled next to SKILL.md (#65). Relative paths inside
+    the skill body resolve against this directory."""
+    return (
+        f"> Bundled files for this skill live in `{base_dir}/`. Relative paths in "
+        f"this document resolve there. Read one with: "
+        f"`python3 /app/tools/skills.py cat {name} <relative-path>`\n\n"
+    )
+
+
+def _load_seed(name: str, path: Path) -> tuple[str, str] | None:
+    """Load a seed file into ``(stored_content, summary)``; None if empty.
+
+    Directory skills (``<dir>/SKILL.md``) get the bundled-files header
+    prepended; the seed hash is computed over this final stored content so
+    drift detection keeps working for both formats.
+    """
+    raw = path.read_text().strip()
+    if not raw:
+        return None
+    summary = _seed_summary(raw)
+    if path.name == "SKILL.md":
+        raw = _bundled_files_header(name, path.parent.resolve()) + raw
+    return raw, summary
+
+
 class SkillsStore:
     """SQLite-backed store for skill documents."""
 
-    def __init__(self, db_path: str = "data/skills.db", seed_dir: str | Path = "skills/"):
+    def __init__(
+        self,
+        db_path: str = "data/skills.db",
+        seed_dir: str | Path = "skills/",
+        installed_dir: str | Path = "data/skills",
+    ):
         self.db_path = db_path
         self.seed_dir = Path(seed_dir) if seed_dir else None
+        # Skills installed from git repos land here (#65) — a writable dir
+        # (the seed dir is mounted read-only in Docker).
+        self.installed_dir = Path(installed_dir) if installed_dir else None
         self._ready = False
 
     async def _ensure_schema(self) -> None:
@@ -68,6 +152,13 @@ class SkillsStore:
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         async with aiosqlite.connect(self.db_path) as db:
             await db.executescript(_SCHEMA)
+            # Migrations for pre-existing tables (safe no-op when current).
+            for migration in (_MIGRATE_SEED_HASH, _MIGRATE_ORIGIN):
+                try:
+                    await db.execute(migration)
+                except aiosqlite.OperationalError:  # already present
+                    pass
+            await db.commit()
         self._ready = True
 
     async def _count(self) -> int:
@@ -77,6 +168,31 @@ class SkillsStore:
             row = await cursor.fetchone()
             return int(row[0]) if row else 0
 
+    def _iter_seed_files(self) -> list[tuple[str, Path]]:
+        """All seed files as ``(name, path)`` — flat ``<seed_dir>/<name>.md``,
+        spec dirs ``<seed_dir>/<name>/SKILL.md`` (#65), and installed dirs
+        ``<installed_dir>/<name>/SKILL.md``. First occurrence of a name wins."""
+        out: list[tuple[str, Path]] = []
+        seen: set[str] = set()
+        roots = [d for d in (self.seed_dir, self.installed_dir) if d and d.exists()]
+        for root in roots:
+            for path in sorted(root.glob("*.md")) + sorted(root.glob("*/SKILL.md")):
+                name = path.stem if path.name != "SKILL.md" else path.parent.name
+                if name in seen:
+                    continue
+                seen.add(name)
+                out.append((name, path))
+        return out
+
+    def _origin_for(self, path: Path) -> str | None:
+        """The install origin ("url#path") recorded next to SKILL.md, if any."""
+        if path.name != "SKILL.md":
+            return None
+        marker = path.parent / ORIGIN_MARKER
+        if not marker.exists():
+            return None
+        return marker.read_text().strip() or None
+
     async def ensure_seeded(self) -> bool:
         """Seed missing skills from markdown files and adopt hashes for pre-migration rows.
 
@@ -84,15 +200,8 @@ class SkillsStore:
         ``reset_skill_to_seed()`` for that (triggered by a UI button).
         """
         await self._ensure_schema()
-        # Run migration (safe no-op if column already exists).
-        async with aiosqlite.connect(self.db_path) as db:
-            try:
-                await db.execute(_MIGRATE_SEED_HASH)
-            except aiosqlite.OperationalError:  # already present
-                pass
-            await db.commit()
-
-        if not self.seed_dir or not self.seed_dir.exists():
+        seeds = self._iter_seed_files()
+        if not seeds:
             return False
 
         inserted = 0
@@ -102,20 +211,19 @@ class SkillsStore:
                 row[0]: {"content": row[1], "seed_hash": row[2]} for row in await cursor.fetchall()
             }
 
-            for skill_file in sorted(self.seed_dir.glob("*.md")):
-                content = skill_file.read_text().strip()
-                if not content:
+            for name, skill_file in seeds:
+                loaded = _load_seed(name, skill_file)
+                if loaded is None:
                     continue
-                name = skill_file.stem
+                content, summary = loaded
                 file_hash = hashlib.sha256(content.encode()).hexdigest()
-                summary = _extract_summary(content)
 
                 if name not in existing:
-                    # New skill — insert with hash.
+                    # New skill — insert with hash (+ origin for installed ones).
                     await db.execute(
                         "INSERT INTO skills"
-                        " (name, content, summary, seed_hash) VALUES (?, ?, ?, ?)",
-                        (name, content, summary, file_hash),
+                        " (name, content, summary, seed_hash, origin) VALUES (?, ?, ?, ?, ?)",
+                        (name, content, summary, file_hash, self._origin_for(skill_file)),
                     )
                     inserted += 1
                 elif existing[name]["seed_hash"] is None and existing[name]["content"] == content:
@@ -128,50 +236,69 @@ class SkillsStore:
         return inserted > 0
 
     def _seed_path(self, name: str) -> Path | None:
-        """Return the seed file path for a skill name, or None."""
-        if not self.seed_dir:
+        """Return the seed file path for a skill name, or None. Checks the flat
+        seed file, the spec-format seed dir, and the installed dir (#65)."""
+        candidates = []
+        if self.seed_dir:
+            candidates += [self.seed_dir / f"{name}.md", self.seed_dir / name / "SKILL.md"]
+        if self.installed_dir:
+            candidates.append(self.installed_dir / name / "SKILL.md")
+        for path in candidates:
+            if path.exists():
+                return path
+        return None
+
+    def skill_base_dir(self, name: str) -> Path | None:
+        """Directory holding a skill's bundled files, or None for flat skills."""
+        path = self._seed_path(name)
+        if path is None or path.name != "SKILL.md":
             return None
-        path = self.seed_dir / f"{name}.md"
-        return path if path.exists() else None
+        return path.parent
 
     def _seed_hash_for(self, name: str) -> str | None:
-        """Compute sha256 of the seed file for this skill, or None."""
+        """Compute sha256 of the seeded content for this skill, or None."""
         path = self._seed_path(name)
         if path is None:
             return None
-        content = path.read_text().strip()
-        if not content:
+        loaded = _load_seed(name, path)
+        if loaded is None:
             return None
-        return hashlib.sha256(content.encode()).hexdigest()
+        return hashlib.sha256(loaded[0].encode()).hexdigest()
 
     async def reset_skill_to_seed(self, name: str) -> bool:
-        """Re-seed a single skill from its markdown file. No-op if the skill
-        has no seed file or the seed file hasn't changed. Returns True if the
-        skill was updated, False otherwise."""
+        """(Re-)seed a single skill from its file on disk. Upserts, so it also
+        covers a freshly installed skill not yet in the DB (#65). Returns True
+        if a row was written."""
         path = self._seed_path(name)
         if path is None:
             return False
-        content = path.read_text().strip()
-        if not content:
+        loaded = _load_seed(name, path)
+        if loaded is None:
             return False
+        content, summary = loaded
         file_hash = hashlib.sha256(content.encode()).hexdigest()
-        summary = _extract_summary(content)
+        origin = self._origin_for(path)
         await self._ensure_schema()
         async with aiosqlite.connect(self.db_path) as db:
-            cursor = await db.execute(
-                "UPDATE skills SET content = ?, summary = ?, seed_hash = ?, "
-                "updated_at = datetime('now') WHERE name = ?",
-                (content, summary, file_hash, name),
+            await db.execute(
+                "INSERT INTO skills (name, content, summary, seed_hash, origin)"
+                " VALUES (?, ?, ?, ?, ?)"
+                " ON CONFLICT(name) DO UPDATE SET"
+                " content = excluded.content, summary = excluded.summary,"
+                " seed_hash = excluded.seed_hash, origin = excluded.origin,"
+                " updated_at = datetime('now')",
+                (name, content, summary, file_hash, origin),
             )
             await db.commit()
-            return cursor.rowcount > 0
+            return True
 
     async def list_skills(self) -> list[dict]:
         await self.ensure_seeded()
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
             cursor = await db.execute(
-                "SELECT name, summary, content, seed_hash, updated_at FROM skills ORDER BY name"
+                "SELECT name, summary, content, seed_hash, origin, updated_at"
+                " FROM skills ORDER BY name"
             )
             rows = [dict(row) for row in await cursor.fetchall()]
         # Annotate each row with whether the seed has drifted.
@@ -188,7 +315,8 @@ class SkillsStore:
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
             cursor = await db.execute(
-                "SELECT name, content, summary, seed_hash, updated_at FROM skills WHERE name = ?",
+                "SELECT name, content, summary, seed_hash, origin, updated_at"
+                " FROM skills WHERE name = ?",
                 (name,),
             )
             row = await cursor.fetchone()
@@ -203,9 +331,19 @@ class SkillsStore:
             return skill
 
     async def upsert_skill(self, name: str, content: str) -> None:
-        """Upsert a skill, clearing its seed_hash (user edit = no longer pristine)."""
+        """Upsert a skill, clearing its seed_hash (user edit = no longer pristine).
+
+        Raises ``ValueError`` for installed (origin-tagged) skills — they are
+        read-only; update by re-installing, customize by copying (#65).
+        """
         await self._ensure_schema()
-        summary = _extract_summary(content)
+        existing = await self.get_skill(name)
+        if existing and existing.get("origin"):
+            raise ValueError(
+                f"Skill '{name}' was installed from {existing['origin']} and is "
+                "read-only. Delete it and create your own copy to customize."
+            )
+        summary = _seed_summary(content)
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute(
                 "INSERT INTO skills (name, content, summary) VALUES (?, ?, ?) "
@@ -221,14 +359,94 @@ class SkillsStore:
         async with aiosqlite.connect(self.db_path) as db:
             cursor = await db.execute("DELETE FROM skills WHERE name = ?", (name,))
             await db.commit()
-            return cursor.rowcount > 0
+            deleted = cursor.rowcount > 0
+        # Installed skills also own a directory under installed_dir — remove it
+        # so ensure_seeded can't resurrect the row (#65). Never touches seed_dir.
+        if self.installed_dir:
+            skill_dir = self.installed_dir / name
+            if (skill_dir / "SKILL.md").exists():
+                shutil.rmtree(skill_dir)
+                deleted = True
+        return deleted
+
+    async def install_from_git(self, repo_url: str, skill_path: str = "") -> dict:
+        """Install (or update) a skill from a git repo into ``installed_dir`` (#65).
+
+        ``skill_path`` is the directory inside the repo holding SKILL.md
+        ("" = repo root is the skill). Clones shallow, copies the dir, records
+        the origin marker, and (re-)seeds the DB row. Returns
+        ``{name, origin, warnings}``; raises ``ValueError`` on anything wrong.
+        """
+        if not self.installed_dir:
+            raise ValueError("No installed-skills directory configured")
+        skill_path = skill_path.strip().strip("/")
+        if ".." in skill_path.split("/"):
+            raise ValueError("Skill path cannot contain '..'")
+        with tempfile.TemporaryDirectory(prefix="skill-install-") as tmp:
+            # to_thread: keep the event loop free during the clone (called from
+            # the admin API).
+            proc = await asyncio.to_thread(
+                subprocess.run,
+                ["git", "clone", "--depth", "1", repo_url, tmp],
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+            if proc.returncode != 0:
+                raise ValueError(f"git clone failed: {proc.stderr.strip()[-500:]}")
+            src = Path(tmp) / skill_path if skill_path else Path(tmp)
+            skill_md = src / "SKILL.md"
+            if not skill_md.exists():
+                raise ValueError(f"No SKILL.md at '{skill_path or '.'}' in {repo_url}")
+            meta, _ = split_frontmatter(skill_md.read_text())
+            name = str(meta.get("name") or src.name).strip()
+            # Same name rules as tools/skills.py — the name becomes a directory
+            # under installed_dir, so this is also the path-safety check.
+            if not _NAME_PATTERN.match(name) or "--" in name:
+                raise ValueError(
+                    f"Invalid skill name {name!r} (lowercase letters, digits, hyphens)"
+                )
+            findings = validate_skill_file(skill_md)
+            errors = [str(f) for f in findings if f.severity == "error"]
+            if errors:
+                raise ValueError("Skill failed validation: " + "; ".join(errors))
+            dest = self.installed_dir / name
+            if dest.exists():
+                shutil.rmtree(dest)
+            self.installed_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(src, dest)
+            shutil.rmtree(dest / ".git", ignore_errors=True)
+            origin = f"{repo_url}#{skill_path}"
+            (dest / ORIGIN_MARKER).write_text(origin + "\n")
+        await self.reset_skill_to_seed(name)
+        return {
+            "name": name,
+            "origin": origin,
+            "warnings": [str(f) for f in findings if f.severity == "warning"],
+        }
+
+    async def update_installed_skill(self, name: str) -> dict:
+        """Re-install a skill from its recorded origin (#65)."""
+        skill = await self.get_skill(name)
+        if not skill:
+            raise ValueError(f"Skill not found: {name}")
+        origin = skill.get("origin") or ""
+        if "#" not in origin:
+            raise ValueError(f"Skill '{name}' has no install origin — nothing to update")
+        repo_url, _, skill_path = origin.partition("#")
+        return await self.install_from_git(repo_url, skill_path)
 
 
 class SkillsEngine:
     """Skill index + lazy loader for LLM usage."""
 
-    def __init__(self, db_path: str = "data/skills.db", seed_dir: str | Path = "skills/"):
-        self.store = SkillsStore(db_path=db_path, seed_dir=seed_dir)
+    def __init__(
+        self,
+        db_path: str = "data/skills.db",
+        seed_dir: str | Path = "skills/",
+        installed_dir: str | Path = "data/skills",
+    ):
+        self.store = SkillsStore(db_path=db_path, seed_dir=seed_dir, installed_dir=installed_dir)
 
     async def index_entries(self, allow: list[str] | None = None) -> list[dict]:
         """The skills index as ``{name, summary}`` rows, scoped to ``allow``
@@ -363,6 +581,43 @@ def _validate_h1_title(path: Path, content: str) -> list[ValidationError]:
                 1,
                 "Missing H1 title (first line should be '# Title')",
             )
+        )
+    return errors
+
+
+def _validate_frontmatter(path: Path, content: str) -> list[ValidationError]:
+    """Agent Skills frontmatter checks for SKILL.md files (#65): ``name`` and
+    ``description`` required, spec length caps, name matches the directory."""
+    errors: list[ValidationError] = []
+    meta, _ = split_frontmatter(content)
+    if not meta:
+        errors.append(
+            ValidationError(str(path), 1, "SKILL.md requires YAML frontmatter (name, description)")
+        )
+        return errors
+    name = str(meta.get("name") or "").strip()
+    desc = str(meta.get("description") or "").strip()
+    if not name:
+        errors.append(ValidationError(str(path), 1, "Frontmatter is missing 'name'"))
+    elif len(name) > 64:
+        errors.append(ValidationError(str(path), 1, "Frontmatter 'name' exceeds 64 characters"))
+    elif not _NAME_PATTERN.match(name):
+        errors.append(
+            ValidationError(str(path), 1, f"Frontmatter name {name!r} must be lowercase [a-z0-9-]")
+        )
+    elif path.name == "SKILL.md" and path.parent.name and name != path.parent.name:
+        errors.append(
+            ValidationError(
+                str(path),
+                1,
+                f"Frontmatter name {name!r} does not match directory '{path.parent.name}'",
+            )
+        )
+    if not desc:
+        errors.append(ValidationError(str(path), 1, "Frontmatter is missing 'description'"))
+    elif len(desc) > 1024:
+        errors.append(
+            ValidationError(str(path), 1, "Frontmatter 'description' exceeds 1024 characters")
         )
     return errors
 
@@ -547,9 +802,19 @@ def validate_skill_file(path: Path, strict: bool = False) -> list[ValidationErro
         return [ValidationError(str(path), 1, "File not found")]
     content = path.read_text()
     errors: list[ValidationError] = []
-    errors.extend(_validate_h1_title(path, content))
+    is_spec = path.name == "SKILL.md"
+    if is_spec:
+        errors.extend(_validate_frontmatter(path, content))
+        # Spec skills carry frontmatter, not an H1; and community skills freely
+        # reference commands outside humux's executor allowlist — the executor
+        # blocks those at runtime, so here they're a heads-up, not a failure.
+        for finding in _validate_bash_commands(path, content):
+            finding.severity = "warning"
+            errors.append(finding)
+    else:
+        errors.extend(_validate_h1_title(path, content))
+        errors.extend(_validate_bash_commands(path, content))
     errors.extend(_validate_code_blocks(path, content))
-    errors.extend(_validate_bash_commands(path, content))
     errors.extend(_validate_cross_references(path, content))
 
     if strict:
@@ -622,7 +887,7 @@ def validate_skill_dir(seed_dir: str | Path, strict: bool = False) -> list[Valid
     if not d.exists():
         return [ValidationError(str(d), 1, f"Seed directory '{seed_dir}' not found")]
     errors: list[ValidationError] = []
-    for skill_file in sorted(d.glob("*.md")):
+    for skill_file in sorted(d.glob("*.md")) + sorted(d.glob("*/SKILL.md")):
         errors.extend(validate_skill_file(skill_file, strict=strict))
     return errors
 

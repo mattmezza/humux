@@ -31,10 +31,10 @@
           </svg>
           <span class="text-sm font-semibold tracking-wide">humux</span>
         </a>
-        <span id="status-badge"
+        <div id="status-badge" class="hidden md:block"
               hx-get="/partials/status" hx-trigger="load, refresh-status from:body" hx-swap="innerHTML">
           <span class="text-muted text-xs">Loading...</span>
-        </span>
+        </div>
       </div>
       <nav class="flex items-center gap-4 text-xs text-muted">
         <a href="https://docs.humux.dev" target="_blank" class="hover:text-accent transition-colors">Docs</a>

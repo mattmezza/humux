@@ -91,6 +91,9 @@ class AgentConfig(BaseModel):
     timezone: str = "Europe/Zurich"
     skills_dir: str = "skills/"
     skills_db_path: str = "data/skills.db"
+    # Where git-installed skills live (#65). Under data/ because the seed
+    # skills dir is mounted read-only in Docker; data/ is the writable volume.
+    skills_installed_dir: str = "data/skills"
     agents_dir: str = "agents/"
     agents_db_path: str = "data/agents.db"
     character: str = ""  # identity + tone (legacy `personalia` was merged in — #98)

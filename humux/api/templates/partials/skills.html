@@ -21,10 +21,24 @@
       <tbody>
         {% for skill in skills %}
         <tr x-show="!filter || {{ skill.name|tojson|forceescape }}.toLowerCase().includes(filter.toLowerCase()) || {{ (skill.summary or '')|tojson|forceescape }}.toLowerCase().includes(filter.toLowerCase())">
-          <td class="text-xs break-all">{{ skill.name }}</td>
+          <td class="text-xs break-all">
+            {{ skill.name }}
+            {% if skill.origin %}
+            <span class="text-[10px] text-muted border border-current rounded px-1 ml-1"
+                  title="Installed from {{ skill.origin }}">installed</span>
+            {% endif %}
+          </td>
           <td class="text-xs">{{ skill.summary }}</td>
           <td class="whitespace-nowrap">
-            <a class="btn btn-sm" href="/admin/skills/{{ skill.name }}">edit</a>
+            <a class="btn btn-sm" href="/admin/skills/{{ skill.name }}">{% if skill.origin %}view{% else %}edit{% endif %}</a>
+            {% if skill.origin %}
+            <button class="btn-outline btn-sm ml-0.5"
+                    hx-post="/skills/{{ skill.name }}/update" hx-target="#tab-content" hx-swap="innerHTML"
+                    title="Re-install from {{ skill.origin }}"
+                    hx-confirm="Update &quot;{{ skill.name }}&quot; from its origin repo?">
+              ⟳
+            </button>
+            {% endif %}
             {% if skill.stale_seed %}
             <button class="btn-outline btn-sm ml-0.5"
                     hx-post="/skills/{{ skill.name }}/reset" hx-target="#tab-content" hx-swap="innerHTML"
@@ -51,5 +65,33 @@
 
   <div class="mt-5 flex items-center gap-2">
     <a class="btn btn-sm" href="/admin/skills/new">Create new skill</a>
+  </div>
+
+  {% if install_result %}
+  <div class="mt-3 text-xs text-green-500">
+    Installed <b>{{ install_result.name }}</b> from {{ install_result.origin }}.
+    {% for w in install_result.warnings %}
+    <div class="text-yellow-500">{{ w }}</div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="mt-5 card">
+    <h3 class="text-xs text-muted uppercase tracking-wider mb-2">Install from a git repo</h3>
+    <p class="text-muted text-xs mb-2">
+      Installs an <a class="text-accent" href="https://agentskills.io" target="_blank">Agent Skills</a>
+      skill (a directory with a SKILL.md), e.g. from
+      <code>https://github.com/anthropics/skills</code>. Installed skills are read-only;
+      update re-fetches from the same repo.
+    </p>
+    <form class="flex items-center gap-2 flex-wrap"
+          hx-post="/skills/install"
+          hx-target="#tab-content" hx-swap="innerHTML">
+      <input type="text" name="url" class="input-sm flex-1" style="min-width:220px"
+             placeholder="Repo URL (https://github.com/anthropics/skills)" required>
+      <input type="text" name="path" class="input-sm flex-1" style="min-width:180px"
+             placeholder="Path in repo (skills/docx)">
+      <button class="btn btn-sm" type="submit">Install</button>
+    </form>
   </div>
 </div>

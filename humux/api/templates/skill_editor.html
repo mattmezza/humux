@@ -6,10 +6,17 @@
   <a class="text-xs text-muted hover:text-accent inline-flex items-center gap-1 mb-2" href="/admin?tab=skills">← Back to Skills</a>
   <div class="flex items-center justify-between gap-2 mb-4 flex-wrap">
     <div>
-      <h1 class="text-xl text-accent">{% if is_new %}New Skill{% else %}Edit Skill{% endif %}</h1>
+      <h1 class="text-xl text-accent">{% if is_new %}New Skill{% elif skill_origin %}View Skill{% else %}Edit Skill{% endif %}</h1>
       <p class="text-muted text-xs mt-1">Skills teach the agent how to use tools safely and correctly.</p>
     </div>
   </div>
+
+  {% if skill_origin %}
+  <div class="alert-info text-xs mb-4">
+    Installed from <code>{{ skill_origin }}</code> — editing is disabled.
+    Use Update on the Skills tab to re-fetch it, or delete it and create your own copy to customize.
+  </div>
+  {% endif %}
 
   <div class="flex gap-4 flex-wrap">
     <div class="flex-[2] min-w-[260px]">
@@ -31,6 +38,7 @@ Include executable CLI examples.
 
 ## Notes
 Edge cases, pitfalls, safety constraints."
+                    {% if skill_origin %}readonly{% endif %}
                     x-on:input.debounce.500ms="validate($el.value)"
                     x-model.fill="content">{{ skill_content }}</textarea>
           <div class="flex items-center justify-between">
@@ -53,7 +61,9 @@ Edge cases, pitfalls, safety constraints."
           </template>
         </div>
         <div class="flex items-center gap-2">
+          {% if not skill_origin %}
           <button class="btn btn-sm" type="button" onclick="saveSkill()">Save</button>
+          {% endif %}
         </div>
         <div id="save-result" class="mt-2 text-xs"></div>
       </div>
