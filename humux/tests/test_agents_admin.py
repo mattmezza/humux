@@ -495,3 +495,41 @@ def test_kill_switch_enable_disable(tmp_path) -> None:
 
     assert _toggle("ghost").status_code == 404
     assert _toggle("").status_code == 400
+
+
+def test_agent_llm_override_roundtrip_and_editor(tmp_path) -> None:
+    # Per-agent LLM override: saved via the API, normalised, echoed back, and
+    # surfaced in the editor (LLM tab) + the list badge.
+    client, _ = _client(tmp_path)
+    r = client.post(
+        "/agents",
+        json={
+            "name": "senior",
+            "llm": {
+                "provider": "Anthropic",
+                "model": "claude-4-6-opus",
+                "thinking_level": "high",
+                "max_tokens": "32000",
+                "temperature": 0.2,
+            },
+        },
+        headers=AUTH,
+    )
+    assert r.status_code == 200
+    got = client.get("/agents/senior", headers=AUTH).json()["llm"]
+    assert got == {
+        "provider": "anthropic",
+        "model": "claude-4-6-opus",
+        "thinking_level": "high",
+        "max_tokens": 32000,
+        "temperature": 0.2,
+    }
+    # No override = {} (inherit) — and junk never persists.
+    client.post("/agents", json={"name": "junior", "llm": {"temperature": 99}}, headers=AUTH)
+    assert client.get("/agents/junior", headers=AUTH).json()["llm"] == {}
+
+    page = client.get("/admin/agents/senior", headers=AUTH).text
+    assert "Custom LLM settings for this agent" in page  # LLM tab renders
+    assert "claude-4-6-opus" in page  # stored override seeds the controls
+    listing = client.get("/partials/agents", headers=AUTH).text
+    assert "🧠 claude-4-6-opus" in listing  # list badge shows the model
