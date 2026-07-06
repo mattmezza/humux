@@ -250,6 +250,22 @@ def test_webhook_author_gate(monkeypatch) -> None:
     client5, core5 = _client(agent=_agent(webhook_users=["mattmezza"]))
     assert _post(client5, bot_issue).text == "ignored"
     core5.process.assert_not_called()
+    # Scalar string (raw-frontmatter mistake) = one-item list, not a char set.
+    client6, _core6 = _client(agent=_agent(webhook_users="Alice"))
+    assert _post(client6, ISSUE_PAYLOAD).status_code == 202
+    for coro in captured:
+        coro.close()
+
+
+def test_webhook_gated_delivery_stays_redeliverable(monkeypatch) -> None:
+    # A delivery rejected by the author gate must NOT be deduped: after the
+    # admin fixes the allowlist, GitHub's Redeliver has to work.
+    captured = _capture_create_task(monkeypatch)
+    admin._GH_SEEN_DELIVERIES.clear()
+    blocked, _c1 = _client(agent=_agent(webhook_users=["mattmezza"]))
+    assert _post(blocked, ISSUE_PAYLOAD, delivery="guid-r").text == "ignored"
+    allowed, _c2 = _client(agent=_agent(webhook_users=["alice"]))
+    assert _post(allowed, ISSUE_PAYLOAD, delivery="guid-r").status_code == 202
     for coro in captured:
         coro.close()
 
