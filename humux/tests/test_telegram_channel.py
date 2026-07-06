@@ -218,6 +218,40 @@ async def test_placeholder_reflects_approval_wait_then_thinking() -> None:
     ch.app.bot.delete_message.assert_awaited_once_with(123, 4242)
 
 
+@pytest.mark.asyncio
+async def test_reaction_mode_sets_eyes_and_clears_it() -> None:
+    # cot_feedback="reaction": a slow turn sets 👀 on the triggering message and
+    # clears the reaction when it ends, instead of posting a text placeholder.
+    ch = _channel_with_mock_bot()
+    ch.config = SimpleNamespace(cot_feedback="reaction")
+
+    async with ch._typing(123, message_id=555):
+        await _wait_for(lambda: ch.app.bot.set_message_reaction.await_count > 0)
+
+    # First call = set 👀, last call = clear (empty reaction).
+    set_call = ch.app.bot.set_message_reaction.await_args_list[0]
+    assert set_call.kwargs["message_id"] == 555
+    assert [r.emoji for r in set_call.kwargs["reaction"]] == ["👀"]
+    clear_call = ch.app.bot.set_message_reaction.await_args_list[-1]
+    assert clear_call.kwargs["reaction"] == []
+    # No text placeholder in reaction mode.
+    ch.app.bot.send_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_reaction_mode_without_message_id_falls_back_to_placeholder() -> None:
+    # Reaction mode needs a message to react to; a turn with no message_id (rare)
+    # falls back to the text placeholder so the user still gets a signal.
+    ch = _channel_with_mock_bot()
+    ch.config = SimpleNamespace(cot_feedback="reaction")
+
+    async with ch._typing(123):
+        await _wait_for(lambda: ch.app.bot.send_message.await_count > 0)
+
+    ch.app.bot.set_message_reaction.assert_not_awaited()
+    ch.app.bot.delete_message.assert_awaited_once_with(123, 4242)
+
+
 def test_set_typing_waiting_is_noop_without_active_placeholder() -> None:
     # A subagent / admin-API approval has no _typing wrapper for the chat; toggling
     # must not raise (registry miss), it just does nothing.

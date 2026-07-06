@@ -173,6 +173,9 @@ class TelegramConfig(BaseModel):
     allowed_user_ids: list[int] = Field(default_factory=list)
     # Group multi-agent room behaviour (#30).
     group_chat: GroupChatConfig = Field(default_factory=GroupChatConfig)
+    # "Thinking" feedback style: "placeholder" (post+delete a 🤔 message) or
+    # "reaction" (set+clear a 👀 reaction on the triggering message).
+    cot_feedback: str = "placeholder"
 
     @field_validator("allowed_user_ids", mode="before")
     @classmethod

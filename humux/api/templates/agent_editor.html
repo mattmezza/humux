@@ -217,6 +217,14 @@
             </label>
           </div>
         </div>
+        <div class="pt-1 border-t border-border">
+          <label class="label">"Thinking" feedback</label>
+          <select class="select input-sm" x-model="cotFeedback">
+            <option value="placeholder">Message — post "🤔 Thinking…", delete when done</option>
+            <option value="reaction">Reaction — set 👀 on your message, clear when done</option>
+          </select>
+          <p class="text-xs text-muted mt-1">How the bot signals it is working. <strong>Message</strong> posts a temporary bubble; <strong>Reaction</strong> is quieter — it just eyes your message until the reply is ready.</p>
+        </div>
       </div>
 
       {# ── Per-chat Telegram settings (#129) ── #}
@@ -661,6 +669,9 @@
         {{ agent.group_chat|tojson }}
       ),
 
+      // Telegram "thinking" feedback style: placeholder | reaction (#70 flw).
+      cotFeedback: {{ (agent.cot_feedback or 'placeholder')|tojson }},
+
       init() {
         // Seed the LLM override controls from the stored config. A stored
         // thinking_level of "" means "force thinking off" (distinct from the
@@ -902,6 +913,7 @@
               chat_settings: this.buildChatSettings(),
               group_chat: this.buildGroupChat(),
               llm: this.buildLlm(),
+              cot_feedback: this.cotFeedback,
             };
         fetch('/agents', { method: 'POST', headers: this._headers(), body: JSON.stringify(body) })
           .then(r => { this.ok = r.ok; return r.text().then(t => ({ ok: r.ok, t })); })

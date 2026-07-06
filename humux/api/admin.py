@@ -743,6 +743,7 @@ class AgentUpsertIn(BaseModel):
     # Per-agent LLM override {provider, model, thinking_level, max_tokens,
     # temperature}; {} = inherit the global LLM config.
     llm: dict = {}
+    cot_feedback: str = "placeholder"  # Telegram thinking feedback: placeholder | reaction
     gh_token: str = ""  # this agent's GitHub PAT → infra vault; empty = leave unchanged
     raw: str = ""  # when set, the markdown doc is parsed instead of the fields above
 
@@ -3353,6 +3354,7 @@ def create_admin_app(
                 chat_settings=_as_chat_settings(body.chat_settings),
                 group_chat=_as_group_chat(body.group_chat),
                 llm=_as_llm_config(body.llm),
+                cot_feedback=(body.cot_feedback.strip() or "placeholder"),
             )
         # A per-agent GitHub token goes into the infra vault (machine-key,
         # boot-unsealed so it works headless), namespaced per agent (#93). Empty

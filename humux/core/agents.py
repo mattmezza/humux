@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS agents (
     chat_settings TEXT DEFAULT '',
     group_chat TEXT DEFAULT '',
     llm_config TEXT DEFAULT '',
+    cot_feedback TEXT DEFAULT '',
     is_default INTEGER NOT NULL DEFAULT 0,
     enabled INTEGER NOT NULL DEFAULT 1,
     created_at DATETIME DEFAULT (datetime('now')),
@@ -80,6 +81,7 @@ _MIGRATIONS = (
     "ALTER TABLE agents ADD COLUMN chat_settings TEXT DEFAULT ''",  # #129
     "ALTER TABLE agents ADD COLUMN group_chat TEXT DEFAULT ''",  # #133 (per-agent group rooms)
     "ALTER TABLE agents ADD COLUMN llm_config TEXT DEFAULT ''",  # per-agent LLM override
+    "ALTER TABLE agents ADD COLUMN cot_feedback TEXT DEFAULT ''",  # Telegram CoT feedback mode
     "ALTER TABLE agents ADD COLUMN is_default INTEGER NOT NULL DEFAULT 0",  # #115 flw
     "ALTER TABLE agents ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1",  # #115 flw kill-switch
     # #98: personalia merged into character. Prepend any existing personalia to
@@ -166,6 +168,11 @@ class Agent:
     # Empty = group rooms off (the GroupChatConfig defaults). Built into a
     # TelegramConfig for this agent's bot in ``core.main``.
     group_chat: dict = field(default_factory=dict)
+    # Telegram "thinking" feedback style for this agent's bot. "placeholder" (default)
+    # posts a "🤔 Thinking…" message and deletes it when the turn ends; "reaction"
+    # instead sets a 👀 reaction on the triggering message and clears it when done.
+    # Empty string normalises to "placeholder" (unchanged behaviour on upgrade).
+    cot_feedback: str = "placeholder"
     # The fallback agent flag (#115 flw): exactly one agent is the default the
     # resolution ladder lands on when nothing else is selected. Store-managed via
     # ``set_default`` — NOT written by ``upsert`` (editing an agent keeps its flag).
@@ -519,6 +526,7 @@ def parse_markdown(text: str, *, name: str) -> Agent:
         chat_settings=_as_chat_settings(fm.get("chat_settings")),
         group_chat=_as_group_chat(fm.get("group_chat")),
         llm=_as_llm_config(fm.get("llm")),
+        cot_feedback=str(fm.get("cot_feedback", "") or "") or "placeholder",
     )
 
 
@@ -540,6 +548,7 @@ def to_markdown(a: Agent) -> str:
         "chat_settings": a.chat_settings,
         "group_chat": a.group_chat,
         "llm": a.llm,
+        "cot_feedback": a.cot_feedback,
         "character": a.character,
     }
     dumped = yaml.safe_dump(fm, sort_keys=False, allow_unicode=True, default_flow_style=False)
@@ -720,8 +729,8 @@ class AgentStore:
             "(name, agent_name, role, voice, character, skills, tools, "
             "secrets, bot_token, allowed_user_ids, tool_config, "
             "email_accounts, calendar_accounts, contacts_accounts, chat_settings, group_chat, "
-            "llm_config) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "llm_config, cot_feedback) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(name) DO UPDATE SET "
             "agent_name=excluded.agent_name, role=excluded.role, "
             "voice=excluded.voice, character=excluded.character, "
@@ -731,7 +740,7 @@ class AgentStore:
             "calendar_accounts=excluded.calendar_accounts, "
             "contacts_accounts=excluded.contacts_accounts, "
             "chat_settings=excluded.chat_settings, group_chat=excluded.group_chat, "
-            "llm_config=excluded.llm_config, "
+            "llm_config=excluded.llm_config, cot_feedback=excluded.cot_feedback, "
             "updated_at=datetime('now')",
             (
                 a.name,
@@ -751,6 +760,7 @@ class AgentStore:
                 json.dumps(a.chat_settings) if a.chat_settings else "",
                 json.dumps(a.group_chat) if a.group_chat else "",
                 json.dumps(a.llm) if a.llm else "",
+                a.cot_feedback,
             ),
         )
 
@@ -784,6 +794,9 @@ class AgentStore:
             ),
             group_chat=_as_group_chat(row["group_chat"] if "group_chat" in row.keys() else ""),
             llm=_as_llm_config(row["llm_config"] if "llm_config" in row.keys() else ""),
+            cot_feedback=(
+                (row["cot_feedback"] if "cot_feedback" in row.keys() else "") or "placeholder"
+            ),
             is_default=bool(row["is_default"]) if "is_default" in row.keys() else False,
             enabled=bool(row["enabled"]) if "enabled" in row.keys() else True,
         )

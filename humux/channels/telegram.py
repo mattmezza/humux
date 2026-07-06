@@ -867,6 +867,21 @@ class TelegramChannel:
             # recover, and a failed reaction must not break the reply.
             log.info("Reaction skipped on %s/%s: %s", cid, message_id, exc)
 
+    async def unreact(self, chat_id: int | str, message_id: int) -> None:
+        """Clear any reaction the bot set on a message (empty reaction list).
+
+        Used by the "reaction" CoT feedback mode to drop the 👀 once the turn ends.
+        Same swallow-BadRequest contract as ``react`` — a cosmetic clear never fails
+        a turn.
+        """
+        cid, _ = self._route(chat_id)
+        try:
+            await self.app.bot.set_message_reaction(
+                chat_id=cid, message_id=int(message_id), reaction=[]
+            )
+        except BadRequest as exc:
+            log.info("Reaction clear skipped on %s/%s: %s", cid, message_id, exc)
+
     async def send_approval_request(
         self,
         user_id: str,
@@ -931,7 +946,7 @@ class TelegramChannel:
     _PLACEHOLDER_DELAY = 0.1
 
     @asynccontextmanager
-    async def _typing(self, chat_id: int | str):
+    async def _typing(self, chat_id: int | str, message_id: int | None = None):
         """Keep a 'working' signal visible for the whole turn, on every client.
 
         Telegram Web (K) does not render the ``sendChatAction`` typing indicator
@@ -1018,11 +1033,31 @@ class TelegramChannel:
             except Exception:
                 pass
 
+        async def _reaction():
+            # "reaction" CoT mode (#70 follow-up): set 👀 on the triggering message
+            # and clear it when the turn ends, in place of the text placeholder.
+            # Same no-flash delay as the placeholder so instant turns don't blink a
+            # reaction on and off. The approval-label toggle (_set_typing_waiting) is
+            # a no-op here — a reaction can't carry the "waiting for approval" text;
+            # the approval prompt message covers that on its own.
+            try:
+                await asyncio.wait_for(turn_over.wait(), timeout=self._PLACEHOLDER_DELAY)
+                return
+            except TimeoutError:
+                pass
+            await self.react(cid, int(message_id), "eyes")
+            await turn_over.wait()
+            await self.unreact(cid, int(message_id))
+
         typing_task = asyncio.create_task(_send_typing(), name=f"tg-typing-{chat_id}")
         # The placeholder owns its full post→delete lifecycle and is signalled via
         # turn_over, never cancelled mid-send, so a turn that ends during the send
         # round-trip can't orphan the bubble (the bot would lose the id to delete).
-        placeholder_task = asyncio.ensure_future(_placeholder())
+        use_reaction = (
+            getattr(getattr(self, "config", None), "cot_feedback", "placeholder") == "reaction"
+            and message_id is not None
+        )
+        placeholder_task = asyncio.ensure_future(_reaction() if use_reaction else _placeholder())
         try:
             yield
         finally:
@@ -1149,7 +1184,7 @@ class TelegramChannel:
                 respond=False,
             )
             return
-        async with self._typing(chat_id), self._progress(chat_id):
+        async with self._typing(chat_id, message_id), self._progress(chat_id):
             response = await self.agent.process(
                 message=text,
                 channel=self.channel_name,
@@ -1168,7 +1203,7 @@ class TelegramChannel:
         prefix: str,
         message_id: int | None = None,
     ) -> None:
-        async with self._typing(chat_id), self._progress(chat_id):
+        async with self._typing(chat_id, message_id), self._progress(chat_id):
             file = await self.app.bot.get_file(file_id)
             audio_bytes = await file.download_as_bytearray()
 
@@ -1213,7 +1248,7 @@ class TelegramChannel:
     ) -> None:
         from core.models import IMAGE_MIME_TYPES, Attachment
 
-        async with self._typing(chat_id), self._progress(chat_id):
+        async with self._typing(chat_id, message_id), self._progress(chat_id):
             attachments: list[Attachment] = []
             for file_id, mime_type in file_ids:
                 file = await self.app.bot.get_file(file_id)

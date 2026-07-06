@@ -160,6 +160,7 @@ async def _start_agent(config_store: ConfigStore):
                 bot_token=token,
                 allowed_user_ids=ag.allowed_user_ids,
                 group_chat=GroupChatConfig(**ag.group_chat) if ag.group_chat else GroupChatConfig(),
+                cot_feedback=ag.cot_feedback or "placeholder",
             )
             await _start_tg(pconf, channel_name)
 
