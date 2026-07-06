@@ -484,8 +484,11 @@ async def main() -> None:
         if response is None:
             print("\n[interrupted]\n")
             continue
-        if response.text:
-            print(f"\n{response.text}\n")
+        # Each message is printed as its own bubble (#202); voice notes have no
+        # terminal rendering, so their text stands in.
+        for msg in response.delivery_messages:
+            if msg.text:
+                print(f"\n{msg.text}\n")
         if getattr(response, "system_notice", None):
             print(f"[system] {response.system_notice}\n")
 

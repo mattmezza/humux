@@ -1242,18 +1242,25 @@ class TelegramChannel:
         await self._send_response(chat_id, response)
 
     async def _send_response(self, chat_id: int | str, response) -> None:
-        """Send an AgentResponse back — voice or text, then any generated images.
+        """Send an AgentResponse back — each message (voice or text) in order,
+        then any generated images (#202).
 
-        Text goes through ``send()`` so Markdown is rendered (HTML), and photos are
-        sent bare afterwards — simpler and correct, vs. a raw-Markdown caption.
+        A turn may deliver several messages (multiple text bubbles, text + voice,
+        etc.); ``delivery_messages`` yields them in order, falling back to the flat
+        text/voice fields for old-style responses. Text goes through ``send()`` so
+        Markdown is rendered (HTML); photos are sent bare afterwards.
         """
         cid, kw = self._route(chat_id)
         images = [a for a in (getattr(response, "attachments", None) or []) if a.is_image]
-        if response.voice:
-            await self.app.bot.send_voice(cid, response.voice, **kw)
-        elif response.text:
-            await self.send(chat_id, response.text)
-        elif not images:
+        sent = False
+        for msg in response.delivery_messages:
+            if msg.voice:
+                await self.app.bot.send_voice(cid, msg.voice, **kw)
+                sent = True
+            elif msg.text:
+                await self.send(chat_id, msg.text)
+                sent = True
+        if not sent and not images:
             log.warning("Skipping empty response for chat_id=%s", chat_id)
         for att in images:
             await self.app.bot.send_photo(cid, att.data, **kw)

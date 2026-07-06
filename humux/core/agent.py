@@ -38,7 +38,7 @@ from core.llm import (
 )
 from core.log_streams import set_stream, subagent_stream
 from core.memory import MemoryStore
-from core.models import IMAGE_MIME_TYPES, AgentResponse, Attachment
+from core.models import IMAGE_MIME_TYPES, AgentResponse, Attachment, OutputMessage
 from core.permissions import PermissionEngine, PermissionLevel, format_approval_message
 from core.prompt_builder import build_prompt_sections
 from core.reply_decision import should_reply
@@ -188,6 +188,14 @@ VOICE_MARKER = "[respond_with_voice]"
 # suffix pattern would fail to match those and leak the raw marker to the user;
 # voice_request_lang validates the code separately.
 _VOICE_MARKER_RE = re.compile(r"\[respond_with_voice(?::([^\]]*))?\]")
+
+# Multi-message replies (#202): the model separates sequential messages with this
+# marker; each part becomes its own delivered message and may carry its own voice
+# marker, so a turn can mix text and voice bubbles. Absent = one message
+# (unchanged behaviour). Split swallows surrounding whitespace so blank lines
+# around the marker don't leak into a bubble.
+SPLIT_MARKER = "[[split]]"
+_SPLIT_MARKER_RE = re.compile(r"\s*\[\[split\]\]\s*", re.IGNORECASE)
 
 # Cap an approval prompt's text on the fail-closed retry so an over-long
 # description (e.g. a huge bash command) fits a channel's message limit. Well
@@ -2076,22 +2084,20 @@ class AgentCore:
                 final_text = _LOOP_ABORT_MESSAGE
         log.info("Response: %s", final_text[:200])
 
-        # Check if the LLM wants to respond with voice
-        voice_bytes = await self._maybe_synthesize_voice(
-            final_text, voice=(agent.voice or None) if agent else None
-        )
-        # Strip the control marker unconditionally — it must never reach the user,
-        # even when synthesis was skipped or failed (voice_bytes is None).
-        final_text = strip_voice_marker(final_text)
+        # Split into one or more delivery messages (#202); each part may be voice.
+        # ``final_text`` becomes the combined marker-free text used for history,
+        # memory extraction, and the backward-compat AgentResponse.text.
+        messages, final_text = await self._split_reply(final_text, agent)
 
-        # Persist the turn (user message + final assistant text only). A react-only
-        # turn (or any reply that sends nothing) leaves final_text empty — don't
-        # store an empty assistant turn: some providers reject empty content on the
-        # next replay, and the coalescer folds the resulting adjacent user turns (#70).
+        # Persist the turn (user message + one assistant turn per delivered message).
+        # A react-only turn (or any reply that sends nothing) yields no messages —
+        # don't store an empty assistant turn: some providers reject empty content on
+        # the next replay, and the coalescer folds the resulting adjacent user turns (#70).
         history_message = self._history_message_text(message, attachments)
         await self.history.add_turn(channel, user_id, "user", history_message, chat_id)
-        if final_text:
-            await self.history.add_turn(channel, user_id, "assistant", final_text, chat_id)
+        for msg in messages:
+            if msg.text:
+                await self.history.add_turn(channel, user_id, "assistant", msg.text, chat_id)
 
         # Automatic memory extraction
         if channel != "system":
@@ -2109,8 +2115,9 @@ class AgentCore:
 
         return AgentResponse(
             text=final_text,
-            voice=voice_bytes,
+            voice=messages[0].voice if messages else None,
             attachments=request_state.get("pending_attachments", []),
+            messages=messages,
         )
 
     async def _process_session(
@@ -2260,6 +2267,12 @@ class AgentCore:
             elif response.tool_calls and not final_text:
                 final_text = _LOOP_ABORT_MESSAGE
 
+        # Split into one or more delivery messages (#202); each part may be voice.
+        # ``final_text`` becomes the combined marker-free text — one assistant turn
+        # in the session (multiple assistant messages would break user/assistant
+        # alternation), and the backward-compat AgentResponse.text.
+        messages, final_text = await self._split_reply(final_text, agent)
+
         # Append the final assistant response to the session. Skip an empty final
         # (a react-only turn sends nothing): the reaction is already recorded as the
         # assistant tool_use turn above, and an empty assistant message is dead weight
@@ -2277,14 +2290,6 @@ class AgentCore:
         # session that was just sent, so it's the authoritative context size.
         system_notice = await self._maybe_compact(channel, user_id, chat_id, response)
 
-        # Check if the LLM wants to respond with voice
-        voice_bytes = await self._maybe_synthesize_voice(
-            final_text, voice=(agent.voice or None) if agent else None
-        )
-        # Strip the control marker unconditionally — it must never reach the user,
-        # even when synthesis was skipped or failed (voice_bytes is None).
-        final_text = strip_voice_marker(final_text)
-
         # Automatic memory extraction
         if channel != "system":
             asyncio.create_task(
@@ -2301,9 +2306,10 @@ class AgentCore:
 
         return AgentResponse(
             text=final_text,
-            voice=voice_bytes,
+            voice=messages[0].voice if messages else None,
             attachments=request_state.get("pending_attachments", []),
             system_notice=system_notice,
+            messages=messages,
         )
 
     @staticmethod
@@ -2316,6 +2322,26 @@ class AgentCore:
             suffix = f" [{label} attached]"
             return (message + suffix) if message else suffix.strip()
         return message
+
+    async def _split_reply(
+        self, final_text: str, agent: Agent | None
+    ) -> tuple[list[OutputMessage], str]:
+        """Split the model's final reply into ordered delivery messages (#202).
+
+        Parts are separated by SPLIT_MARKER; each part is independently checked
+        for the voice marker, so one turn can send several text bubbles, a voice
+        note, or a mix. No marker → a single message (unchanged behaviour).
+        Returns the message list and the combined marker-free text (for history,
+        logging, and the backward-compat ``AgentResponse.text``).
+        """
+        voice_name = (agent.voice or None) if agent else None
+        parts = [p for p in (seg.strip() for seg in _SPLIT_MARKER_RE.split(final_text)) if p]
+        messages: list[OutputMessage] = []
+        for part in parts:
+            voice_bytes = await self._maybe_synthesize_voice(part, voice=voice_name)
+            messages.append(OutputMessage(text=strip_voice_marker(part), voice=voice_bytes))
+        combined = "\n".join(m.text for m in messages if m.text)
+        return messages, combined
 
     async def _maybe_synthesize_voice(self, text: str, voice: str | None = None) -> bytes | None:
         """Synthesize voice if requested by the LLM, using the agent's voice
