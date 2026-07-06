@@ -34,7 +34,9 @@ from core.llm import (
     LLMToolCall,
     model_supports_vision,
     reset_capture_context,
+    reset_usage_agent,
     set_capture_context,
+    set_usage_agent,
 )
 from core.log_streams import set_stream, subagent_stream
 from core.memory import MemoryStore
@@ -1471,6 +1473,8 @@ class AgentCore:
         # Inspect tab can show the exact last-sent payload (#99). Reset in finally
         # so a context never leaks onto an unrelated later turn on the same task.
         cap_token = set_capture_context((channel, user_id, chat_id))
+        # Attribute this turn's token usage to the serving agent (#199 flw).
+        agent_token = set_usage_agent(agent.name if agent else "")
         try:
             if self.history_mode == "session":
                 return await self._process_session(
@@ -1499,6 +1503,7 @@ class AgentCore:
             )
         finally:
             reset_capture_context(cap_token)
+            reset_usage_agent(agent_token)
             self._active_turns_map().pop(turn_key, None)
 
     async def _resolve_agent(self, channel: str, user_id: str, chat_id: str) -> Agent | None:

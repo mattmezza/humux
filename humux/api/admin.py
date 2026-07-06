@@ -97,13 +97,13 @@ _jinja_env = Environment(
 
 
 def _fmt_tokens(n: int) -> str:
-    """Format a token count with k/M/G suffix (#199)."""
-    if n >= 1_000_000_000:
-        return f"{n / 1_000_000_000:.2f}".rstrip("0").rstrip(".") + "G"
-    if n >= 1_000_000:
-        return f"{n / 1_000_000:.2f}".rstrip("0").rstrip(".") + "M"
-    if n >= 1_000:
-        return f"{n / 1_000:.2f}".rstrip("0").rstrip(".") + "k"
+    """Format a token count with a k/M/B/T suffix (thousand/million/billion/
+    trillion — #199). ponytail: stops at trillion; token counts never reach
+    quadrillion, so add another suffix here if that day ever comes."""
+    scales = ((10**12, "T"), (10**9, "B"), (10**6, "M"), (10**3, "k"))
+    for scale, suffix in scales:
+        if n >= scale:
+            return f"{n / scale:.2f}".rstrip("0").rstrip(".") + suffix
     return str(n)
 
 
@@ -1345,6 +1345,9 @@ def create_admin_app(
         tok_24h = await store.totals_since(24)
         tok_7d = await store.totals_since(24 * 7)
         tok_30d = await store.totals_since(24 * 30)
+        # One structure the overview cards toggle between client-side (#199 flw) —
+        # no per-period refetch. Keyed by the period label the buttons use.
+        token_stats = {"24h": tok_24h, "7d": tok_7d, "30d": tok_30d}
 
         # Recent log entries
         snapshot = list(_LOG_BUFFER)
@@ -1357,8 +1360,7 @@ def create_admin_app(
             channels=channels,
             scheduler_jobs=scheduler_jobs,
             tok_24h=tok_24h,
-            tok_7d=tok_7d,
-            tok_30d=tok_30d,
+            token_stats=token_stats,
             log_entries=log_entries,
         )
 

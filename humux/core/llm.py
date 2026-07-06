@@ -27,6 +27,9 @@ reasoning_log.setLevel(logging.WARNING)
 # agent process; move onto the agent instance if multi-tenant ever lands.
 # Context key = (channel, user_id, chat_id) — same triple as ConversationHistory.
 _capture_ctx: contextvars.ContextVar = contextvars.ContextVar("humux_llm_capture_ctx", default=None)
+# The agent slug whose turn is running, so token usage can be attributed per
+# agent for the dashboard (#199 flw). Empty = unknown (subagents/system tasks).
+_usage_agent: contextvars.ContextVar = contextvars.ContextVar("humux_llm_usage_agent", default="")
 _LAST_SENT: OrderedDict[tuple[str, str, str], dict[str, Any]] = OrderedDict()
 _CAPTURE_CAP = 100  # ponytail: LRU cap; bump if you watch >100 live chats
 
@@ -42,6 +45,16 @@ def set_capture_context(ctx: tuple[str, str, str] | None) -> Any:
 
 def reset_capture_context(token: Any) -> None:
     _capture_ctx.reset(token)
+
+
+def set_usage_agent(name: str) -> Any:
+    """Bind the agent slug that token usage this turn is attributed to (#199 flw).
+    Returns a token for :func:`reset_usage_agent`."""
+    return _usage_agent.set(name or "")
+
+
+def reset_usage_agent(token: Any) -> None:
+    _usage_agent.reset(token)
 
 
 def record_sent_payload(ctx: tuple[str, str, str] | None, payload: dict[str, Any]) -> None:
@@ -429,6 +442,7 @@ class LLMClient:
                             output_tokens=usage.get("output_tokens", 0),
                             cache_read_input_tokens=usage.get("cache_read_input_tokens", 0),
                             cache_creation_input_tokens=usage.get("cache_creation_input_tokens", 0),
+                            agent=_usage_agent.get(),
                         )
                     )
                 except Exception as exc:
@@ -483,6 +497,7 @@ class LLMClient:
                         output_tokens=usage.get("output_tokens", 0),
                         cache_read_input_tokens=usage.get("cache_read_input_tokens", 0),
                         cache_creation_input_tokens=usage.get("cache_creation_input_tokens", 0),
+                        agent=_usage_agent.get(),
                     )
                 )
             except Exception as exc:

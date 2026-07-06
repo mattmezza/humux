@@ -31,25 +31,68 @@
     </div>
   </div>
 
-  {# Token usage — real data from TokenUsageStore #}
-  <div class="grid grid-cols-3 gap-3">
-    {% set cr_24h = (tok_24h.total_cache_read / (tok_24h.total_cache_read + tok_24h.total_cache_creation) * 100)|round(1) if (tok_24h.total_cache_read + tok_24h.total_cache_creation) > 0 else 0 %}
-    {% set cr_7d = (tok_7d.total_cache_read / (tok_7d.total_cache_read + tok_7d.total_cache_creation) * 100)|round(1) if (tok_7d.total_cache_read + tok_7d.total_cache_creation) > 0 else 0 %}
-    {% set cr_30d = (tok_30d.total_cache_read / (tok_30d.total_cache_read + tok_30d.total_cache_creation) * 100)|round(1) if (tok_30d.total_cache_read + tok_30d.total_cache_creation) > 0 else 0 %}
-    <div class="card px-4 py-3">
-      <div class="text-xs text-muted mb-0.5">Tokens · 24h</div>
-      <div class="text-lg text-accent font-semibold">{{ fmt_tokens(tok_24h.total_input + tok_24h.total_output) }}</div>
-      <div class="text-[10px] text-muted mt-0.5">{{ fmt_tokens(tok_24h.total_input) }} in / {{ fmt_tokens(tok_24h.total_output) }} out{% if cr_24h > 0 %} / {{ cr_24h }}% cached{% endif %}</div>
+  {# Token usage — three cards sharing one client-side period toggle (#199 flw).
+     All periods are rendered into `stats`; switching just re-reads the map. #}
+  <div x-data="{
+         period: '24h',
+         periods: ['24h', '7d', '30d'],
+         stats: {{ token_stats|tojson }},
+         fmt(n) { return window.formatTokens ? window.formatTokens(n || 0) : String(n || 0); },
+         get s() { return this.stats[this.period] || {}; },
+         get total() { const s = this.s; return (s.total_input||0)+(s.total_output||0)+(s.total_cache_read||0)+(s.total_cache_creation||0); },
+         get cached() { return this.s.total_cache_read || 0; },
+         get uncached() { const s = this.s; return (s.total_input||0)+(s.total_cache_creation||0); },
+         get cachePct() { const c = this.cached, u = this.uncached; return (c+u) > 0 ? Math.round(c/(c+u)*1000)/10 : 0; },
+         get agents() { return this.s.top_agents || []; },
+       }">
+    <div class="flex items-center gap-3 mb-2">
+      <span class="text-xs text-muted uppercase tracking-wider">Token usage</span>
+      <div class="flex items-center gap-2">
+        <template x-for="p in periods" :key="p">
+          <button type="button" class="text-xs"
+                  :class="period === p ? 'text-accent font-semibold' : 'text-muted hover:text-accent'"
+                  @click="period = p" x-text="p"></button>
+        </template>
+      </div>
     </div>
-    <div class="card px-4 py-3">
-      <div class="text-xs text-muted mb-0.5">Tokens · 7d</div>
-      <div class="text-lg text-accent font-semibold">{{ fmt_tokens(tok_7d.total_input + tok_7d.total_output) }}</div>
-      <div class="text-[10px] text-muted mt-0.5">{{ fmt_tokens(tok_7d.total_input) }} in / {{ fmt_tokens(tok_7d.total_output) }} out{% if cr_7d > 0 %} / {{ cr_7d }}% cached{% endif %}</div>
-    </div>
-    <div class="card px-4 py-3">
-      <div class="text-xs text-muted mb-0.5">Tokens · 30d</div>
-      <div class="text-lg text-accent font-semibold">{{ fmt_tokens(tok_30d.total_input + tok_30d.total_output) }}</div>
-      <div class="text-[10px] text-muted mt-0.5">{{ fmt_tokens(tok_30d.total_input) }} in / {{ fmt_tokens(tok_30d.total_output) }} out{% if cr_30d > 0 %} / {{ cr_30d }}% cached{% endif %}</div>
+    <div class="grid grid-cols-3 gap-3">
+      {# Total tokens #}
+      <div class="card px-4 py-3">
+        <div class="text-xs text-muted mb-0.5">Total tokens</div>
+        <div class="text-lg text-accent font-semibold" x-text="fmt(total)"></div>
+        <div class="text-[10px] text-muted mt-0.5">
+          <span x-text="fmt(s.total_input)"></span> in / <span x-text="fmt(s.total_output)"></span> out
+        </div>
+      </div>
+      {# Cached vs uncached #}
+      <div class="card px-4 py-3">
+        <div class="text-xs text-muted mb-0.5">Cached / uncached</div>
+        <div class="text-lg text-accent font-semibold">
+          <span x-text="fmt(cached)"></span><span class="text-muted text-sm"> / </span><span x-text="fmt(uncached)"></span>
+        </div>
+        <div class="text-[10px] text-muted mt-0.5"><span x-text="cachePct"></span>% cache hits</div>
+      </div>
+      {# Top consuming agent (2nd/3rd in subtitle) #}
+      <div class="card px-4 py-3">
+        <div class="text-xs text-muted mb-0.5">Top agent</div>
+        <template x-if="agents.length">
+          <div>
+            <div class="text-lg text-accent font-semibold">
+              <span x-text="agents[0].agent"></span>
+              <span class="text-muted text-xs" x-text="fmt(agents[0].total)"></span>
+            </div>
+            <div class="text-[10px] text-muted mt-0.5">
+              <template x-for="(a, i) in agents.slice(1, 3)" :key="a.agent">
+                <span><span x-show="i > 0"> · </span><span x-text="a.agent"></span> <span x-text="fmt(a.total)"></span></span>
+              </template>
+              <span x-show="agents.length < 2">—</span>
+            </div>
+          </div>
+        </template>
+        <template x-if="!agents.length">
+          <div class="text-lg text-muted font-semibold">—</div>
+        </template>
+      </div>
     </div>
   </div>
 
