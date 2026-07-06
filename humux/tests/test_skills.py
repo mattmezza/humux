@@ -413,3 +413,12 @@ def test_spec_skill_commands_downgrade_to_warnings(tmp_path) -> None:
     errors = validate_skill_file(d / "SKILL.md")
     assert errors  # the disallowed command is flagged...
     assert all(e.severity == "warning" for e in errors)  # ...but only as a warning
+
+
+def test_spec_skill_python_and_pdftoppm_no_warnings(tmp_path) -> None:
+    d = tmp_path / "docx"
+    d.mkdir()
+    (d / "SKILL.md").write_text(
+        SPEC_SKILL + "\n```bash\npython scripts/x.py in.docx\npdftoppm -png out.pdf page\n```\n"
+    )
+    assert validate_skill_file(d / "SKILL.md") == []

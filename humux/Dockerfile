@@ -6,7 +6,7 @@ WORKDIR /app
 # golang + build-essential build wacli (CGO, sqlite_fts5) from the pinned upstream tag.
 # The bash-tool allowlist (core/executor.py ALLOWED_PREFIXES) promises these CLIs
 # exist — keep this list in sync with it: git (coding harness clone/commit),
-# ripgrep (rg), w3m, pandoc, poppler-utils (pdftotext), yt-dlp, ncal (cal).
+# ripgrep (rg), w3m, pandoc, poppler-utils (pdftotext, pdftoppm), yt-dlp, ncal (cal).
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg curl ca-certificates jq sqlite3 \
     bash tar gzip xz-utils \

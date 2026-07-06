@@ -110,6 +110,16 @@ async def test_agent_override_strips_leaked_managed_env(monkeypatch) -> None:
         ("himalaya envelope list; rm -rf /", False),
         # Bare subshell still rejected.
         ("gh pr list && (rm -rf /)", False),
+        # Agent Skills bundled scripts (#65): both python names, both roots.
+        ("python3 /app/data/skills/pptx/scripts/thumbnail.py deck.pptx", True),
+        ("python /app/data/skills/pptx/scripts/thumbnail.py deck.pptx", True),
+        ("python3 /app/skills/docx/scripts/convert.py in.docx", True),
+        ("python /app/skills/docx/scripts/convert.py in.docx", True),
+        # Bare python outside the skill roots stays blocked.
+        ("python -c 'print(1)'", False),
+        ("python3 evil.py", False),
+        # pdftoppm ships with poppler-utils (pptx/pdf skills render pages).
+        ("pdftoppm -png slides.pdf page", True),
     ],
 )
 def test_command_allowed(command: str, allowed: bool) -> None:
