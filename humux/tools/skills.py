@@ -7,7 +7,7 @@ Usage examples:
   python3 /app/tools/skills.py upsert --name weather --stdin
   python3 /app/tools/skills.py delete weather
   python3 /app/tools/skills.py install https://github.com/anthropics/skills \
-      --path document-skills/docx
+      --path skills/docx
   python3 /app/tools/skills.py update docx
   python3 /app/tools/skills.py cat docx scripts/example.py
 """
