@@ -219,6 +219,14 @@ class TelegramChannel:
 
     def _reply_context(self, message) -> str:
         reply = getattr(message, "reply_to_message", None)
+        # In a forum topic, the first message's reply_to_message is the topic's
+        # creation service message (non-text) — not a real reply. Rendering it
+        # poisons the reply-decision gate into SKIP (#forum). Ignore it.
+        if reply and (
+            getattr(reply, "forum_topic_created", None)
+            or getattr(reply, "message_id", None) == getattr(message, "message_thread_id", None)
+        ):
+            reply = None
         if not reply:
             return ""
         author = ""
