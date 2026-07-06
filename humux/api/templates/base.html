@@ -203,6 +203,33 @@
     }
     window.previewVoice = previewVoice;
 
+    // Shared LLM catalogs — one source of truth for the LLM tab and the
+    // per-agent LLM override in the agent editor.
+    window.LLM_PROVIDERS = [
+      {value: 'anthropic', label: 'Anthropic'},
+      {value: 'openai', label: 'OpenAI'},
+      {value: 'google', label: 'Google Gemini'},
+      {value: 'grok', label: 'Grok (xAI)'},
+      {value: 'deepseek', label: 'DeepSeek'},
+      {value: 'openrouter', label: 'OpenRouter'}
+    ];
+    window.LLM_MODELS = {
+      anthropic: ['claude-4-6-opus', 'claude-4-6-sonnet', 'claude-haiku-4-5'],
+      openai: ['gpt-5.2-thinking', 'gpt-5.2-pro', 'gpt-5.2-instant', 'gpt-5-mini'],
+      google: ['gemini-deep-think-latest', 'gemini-pro-latest', 'gemini-flash-latest'],
+      grok: ['grok-4.20-beta', 'grok-4-latest', 'grok-4.1-fast'],
+      deepseek: ['deepseek-chat', 'deepseek-reasoner'],
+      openrouter: ['anthropic/claude-sonnet-4.5', 'openai/gpt-5', 'google/gemini-2.5-flash', 'deepseek/deepseek-chat']
+    };
+    // ponytail: substring heuristic for reasoning-capable models — extend the
+    // list as model ids change.
+    window.llmModelSupportsThinking = function (modelId) {
+      const id = (modelId || '').toLowerCase();
+      if (!id) return false;
+      return ['opus', 'sonnet', 'thinking', 'pro', 'deep-think', 'reasoner', 'grok-4']
+        .some(pat => id.includes(pat));
+    };
+
     function llmTab(provider, apiKey, model, openaiKey, openaiBaseUrl, googleKey, googleBaseUrl, grokKey, grokBaseUrl, deepseekKey, deepseekBaseUrl, openrouterKey, openrouterBaseUrl, extractionProvider, extractionModel, consolidationProvider, consolidationModel, gdEnabled, gdProvider, gdModel, trEnabled, trProvider, trModel, compactionProvider, compactionModel, thinkingLevel, extractionThinkingLevel, consolidationThinkingLevel, gdThinkingLevel, trThinkingLevel, compactionThinkingLevel, visionEnabled, visionProvider, visionModel, rdEnabled, rdProvider, rdModel, rdThinkingLevel, rdGroupOnly, rdMaxReplies, rdWindowSeconds, maxTokens, temperature, trMaxReflections) {
       const currentProvider = provider || 'anthropic';
       return {
@@ -230,14 +257,7 @@
           } catch (e) {}
         },
         reloadLlmPartial() { if (window.htmx) { htmx.ajax('GET', '/partials/llm', {target: '#tab-content', swap: 'innerHTML'}); } },
-        providerOptions: [
-          {value: 'anthropic', label: 'Anthropic'},
-          {value: 'openai', label: 'OpenAI'},
-          {value: 'google', label: 'Google Gemini'},
-          {value: 'grok', label: 'Grok (xAI)'},
-          {value: 'deepseek', label: 'DeepSeek'},
-          {value: 'openrouter', label: 'OpenRouter'}
-        ],
+        providerOptions: window.LLM_PROVIDERS,
         provider: currentProvider,
         apiKey: apiKey || '',
         model: model || '',
@@ -323,39 +343,7 @@
           deepseek: '',
           openrouter: ''
         },
-        models: {
-          anthropic: [
-            {value: 'claude-4-6-opus', label: 'claude-4-6-opus'},
-            {value: 'claude-4-6-sonnet', label: 'claude-4-6-sonnet'},
-            {value: 'claude-haiku-4-5', label: 'claude-haiku-4-5'}
-          ],
-          openai: [
-            {value: 'gpt-5.2-thinking', label: 'gpt-5.2-thinking'},
-            {value: 'gpt-5.2-pro', label: 'gpt-5.2-pro'},
-            {value: 'gpt-5.2-instant', label: 'gpt-5.2-instant'},
-            {value: 'gpt-5-mini', label: 'gpt-5-mini'}
-          ],
-          google: [
-            {value: 'gemini-deep-think-latest', label: 'gemini-deep-think-latest'},
-            {value: 'gemini-pro-latest', label: 'gemini-pro-latest'},
-            {value: 'gemini-flash-latest', label: 'gemini-flash-latest'}
-          ],
-          grok: [
-            {value: 'grok-4.20-beta', label: 'grok-4.20-beta'},
-            {value: 'grok-4-latest', label: 'grok-4-latest'},
-            {value: 'grok-4.1-fast', label: 'grok-4.1-fast'}
-          ],
-          deepseek: [
-            {value: 'deepseek-chat', label: 'deepseek-chat'},
-            {value: 'deepseek-reasoner', label: 'deepseek-reasoner'}
-          ],
-          openrouter: [
-            {value: 'anthropic/claude-sonnet-4.5', label: 'anthropic/claude-sonnet-4.5'},
-            {value: 'openai/gpt-5', label: 'openai/gpt-5'},
-            {value: 'google/gemini-2.5-flash', label: 'google/gemini-2.5-flash'},
-            {value: 'deepseek/deepseek-chat', label: 'deepseek/deepseek-chat'}
-          ]
-        },
+        models: window.LLM_MODELS,
         fetchedModels: {anthropic: [], openai: [], google: [], grok: [], deepseek: [], openrouter: []},
         fetchingModels: {anthropic: false, openai: false, google: false, grok: false, deepseek: false, openrouter: false},
         fetchModelsResult: {anthropic: '', openai: '', google: '', grok: '', deepseek: '', openrouter: ''},
@@ -364,16 +352,9 @@
           if (fetched && fetched.length) {
             return fetched.map(id => ({value: id, label: id}));
           }
-          return this.models[prov] || [];
+          return (this.models[prov] || []).map(id => ({value: id, label: id}));
         },
-        // ponytail: substring heuristic for reasoning-capable models — extend the
-        // list as model ids change; the thinking-level control shows only when true.
-        modelSupportsThinking(modelId) {
-          const id = (modelId || '').toLowerCase();
-          if (!id) return false;
-          return ['opus', 'sonnet', 'thinking', 'pro', 'deep-think', 'reasoner', 'grok-4']
-            .some(pat => id.includes(pat));
-        },
+        modelSupportsThinking(modelId) { return window.llmModelSupportsThinking(modelId); },
         // ponytail: mirror of model_supports_vision() in core/llm.py — keep in
         // sync. True when the model reads images natively (no fallback needed).
         modelSupportsVision(modelId, prov) {

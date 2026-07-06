@@ -1826,7 +1826,7 @@ class AgentCore:
         return system
 
     async def _maybe_compact(
-        self, channel: str, user_id: str, chat_id: str, response: Any
+        self, channel: str, user_id: str, chat_id: str, response: Any, model: str = ""
     ) -> str | None:
         """Compact the session if the context exceeds the configured threshold.
 
@@ -1838,7 +1838,9 @@ class AgentCore:
             return None
         usage = getattr(response, "usage", None) or {}
         context_tokens = int(usage.get("context_tokens") or 0)
-        if not should_compact(cfg, context_tokens, self.config.agent.model):
+        # Threshold % is judged against the model the turn actually ran on
+        # (a per-agent override may have a different context window).
+        if not should_compact(cfg, context_tokens, model or self.config.agent.model):
             return None
 
         session = await self.history.get_session(channel, user_id, chat_id)
@@ -1872,8 +1874,14 @@ class AgentCore:
         message: str,
         attachments: list[Attachment] | None = None,
         preamble: str = "",
+        llm: LLMClient | None = None,
+        model: str = "",
     ) -> dict:
         """Build the user message dict, handling multimodal content.
+
+        ``llm``/``model`` are the client and model this turn actually runs on
+        (a per-agent override may differ from the globals) — they pick the
+        image-block format and decide whether the vision fallback engages.
 
         ``preamble`` (live date/time + optional execution plan) is prepended to
         the message text so the agent always knows 'now' for the current turn.
@@ -1882,10 +1890,12 @@ class AgentCore:
         configured, images are captioned by a secondary model and the text is
         injected in place of the image blocks so the model can still "see".
         """
+        llm = llm or self.llm
+        model = model or self.config.agent.model
         text = f"{preamble}\n\n{message}" if preamble else message
         image_attachments = [a for a in (attachments or []) if a.is_image]
         if image_attachments:
-            if self._vision_fallback_active():
+            if self.config.vision.enabled and not model_supports_vision(llm.provider, model):
                 captions = await self._caption_images(image_attachments, message)
                 if captions:
                     text = "\n\n".join([text, *captions]) if text else "\n\n".join(captions)
@@ -1895,18 +1905,12 @@ class AgentCore:
             if text:
                 content_blocks.append({"type": "text", "text": text})
             for att in image_attachments:
-                if self.llm.provider == "anthropic":
+                if llm.provider == "anthropic":
                     content_blocks.append(att.to_anthropic_block())
                 else:
                     content_blocks.append(att.to_openai_block())
             return {"role": "user", "content": content_blocks}
         return {"role": "user", "content": text}
-
-    def _vision_fallback_active(self) -> bool:
-        """True when the active model lacks vision and a fallback is enabled."""
-        return self.config.vision.enabled and not model_supports_vision(
-            self.llm.provider, self.config.agent.model
-        )
 
     async def _caption_images(self, images: list[Attachment], user_text: str) -> list[str]:
         """Caption each image with a task-aware prompt, returning ``[Image: ...]``
@@ -1975,6 +1979,7 @@ class AgentCore:
     ) -> AgentResponse:
         """Injection mode: replay windowed history as native alternating messages."""
         tools = tools if tools is not None else TOOLS
+        llm, model, max_tokens = self._agent_llm(agent)
         history = await self.history.get_messages(channel, user_id, chat_id)
         messages: list[dict] = []
 
@@ -1984,7 +1989,7 @@ class AgentCore:
                 messages.append({"role": turn["role"], "content": turn["content"]})
 
         # The actual current request — always the last user message.
-        messages.append(await self._build_user_message(message, attachments, preamble))
+        messages.append(await self._build_user_message(message, attachments, preamble, llm, model))
 
         log.info(
             "Processing message (injection) from %s/%s/%s: %s",
@@ -1995,9 +2000,9 @@ class AgentCore:
         )
 
         # Initial LLM call
-        response = await self.llm.generate(
-            model=self.config.agent.model,
-            max_tokens=self.config.agent.max_tokens,
+        response = await llm.generate(
+            model=model,
+            max_tokens=max_tokens,
             system=system,
             messages=messages,
             tools=cast(Any, tools),
@@ -2057,8 +2062,8 @@ class AgentCore:
                     break
 
             # Feed tool results back to the LLM
-            messages.append(self.llm.assistant_message(response))
-            messages.extend(self.llm.tool_result_messages(tool_results))
+            messages.append(llm.assistant_message(response))
+            messages.extend(llm.tool_result_messages(tool_results))
             # Mid-turn steering (#145): fold any follow-up the user sent while we
             # worked into the next call. Appended after the tool_result user turn;
             # generate() merges the consecutive user turns, so alternation holds.
@@ -2067,9 +2072,9 @@ class AgentCore:
             steer = self._drain_steer(channel, user_id, chat_id)
             if steer:
                 messages.append(self._steer_message(steer))
-            response = await self.llm.generate(
-                model=self.config.agent.model,
-                max_tokens=self.config.agent.max_tokens,
+            response = await llm.generate(
+                model=model,
+                max_tokens=max_tokens,
                 system=system,
                 messages=messages,
                 tools=cast(Any, tools),
@@ -2142,12 +2147,13 @@ class AgentCore:
         continuity with a cache-friendly prefix.
         """
         tools = tools if tools is not None else TOOLS
+        llm, model, max_tokens = self._agent_llm(agent)
 
         # Load existing session (from memory cache or DB)
         session = await self.history.get_session(channel, user_id, chat_id)
 
         # Append the new user message (with the live date/time preamble)
-        user_msg = await self._build_user_message(message, attachments, preamble)
+        user_msg = await self._build_user_message(message, attachments, preamble, llm, model)
         await self.history.append_session_message(channel, user_id, user_msg, chat_id)
 
         log.info(
@@ -2159,9 +2165,9 @@ class AgentCore:
         )
 
         # Initial LLM call with the full session
-        response = await self.llm.generate(
-            model=self.config.agent.model,
-            max_tokens=self.config.agent.max_tokens,
+        response = await llm.generate(
+            model=model,
+            max_tokens=max_tokens,
             system=system,
             messages=session,
             tools=cast(Any, tools),
@@ -2226,8 +2232,8 @@ class AgentCore:
                     break
 
             # Append tool exchange to session
-            assistant_msg = self.llm.assistant_message(response)
-            tool_result_msgs = self.llm.tool_result_messages(tool_results)
+            assistant_msg = llm.assistant_message(response)
+            tool_result_msgs = llm.tool_result_messages(tool_results)
 
             new_messages.append(assistant_msg)
             new_messages.extend(tool_result_msgs)
@@ -2250,9 +2256,9 @@ class AgentCore:
                 new_messages.append(steer_msg)
                 await self.history.append_session_messages(channel, user_id, [steer_msg], chat_id)
 
-            response = await self.llm.generate(
-                model=self.config.agent.model,
-                max_tokens=self.config.agent.max_tokens,
+            response = await llm.generate(
+                model=model,
+                max_tokens=max_tokens,
                 system=system,
                 messages=session,
                 tools=cast(Any, tools),
@@ -2290,7 +2296,7 @@ class AgentCore:
         # Compaction — if the context has grown past the configured threshold,
         # summarise the oldest turns. ``response.usage`` reflects the full
         # session that was just sent, so it's the authoritative context size.
-        system_notice = await self._maybe_compact(channel, user_id, chat_id, response)
+        system_notice = await self._maybe_compact(channel, user_id, chat_id, response, model)
 
         # Automatic memory extraction
         if channel != "system":
@@ -3772,14 +3778,17 @@ class AgentCore:
         preamble = await self._turn_preamble(None, query=task, scope=_agent_scope(child_agent))
         messages: list[dict] = [await self._build_user_message(task, None, preamble)]
 
-        # effort None = inherit the main client's level; otherwise an effort-scoped
-        # clone (same provider/connection, overridden thinking level).
-        llm = self.llm
+        # The child runs on its own agent's LLM override when it has one (so a
+        # "senior" subagent gets its bigger model); an explicit spawn effort
+        # still wins over the inherited/overridden thinking level.
+        llm, model, max_tokens = self._agent_llm(child_agent)
         if run.effort is not None:
-            llm = self._background_llm(self.llm.provider, run.effort)
+            clone = copy.copy(llm)
+            clone.thinking_level = run.effort
+            llm = clone
         response = await llm.generate(
-            model=self.config.agent.model,
-            max_tokens=self.config.agent.max_tokens,
+            model=model,
+            max_tokens=max_tokens,
             system=system,
             messages=messages,
             tools=cast(Any, tools),
@@ -3809,8 +3818,8 @@ class AgentCore:
             messages.append(llm.assistant_message(response))
             messages.extend(llm.tool_result_messages(tool_results))
             response = await llm.generate(
-                model=self.config.agent.model,
-                max_tokens=self.config.agent.max_tokens,
+                model=model,
+                max_tokens=max_tokens,
                 system=system,
                 messages=messages,
                 tools=cast(Any, tools),
@@ -4353,6 +4362,28 @@ class AgentCore:
         API key / base-URL already stored in the agent config.
         """
         return self._background_llm(provider, thinking_level)
+
+    def _agent_llm(self, agent: Agent | None) -> tuple[LLMClient, str, int]:
+        """The ``(client, model, max_tokens)`` a turn runs on.
+
+        An agent's ``llm`` override wins key-by-key over the global LLM config
+        (so a "senior" agent can run a bigger model while a "junior" one stays
+        cheap); no override = the shared main client, unchanged. Credentials and
+        base URLs are always the globally configured ones — the override only
+        picks provider/model/thinking/max_tokens/temperature.
+        """
+        cfg = self.config.agent
+        o = getattr(agent, "llm", None) if agent else None
+        if not isinstance(o, dict) or not o:
+            return self.llm, cfg.model, cfg.max_tokens
+        provider = o.get("provider") or self.llm.provider
+        thinking = o.get("thinking_level", cfg.thinking_level)
+        # ponytail: a fresh (or cloned, same-provider) client per turn — same
+        # cost profile as _background_llm's per-call construction; cache per
+        # agent if profiling ever says otherwise.
+        llm = self._background_llm(provider, thinking)
+        llm.temperature = o.get("temperature", cfg.temperature)
+        return llm, o.get("model") or cfg.model, o.get("max_tokens") or cfg.max_tokens
 
     def _background_llm(self, provider: str, thinking_level: str = "") -> LLMClient:
         """Return an LLM client for background tasks (memory, reflection, etc.).

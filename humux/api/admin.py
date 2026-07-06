@@ -740,6 +740,9 @@ class AgentUpsertIn(BaseModel):
     contacts_accounts: list[dict] = []  # [{account, access_level}] — #110 (contacts)
     chat_settings: dict = {}  # {chat_id: {mode, users}} per-chat trigger/DM gate — #129
     group_chat: dict = {}  # {enabled, reply_when_addressed_only, ignore_bots} group rooms — #133
+    # Per-agent LLM override {provider, model, thinking_level, max_tokens,
+    # temperature}; {} = inherit the global LLM config.
+    llm: dict = {}
     gh_token: str = ""  # this agent's GitHub PAT → infra vault; empty = leave unchanged
     raw: str = ""  # when set, the markdown doc is parsed instead of the fields above
 
@@ -1185,6 +1188,15 @@ def create_admin_app(
             "available_contacts_accounts": [
                 p["name"] for p in await _contact_providers_context(config_store) if p["name"]
             ],
+            # Global LLM settings, shown as the "inherit" placeholders on the
+            # per-agent LLM override tab.
+            "llm_defaults": {
+                "provider": (await config_store.get("agent.llm_provider")) or "anthropic",
+                "model": (await config_store.get("agent.model")) or "",
+                "thinking_level": (await config_store.get("agent.thinking_level")) or "",
+                "max_tokens": (await config_store.get("agent.max_tokens")) or "8192",
+                "temperature": (await config_store.get("agent.temperature")) or "0.5",
+            },
         }
 
     async def _agent_chats(name: str) -> list[dict]:
@@ -3309,6 +3321,7 @@ def create_admin_app(
             _as_chat_settings,
             _as_group_chat,
             _as_int_list,
+            _as_llm_config,
             _as_tool_config,
             parse_markdown,
         )
@@ -3339,6 +3352,7 @@ def create_admin_app(
                 contacts_accounts=_as_account_list(body.contacts_accounts),
                 chat_settings=_as_chat_settings(body.chat_settings),
                 group_chat=_as_group_chat(body.group_chat),
+                llm=_as_llm_config(body.llm),
             )
         # A per-agent GitHub token goes into the infra vault (machine-key,
         # boot-unsealed so it works headless), namespaced per agent (#93). Empty

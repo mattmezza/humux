@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS agents (
     contacts_accounts TEXT DEFAULT '',
     chat_settings TEXT DEFAULT '',
     group_chat TEXT DEFAULT '',
+    llm_config TEXT DEFAULT '',
     is_default INTEGER NOT NULL DEFAULT 0,
     enabled INTEGER NOT NULL DEFAULT 1,
     created_at DATETIME DEFAULT (datetime('now')),
@@ -78,6 +79,7 @@ _MIGRATIONS = (
     "ALTER TABLE agents ADD COLUMN contacts_accounts TEXT DEFAULT ''",  # #110 (contacts)
     "ALTER TABLE agents ADD COLUMN chat_settings TEXT DEFAULT ''",  # #129
     "ALTER TABLE agents ADD COLUMN group_chat TEXT DEFAULT ''",  # #133 (per-agent group rooms)
+    "ALTER TABLE agents ADD COLUMN llm_config TEXT DEFAULT ''",  # per-agent LLM override
     "ALTER TABLE agents ADD COLUMN is_default INTEGER NOT NULL DEFAULT 0",  # #115 flw
     "ALTER TABLE agents ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1",  # #115 flw kill-switch
     # #98: personalia merged into character. Prepend any existing personalia to
@@ -153,6 +155,12 @@ class Agent:
     # {"mode": "everyone"|"nobody"|"users", "users": [int]}. A chat with no entry
     # (or mode "everyone") is unrestricted — so the default is unchanged.
     chat_settings: dict = field(default_factory=dict)
+    # Per-agent LLM inference override. Any subset of {provider, model,
+    # thinking_level, max_tokens, temperature}; absent keys inherit the global
+    # LLM config, empty dict = inherit everything (unchanged behaviour). API
+    # keys/base URLs stay global — an agent picks WHICH configured provider and
+    # model it runs on, never carries its own credentials.
+    llm: dict = field(default_factory=dict)
     # This agent's Telegram group-room behaviour (#30, moved per-agent in #133).
     # Shape: {"enabled": bool, "reply_when_addressed_only": bool, "ignore_bots": bool}.
     # Empty = group rooms off (the GroupChatConfig defaults). Built into a
@@ -358,6 +366,47 @@ def _as_group_chat(value: object) -> dict:
     }
 
 
+_LLM_THINKING_LEVELS = ("", "low", "medium", "high")
+
+
+def _as_llm_config(value: object) -> dict:
+    """Coerce a frontmatter / form / DB-column value into a per-agent LLM override.
+
+    Shape: any subset of ``{provider, model, thinking_level, max_tokens,
+    temperature}``. Accepts a parsed dict or a JSON string. Blank strings and
+    malformed numbers drop out, so ``{}`` (inherit the global LLM config) is the
+    result of anything not deliberately set — a broken value never breaks load.
+    """
+    if isinstance(value, str) and value.strip():
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError, ValueError:
+            return {}
+    if not isinstance(value, dict):
+        return {}
+    out: dict = {}
+    for key in ("provider", "model"):
+        v = str(value.get(key, "") or "").strip()
+        if v:
+            out[key] = v.lower() if key == "provider" else v
+    lvl = str(value.get("thinking_level", "") or "").strip().lower()
+    if lvl in _LLM_THINKING_LEVELS and "thinking_level" in value:
+        out["thinking_level"] = lvl  # "" is meaningful: force thinking OFF
+    try:
+        mt = int(value["max_tokens"])
+        if mt > 0:
+            out["max_tokens"] = mt
+    except KeyError, TypeError, ValueError:
+        pass
+    try:
+        temp = float(value["temperature"])
+        if 0.0 <= temp <= 2.0:
+            out["temperature"] = temp
+    except KeyError, TypeError, ValueError:
+        pass
+    return out
+
+
 _ACCESS_LEVELS = ("read", "read_write")
 
 
@@ -469,6 +518,7 @@ def parse_markdown(text: str, *, name: str) -> Agent:
         contacts_accounts=_as_account_list(fm.get("contacts_accounts")),
         chat_settings=_as_chat_settings(fm.get("chat_settings")),
         group_chat=_as_group_chat(fm.get("group_chat")),
+        llm=_as_llm_config(fm.get("llm")),
     )
 
 
@@ -489,6 +539,7 @@ def to_markdown(a: Agent) -> str:
         "contacts_accounts": a.contacts_accounts,
         "chat_settings": a.chat_settings,
         "group_chat": a.group_chat,
+        "llm": a.llm,
         "character": a.character,
     }
     dumped = yaml.safe_dump(fm, sort_keys=False, allow_unicode=True, default_flow_style=False)
@@ -668,8 +719,9 @@ class AgentStore:
             "INSERT INTO agents "
             "(name, agent_name, role, voice, character, skills, tools, "
             "secrets, bot_token, allowed_user_ids, tool_config, "
-            "email_accounts, calendar_accounts, contacts_accounts, chat_settings, group_chat) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "email_accounts, calendar_accounts, contacts_accounts, chat_settings, group_chat, "
+            "llm_config) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(name) DO UPDATE SET "
             "agent_name=excluded.agent_name, role=excluded.role, "
             "voice=excluded.voice, character=excluded.character, "
@@ -679,6 +731,7 @@ class AgentStore:
             "calendar_accounts=excluded.calendar_accounts, "
             "contacts_accounts=excluded.contacts_accounts, "
             "chat_settings=excluded.chat_settings, group_chat=excluded.group_chat, "
+            "llm_config=excluded.llm_config, "
             "updated_at=datetime('now')",
             (
                 a.name,
@@ -697,6 +750,7 @@ class AgentStore:
                 json.dumps(a.contacts_accounts) if a.contacts_accounts else "",
                 json.dumps(a.chat_settings) if a.chat_settings else "",
                 json.dumps(a.group_chat) if a.group_chat else "",
+                json.dumps(a.llm) if a.llm else "",
             ),
         )
 
@@ -729,6 +783,7 @@ class AgentStore:
                 row["chat_settings"] if "chat_settings" in row.keys() else ""
             ),
             group_chat=_as_group_chat(row["group_chat"] if "group_chat" in row.keys() else ""),
+            llm=_as_llm_config(row["llm_config"] if "llm_config" in row.keys() else ""),
             is_default=bool(row["is_default"]) if "is_default" in row.keys() else False,
             enabled=bool(row["enabled"]) if "enabled" in row.keys() else True,
         )
@@ -870,6 +925,12 @@ contacts_accounts:
     access_level: read_write
   - account: shared
     access_level: read
+llm:
+  provider: Anthropic
+  model: claude-4-6-opus
+  thinking_level: high
+  max_tokens: 32000
+  temperature: 0.3
 personalia: |
   You are Forge, a strength coach.
 character: |
@@ -909,6 +970,24 @@ Extra prose in the body.
     assert a.tool_setting("gh") == {"enabled": True}, a.tool_setting("gh")
     assert a.tool_setting("browser") == {"enabled": True, "profile": "forge"}
     assert a.tool_setting("weather") is None  # no entry = inherit system config
+
+    # Per-agent LLM override: normalised keys, provider lowercased.
+    assert a.llm == {
+        "provider": "anthropic",
+        "model": "claude-4-6-opus",
+        "thinking_level": "high",
+        "max_tokens": 32000,
+        "temperature": 0.3,
+    }, a.llm
+    # Partial override keeps only the set keys; junk values drop out; "" level kept
+    # only when explicitly present (= force thinking off).
+    assert _as_llm_config({"model": "gpt-5-mini", "max_tokens": "notanum"}) == {
+        "model": "gpt-5-mini"
+    }
+    assert _as_llm_config({"thinking_level": ""}) == {"thinking_level": ""}
+    assert _as_llm_config({"temperature": 9}) == {}  # out of range → inherit
+    assert _as_llm_config("") == {} and _as_llm_config("not json") == {}
+    assert Agent(name="plain").llm == {}  # default = inherit everything
 
     # #110: email/calendar account bindings + access levels.
     assert a.email_access("fitness-agent") == "read_write", a.email_accounts
@@ -952,4 +1031,5 @@ Extra prose in the body.
     assert a2.email_accounts == a.email_accounts, a2.email_accounts
     assert a2.calendar_accounts == a.calendar_accounts, a2.calendar_accounts
     assert a2.contacts_accounts == a.contacts_accounts, a2.contacts_accounts
+    assert a2.llm == a.llm, a2.llm
     print("agents.py self-check OK")
