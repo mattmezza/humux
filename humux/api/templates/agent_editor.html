@@ -324,9 +324,12 @@
                       <label class="label">Token source</label>
                       <select class="select input-sm" x-model="ghTokenSecret">
                         <option value="">Type a new token…</option>
-                        <template x-for="n in infraNames" :key="n">
-                          <option :value="n" x-text="'Vault secret: ' + n"></option>
-                        </template>
+                        {# Options rendered server-side so they exist before Alpine's
+                           x-model binds — an x-for select drops its saved value at init
+                           because the <option>s aren't in the DOM yet. #}
+                        {% for n in infra_names %}
+                          <option value="{{ n }}">Vault secret: {{ n }}</option>
+                        {% endfor %}
                       </select>
                     </div>
                     <div x-show="!ghTokenSecret">
@@ -363,9 +366,12 @@
                       <label class="label">Private key</label>
                       <select class="select input-sm" x-model="ghKeySecret">
                         <option value="">— use the system-wide App —</option>
-                        <template x-for="n in infraNames" :key="n">
-                          <option :value="n" x-text="'Vault secret: ' + n"></option>
-                        </template>
+                        {# Options rendered server-side so they exist before Alpine's
+                           x-model binds — an x-for select drops its saved value at init
+                           because the <option>s aren't in the DOM yet. #}
+                        {% for n in infra_names %}
+                          <option value="{{ n }}">Vault secret: {{ n }}</option>
+                        {% endfor %}
                       </select>
                       <p class="text-xs text-muted mt-1">
                         Paste this app's PEM as an infra secret in the <strong>Secrets</strong> tab,
@@ -379,9 +385,12 @@
                       <label class="label">Webhook secret <span class="text-muted">(optional)</span></label>
                       <select class="select input-sm" x-model="ghWebhookSecret">
                         <option value="">— inbound webhook off —</option>
-                        <template x-for="n in infraNames" :key="n">
-                          <option :value="n" x-text="'Vault secret: ' + n"></option>
-                        </template>
+                        {# Options rendered server-side so they exist before Alpine's
+                           x-model binds — an x-for select drops its saved value at init
+                           because the <option>s aren't in the DOM yet. #}
+                        {% for n in infra_names %}
+                          <option value="{{ n }}">Vault secret: {{ n }}</option>
+                        {% endfor %}
                       </select>
                       <p class="text-xs text-muted mt-1">
                         Store the App's webhook secret as an infra secret, pick it here, and set
