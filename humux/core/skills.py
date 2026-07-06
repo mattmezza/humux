@@ -286,7 +286,7 @@ class SkillsStore:
                 " content = excluded.content, summary = excluded.summary,"
                 " seed_hash = excluded.seed_hash, origin = excluded.origin,"
                 " updated_at = datetime('now')",
-                (content, summary, file_hash, origin),
+                (name, content, summary, file_hash, origin),
             )
             await db.commit()
             return True

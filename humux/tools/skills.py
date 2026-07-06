@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
-"""Skills CLI — list, show, create, and delete skills.
+"""Skills CLI — list, show, create, delete, and install skills.
 
 Usage examples:
   python3 /app/tools/skills.py list --output json
   python3 /app/tools/skills.py show memory --output json
   python3 /app/tools/skills.py upsert --name weather --stdin
   python3 /app/tools/skills.py delete weather
+  python3 /app/tools/skills.py install https://github.com/anthropics/skills \
+      --path document-skills/docx
+  python3 /app/tools/skills.py update docx
+  python3 /app/tools/skills.py cat docx scripts/example.py
 """
 
 from __future__ import annotations
@@ -39,6 +43,12 @@ def _default_seed_dir() -> str:
     if Path("/app/skills").exists():
         return "/app/skills"
     return str(_ROOT / "skills")
+
+
+def _default_installed_dir() -> str:
+    if Path("/app/data").exists():
+        return "/app/data/skills"
+    return str(_ROOT / "data/skills")
 
 
 def _validate_name(name: str) -> str:
@@ -113,6 +123,25 @@ async def _delete_skill(store: SkillsStore, name: str) -> None:
         sys.exit(1)
 
 
+async def _cat_bundled_file(store: SkillsStore, name: str, relpath: str) -> None:
+    """Print a file bundled with a directory skill (#65), confined to the
+    skill's own directory (same realpath-containment rail as the workspace
+    file tools, #76)."""
+    base = store.skill_base_dir(name)
+    if base is None:
+        print(json.dumps({"error": f"Skill '{name}' has no bundled files"}))
+        sys.exit(1)
+    base = base.resolve()
+    target = (base / relpath).resolve()
+    if not target.is_relative_to(base):
+        print(json.dumps({"error": "Path escapes the skill directory"}))
+        sys.exit(1)
+    if not target.is_file():
+        print(json.dumps({"error": f"No such file in skill '{name}': {relpath}"}))
+        sys.exit(1)
+    sys.stdout.write(target.read_text(errors="replace"))
+
+
 def _write_seed_file(seed_dir: str, name: str, content: str) -> Path:
     seed_path = Path(seed_dir)
     if not seed_path.exists():
@@ -129,6 +158,11 @@ def main() -> None:
         "--seed-dir",
         default=_default_seed_dir(),
         help="Seed directory for skills markdown files",
+    )
+    parser.add_argument(
+        "--installed-dir",
+        default=_default_installed_dir(),
+        help="Directory for skills installed from git repos",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -153,9 +187,28 @@ def main() -> None:
     delete_parser = subparsers.add_parser("delete", help="Delete a skill")
     delete_parser.add_argument("name")
 
+    install_parser = subparsers.add_parser(
+        "install", help="Install an Agent Skills skill from a git repo"
+    )
+    install_parser.add_argument("repo_url", help="Git repo URL")
+    install_parser.add_argument(
+        "--path",
+        default="",
+        help="Directory inside the repo holding SKILL.md (default: repo root)",
+    )
+
+    update_parser = subparsers.add_parser(
+        "update", help="Re-install an installed skill from its recorded origin"
+    )
+    update_parser.add_argument("name")
+
+    cat_parser = subparsers.add_parser("cat", help="Print a file bundled with a skill")
+    cat_parser.add_argument("name")
+    cat_parser.add_argument("relpath", help="Path relative to the skill directory")
+
     args = parser.parse_args()
 
-    store = SkillsStore(db_path=args.db, seed_dir=args.seed_dir)
+    store = SkillsStore(db_path=args.db, seed_dir=args.seed_dir, installed_dir=args.installed_dir)
 
     try:
         if args.command == "list":
@@ -173,6 +226,16 @@ def main() -> None:
         elif args.command == "delete":
             name = _validate_name(args.name)
             asyncio.run(_delete_skill(store, name))
+        elif args.command == "install":
+            result = asyncio.run(store.install_from_git(args.repo_url, args.path))
+            print(json.dumps({"status": "installed", **result}))
+        elif args.command == "update":
+            name = _validate_name(args.name)
+            result = asyncio.run(store.update_installed_skill(name))
+            print(json.dumps({"status": "updated", **result}))
+        elif args.command == "cat":
+            name = _validate_name(args.name)
+            asyncio.run(_cat_bundled_file(store, name, args.relpath))
         else:
             parser.print_help()
     except ValueError as exc:
