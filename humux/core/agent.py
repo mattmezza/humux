@@ -1546,9 +1546,8 @@ class AgentCore:
 
         Same resolution the turn uses: a per-agent bot binds to its own agent, a
         chat binding wins, else the default. ``None`` or an empty list means *no
-        restriction* (all skills). Used to scope the ``/zz_skill_*`` command menu
-        and its handler so an agent never advertises — or loads — a skill outside
-        its allowlist. With empty ids (startup) it resolves the bot's own agent.
+        restriction* (all skills). With empty ids (startup) it resolves the bot's
+        own agent.
         """
         agent = await self._resolve_agent(channel, user_id, chat_id)
         return agent.skills if agent else None
