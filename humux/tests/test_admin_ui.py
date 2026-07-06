@@ -141,6 +141,15 @@ class TestPageRoutes:
         assert resp.status_code == 302
         assert resp.headers["location"] == "/setup"
 
+    def test_service_worker_served_at_root_scope_without_auth(self):
+        # SW must be reachable at "/sw.js" (root scope) and public, else it can't
+        # control start_url "/" and the app is not installable.
+        client = _client()
+        resp = client.get("/sw.js")
+        assert resp.status_code == 200
+        assert "javascript" in resp.headers["content-type"]
+        assert "addEventListener" in resp.text
+
     def test_login_page_returns_html(self):
         client = _client()
         resp = client.get("/login")

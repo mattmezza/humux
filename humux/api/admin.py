@@ -733,6 +733,17 @@ def create_admin_app(
     if static_dir.exists():
         app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
+    # Serve the service worker from root so its scope covers "/" (the manifest
+    # start_url). A SW served from /static/ only controls /static/ and can't make
+    # the app installable. Public (no auth) so the browser can fetch it pre-login.
+    @app.get("/sw.js", include_in_schema=False)
+    async def service_worker() -> Response:
+        return FileResponse(
+            static_dir / "sw.js",
+            media_type="text/javascript",
+            headers={"Cache-Control": "no-cache"},
+        )
+
     # ── Agent web artifacts (public files under {workspace}/artifacts/, issue #82) ──
     @app.get("/artifacts/{artifact_id}", response_model=None)
     async def artifact_root(artifact_id: str) -> Response:
