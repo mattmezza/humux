@@ -177,7 +177,7 @@ class TelegramChannel:
         # agent as an ordinary message. (Plain text — incl. /new, /clear — still
         # falls through to _on_text, which handles those.)
         self.app.add_handler(CommandHandler("subagents", self._on_subagents_command))
-        self.app.add_handler(CommandHandler("jobs", self._on_subagents_command))  # alias during deprecation
+        self.app.add_handler(CommandHandler("jobs", self._on_subagents_command))  # compat alias
         self.app.add_handler(MessageHandler(filters.TEXT, self._on_text))
         self.app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, self._on_voice))
         self.app.add_handler(MessageHandler(filters.PHOTO | filters.Document.IMAGE, self._on_photo))
