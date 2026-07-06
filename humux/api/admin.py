@@ -18,6 +18,7 @@ import os
 import re
 import secrets
 import sys
+import time
 import urllib.parse
 from base64 import urlsafe_b64encode
 from contextlib import asynccontextmanager
@@ -674,6 +675,54 @@ def _github_event_task(
     return task, f"github:{repo}#{number}", repo
 
 
+# (channel_key, base_chat_id) -> (title, expiry_epoch). Titles come from live
+# Telegram getChat lookups when the agent editor opens; 10 minutes is fresh
+# enough for chat names and makes repeat opens free.
+_CHAT_TITLE_TTL = 600
+_chat_title_cache: dict[tuple[str, str], tuple[str, float]] = {}
+
+
+async def _resolve_chat_titles(core, chats: list[dict]) -> None:
+    """Best-effort human labels for Telegram chat ids, set as ``title`` in place.
+
+    humux stores no chat names, so ask the running bot via ``getChat`` — all
+    lookups concurrently, capped at 2s total, per-id 10-min TTL cache. Any
+    failure (bot down, chat gone, timeout) just leaves the bare id, like today.
+    """
+    if core is None or not chats:
+        return
+    now = time.time()
+
+    async def one(entry: dict) -> None:
+        base = str(entry["chat_id"]).split(":", 1)[0]
+        key = (entry["channel"], base)
+        hit = _chat_title_cache.get(key)
+        if hit and hit[1] > now:
+            entry["title"] = hit[0]
+            return
+        bot = getattr(getattr(core.channels.get(entry["channel"]), "app", None), "bot", None)
+        if bot is None:
+            return
+        try:
+            chat = await bot.get_chat(base)
+        except Exception:
+            return
+        names = [getattr(chat, "first_name", None), getattr(chat, "last_name", None)]
+        title = (
+            getattr(chat, "title", None)
+            or getattr(chat, "username", None)
+            or " ".join(filter(None, names))
+        )
+        if title:
+            _chat_title_cache[key] = (title, now + _CHAT_TITLE_TTL)
+            entry["title"] = title
+
+    try:
+        await asyncio.wait_for(asyncio.gather(*(one(e) for e in chats)), timeout=2)
+    except Exception:  # noqa: BLE001 — labels are cosmetic, never fail the page
+        pass
+
+
 class AgentUpsertIn(BaseModel):
     name: str
     agent_name: str = ""
@@ -1168,7 +1217,15 @@ def create_admin_app(
                 continue
             seen.add(cid)
             kind = "group" if cid.split(":", 1)[0].startswith("-") else "dm"
-            out.append({"chat_id": cid, "kind": kind, "last_active": c.get("last_active", "")})
+            out.append(
+                {
+                    "chat_id": cid,
+                    "kind": kind,
+                    "channel": ch,
+                    "last_active": c.get("last_active", ""),
+                }
+            )
+        await _resolve_chat_titles(agent_state.agent, out)
         return out
 
     async def _agent_gh_token_set(name: str) -> bool:

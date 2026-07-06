@@ -374,3 +374,34 @@ def test_webhook_runs_turn_in_background(monkeypatch) -> None:
     assert kwargs["agent_name"] == "dev"
     assert kwargs["chat_id"] == "github:acme/widgets#7"
     assert kwargs["channel"] == "system"
+
+
+def test_resolve_chat_titles() -> None:
+    # Live lookup + 10-min cache + bot-down fallback, all in one pass.
+    admin._chat_title_cache.clear()
+
+    class _Chat:
+        title = "Family group"
+        username = None
+        first_name = None
+        last_name = None
+
+    calls = {"n": 0}
+
+    async def get_chat(cid):
+        calls["n"] += 1
+        return _Chat()
+
+    bot = SimpleNamespace(get_chat=get_chat)
+    core = SimpleNamespace(channels={"telegram:dev": SimpleNamespace(app=SimpleNamespace(bot=bot))})
+    chats = [{"chat_id": "-100777:12", "kind": "group", "channel": "telegram:dev"}]
+    asyncio.run(admin._resolve_chat_titles(core, chats))
+    assert chats[0]["title"] == "Family group" and calls["n"] == 1
+    # Second resolve hits the TTL cache — no second API call.
+    chats2 = [{"chat_id": "-100777:12", "kind": "group", "channel": "telegram:dev"}]
+    asyncio.run(admin._resolve_chat_titles(core, chats2))
+    assert chats2[0]["title"] == "Family group" and calls["n"] == 1
+    # Unknown channel (bot down) → bare id, no crash, no title key.
+    dead = [{"chat_id": "42", "kind": "dm", "channel": "telegram:gone"}]
+    asyncio.run(admin._resolve_chat_titles(core, dead))
+    assert "title" not in dead[0]

@@ -148,6 +148,7 @@
             <div class="flex items-center justify-between gap-2">
               <span class="text-xs break-all">
                 <span x-text="c.kind === 'group' ? '👥 Group' : '💬 DM'"></span>
+                <strong x-show="c.title" x-text="c.title"></strong>
                 <code x-text="c.chat_id"></code>
               </span>
               <select class="select input-sm" style="max-width:150px" x-model="chatMode[c.chat_id]">
@@ -426,7 +427,8 @@
                           <option :value="ghWebhookChat" x-text="ghWebhookChat + ' (saved)'"></option>
                         </template>
                         <template x-for="c in chats" :key="c.chat_id">
-                          <option :value="c.chat_id" x-text="c.chat_id + ' (' + c.kind + ')'"></option>
+                          <option :value="c.chat_id"
+                                  x-text="(c.title ? c.title + ' — ' : '') + c.chat_id + ' (' + c.kind + ')'"></option>
                         </template>
                       </select>
                       <p class="text-xs text-muted mt-1">
