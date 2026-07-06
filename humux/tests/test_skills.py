@@ -4,7 +4,13 @@ from __future__ import annotations
 
 import pytest
 
-from core.skills import SkillsEngine, ValidationError, validate_skill_dir, validate_skill_file
+from core.skills import (
+    SkillsEngine,
+    SkillsStore,
+    ValidationError,
+    validate_skill_dir,
+    validate_skill_file,
+)
 
 
 @pytest.mark.asyncio
@@ -232,3 +238,178 @@ def test_validate_nonexistent_file(tmp_path) -> None:
 def test_validate_nonexistent_dir(tmp_path) -> None:
     errors = validate_skill_dir(tmp_path / "no_such_dir")
     assert any("not found" in str(e) for e in errors)
+
+
+# --- Agent Skills format: SKILL.md dirs, frontmatter, installs (#65) ---
+
+SPEC_SKILL = """---
+name: docx
+description: Create and edit Word documents via bundled scripts.
+---
+
+# docx
+
+Run `python3 scripts/convert.py`.
+"""
+
+
+def _spec_skill_dir(root, name="docx", content=SPEC_SKILL) -> None:
+    d = root / name
+    d.mkdir(parents=True)
+    (d / "SKILL.md").write_text(content)
+    (d / "scripts").mkdir()
+    (d / "scripts" / "convert.py").write_text('print("hi")\n')
+
+
+@pytest.mark.asyncio
+async def test_seed_spec_dir_skill(tmp_path) -> None:
+    seed = tmp_path / "seed"
+    seed.mkdir()
+    _spec_skill_dir(seed)
+    store = SkillsStore(
+        db_path=str(tmp_path / "s.db"), seed_dir=seed, installed_dir=tmp_path / "inst"
+    )
+    skills = await store.list_skills()
+    assert [s["name"] for s in skills] == ["docx"]
+    # Frontmatter description becomes the summary.
+    assert skills[0]["summary"] == "Create and edit Word documents via bundled scripts."
+    # Content carries the bundled-files pointer + the raw SKILL.md.
+    skill = await store.get_skill("docx")
+    assert "Bundled files for this skill" in skill["content"]
+    assert str(seed / "docx") in skill["content"]
+    assert skill["origin"] is None
+    assert skill["stale_seed"] is False
+
+
+@pytest.mark.asyncio
+async def test_flat_and_spec_skills_coexist(tmp_path) -> None:
+    seed = tmp_path / "seed"
+    seed.mkdir()
+    (seed / "weather.md").write_text("# Weather\n\ncurl wttr.in")
+    _spec_skill_dir(seed)
+    store = SkillsStore(
+        db_path=str(tmp_path / "s.db"), seed_dir=seed, installed_dir=tmp_path / "inst"
+    )
+    skills = await store.list_skills()
+    assert [s["name"] for s in skills] == ["docx", "weather"]
+
+
+@pytest.mark.asyncio
+async def test_installed_dir_seeded_with_origin(tmp_path) -> None:
+    inst = tmp_path / "inst"
+    _spec_skill_dir(inst)
+    (inst / "docx" / ".origin").write_text("https://example.com/repo#skills/docx\n")
+    store = SkillsStore(
+        db_path=str(tmp_path / "s.db"), seed_dir=tmp_path / "seed", installed_dir=inst
+    )
+    skill = await store.get_skill("docx")
+    assert skill["origin"] == "https://example.com/repo#skills/docx"
+
+
+@pytest.mark.asyncio
+async def test_installed_skill_is_read_only(tmp_path) -> None:
+    inst = tmp_path / "inst"
+    _spec_skill_dir(inst)
+    (inst / "docx" / ".origin").write_text("https://example.com/repo#skills/docx\n")
+    store = SkillsStore(
+        db_path=str(tmp_path / "s.db"), seed_dir=tmp_path / "seed", installed_dir=inst
+    )
+    await store.ensure_seeded()
+    with pytest.raises(ValueError, match="read-only"):
+        await store.upsert_skill("docx", "# hacked")
+
+
+@pytest.mark.asyncio
+async def test_delete_installed_skill_removes_dir(tmp_path) -> None:
+    inst = tmp_path / "inst"
+    _spec_skill_dir(inst)
+    store = SkillsStore(
+        db_path=str(tmp_path / "s.db"), seed_dir=tmp_path / "seed", installed_dir=inst
+    )
+    await store.ensure_seeded()
+    assert await store.delete_skill("docx") is True
+    assert not (inst / "docx").exists()
+    # ensure_seeded can't resurrect it.
+    await store.ensure_seeded()
+    assert await store.get_skill("docx") is None
+
+
+@pytest.mark.asyncio
+async def test_install_from_git_and_update(tmp_path) -> None:
+    import subprocess
+
+    repo = tmp_path / "repo"
+    _spec_skill_dir(repo / "document-skills")
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+    subprocess.run(
+        ["git", "-C", str(repo), "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "x"],
+        check=True,
+    )
+    store = SkillsStore(
+        db_path=str(tmp_path / "s.db"),
+        seed_dir=tmp_path / "seed",
+        installed_dir=tmp_path / "inst",
+    )
+    result = await store.install_from_git(str(repo), "document-skills/docx")
+    assert result["name"] == "docx"
+    assert result["origin"] == f"{repo}#document-skills/docx"
+    skill = await store.get_skill("docx")
+    assert skill["origin"] == result["origin"]
+    assert (tmp_path / "inst" / "docx" / "scripts" / "convert.py").exists()
+    # Update re-fetches from the recorded origin.
+    updated = await store.update_installed_skill("docx")
+    assert updated["name"] == "docx"
+
+
+@pytest.mark.asyncio
+async def test_install_rejects_missing_skill_md(tmp_path) -> None:
+    import subprocess
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "README.md").write_text("nope")
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+    subprocess.run(
+        ["git", "-C", str(repo), "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "x"],
+        check=True,
+    )
+    store = SkillsStore(
+        db_path=str(tmp_path / "s.db"),
+        seed_dir=tmp_path / "seed",
+        installed_dir=tmp_path / "inst",
+    )
+    with pytest.raises(ValueError, match="No SKILL.md"):
+        await store.install_from_git(str(repo), "")
+
+
+def test_validate_spec_skill_frontmatter(tmp_path) -> None:
+    _spec_skill_dir(tmp_path)
+    errors = validate_skill_file(tmp_path / "docx" / "SKILL.md")
+    assert errors == []
+
+
+def test_validate_spec_skill_missing_frontmatter(tmp_path) -> None:
+    d = tmp_path / "docx"
+    d.mkdir()
+    (d / "SKILL.md").write_text("# docx\n\nNo frontmatter here.")
+    errors = validate_skill_file(d / "SKILL.md")
+    assert any("frontmatter" in str(e).lower() for e in errors)
+
+
+def test_validate_spec_skill_name_dir_mismatch(tmp_path) -> None:
+    d = tmp_path / "other"
+    d.mkdir()
+    (d / "SKILL.md").write_text(SPEC_SKILL)
+    errors = validate_skill_file(d / "SKILL.md")
+    assert any("does not match directory" in str(e) for e in errors)
+
+
+def test_spec_skill_commands_downgrade_to_warnings(tmp_path) -> None:
+    d = tmp_path / "docx"
+    d.mkdir()
+    (d / "SKILL.md").write_text(SPEC_SKILL + "\n```bash\nnpm install\n```\n")
+    errors = validate_skill_file(d / "SKILL.md")
+    assert errors  # the disallowed command is flagged...
+    assert all(e.severity == "warning" for e in errors)  # ...but only as a warning
