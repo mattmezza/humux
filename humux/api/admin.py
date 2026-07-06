@@ -4118,7 +4118,8 @@ async def _skills_store_from_config(config_store: ConfigStore) -> SkillsStore:
 
     skills_db_path = await config_store.get("agent.skills_db_path") or "data/skills.db"
     skills_dir = await config_store.get("agent.skills_dir") or "skills/"
-    return SkillsStore(db_path=skills_db_path, seed_dir=skills_dir)
+    installed_dir = await config_store.get("agent.skills_installed_dir") or "data/skills"
+    return SkillsStore(db_path=skills_db_path, seed_dir=skills_dir, installed_dir=installed_dir)
 
 
 async def _agent_store_from_config(config_store: ConfigStore):

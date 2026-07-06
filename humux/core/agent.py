@@ -973,6 +973,7 @@ class AgentCore:
         self.skills = SkillsEngine(
             db_path=config.agent.skills_db_path,
             seed_dir=config.agent.skills_dir,
+            installed_dir=config.agent.skills_installed_dir,
         )
         self.agents = AgentStore(
             db_path=config.agent.agents_db_path,
