@@ -60,9 +60,13 @@ setup: install-dev setup-hooks
 	@test -f config.yml || cp config.yml.example config.yml
 	@echo "Done. Edit .env and config.yml with your secrets, then run: make run"
 
-# Install git hooks (lint + format on commit)
+# Install git hooks (lint + format on commit).
+# The path is relative to the repo/worktree root (git runs hooks from there),
+# NOT to this humux/ dir — so it must be ".githooks", not "../.githooks". A
+# repo-root-relative path also makes the hooks fire from every `git worktree`
+# checkout (each has its own .githooks), which "../.githooks" resolved outside.
 setup-hooks:
-	git config core.hooksPath ../.githooks
+	git config core.hooksPath .githooks
 
 # Install production dependencies
 install:
