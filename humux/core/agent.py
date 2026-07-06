@@ -723,7 +723,7 @@ TOOLS = [
             "read or send them.\n"
             "Use background=true for long-running work: you get a run id "
             "immediately and the result is posted to this chat when done (monitor "
-            "or cancel it with /jobs or the admin Jobs page). Use background=false "
+            "or cancel it via /subagents or the admin Jobs page). Use background=false "
             "(default) to block and get the result back in this turn.\n"
             "Subagents are depth-limited, so prefer one focused delegation over "
             "deep nesting."
@@ -3647,7 +3647,7 @@ class AgentCore:
                 return {
                     "error": (
                         f"Too many subagents running (max {cfg.max_concurrent}). "
-                        "Wait for one to finish or cancel it via /jobs."
+                        "Wait for one to finish or cancel it via /subagents."
                     )
                 }
             self.subagents.register(run)
