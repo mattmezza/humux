@@ -38,6 +38,7 @@
         {{ p.skills|length or 'all' }} skill{{ '' if p.skills|length == 1 else 's' }}
         · {{ p.tools|length or 'all' }} tool{{ '' if p.tools|length == 1 else 's' }}
         {% if p.voice %}· 🔊 {{ p.voice }}{% endif %}
+        {% if p.llm %}· 🧠 {{ p.llm.model or p.llm.provider or 'custom LLM' }}{% endif %}
       </div>
 
       <div class="flex items-center gap-1.5 mt-auto pt-1 flex-wrap">

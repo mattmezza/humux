@@ -19,6 +19,7 @@
   <div x-show="mode === 'guided'">
     <div class="flex border-b border-border mb-4 overflow-x-auto">
       <button type="button" class="tab-link" :class="tab === 'identity' && 'tab-link-active'" @click="tab = 'identity'">Identity</button>
+      <button type="button" class="tab-link" :class="tab === 'llm' && 'tab-link-active'" @click="tab = 'llm'">LLM</button>
       <button type="button" class="tab-link" :class="tab === 'telegram' && 'tab-link-active'" @click="tab = 'telegram'">Telegram</button>
       <button type="button" class="tab-link" :class="tab === 'accounts' && 'tab-link-active'" @click="tab = 'accounts'">Accounts</button>
       <button type="button" class="tab-link" :class="tab === 'skills' && 'tab-link-active'" @click="tab = 'skills'">Skills</button>
@@ -95,6 +96,85 @@
           {% if backend == 'kokoro' %}Kokoro voice names (<code>af_bella</code>) — the active backend. You can override the pronunciation language.{% else %}Edge TTS voice names (<code>en-US-AvaNeural</code>) — the active backend.{% endif %}
           Preview plays the selected voice. Change the engine in the <strong>Voice</strong> tab.
         </p>
+      </div>
+    </div>
+
+    {# ── LLM: per-agent inference override ── #}
+    <div x-show="tab === 'llm'" class="space-y-3">
+      <div class="card space-y-3">
+        <h3 class="text-xs text-muted uppercase tracking-wider">Model &amp; inference</h3>
+        <p class="text-xs text-muted">
+          By default this agent runs on the global LLM settings (Dashboard → LLM).
+          Override them here to give it its own brain — e.g. a senior engineer on a
+          top-tier reasoning model while a junior stays on a cheap, fast one. Only
+          the fields you set are overridden; everything else keeps following the
+          global config. API keys and base URLs always come from the globally
+          configured providers.
+        </p>
+        <label class="flex items-center gap-2 text-sm">
+          <input type="checkbox" x-model="llmOverride">
+          Custom LLM settings for this agent
+        </label>
+
+        <p class="text-xs text-muted" x-show="!llmOverride">
+          Inheriting the global setup:
+          <code x-text="llmDefaults.provider + ' · ' + (llmDefaults.model || '(no model set)')"></code>
+        </p>
+
+        <div x-show="llmOverride" class="space-y-3">
+          <div>
+            <label class="label">Provider</label>
+            <select class="select input-sm" style="max-width:300px" x-model="llmProvider">
+              <option value="" x-text="'Global — ' + llmDefaults.provider"></option>
+              <template x-for="p in llmProviders" :key="'agent-llm-' + p.value">
+                <option :value="p.value" x-text="p.label"></option>
+              </template>
+            </select>
+            <p class="text-xs text-muted mt-1">The provider must have its API key configured in Dashboard → LLM → Providers.</p>
+          </div>
+          <div>
+            <label class="label">Model</label>
+            <input type="text" class="input-sm" style="max-width:300px" x-model="llmModel"
+                   list="dl-agent-llm-model" :placeholder="'Global — ' + (llmDefaults.model || 'unset')">
+            <datalist id="dl-agent-llm-model">
+              <template x-for="m in llmModelOptions()" :key="'agent-llm-m-' + m">
+                <option :value="m"></option>
+              </template>
+            </datalist>
+            <p class="text-xs text-muted mt-1">Type any model id, or pick a suggestion for the selected provider. Blank = the global model.</p>
+          </div>
+          <div>
+            <label class="label">Thinking level</label>
+            <select class="select input-sm" style="max-width:300px" x-model="llmThinking">
+              <option value="inherit" x-text="'Global — ' + (llmDefaults.thinking_level || 'off')"></option>
+              <option value="off">Off</option>
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+            </select>
+            <p class="text-amber-600 text-xs mt-1"
+               x-show="['low','medium','high'].includes(llmThinking) && !window.llmModelSupportsThinking(llmModel || llmDefaults.model)">
+              Heads up: “<span x-text="llmModel || llmDefaults.model"></span>” isn't a recognized reasoning model — only set a level if you know it supports thinking.
+            </p>
+          </div>
+          <div class="flex flex-wrap gap-4">
+            <div>
+              <label class="label">Max output tokens</label>
+              <input type="number" min="256" class="input-sm" style="max-width:160px"
+                     x-model="llmMaxTokens" :placeholder="'Global — ' + llmDefaults.max_tokens">
+            </div>
+            <div>
+              <label class="label">Temperature</label>
+              <input type="number" min="0" max="2" step="0.05" class="input-sm" style="max-width:160px"
+                     x-model="llmTemperature" :placeholder="'Global — ' + llmDefaults.temperature">
+            </div>
+          </div>
+          <p class="text-xs text-muted border-t border-border pt-2">
+            This agent will run on
+            <code x-text="(llmProvider || llmDefaults.provider) + ' · ' + (llmModel.trim() || llmDefaults.model || 'unset')"></code><span x-show="llmThinking !== 'inherit' && llmThinking !== 'off'"> · thinking <span x-text="llmThinking"></span></span>.
+            Subagent runs it spawns use the same setup.
+          </p>
+        </div>
       </div>
     </div>
 
@@ -457,7 +537,7 @@
   <div x-show="mode === 'raw'" class="card">
     <label class="label">Markdown (YAML frontmatter)</label>
     <textarea class="textarea" x-model="raw" style="min-height:460px; font-size:0.8rem; line-height:1.5; tab-size:2"></textarea>
-    <p class="hint">Saving in raw mode parses this document directly — frontmatter keys (role, voice, bot_token, allowed_user_ids, group_chat, skills, tools, secrets, email_accounts, calendar_accounts, contacts_accounts, chat_settings, character).</p>
+    <p class="hint">Saving in raw mode parses this document directly — frontmatter keys (role, voice, bot_token, allowed_user_ids, group_chat, llm, skills, tools, secrets, email_accounts, calendar_accounts, contacts_accounts, chat_settings, character).</p>
   </div>
 
   <div class="flex items-center gap-2 mt-3">
@@ -488,6 +568,17 @@
       raw: {{ raw|tojson }},
       result: '',
       ok: false,
+
+      // Per-agent LLM inference override. Empty = inherit the global config.
+      llmCfg: {{ agent.llm|tojson }},
+      llmDefaults: {{ llm_defaults|tojson }},
+      llmProviders: window.LLM_PROVIDERS,
+      llmOverride: false,
+      llmProvider: '',
+      llmModel: '',
+      llmThinking: 'inherit',
+      llmMaxTokens: '',
+      llmTemperature: '',
 
       // Per-agent tool identities (#93).
       toolConfig: {{ agent.tool_config|tojson }},
@@ -534,6 +625,19 @@
       ),
 
       init() {
+        // Seed the LLM override controls from the stored config. A stored
+        // thinking_level of "" means "force thinking off" (distinct from the
+        // key being absent = inherit the global level).
+        const lc = this.llmCfg || {};
+        if (Object.keys(lc).length) {
+          this.llmOverride = true;
+          this.llmProvider = lc.provider || '';
+          this.llmModel = lc.model || '';
+          this.llmThinking = ('thinking_level' in lc) ? (lc.thinking_level || 'off') : 'inherit';
+          this.llmMaxTokens = lc.max_tokens != null ? String(lc.max_tokens) : '';
+          this.llmTemperature = lc.temperature != null ? String(lc.temperature) : '';
+        }
+
         for (const k of this.toolKeys) {
           const e = this.toolConfig[k];
           this.modes[k] = !e ? 'inherit' : (e.enabled ? 'on' : 'off');
@@ -641,6 +745,24 @@
         return out;
       },
 
+      llmModelOptions() {
+        return (window.LLM_MODELS[this.llmProvider || this.llmDefaults.provider] || []);
+      },
+
+      // Emit only the deliberately-set keys; {} = inherit the global LLM config.
+      buildLlm() {
+        if (!this.llmOverride) return {};
+        const o = {};
+        if (this.llmProvider) o.provider = this.llmProvider;
+        if (this.llmModel.trim()) o.model = this.llmModel.trim();
+        if (this.llmThinking !== 'inherit') o.thinking_level = this.llmThinking === 'off' ? '' : this.llmThinking;
+        const mt = parseInt(this.llmMaxTokens, 10);
+        if (mt > 0) o.max_tokens = mt;
+        const t = parseFloat(this.llmTemperature);
+        if (Number.isFinite(t)) o.temperature = t;
+        return o;
+      },
+
       // Only configured tools get an entry; 'inherit' leaves them out so the
       // agent keeps using the system-wide config (migration-safe).
       buildToolConfig() {
@@ -704,6 +826,7 @@
           'contacts_accounts: ' + JSON.stringify(this.buildContactsAccounts()) + '\n' +
           'chat_settings: ' + JSON.stringify(this.buildChatSettings()) + '\n' +
           'group_chat: ' + JSON.stringify(this.buildGroupChat()) + '\n' +
+          'llm: ' + JSON.stringify(this.buildLlm()) + '\n' +
           'character: |\n  ' + esc(this.character) + '\n' +
           '---\n';
       },
@@ -733,6 +856,7 @@
               contacts_accounts: this.buildContactsAccounts(),
               chat_settings: this.buildChatSettings(),
               group_chat: this.buildGroupChat(),
+              llm: this.buildLlm(),
             };
         fetch('/agents', { method: 'POST', headers: this._headers(), body: JSON.stringify(body) })
           .then(r => { this.ok = r.ok; return r.text().then(t => ({ ok: r.ok, t })); })
