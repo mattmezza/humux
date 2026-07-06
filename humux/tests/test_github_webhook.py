@@ -257,6 +257,57 @@ def test_webhook_author_gate(monkeypatch) -> None:
         coro.close()
 
 
+def test_webhook_mention_gate(monkeypatch) -> None:
+    captured = _capture_create_task(monkeypatch)
+    # Handle configured but not mentioned → ignored.
+    client, core = _client(agent=_agent(webhook_mention="my-agent"))
+    assert _post(client, ISSUE_PAYLOAD).text == "ignored"
+    core.process.assert_not_called()
+    # Mention in the body (any case, with or without stored @) wakes it.
+    mentioned = {
+        **ISSUE_PAYLOAD,
+        "issue": {**ISSUE_PAYLOAD["issue"], "body": "hey @My-Agent please look"},
+    }
+    assert _post(client, mentioned).status_code == 202
+    client_at, _c = _client(agent=_agent(webhook_mention="@my-agent"))
+    assert _post(client_at, mentioned).status_code == 202
+    # Mention in the title counts too.
+    titled = {
+        **ISSUE_PAYLOAD,
+        "issue": {**ISSUE_PAYLOAD["issue"], "title": "@my-agent: it breaks"},
+    }
+    assert _post(client, titled).status_code == 202
+    # A longer handle sharing the prefix does NOT match (word boundary).
+    other = {
+        **ISSUE_PAYLOAD,
+        "issue": {**ISSUE_PAYLOAD["issue"], "body": "cc @my-agent-2"},
+    }
+    assert _post(client, other).text == "ignored"
+    # The App's own bot identity is dropped even when allowlisted — the
+    # config-proof self-reply loop guard.
+    own_echo = {**mentioned, "sender": {"login": "my-agent[bot]", "type": "Bot"}}
+    client2, core2 = _client(
+        agent=_agent(webhook_mention="my-agent", webhook_users=["my-agent[bot]"])
+    )
+    assert _post(client2, own_echo).text == "ignored"
+    core2.process.assert_not_called()
+    for coro in captured:
+        coro.close()
+
+
+def test_webhook_ping_goes_to_configured_chat(monkeypatch) -> None:
+    captured = _capture_create_task(monkeypatch)
+    own_bot = SimpleNamespace(send=AsyncMock(), config=SimpleNamespace(allowed_user_ids=[42]))
+    client, core = _client(
+        agent=_agent(webhook_chat_id="-100777:12"),
+        core_extra={"channels": {"telegram:dev": own_bot}},
+    )
+    core.process = AsyncMock(return_value=SimpleNamespace(text="heads up"))
+    assert _post(client, ISSUE_PAYLOAD).status_code == 202
+    asyncio.run(captured[0])
+    own_bot.send.assert_awaited_once_with("-100777:12", "heads up")
+
+
 def test_webhook_gated_delivery_stays_redeliverable(monkeypatch) -> None:
     # A delivery rejected by the author gate must NOT be deduped: after the
     # admin fixes the allowlist, GitHub's Redeliver has to work.

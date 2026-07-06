@@ -179,7 +179,20 @@ open an issue or comment triggers an autonomous turn — fine for private repos,
 injection and token-burn surface on public ones. Blank = anyone (the private-repo
 default). A listed login may also be another App's bot (`other-app[bot]`) — explicit
 listing overrides the bot loop guard. **Never list your own App's bot login**: its
-actions echo back as deliveries and the agent would answer itself forever.
+actions echo back as deliveries and the agent would answer itself forever (with a
+**Mention gate** configured this is blocked in code regardless).
+
+Two more knobs next to the webhook secret:
+
+- **Mention gate** (`gh: {..., webhook_mention: my-agent}`) — the App's GitHub handle.
+  When set, only issues, PRs and comments whose text actually mentions `@my-agent`
+  wake the agent, instead of every event on the repo; and anything sent by
+  `my-agent[bot]` itself is always dropped, closing the self-reply loop at the code
+  level. Recommended whenever the App watches a busy repo.
+- **Ping chat** (`gh: {..., webhook_chat_id: "-1001234567"}`) — the Telegram chat that
+  receives the agent's webhook pings (when a turn ends with something to report).
+  Defaults to the owner's DM; pick any chat the agent's bot is active in — e.g. a
+  team group — from the dropdown in the agent editor.
 
 The webhook is part of the agent's per-agent gh identity: it only fires while the
 agent's GitHub tool is **Enabled** (not *Disabled* and not *Inherit* — inherit means

@@ -402,6 +402,32 @@
                         in the raw doc.
                       </p>
                     </div>
+                    <div x-show="ghWebhookSecret">
+                      <label class="label">Mention gate <span class="text-muted">(optional)</span></label>
+                      <input type="text" class="input-sm" x-model="ghWebhookMention"
+                             placeholder="app handle, e.g. my-agent  — blank = every event">
+                      <p class="text-xs text-muted mt-1">
+                        The App's GitHub handle (without <code>@</code>). When set, only issues,
+                        PRs and comments that actually <em>mention</em>
+                        <code x-text="'@' + (ghWebhookMention.trim() || 'handle')"></code> wake the
+                        agent — and events from its own <code x-text="(ghWebhookMention.trim() || 'handle') + '[bot]'"></code>
+                        identity are always dropped (self-reply loop guard).
+                      </p>
+                    </div>
+                    <div x-show="ghWebhookSecret">
+                      <label class="label">Ping chat <span class="text-muted">(optional)</span></label>
+                      <select class="select input-sm" x-model="ghWebhookChat">
+                        <option value="">— owner DM (default) —</option>
+                        <template x-for="c in chats" :key="c.chat_id">
+                          <option :value="c.chat_id" x-text="c.chat_id + ' (' + c.kind + ')'"></option>
+                        </template>
+                      </select>
+                      <p class="text-xs text-muted mt-1">
+                        Telegram chat that receives this agent's webhook pings (when a turn has
+                        something to report). Chats appear here once the agent's bot has been
+                        active in them.
+                      </p>
+                    </div>
                   </div>
                 </template>
 
@@ -494,6 +520,8 @@
       ghWebhookSecret: '',
       ghWebhookUsers: '',
       ghWebhookUsersWasSet: false,
+      ghWebhookMention: '',
+      ghWebhookChat: '',
       infraAvailable: {{ infra_available|tojson }},
       infraNames: {{ infra_names|tojson }},
       modes: {},
@@ -541,6 +569,13 @@
         // Present-but-empty list means "nobody" — remember it existed so a
         // save of an unrelated field doesn't silently flip it to "anyone".
         this.ghWebhookUsersWasSet = Array.isArray(g.webhook_users);
+        this.ghWebhookMention = g.webhook_mention || '';
+        this.ghWebhookChat = g.webhook_chat_id || '';
+        // A stored ping chat no longer in the active list must still show (and
+        // survive a save) — mirror how account bindings handle stale entries.
+        if (this.ghWebhookChat && !this.chats.some(c => c.chat_id === this.ghWebhookChat)) {
+          this.chats.push({ chat_id: this.ghWebhookChat, kind: 'saved', last_active: '' });
+        }
         // Explicit stored mode wins; else infer from which fields are present.
         this.ghAuth = g.auth || ((g.app_id || g.private_key_secret) ? 'app' : 'pat');
 
@@ -663,6 +698,12 @@
             const wUsers = this.ghWebhookUsers.split(',').map(s => s.trim()).filter(Boolean);
             if (this.ghWebhookSecret && (wUsers.length || this.ghWebhookUsersWasSet)) {
               e.webhook_users = wUsers;
+            }
+            if (this.ghWebhookSecret && this.ghWebhookMention.trim()) {
+              e.webhook_mention = this.ghWebhookMention.trim().replace(/^@/, '');
+            }
+            if (this.ghWebhookSecret && this.ghWebhookChat) {
+              e.webhook_chat_id = this.ghWebhookChat;
             }
             // Per-agent repo allowlist. Blank = no restriction.
             const repos = this.ghRepos.split(',').map(s => s.trim()).filter(Boolean);

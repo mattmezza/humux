@@ -611,7 +611,10 @@ def _github_sig_ok(secret: str, body: bytes, header: str | None) -> bool:
 
 
 def _github_event_task(
-    event: str, payload: dict, allowed_authors: set[str] | None = None
+    event: str,
+    payload: dict,
+    allowed_authors: set[str] | None = None,
+    mention: str = "",
 ) -> tuple[str, str, str] | None:
     """Turn a webhook delivery into ``(task, chat_id, repo)``, or ``None`` to ignore.
 
@@ -623,11 +626,18 @@ def _github_event_task(
     dropped unless explicitly listed — the loop guard: our own App's actions echo
     back as webhook deliveries, and two bots answering each other never ends;
     naming another App's ``other[bot]`` is an explicit trust decision.
+
+    ``mention`` is the App's GitHub handle (lowercased, no ``@``): when set, only
+    events whose text actually mentions ``@handle`` wake the agent, and events
+    sent by ``handle[bot]`` itself are dropped unconditionally — the code-level
+    self-loop guard (listing your own bot in ``webhook_users`` can't override it).
     """
     if event not in _GH_WEBHOOK_EVENTS or payload.get("action") not in _GH_WEBHOOK_ACTIONS:
         return None
     sender = payload.get("sender") or {}
     login = str(sender.get("login") or "").strip().lower()
+    if mention and login == f"{mention}[bot]":
+        return None
     if allowed_authors is not None and login not in allowed_authors:
         return None
     if allowed_authors is None and sender.get("type") == "Bot":
@@ -639,6 +649,14 @@ def _github_event_task(
         return None
     comment = payload.get("comment") or {}
     body = str(comment.get("body") or item.get("body") or "")
+    # (?![\w-]) not \b: GitHub handles may contain hyphens, so "@my-agent"
+    # must not match inside "@my-agent-2".
+    if mention and not re.search(
+        rf"@{re.escape(mention)}(?![\w-])",
+        f"{item.get('title') or ''}\n{body}",
+        re.IGNORECASE,
+    ):
+        return None
     author = (comment.get("user") or item.get("user") or {}).get("login") or ""
     url = comment.get("html_url") or item.get("html_url") or ""
     task = (
@@ -1741,7 +1759,12 @@ def create_admin_app(
         # trigger an autonomous auto-approved-writes turn — untenable on a
         # public repo (prompt injection, token burn). The whole sender decision
         # (incl. the bot loop guard) lives in _github_event_task.
-        parsed = _github_event_task(event, payload, _allowlist(gh.get("webhook_users")))
+        # Mention gate (webhook_mention): when the App's handle is configured,
+        # only events whose text @-mentions it wake the agent.
+        mention = str(gh.get("webhook_mention") or "").strip().lstrip("@").lower()
+        parsed = _github_event_task(
+            event, payload, _allowlist(gh.get("webhook_users")), mention=mention
+        )
         if parsed is None:
             return Response("ignored")
         task, chat_id, repo = parsed
@@ -1777,11 +1800,19 @@ def create_admin_app(
 
                     # Deliver via THIS agent's own Telegram bot when it has one —
                     # its owner, not the default agent's — falling back to the
-                    # owner-DM heuristic otherwise.
+                    # owner-DM heuristic otherwise. webhook_chat_id, when set,
+                    # overrides the target chat (e.g. a team group instead of
+                    # the owner DM).
+                    pinned_chat = str(gh.get("webhook_chat_id") or "").strip()
                     ch = core.channels.get(f"telegram:{agent_name}")
-                    owner = _get_owner_chat_id(core, f"telegram:{agent_name}") if ch else None
+                    owner = (
+                        pinned_chat or _get_owner_chat_id(core, f"telegram:{agent_name}")
+                        if ch
+                        else None
+                    )
                     if not (ch and owner):
-                        ch, owner = _fallback_delivery(core)
+                        ch, fb_owner = _fallback_delivery(core)
+                        owner = pinned_chat or fb_owner
                     if ch and owner:
                         await ch.send(owner, text)
             except Exception:
