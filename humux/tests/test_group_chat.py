@@ -373,7 +373,7 @@ def test_is_group_off_when_disabled() -> None:
 
 @pytest.mark.asyncio
 async def test_callback_respects_per_chat_gate() -> None:
-    # A /jobs Cancel (and any approve/deny) button is an action in the chat, so a
+    # A /subagents Cancel (and any approve/deny) button is an action in the chat, so a
     # user the resolved agent bars there (#129) must not drive it via the callback.
     ch = _channel()
     ch._finalize_approval_response = AsyncMock()
@@ -409,7 +409,7 @@ def test_addressed_via_mention_entity() -> None:
 
 def test_addressed_via_command_entity() -> None:
     ch = _channel()
-    msg = _msg("/jobs@coachbot", entities=[_ent("bot_command", "/jobs@coachbot")])
+    msg = _msg("/subagents@coachbot", entities=[_ent("bot_command", "/subagents@coachbot")])
     assert ch._addressed_to_me(msg) is True
 
 

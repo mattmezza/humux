@@ -53,7 +53,7 @@ _AGENT_COMMANDS = frozenset(
 # under its /yolo_on alias (the runtime accepts both — see _COMMAND_ALIASES).
 _MENU_COMMANDS = [
     BotCommand("new", "Clear the conversation"),
-    BotCommand("jobs", "Show scheduled jobs"),
+    BotCommand("subagents", "List active subagent runs"),
     BotCommand("yolo_on", "Run actions without asking for approval"),
     BotCommand("yolo_off", "Restore approval prompts"),
     BotCommand("stop", "Stop the current turn"),
@@ -173,10 +173,11 @@ class TelegramChannel:
         self._bot_id: int | None = None
         self._bot_username: str | None = None
         self.app = Application.builder().token(config.bot_token).concurrent_updates(8).build()
-        # Commands are checked before the text handler so "/jobs" doesn't reach the
+        # Commands are checked before the text handler so "/subagents" doesn't reach the
         # agent as an ordinary message. (Plain text — incl. /new, /clear — still
         # falls through to _on_text, which handles those.)
-        self.app.add_handler(CommandHandler("jobs", self._on_jobs_command))
+        self.app.add_handler(CommandHandler("subagents", self._on_subagents_command))
+        self.app.add_handler(CommandHandler("jobs", self._on_subagents_command))  # compat alias
         self.app.add_handler(MessageHandler(filters.TEXT, self._on_text))
         self.app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, self._on_voice))
         self.app.add_handler(MessageHandler(filters.PHOTO | filters.Document.IMAGE, self._on_photo))
@@ -725,8 +726,8 @@ class TelegramChannel:
         except Exception:
             log.exception("Skill command failed: %s", slug)
 
-    async def _on_jobs_command(self, update: Update, context) -> None:
-        """/jobs — list active subagent runs with inline cancel buttons (issue #15)."""
+    async def _on_subagents_command(self, update: Update, context) -> None:
+        """/subagents — list active subagent runs with inline cancel buttons (issue #15)."""
         user = update.effective_user
         message = update.message
         chat = update.effective_chat
