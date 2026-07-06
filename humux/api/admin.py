@@ -610,17 +610,27 @@ def _github_sig_ok(secret: str, body: bytes, header: str | None) -> bool:
     return hmac.compare_digest(header.removeprefix("sha256=").encode(), digest.encode())
 
 
-def _github_event_task(event: str, payload: dict) -> tuple[str, str, str] | None:
+def _github_event_task(
+    event: str, payload: dict, allowed_authors: set[str] | None = None
+) -> tuple[str, str, str] | None:
     """Turn a webhook delivery into ``(task, chat_id, repo)``, or ``None`` to ignore.
 
     ``chat_id`` is the synthetic per-thread key ``github:<repo>#<n>`` so follow-up
     events on the same issue/PR land in the same conversation (history continuity).
-    Events from ANY bot sender are dropped — the loop guard: our own App's actions
-    echo back as webhook deliveries, and two bots answering each other never ends.
+
+    ``allowed_authors`` is the agent's ``webhook_users`` gate (lowercased logins):
+    ``None`` = anyone, a set = only those senders (empty = nobody). Bot senders are
+    dropped unless explicitly listed — the loop guard: our own App's actions echo
+    back as webhook deliveries, and two bots answering each other never ends;
+    naming another App's ``other[bot]`` is an explicit trust decision.
     """
     if event not in _GH_WEBHOOK_EVENTS or payload.get("action") not in _GH_WEBHOOK_ACTIONS:
         return None
-    if (payload.get("sender") or {}).get("type") == "Bot":
+    sender = payload.get("sender") or {}
+    login = str(sender.get("login") or "").strip().lower()
+    if allowed_authors is not None and login not in allowed_authors:
+        return None
+    if allowed_authors is None and sender.get("type") == "Bot":
         return None
     repo = (payload.get("repository") or {}).get("full_name") or ""
     item = payload.get("issue") or payload.get("pull_request") or {}
@@ -1710,6 +1720,37 @@ def create_admin_app(
         event = request.headers.get("X-GitHub-Event", "")
         if event == "ping":  # GitHub's webhook-creation handshake
             return Response("pong")
+        try:
+            payload = json.loads(body)
+        except json.JSONDecodeError:
+            return Response("bad payload", status_code=400)
+        if not isinstance(payload, dict):
+            return Response("bad payload", status_code=400)
+
+        # Normalize an allowlist value: None = unrestricted, a list restricts to
+        # it (empty = nothing), lowercased. A scalar string (easy raw-frontmatter
+        # mistake) is treated as a one-item list, not iterated char-by-char.
+        def _allowlist(value: object) -> set[str] | None:
+            if value is None:
+                return None
+            items = [value] if isinstance(value, str) else value
+            return {str(v).strip().lower() for v in items if v and str(v).strip()}
+
+        # Author gate (webhook_users): only these GitHub logins may wake the
+        # agent. Anyone who can comment on an installed repo would otherwise
+        # trigger an autonomous auto-approved-writes turn — untenable on a
+        # public repo (prompt injection, token burn). The whole sender decision
+        # (incl. the bot loop guard) lives in _github_event_task.
+        parsed = _github_event_task(event, payload, _allowlist(gh.get("webhook_users")))
+        if parsed is None:
+            return Response("ignored")
+        task, chat_id, repo = parsed
+        # Repo gate — same semantics as github_repo_violation (core/tools.py).
+        allowed_repos = _allowlist(gh.get("repos"))
+        if allowed_repos is not None and repo.lower() not in allowed_repos:
+            return Response("ignored")
+        # Dedup AFTER the gates: a delivery rejected by a too-narrow allowlist
+        # must stay redeliverable once the config is fixed.
         delivery = request.headers.get("X-GitHub-Delivery", "")
         if delivery:
             if delivery in _GH_SEEN_DELIVERIES:
@@ -1717,24 +1758,6 @@ def create_admin_app(
             _GH_SEEN_DELIVERIES[delivery] = None
             while len(_GH_SEEN_DELIVERIES) > _GH_SEEN_MAX:
                 _GH_SEEN_DELIVERIES.popitem(last=False)
-        try:
-            payload = json.loads(body)
-        except json.JSONDecodeError:
-            return Response("bad payload", status_code=400)
-        if not isinstance(payload, dict):
-            return Response("bad payload", status_code=400)
-        parsed = _github_event_task(event, payload)
-        if parsed is None:
-            return Response("ignored")
-        task, chat_id, repo = parsed
-        # Same semantics as github_repo_violation (core/tools.py): absent key =
-        # unrestricted, a present list restricts to it (empty list = nothing),
-        # compared case-insensitively.
-        repos = gh.get("repos")
-        if repos is not None:
-            allowed = {str(r).strip().lower() for r in repos if r and str(r).strip()}
-            if repo.lower() not in allowed:
-                return Response("ignored")
 
         async def _run_turn() -> None:
             try:

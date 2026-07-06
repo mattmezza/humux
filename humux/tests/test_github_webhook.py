@@ -227,6 +227,49 @@ def test_webhook_repo_allowlist_gates_events(monkeypatch) -> None:
         coro.close()
 
 
+def test_webhook_author_gate(monkeypatch) -> None:
+    captured = _capture_create_task(monkeypatch)
+    # Sender not on the list → ignored, no turn.
+    client, core = _client(agent=_agent(webhook_users=["mattmezza"]))
+    resp = _post(client, ISSUE_PAYLOAD)  # sender is alice
+    assert resp.status_code == 200 and resp.text == "ignored"
+    core.process.assert_not_called()
+    # Listed sender wakes the agent; match is case-insensitive.
+    client2, _core2 = _client(agent=_agent(webhook_users=["ALICE"]))
+    assert _post(client2, ISSUE_PAYLOAD).status_code == 202
+    # Present-but-empty list allows nobody; absent key allows anyone
+    # (the anyone case is every other 202 in this file).
+    client3, core3 = _client(agent=_agent(webhook_users=[]))
+    assert _post(client3, ISSUE_PAYLOAD).text == "ignored"
+    core3.process.assert_not_called()
+    # An explicitly listed bot login passes the loop guard (trusting another
+    # App is a deliberate choice); unlisted bots stay blocked.
+    bot_issue = {**ISSUE_PAYLOAD, "sender": {"login": "ci-bot[bot]", "type": "Bot"}}
+    client4, _core4 = _client(agent=_agent(webhook_users=["ci-bot[bot]"]))
+    assert _post(client4, bot_issue).status_code == 202
+    client5, core5 = _client(agent=_agent(webhook_users=["mattmezza"]))
+    assert _post(client5, bot_issue).text == "ignored"
+    core5.process.assert_not_called()
+    # Scalar string (raw-frontmatter mistake) = one-item list, not a char set.
+    client6, _core6 = _client(agent=_agent(webhook_users="Alice"))
+    assert _post(client6, ISSUE_PAYLOAD).status_code == 202
+    for coro in captured:
+        coro.close()
+
+
+def test_webhook_gated_delivery_stays_redeliverable(monkeypatch) -> None:
+    # A delivery rejected by the author gate must NOT be deduped: after the
+    # admin fixes the allowlist, GitHub's Redeliver has to work.
+    captured = _capture_create_task(monkeypatch)
+    admin._GH_SEEN_DELIVERIES.clear()
+    blocked, _c1 = _client(agent=_agent(webhook_users=["mattmezza"]))
+    assert _post(blocked, ISSUE_PAYLOAD, delivery="guid-r").text == "ignored"
+    allowed, _c2 = _client(agent=_agent(webhook_users=["alice"]))
+    assert _post(allowed, ISSUE_PAYLOAD, delivery="guid-r").status_code == 202
+    for coro in captured:
+        coro.close()
+
+
 def test_webhook_delivers_via_agents_own_channel(monkeypatch) -> None:
     captured = _capture_create_task(monkeypatch)
     own_bot = SimpleNamespace(send=AsyncMock(), config=SimpleNamespace(allowed_user_ids=[42]))
