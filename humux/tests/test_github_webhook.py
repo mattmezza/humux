@@ -242,6 +242,14 @@ def test_webhook_author_gate(monkeypatch) -> None:
     client3, core3 = _client(agent=_agent(webhook_users=[]))
     assert _post(client3, ISSUE_PAYLOAD).text == "ignored"
     core3.process.assert_not_called()
+    # An explicitly listed bot login passes the loop guard (trusting another
+    # App is a deliberate choice); unlisted bots stay blocked.
+    bot_issue = {**ISSUE_PAYLOAD, "sender": {"login": "ci-bot[bot]", "type": "Bot"}}
+    client4, _core4 = _client(agent=_agent(webhook_users=["ci-bot[bot]"]))
+    assert _post(client4, bot_issue).status_code == 202
+    client5, core5 = _client(agent=_agent(webhook_users=["mattmezza"]))
+    assert _post(client5, bot_issue).text == "ignored"
+    core5.process.assert_not_called()
     for coro in captured:
         coro.close()
 

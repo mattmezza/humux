@@ -177,7 +177,9 @@ agent editor; raw frontmatter `gh: {..., webhook_users: [mattmezza, teammate]}`)
 events *authored* by those GitHub users then wake the agent. Without it, anyone who can
 open an issue or comment triggers an autonomous turn — fine for private repos, a prompt
 injection and token-burn surface on public ones. Blank = anyone (the private-repo
-default).
+default). A listed login may also be another App's bot (`other-app[bot]`) — explicit
+listing overrides the bot loop guard. **Never list your own App's bot login**: its
+actions echo back as deliveries and the agent would answer itself forever.
 
 The webhook is part of the agent's per-agent gh identity: it only fires while the
 agent's GitHub tool is **Enabled** (not *Disabled* and not *Inherit* — inherit means
