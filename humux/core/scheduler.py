@@ -93,11 +93,16 @@ async def run_agent_task(
         # Deliver to the chat the job was scheduled in (#71); fall back to the
         # owner's chat for jobs with no captured origin (pre-#71, config-seeded).
         chat_id = origin_chat_id or _get_owner_chat_id(agent, channel)
+        # Whether we're delivering to the exact chat the job was scheduled in (as
+        # opposed to the owner-DM fallback): only then can the message be folded
+        # back into that chat's context under its captured origin key.
+        to_origin = bool(ch is not None and origin_chat_id and chat_id == origin_chat_id)
         if ch is None:
             # Origin channel isn't registered here (e.g. a job scheduled from the
             # cli/repl channel firing in the server) — deliver to the owner's
             # Telegram DM instead of dropping it (#168).
             ch, chat_id = _fallback_delivery(agent)
+            to_origin = False
             if ch:
                 log.info("Scheduler: channel %r not registered; delivering via Telegram", channel)
         if ch and response.text:
@@ -106,7 +111,14 @@ async def run_agent_task(
                 log.info("Scheduler silent task produced no updates; skipping send")
                 return
             if chat_id:
-                await ch.send(chat_id, text or response.text)
+                delivered = text or response.text
+                await ch.send(chat_id, delivered)
+                # Fold the reminder into the origin chat's context so the agent
+                # sees it on the user's next turn (#71 follow-up).
+                if to_origin:
+                    await agent.record_delivered_message(
+                        channel, origin_user_id, origin_chat_id, delivered
+                    )
             else:
                 log.warning("Scheduler: no owner chat ID for channel %r, response dropped", channel)
         elif not ch:
@@ -154,13 +166,20 @@ async def run_subagent_task(
         )
         text = result.get("result") or result.get("error") or ""
         ch = agent.channels.get(channel)
+        to_origin = bool(ch is not None and origin_chat_id and target == origin_chat_id)
         if ch is None:
             # cli/repl-origin job firing in the server: deliver to owner's DM (#168).
             ch, target = _fallback_delivery(agent)
+            to_origin = False
             if ch:
                 log.info("Scheduler: channel %r not registered; delivering via Telegram", channel)
         if ch and text and target:
             await ch.send(target, text)
+            # Fold the result into the origin chat's context (#71 follow-up).
+            if to_origin:
+                await agent.record_delivered_message(
+                    channel, str(origin_user_id or ""), origin_chat_id, text
+                )
         elif not ch:
             log.warning("Scheduler: channel %r not registered, subagent result dropped", channel)
         elif not target:

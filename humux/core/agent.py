@@ -1552,6 +1552,27 @@ class AgentCore:
         agent = await self._resolve_agent(channel, user_id, chat_id)
         return agent.skills if agent else None
 
+    async def record_delivered_message(
+        self, channel: str, user_id: str, chat_id: str, text: str, role: str = "assistant"
+    ) -> None:
+        """Fold an out-of-band message into a chat's history so it's in context.
+
+        Used when the scheduler delivers a reminder/notification straight to the
+        chat it was scheduled in (#71 follow-up): ``ch.send`` alone doesn't touch
+        history, so without this the agent wouldn't see, on the user's next turn,
+        what it already told them. ``(channel, user_id, chat_id)`` is the same key
+        the originating turn used (the captured job origin), so the message lands
+        in the right conversation. Respects the configured history mode.
+        """
+        if not text:
+            return
+        if self.history_mode == "session":
+            await self.history.append_session_message(
+                channel, user_id, {"role": role, "content": text}, chat_id
+            )
+        else:
+            await self.history.add_turn(channel, user_id, role, text, chat_id)
+
     async def may_act_in_chat(
         self, channel: str, user_id: str, chat_id: str, sender_id: int
     ) -> bool:

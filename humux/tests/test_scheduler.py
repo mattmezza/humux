@@ -140,6 +140,7 @@ async def test_run_agent_task_runs_as_origin_agent_and_chat() -> None:
     agent = SimpleNamespace(
         channels={"telegram": channel},
         process=AsyncMock(return_value=SimpleNamespace(text="done")),
+        record_delivered_message=AsyncMock(),
         config=SimpleNamespace(
             channels=SimpleNamespace(telegram=SimpleNamespace(allowed_user_ids=[123]))
         ),
@@ -148,12 +149,38 @@ async def test_run_agent_task_runs_as_origin_agent_and_chat() -> None:
     set_agent_context(agent)
 
     await run_agent_task(
-        "do thing", channel="telegram", agent_name="coach", origin_chat_id="-100200:7"
+        "do thing",
+        channel="telegram",
+        agent_name="coach",
+        origin_user_id="555",
+        origin_chat_id="-100200:7",
     )
 
     _, kwargs = agent.process.call_args
     assert kwargs["agent_name"] == "coach"  # not the default identity
     channel.send.assert_awaited_once_with("-100200:7", "done")  # origin chat, not owner 123
+    # #71 flw: the reminder is folded into the origin chat's context.
+    agent.record_delivered_message.assert_awaited_once_with("telegram", "555", "-100200:7", "done")
+
+
+@pytest.mark.asyncio
+async def test_run_agent_task_owner_fallback_does_not_record_context() -> None:
+    # A job with no captured origin delivers to the owner DM — a different chat —
+    # so it must NOT be folded into any origin context (#71 flw).
+    channel = AsyncMock()
+    channel.config = SimpleNamespace(allowed_user_ids=[123])
+    agent = SimpleNamespace(
+        channels={"telegram": channel},
+        process=AsyncMock(return_value=SimpleNamespace(text="ping")),
+        record_delivered_message=AsyncMock(),
+        job_store=None,
+    )
+    set_agent_context(agent)
+
+    await run_agent_task("do thing", channel="telegram")  # no origin_chat_id
+
+    channel.send.assert_awaited_once_with(123, "ping")  # owner DM
+    agent.record_delivered_message.assert_not_awaited()
 
 
 @pytest.mark.asyncio
