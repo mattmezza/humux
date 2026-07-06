@@ -1345,7 +1345,7 @@
     // Global: handle 401 by redirecting to auth gate
     document.body.addEventListener('htmx:responseError', function(e) {
       if (e.detail.xhr.status === 401) {
-        window.location.href = '/login';
+        if (window.location.pathname !== '/login') window.location.href = '/login';
       } else if (window.showToast) {
         // Show error message for non-2xx responses
         let msg = 'Request failed';
