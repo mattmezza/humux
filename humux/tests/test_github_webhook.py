@@ -44,12 +44,13 @@ def _agent(**gh) -> SimpleNamespace:
 
 
 def _client(agent=None, core_extra=None) -> tuple[TestClient, SimpleNamespace]:
-    core = SimpleNamespace(
-        agents=_Agents(agent if agent is not None else _agent()),
-        process=AsyncMock(return_value=SimpleNamespace(text="[NO_UPDATES]")),
-        channels={},
+    fields = {
+        "agents": _Agents(agent if agent is not None else _agent()),
+        "process": AsyncMock(return_value=SimpleNamespace(text="[NO_UPDATES]")),
+        "channels": {},
         **(core_extra or {}),
-    )
+    }
+    core = SimpleNamespace(**fields)
     secret_store = SimpleNamespace(
         infra_resolve=lambda n: SECRET if n == "WH_SECRET" else None,
         infra=SimpleNamespace(available=False),
@@ -62,13 +63,39 @@ def _client(agent=None, core_extra=None) -> tuple[TestClient, SimpleNamespace]:
     return TestClient(app), core
 
 
-def _post(client: TestClient, payload: dict, event: str = "issues", sign: bool = True, slug="dev"):
+def _post(
+    client: TestClient,
+    payload: dict,
+    event: str = "issues",
+    sign: bool = True,
+    slug: str = "dev",
+    delivery: str = "",
+):
     body = json.dumps(payload).encode()
     headers = {"X-GitHub-Event": event}
     if sign:
         sig = hmac.new(SECRET.encode(), body, hashlib.sha256).hexdigest()
         headers["X-Hub-Signature-256"] = f"sha256={sig}"
+    if delivery:
+        headers["X-GitHub-Delivery"] = delivery
     return client.post(f"/webhooks/github/{slug}", content=body, headers=headers)
+
+
+def _capture_create_task(monkeypatch) -> list:
+    """Swap asyncio.create_task for a recorder (the route also registers a
+    done-callback on the returned task, so return a stub that accepts one)."""
+    captured: list = []
+
+    class _FakeTask:  # hashable (goes into a set) + accepts a done-callback
+        def add_done_callback(self, _cb) -> None:
+            pass
+
+    def fake(coro):
+        captured.append(coro)
+        return _FakeTask()
+
+    monkeypatch.setattr(admin.asyncio, "create_task", fake)
+    return captured
 
 
 ISSUE_PAYLOAD = {
@@ -92,13 +119,17 @@ def test_sig_helper() -> None:
     assert not _github_sig_ok(SECRET, body, good[:-1] + "0")
     assert not _github_sig_ok(SECRET, body, None)
     assert not _github_sig_ok(SECRET, body, "sha1=abc")
+    # Non-ASCII header must be a clean False, not a TypeError from
+    # compare_digest (Starlette decodes headers as latin-1, attacker-controlled).
+    assert not _github_sig_ok(SECRET, body, "sha256=ü-non-ascii")
 
 
 def test_event_task_builds_thread_chat_id() -> None:
     parsed = _github_event_task("issues", ISSUE_PAYLOAD)
     assert parsed is not None
-    task, chat_id = parsed
+    task, chat_id, repo = parsed
     assert chat_id == "github:acme/widgets#7"
+    assert repo == "acme/widgets"
     assert "acme/widgets" in task and "@alice" in task and "issues/7" in task
 
 
@@ -123,11 +154,25 @@ def test_webhook_rejects_bad_or_missing_signature() -> None:
     core.process.assert_not_called()
 
 
-def test_webhook_unknown_agent_or_unconfigured_is_404() -> None:
+def test_webhook_unknown_agent_or_unconfigured_is_uniform_401() -> None:
+    # Same status as a bad signature — the URL space must not leak which
+    # agents exist or which have a webhook configured.
     client, _core = _client()
-    assert _post(client, ISSUE_PAYLOAD, slug="ghost").status_code == 404
+    assert _post(client, ISSUE_PAYLOAD, slug="ghost").status_code == 401
     client2, _core2 = _client(agent=SimpleNamespace(name="dev", enabled=True, tool_config={}))
-    assert _post(client2, ISSUE_PAYLOAD).status_code == 404
+    assert _post(client2, ISSUE_PAYLOAD).status_code == 401
+
+
+def test_webhook_dedupes_delivery_guid(monkeypatch) -> None:
+    captured = _capture_create_task(monkeypatch)
+    admin._GH_SEEN_DELIVERIES.clear()
+    client, _core = _client()
+    assert _post(client, ISSUE_PAYLOAD, delivery="guid-1").status_code == 202
+    resp = _post(client, ISSUE_PAYLOAD, delivery="guid-1")
+    assert resp.status_code == 200 and resp.text == "duplicate"
+    assert len(captured) == 1
+    for coro in captured:
+        coro.close()
 
 
 def test_webhook_ping_and_filtered_events() -> None:
@@ -137,18 +182,41 @@ def test_webhook_ping_and_filtered_events() -> None:
     core.process.assert_not_called()
 
 
-def test_webhook_repo_allowlist_gates_events() -> None:
+def test_webhook_repo_allowlist_gates_events(monkeypatch) -> None:
+    captured = _capture_create_task(monkeypatch)
     client, core = _client(agent=_agent(repos=["acme/other"]))
     resp = _post(client, ISSUE_PAYLOAD)
     assert resp.status_code == 200 and resp.text == "ignored"
     core.process.assert_not_called()
+    # Present-but-empty list allows nothing (github_repo_violation semantics).
+    client2, core2 = _client(agent=_agent(repos=[]))
+    assert _post(client2, ISSUE_PAYLOAD).text == "ignored"
+    core2.process.assert_not_called()
+    # Case-insensitive match, like the gh --repo gate.
+    client3, _core3 = _client(agent=_agent(repos=["Acme/Widgets"]))
+    assert _post(client3, ISSUE_PAYLOAD).status_code == 202
+    for coro in captured:
+        coro.close()
+
+
+def test_webhook_delivers_via_agents_own_channel(monkeypatch) -> None:
+    captured = _capture_create_task(monkeypatch)
+    own_bot = SimpleNamespace(send=AsyncMock(), config=SimpleNamespace(allowed_user_ids=[42]))
+    default_bot = SimpleNamespace(send=AsyncMock(), config=SimpleNamespace(allowed_user_ids=[1]))
+    client, core = _client(
+        core_extra={"channels": {"telegram": default_bot, "telegram:dev": own_bot}}
+    )
+    core.process = AsyncMock(return_value=SimpleNamespace(text="triaged the issue"))
+    assert _post(client, ISSUE_PAYLOAD).status_code == 202
+    asyncio.run(captured[0])
+    own_bot.send.assert_awaited_once_with(42, "triaged the issue")
+    default_bot.send.assert_not_awaited()
 
 
 def test_webhook_runs_turn_in_background(monkeypatch) -> None:
     # Capture the background coroutine instead of scheduling it, then run it
     # deterministically — the TestClient loop is gone once the request returns.
-    captured: list = []
-    monkeypatch.setattr(admin.asyncio, "create_task", captured.append)
+    captured = _capture_create_task(monkeypatch)
     client, core = _client()
     resp = _post(client, ISSUE_PAYLOAD)
     assert resp.status_code == 202

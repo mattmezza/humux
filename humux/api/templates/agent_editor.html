@@ -631,11 +631,14 @@
               if (this.ghAppId.trim()) e.app_id = this.ghAppId.trim();
               if (this.ghInstallationId.trim()) e.installation_id = this.ghInstallationId.trim();
               if (this.ghKeySecret) e.private_key_secret = this.ghKeySecret;
-              if (this.ghWebhookSecret) e.webhook_secret = this.ghWebhookSecret;
             } else if (this.ghTokenSecret) {
               // A chosen vault secret is referenced instead of storing a copy.
               e.token_secret = this.ghTokenSecret;
             }
+            // Webhook secret survives auth-mode switches (#210): the App's
+            // webhook keeps delivering even while the agent temporarily runs
+            // on a PAT, and toggling the dropdown never silently kills it.
+            if (this.ghWebhookSecret) e.webhook_secret = this.ghWebhookSecret;
             // Per-agent repo allowlist. Blank = no restriction.
             const repos = this.ghRepos.split(',').map(s => s.trim()).filter(Boolean);
             if (repos.length) e.repos = repos;

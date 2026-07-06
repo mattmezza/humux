@@ -590,16 +590,28 @@ _GH_WEBHOOK_KIND = {
 }
 
 
+# Recently seen X-GitHub-Delivery GUIDs — GitHub retries on timeout and the UI
+# has a "Redeliver" button; without this, each replay runs a full autonomous
+# turn (duplicate comments, duplicate actions). Bounded FIFO, process-local.
+_GH_SEEN_DELIVERIES: collections.OrderedDict[str, None] = collections.OrderedDict()
+_GH_SEEN_MAX = 1024
+# Strong refs to in-flight webhook turns: the loop only holds a weak reference,
+# so a fire-and-forget task could be garbage-collected mid-run.
+_GH_TURN_TASKS: set[asyncio.Task] = set()
+
+
 def _github_sig_ok(secret: str, body: bytes, header: str | None) -> bool:
     """Verify GitHub's ``X-Hub-Signature-256`` HMAC over the raw body."""
     if not header or not header.startswith("sha256="):
         return False
     digest = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(header.removeprefix("sha256="), digest)
+    # Compare as bytes: compare_digest raises on non-ASCII str input, and the
+    # header is attacker-controlled.
+    return hmac.compare_digest(header.removeprefix("sha256=").encode(), digest.encode())
 
 
-def _github_event_task(event: str, payload: dict) -> tuple[str, str] | None:
-    """Turn a webhook delivery into ``(task, chat_id)``, or ``None`` to ignore.
+def _github_event_task(event: str, payload: dict) -> tuple[str, str, str] | None:
+    """Turn a webhook delivery into ``(task, chat_id, repo)``, or ``None`` to ignore.
 
     ``chat_id`` is the synthetic per-thread key ``github:<repo>#<n>`` so follow-up
     events on the same issue/PR land in the same conversation (history continuity).
@@ -630,7 +642,7 @@ def _github_event_task(event: str, payload: dict) -> tuple[str, str] | None:
         "something. If there is nothing the owner needs to hear, end your reply with "
         "[NO_UPDATES]."
     )
-    return task, f"github:{repo}#{number}"
+    return task, f"github:{repo}#{number}", repo
 
 
 class AgentUpsertIn(BaseModel):
@@ -1671,20 +1683,35 @@ def create_admin_app(
         core = agent_state.agent
         if core is None:
             return Response("agent not running", status_code=503)
+        # GitHub caps payloads at 25 MB; reject anything bigger before buffering
+        # it — this is an unauthenticated route.
+        try:
+            if int(request.headers.get("Content-Length") or 0) > 26_000_000:
+                return Response("payload too large", status_code=413)
+        except ValueError:
+            return Response("bad request", status_code=400)
         agent = await core.agents.get(agent_name)
         gh = (agent.tool_config.get("gh") if agent and agent.enabled else None) or {}
         secret_name = str(gh.get("webhook_secret") or "").strip()
         secret = secret_store.infra_resolve(secret_name) if secret_name and secret_store else None
-        if not secret:
-            # Unknown agent, disabled agent, or no webhook configured — same 404,
-            # so the URL space leaks nothing about which agents exist.
-            return Response("not found", status_code=404)
         body = await request.body()
-        if not _github_sig_ok(secret, body, request.headers.get("X-Hub-Signature-256")):
-            return Response("bad signature", status_code=401)
+        # Uniform 401 whether the agent is unknown, has no webhook configured, or
+        # the signature is wrong — probing the URL space leaks nothing about
+        # which agents exist.
+        if not secret or not _github_sig_ok(
+            secret, body, request.headers.get("X-Hub-Signature-256")
+        ):
+            return Response("unauthorized", status_code=401)
         event = request.headers.get("X-GitHub-Event", "")
         if event == "ping":  # GitHub's webhook-creation handshake
             return Response("pong")
+        delivery = request.headers.get("X-GitHub-Delivery", "")
+        if delivery:
+            if delivery in _GH_SEEN_DELIVERIES:
+                return Response("duplicate")  # retry/redelivery of a turn already run
+            _GH_SEEN_DELIVERIES[delivery] = None
+            while len(_GH_SEEN_DELIVERIES) > _GH_SEEN_MAX:
+                _GH_SEEN_DELIVERIES.popitem(last=False)
         try:
             payload = json.loads(body)
         except json.JSONDecodeError:
@@ -1692,11 +1719,17 @@ def create_admin_app(
         if not isinstance(payload, dict):
             return Response("bad payload", status_code=400)
         parsed = _github_event_task(event, payload)
-        repos = gh.get("repos") or []
-        repo = (payload.get("repository") or {}).get("full_name") or ""
-        if parsed is None or (repos and repo not in repos):
+        if parsed is None:
             return Response("ignored")
-        task, chat_id = parsed
+        task, chat_id, repo = parsed
+        # Same semantics as github_repo_violation (core/tools.py): absent key =
+        # unrestricted, a present list restricts to it (empty list = nothing),
+        # compared case-insensitively.
+        repos = gh.get("repos")
+        if repos is not None:
+            allowed = {str(r).strip().lower() for r in repos if r and str(r).strip()}
+            if repo.lower() not in allowed:
+                return Response("ignored")
 
         async def _run_turn() -> None:
             try:
@@ -1712,17 +1745,26 @@ def create_admin_app(
                 )
                 text = (response.text or "").replace("[NO_UPDATES]", "").strip()
                 if text:
-                    from core.scheduler import _fallback_delivery
+                    from core.scheduler import _fallback_delivery, _get_owner_chat_id
 
-                    ch, owner = _fallback_delivery(core)
+                    # Deliver via THIS agent's own Telegram bot when it has one —
+                    # its owner, not the default agent's — falling back to the
+                    # owner-DM heuristic otherwise.
+                    ch = core.channels.get(f"telegram:{agent_name}")
+                    owner = _get_owner_chat_id(core, f"telegram:{agent_name}") if ch else None
+                    if not (ch and owner):
+                        ch, owner = _fallback_delivery(core)
                     if ch and owner:
                         await ch.send(owner, text)
             except Exception:
                 log.exception("GitHub webhook turn failed (agent=%s)", agent_name)
 
         # 200-class response immediately (GitHub's delivery timeout is ~10s);
-        # the turn runs in the background like scheduler jobs.
-        asyncio.create_task(_run_turn())
+        # the turn runs in the background like scheduler jobs. Keep a strong ref
+        # until it finishes.
+        turn = asyncio.create_task(_run_turn())
+        _GH_TURN_TASKS.add(turn)
+        turn.add_done_callback(_GH_TURN_TASKS.discard)
         return Response("accepted", status_code=202)
 
     @app.post("/tools/gh/test", dependencies=[Depends(auth)])
