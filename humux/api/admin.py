@@ -1265,7 +1265,7 @@ def create_admin_app(
 
     @app.get("/version", dependencies=[Depends(auth)])
     async def version() -> HTMLResponse:
-        """Latest release version from GitHub."""
+        """Latest release version from GitHub, linked to its release page."""
         try:
             async with httpx.AsyncClient(timeout=5) as client:
                 resp = await client.get(
@@ -1274,7 +1274,12 @@ def create_admin_app(
                 )
                 if resp.is_success:
                     tag = resp.json().get("tag_name", "") or ""
-                    return HTMLResponse(tag)
+                    url = f"https://github.com/mattmezza/humux/releases/tag/{tag}"
+                    link = (
+                        f'<a href="{url}" target="_blank"'
+                        f' class="hover:text-accent transition-colors">{tag}</a>'
+                    )
+                    return HTMLResponse(link)
         except Exception:
             pass
         return HTMLResponse("dev")
