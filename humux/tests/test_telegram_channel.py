@@ -239,6 +239,23 @@ async def test_reaction_mode_sets_eyes_and_clears_it() -> None:
 
 
 @pytest.mark.asyncio
+async def test_reaction_mode_keeps_agent_set_reaction() -> None:
+    # If the agent sets its own reaction on the triggering message during the turn
+    # (the set_reaction tool → react()), the CoT 👀 must NOT clear it on turn end.
+    ch = _channel_with_mock_bot()
+    ch.config = SimpleNamespace(cot_feedback="reaction")
+
+    async with ch._typing(123, message_id=555):
+        await _wait_for(lambda: ch.app.bot.set_message_reaction.await_count > 0)
+        await ch.react(123, 555, "thumbsup")  # agent claims the message
+
+    # No trailing clear (reaction=[]); the agent's 👍 is the last reaction set.
+    calls = ch.app.bot.set_message_reaction.await_args_list
+    assert all(c.kwargs.get("reaction") != [] for c in calls)
+    assert [r.emoji for r in calls[-1].kwargs["reaction"]] == ["👍"]
+
+
+@pytest.mark.asyncio
 async def test_reaction_mode_without_message_id_falls_back_to_placeholder() -> None:
     # Reaction mode needs a message to react to; a turn with no message_id (rare)
     # falls back to the text placeholder so the user still gets a signal.

@@ -768,6 +768,9 @@ class TelegramChannel:
         if char is None:
             raise ValueError(f"Unsupported reaction: {emoji!r}")
         cid, _ = self._route(chat_id)
+        # A deliberate reaction (the set_reaction tool) claims this message so the
+        # "reaction" CoT mode won't clear it when the turn ends (#70 flw).
+        self.__dict__.get("_cot_reacted", set()).discard((cid, int(message_id)))
         try:
             await self.app.bot.set_message_reaction(
                 chat_id=cid, message_id=int(message_id), reaction=[ReactionTypeEmoji(emoji=char)]
@@ -955,9 +958,26 @@ class TelegramChannel:
                 return
             except TimeoutError:
                 pass
-            await self.react(cid, int(message_id), "eyes")
+            # Mark this message as wearing the CoT 👀 so it's only cleared if the
+            # agent didn't set its own reaction on it during the turn (react() drops
+            # the mark). Set the eyes directly, not via react(), which would drop it.
+            key = (cid, int(message_id))
+            reacted = self.__dict__.setdefault("_cot_reacted", set())
+            reacted.add(key)
+            try:
+                await self.app.bot.set_message_reaction(
+                    chat_id=cid,
+                    message_id=int(message_id),
+                    reaction=[ReactionTypeEmoji(emoji=REACTION_EMOJI["eyes"])],
+                )
+            except BadRequest as exc:
+                log.info("CoT reaction skipped on %s/%s: %s", cid, message_id, exc)
+                reacted.discard(key)
+                return
             await turn_over.wait()
-            await self.unreact(cid, int(message_id))
+            if key in reacted:  # not claimed by a deliberate reaction → clear ours
+                reacted.discard(key)
+                await self.unreact(cid, int(message_id))
 
         typing_task = asyncio.create_task(_send_typing(), name=f"tg-typing-{chat_id}")
         # The placeholder owns its full post→delete lifecycle and is signalled via
