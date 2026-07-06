@@ -189,4 +189,5 @@ def test_write_artifact_gone_from_agent_scope() -> None:
 
 def test_artifact_hosting_skill_seeded() -> None:
     # The capability now lives in a skill, not a tool.
-    assert Path("skills/artifact-hosting.md").is_file()
+    skill_path = Path(__file__).resolve().parent.parent / "skills" / "artifact-hosting.md"
+    assert skill_path.is_file()

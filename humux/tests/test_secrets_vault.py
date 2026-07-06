@@ -207,7 +207,7 @@ def test_resolve_vault_vars() -> None:
     data = {"a": "${vault:X}", "b": ["${vault:Y}", "plain"], "c": "${vault:MISS}"}
     out = resolve_vault_vars(data, {"X": "xv", "Y": "yv"}.get)
     assert out["a"] == "xv" and out["b"][0] == "yv" and out["b"][1] == "plain"
-    assert out["c"] == "${vault:MISS}"  # miss left literal
+    assert out["c"] == ""  # miss blanked (see docstring: leaving literal masked vault issues)
 
 
 async def test_export_to_config_resolves_vault(tmp_path) -> None:
@@ -613,7 +613,7 @@ async def test_llm_provider_key_plaintext_without_machine_key(tmp_path) -> None:
     cs = ConfigStore(db_path=db)
     await cs.set_setup_step("done")
     await cs.set_admin_password("testpw")
-    s = SecretStore(db_path=db)  # no infra vault -> not available
+    s = SecretStore(db_path=db, infra_vault=InfraVault(None))  # no infra vault
     app, _ = create_admin_app(AgentState(), cs, secret_store=s)
     client = TestClient(app)
     resp = client.patch(

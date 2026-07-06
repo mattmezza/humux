@@ -227,8 +227,11 @@ async def _migrate_telegram_to_default_agent(config_store, agent) -> None:
         elif staged_token:
             # A vaulted token (${vault:NAME}) is resolved before storing — per-agent
             # bot tokens are used verbatim at poll time (no config-pipeline resolve).
+            # resolve_vault_vars blanks unresolved refs to "" (logging a warning), so
+            # check the ORIGINAL token for ${vault:} rather than the resolved output.
+            is_vault_ref = "${vault:" in staged_token
             resolved = resolve_vault_vars(staged_token, _secret_store.infra_resolve)
-            if "${vault:" in resolved:
+            if is_vault_ref and not resolved:
                 log.warning(
                     "Staged Telegram bot token did not resolve — leaving it for a "
                     "later boot once the vault is unsealed (#133)"
