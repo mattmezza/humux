@@ -6,8 +6,10 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      # data/ also holds skills installed from git repos (data/skills/, #65) —
-      # installs need a writable mount, since the skills/ seed dir below is ro.
+      # data/ also holds skills installed from git repos (data/skills/, #65).
+      # Installs always target this volume — the skills/ seed dir is read-only
+      # here and baked into the image in setups that don't mount it at all —
+      # so installed skills survive both restarts and image updates.
       - ./data:/app/data
       - ./config.yml:/app/config.yml:ro
       - ./character.md:/app/character.md:ro
