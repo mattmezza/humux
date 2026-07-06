@@ -19,12 +19,17 @@ CREATE TABLE IF NOT EXISTS token_usage (
     recorded_at DATETIME DEFAULT (datetime('now')),
     provider TEXT NOT NULL,
     model TEXT NOT NULL,
+    agent TEXT DEFAULT '',
     input_tokens INTEGER DEFAULT 0,
     output_tokens INTEGER DEFAULT 0,
     cache_read_input_tokens INTEGER DEFAULT 0,
     cache_creation_input_tokens INTEGER DEFAULT 0
 );
 """
+
+# Added after the table shipped (#199 flw: per-agent consumption); applied to
+# existing DBs on open. OperationalError = column already there → skipped.
+_MIGRATIONS = ("ALTER TABLE token_usage ADD COLUMN agent TEXT DEFAULT ''",)
 
 # Path to the config database (co-located for persistence).
 _CONFIG_DB = "data/config.db"
@@ -40,6 +45,12 @@ class TokenUsageStore:
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         async with aiosqlite.connect(self.db_path) as db:
             await db.executescript(_SCHEMA)
+            for stmt in _MIGRATIONS:
+                try:
+                    await db.execute(stmt)
+                except aiosqlite.OperationalError:
+                    pass  # column already exists
+            await db.commit()
 
     async def record(
         self,
@@ -49,18 +60,20 @@ class TokenUsageStore:
         output_tokens: int = 0,
         cache_read_input_tokens: int = 0,
         cache_creation_input_tokens: int = 0,
+        agent: str = "",
     ) -> None:
         """Insert a token usage row."""
         await self._ensure_schema()
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute(
                 "INSERT INTO token_usage "
-                "(provider, model, input_tokens, output_tokens, "
+                "(provider, model, agent, input_tokens, output_tokens, "
                 "cache_read_input_tokens, cache_creation_input_tokens) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (
                     provider,
                     model,
+                    agent,
                     input_tokens,
                     output_tokens,
                     cache_read_input_tokens,
@@ -118,12 +131,29 @@ class TokenUsageStore:
                     "cache_creation": r["total_cache_creation"],
                 }
 
+            # Per-agent totals (all token kinds), most-consuming first — feeds the
+            # "top agent" dashboard card. Rows recorded before the agent column
+            # existed (or from subagents) carry ''; surface those as "(unknown)".
+            cursor = await db.execute(
+                "SELECT COALESCE(NULLIF(agent, ''), '(unknown)') AS agent, "
+                "COALESCE(SUM(input_tokens + output_tokens + cache_read_input_tokens "
+                "+ cache_creation_input_tokens), 0) AS total "
+                "FROM token_usage "
+                "WHERE recorded_at >= datetime('now', ?) "
+                "GROUP BY 1 ORDER BY total DESC",
+                (f"-{hours} hours",),
+            )
+            top_agents = [
+                {"agent": r["agent"], "total": r["total"]} for r in await cursor.fetchall()
+            ]
+
         return {
             "total_input": total_input,
             "total_output": total_output,
             "total_cache_read": total_cache_read,
             "total_cache_creation": total_cache_creation,
             "breakdown": breakdown,
+            "top_agents": top_agents,
         }
 
 
@@ -145,6 +175,7 @@ async def record_usage(
     output_tokens: int = 0,
     cache_read_input_tokens: int = 0,
     cache_creation_input_tokens: int = 0,
+    agent: str = "",
 ) -> None:
     """Module-level convenience for recording usage from LLM call sites."""
     try:
@@ -155,6 +186,7 @@ async def record_usage(
             output_tokens=output_tokens,
             cache_read_input_tokens=cache_read_input_tokens,
             cache_creation_input_tokens=cache_creation_input_tokens,
+            agent=agent,
         )
     except Exception:
         log.exception("Failed to record token usage")

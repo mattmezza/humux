@@ -1335,10 +1335,12 @@
       }
     });
 
-    // Global: format a token count with k/M/G suffix (#199).
-    // 12530 → "12.53k", 1.23M → "1230000", 100.4M → "100400000", 1.34G → "1340000000"
+    // Global: format a token count with a k/M/B/T suffix
+    // (thousand/million/billion/trillion — #199).
+    // 12530 → "12.53k", 1.23e6 → "1.23M", 4.5e9 → "4.5B", 2e12 → "2T"
     function formatTokens(n) {
-      if (n >= 1e9) return (n / 1e9).toFixed(2).replace(/\.?0+$/, '') + 'G';
+      if (n >= 1e12) return (n / 1e12).toFixed(2).replace(/\.?0+$/, '') + 'T';
+      if (n >= 1e9) return (n / 1e9).toFixed(2).replace(/\.?0+$/, '') + 'B';
       if (n >= 1e6) return (n / 1e6).toFixed(2).replace(/\.?0+$/, '') + 'M';
       if (n >= 1e3) return (n / 1e3).toFixed(2).replace(/\.?0+$/, '') + 'k';
       return String(n);
@@ -1349,6 +1351,26 @@
     }
     window.formatTokens = formatTokens;
     window.estimateTokens = estimateTokens;
+
+    // Alpine factory for the overview token cards (#199 flw). Defined here (loaded
+    // once) so the dashboard partial can pass its per-request stats as a single
+    // JSON arg — keeping the JSON out of a double-quoted x-data attribute, which
+    // tojson's unescaped " would break.
+    function tokenCards(stats) {
+      return {
+        period: '24h',
+        periods: ['24h', '7d', '30d'],
+        stats: stats || {},
+        fmt(n) { return formatTokens(n || 0); },
+        get s() { return this.stats[this.period] || {}; },
+        get total() { const s = this.s; return (s.total_input||0)+(s.total_output||0)+(s.total_cache_read||0)+(s.total_cache_creation||0); },
+        get cached() { return this.s.total_cache_read || 0; },
+        get uncached() { const s = this.s; return (s.total_input||0)+(s.total_cache_creation||0); },
+        get cachePct() { const c = this.cached, u = this.uncached; return (c+u) > 0 ? Math.round(c/(c+u)*1000)/10 : 0; },
+        get agents() { return this.s.top_agents || []; },
+      };
+    }
+    window.tokenCards = tokenCards;
 
     // Global: listen for HX-Trigger showToast events from the server
     document.body.addEventListener('showToast', function(e) {

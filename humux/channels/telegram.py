@@ -293,53 +293,19 @@ class TelegramChannel:
             self._bot_id = None
             self._bot_username = None
 
-    @staticmethod
-    def _skill_command(name: str) -> str:
-        """The ``/zz_skill_*`` command slug for a skill name.
-
-        Telegram command names allow only ``[a-z0-9_]`` (max 32 chars), so
-        hyphens etc. fold to ``_``. The ``zz_skill_`` prefix clusters every
-        skill at the end of the command list (#178).
-        """
-        return ("zz_skill_" + re.sub(r"[^a-z0-9_]+", "_", name.lower()))[:32]
-
     async def register_commands(self) -> None:
-        """Publish the ``_MENU_COMMANDS`` list — plus one ``/zz_skill_<name>``
-        entry per skill (#178) — to Telegram's ☰ menu / autocomplete.
+        """Publish the ``_MENU_COMMANDS`` list to Telegram's ☰ menu / autocomplete.
 
         A full replace (setMyCommands), so editing the list is enough to add,
         remove, or rename commands across versions. Per-bot: in a group each bot
         shows its own commands, ``@bot``-suffixed, which is exactly the addressed
         form the runtime routes on. Best-effort — a failure here must never stop
-        the bot from polling."""
-        commands = list(_MENU_COMMANDS)
+        the bot from polling. Skills are no longer advertised as ``/zz_skill_*``
+        commands: the agent loads any skill on demand from the prompt-index block
+        (``skills.py show <name>`` via bash), so the explicit commands were dead
+        weight that only cluttered the menu."""
         try:
-            # Only advertise skills this bot's agent is allowed to load (#178): a
-            # per-agent bot binds to its own agent, the default bot to the default
-            # — scope the menu to that agent's allowlist so a skill outside it gets
-            # no command (needs a restart to change, like the rest of the menu).
-            allow = await self.agent.allowed_skills_for(self.channel_name)
-            # Telegram caps setMyCommands at 100 entries AND rejects the whole
-            # list if two commands share a name — two skills whose slugs collide
-            # (hyphen vs underscore, or a shared 32-char prefix) would drop the
-            # entire menu. Skip a duplicate slug so the menu still publishes; the
-            # skipped skill just has no command (its full name is still in the
-            # prompt index). Keep the control-command names reserved.
-            seen = {c.command for c in commands}
-            for e in await self.agent.skills.index_entries(allow=allow):
-                if len(commands) >= 100:
-                    break
-                slug = self._skill_command(e["name"])
-                if slug in seen:
-                    log.warning("Skill command slug collision, skipping: %s", e["name"])
-                    continue
-                seen.add(slug)
-                desc = (e.get("summary") or f"Load the {e['name']} skill")[:256]
-                commands.append(BotCommand(slug, desc))
-        except Exception:
-            log.warning("Could not build skill commands (%s)", self.channel_name, exc_info=True)
-        try:
-            await self.app.bot.set_my_commands(commands)
+            await self.app.bot.set_my_commands(list(_MENU_COMMANDS))
         except Exception:
             log.warning(
                 "Could not set Telegram command menu (%s)", self.channel_name, exc_info=True
@@ -528,30 +494,6 @@ class TelegramChannel:
         respond = routing["respond"]
         first = text.split(maxsplit=1)[0] if text else ""
         base, _, target = first.partition("@") if first.startswith("/") else ("", "", "")
-        if base.lower().startswith("/zz_skill_"):
-            # Skill loader command (#178): post the skill body into the chat and
-            # record it in history so the agent has it in context next turn. It
-            # makes the bot emit content, so it goes through the SAME sender ACL
-            # (#29 whitelist + #129 per-chat gate) as every acting path — the
-            # respond-gate above only runs it when routing["respond"], which is
-            # False for unaddressed group messages and bot senders.
-            # "/cmd@otherbot" is aimed at a different bot — stay silent then.
-            aimed_elsewhere = target and self._bot_username and target.lower() != self._bot_username
-            if (
-                respond
-                and not aimed_elsewhere
-                and await self._may_act(sender_id, convo_user, str(chat_id))
-            ):
-                asyncio.create_task(
-                    self._handle_skill_command(
-                        base.lower()[len("/zz_skill_") :],
-                        convo_user,
-                        str(chat_id),
-                        message.message_id,
-                    ),
-                    name=f"tg-skill-{convo_user}",
-                )
-            return
         if base.lower() in _AGENT_COMMANDS:
             # A recognised command is explicit and self-contained: send it bare, with
             # no speaker tag or reply-quote (either would stop the agent-side match).
@@ -694,38 +636,6 @@ class TelegramChannel:
             name=f"tg-photo-{convo_user}",
         )
 
-    async def _handle_skill_command(
-        self, slug: str, convo_user: str, chat_id: str, message_id: int
-    ) -> None:
-        """/zz_skill_<name>: load a skill from the store into the conversation (#178, #187).
-
-        The body is recorded in history as a record-only inbound turn (so the
-        agent sees the full content on its next turn). A ✅ reaction on the
-        original message acknowledges the load without cluttering the chat.
-        Scoped to the serving agent's skill allowlist — a command for a skill the
-        agent can't load (e.g. one added after the menu was published) is refused,
-        so this stays an enforcement point, not just an advertising filter.
-        """
-        try:
-            allow = await self.agent.allowed_skills_for(self.channel_name, convo_user, chat_id)
-            entries = await self.agent.skills.index_entries(allow=allow)
-            cmd = f"zz_skill_{slug}"
-            name = next((e["name"] for e in entries if self._skill_command(e["name"]) == cmd), None)
-            if name is None:
-                await self.send(chat_id, f"Skill not available: {slug}")
-                return
-            content = await self.agent.skills.get_skill_content(name)
-            await self.agent.process(
-                message=f"[Skill '{name}' loaded]\n{content}",
-                channel=self.channel_name,
-                user_id=convo_user,
-                chat_id=chat_id,
-                respond=False,
-            )
-            await self.react(chat_id, message_id, "checkmark")
-        except Exception:
-            log.exception("Skill command failed: %s", slug)
-
     async def _on_subagents_command(self, update: Update, context) -> None:
         """/subagents — list active subagent runs with inline cancel buttons (issue #15)."""
         user = update.effective_user
@@ -858,6 +768,9 @@ class TelegramChannel:
         if char is None:
             raise ValueError(f"Unsupported reaction: {emoji!r}")
         cid, _ = self._route(chat_id)
+        # A deliberate reaction (the set_reaction tool) claims this message so the
+        # "reaction" CoT mode won't clear it when the turn ends (#70 flw).
+        self.__dict__.get("_cot_reacted", set()).discard((cid, int(message_id)))
         try:
             await self.app.bot.set_message_reaction(
                 chat_id=cid, message_id=int(message_id), reaction=[ReactionTypeEmoji(emoji=char)]
@@ -866,6 +779,21 @@ class TelegramChannel:
             # Expired (>24h), deleted, or an emoji this chat disallows — nothing to
             # recover, and a failed reaction must not break the reply.
             log.info("Reaction skipped on %s/%s: %s", cid, message_id, exc)
+
+    async def unreact(self, chat_id: int | str, message_id: int) -> None:
+        """Clear any reaction the bot set on a message (empty reaction list).
+
+        Used by the "reaction" CoT feedback mode to drop the 👀 once the turn ends.
+        Same swallow-BadRequest contract as ``react`` — a cosmetic clear never fails
+        a turn.
+        """
+        cid, _ = self._route(chat_id)
+        try:
+            await self.app.bot.set_message_reaction(
+                chat_id=cid, message_id=int(message_id), reaction=[]
+            )
+        except BadRequest as exc:
+            log.info("Reaction clear skipped on %s/%s: %s", cid, message_id, exc)
 
     async def send_approval_request(
         self,
@@ -931,7 +859,7 @@ class TelegramChannel:
     _PLACEHOLDER_DELAY = 0.1
 
     @asynccontextmanager
-    async def _typing(self, chat_id: int | str):
+    async def _typing(self, chat_id: int | str, message_id: int | None = None):
         """Keep a 'working' signal visible for the whole turn, on every client.
 
         Telegram Web (K) does not render the ``sendChatAction`` typing indicator
@@ -1018,11 +946,48 @@ class TelegramChannel:
             except Exception:
                 pass
 
+        async def _reaction():
+            # "reaction" CoT mode (#70 follow-up): set 👀 on the triggering message
+            # and clear it when the turn ends, in place of the text placeholder.
+            # Same no-flash delay as the placeholder so instant turns don't blink a
+            # reaction on and off. The approval-label toggle (_set_typing_waiting) is
+            # a no-op here — a reaction can't carry the "waiting for approval" text;
+            # the approval prompt message covers that on its own.
+            try:
+                await asyncio.wait_for(turn_over.wait(), timeout=self._PLACEHOLDER_DELAY)
+                return
+            except TimeoutError:
+                pass
+            # Mark this message as wearing the CoT 👀 so it's only cleared if the
+            # agent didn't set its own reaction on it during the turn (react() drops
+            # the mark). Set the eyes directly, not via react(), which would drop it.
+            key = (cid, int(message_id))
+            reacted = self.__dict__.setdefault("_cot_reacted", set())
+            reacted.add(key)
+            try:
+                await self.app.bot.set_message_reaction(
+                    chat_id=cid,
+                    message_id=int(message_id),
+                    reaction=[ReactionTypeEmoji(emoji=REACTION_EMOJI["eyes"])],
+                )
+            except BadRequest as exc:
+                log.info("CoT reaction skipped on %s/%s: %s", cid, message_id, exc)
+                reacted.discard(key)
+                return
+            await turn_over.wait()
+            if key in reacted:  # not claimed by a deliberate reaction → clear ours
+                reacted.discard(key)
+                await self.unreact(cid, int(message_id))
+
         typing_task = asyncio.create_task(_send_typing(), name=f"tg-typing-{chat_id}")
         # The placeholder owns its full post→delete lifecycle and is signalled via
         # turn_over, never cancelled mid-send, so a turn that ends during the send
         # round-trip can't orphan the bubble (the bot would lose the id to delete).
-        placeholder_task = asyncio.ensure_future(_placeholder())
+        use_reaction = (
+            getattr(getattr(self, "config", None), "cot_feedback", "placeholder") == "reaction"
+            and message_id is not None
+        )
+        placeholder_task = asyncio.ensure_future(_reaction() if use_reaction else _placeholder())
         try:
             yield
         finally:
@@ -1149,7 +1114,7 @@ class TelegramChannel:
                 respond=False,
             )
             return
-        async with self._typing(chat_id), self._progress(chat_id):
+        async with self._typing(chat_id, message_id), self._progress(chat_id):
             response = await self.agent.process(
                 message=text,
                 channel=self.channel_name,
@@ -1168,7 +1133,7 @@ class TelegramChannel:
         prefix: str,
         message_id: int | None = None,
     ) -> None:
-        async with self._typing(chat_id), self._progress(chat_id):
+        async with self._typing(chat_id, message_id), self._progress(chat_id):
             file = await self.app.bot.get_file(file_id)
             audio_bytes = await file.download_as_bytearray()
 
@@ -1213,7 +1178,7 @@ class TelegramChannel:
     ) -> None:
         from core.models import IMAGE_MIME_TYPES, Attachment
 
-        async with self._typing(chat_id), self._progress(chat_id):
+        async with self._typing(chat_id, message_id), self._progress(chat_id):
             attachments: list[Attachment] = []
             for file_id, mime_type in file_ids:
                 file = await self.app.bot.get_file(file_id)

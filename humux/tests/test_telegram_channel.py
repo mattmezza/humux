@@ -218,6 +218,57 @@ async def test_placeholder_reflects_approval_wait_then_thinking() -> None:
     ch.app.bot.delete_message.assert_awaited_once_with(123, 4242)
 
 
+@pytest.mark.asyncio
+async def test_reaction_mode_sets_eyes_and_clears_it() -> None:
+    # cot_feedback="reaction": a slow turn sets 👀 on the triggering message and
+    # clears the reaction when it ends, instead of posting a text placeholder.
+    ch = _channel_with_mock_bot()
+    ch.config = SimpleNamespace(cot_feedback="reaction")
+
+    async with ch._typing(123, message_id=555):
+        await _wait_for(lambda: ch.app.bot.set_message_reaction.await_count > 0)
+
+    # First call = set 👀, last call = clear (empty reaction).
+    set_call = ch.app.bot.set_message_reaction.await_args_list[0]
+    assert set_call.kwargs["message_id"] == 555
+    assert [r.emoji for r in set_call.kwargs["reaction"]] == ["👀"]
+    clear_call = ch.app.bot.set_message_reaction.await_args_list[-1]
+    assert clear_call.kwargs["reaction"] == []
+    # No text placeholder in reaction mode.
+    ch.app.bot.send_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_reaction_mode_keeps_agent_set_reaction() -> None:
+    # If the agent sets its own reaction on the triggering message during the turn
+    # (the set_reaction tool → react()), the CoT 👀 must NOT clear it on turn end.
+    ch = _channel_with_mock_bot()
+    ch.config = SimpleNamespace(cot_feedback="reaction")
+
+    async with ch._typing(123, message_id=555):
+        await _wait_for(lambda: ch.app.bot.set_message_reaction.await_count > 0)
+        await ch.react(123, 555, "thumbsup")  # agent claims the message
+
+    # No trailing clear (reaction=[]); the agent's 👍 is the last reaction set.
+    calls = ch.app.bot.set_message_reaction.await_args_list
+    assert all(c.kwargs.get("reaction") != [] for c in calls)
+    assert [r.emoji for r in calls[-1].kwargs["reaction"]] == ["👍"]
+
+
+@pytest.mark.asyncio
+async def test_reaction_mode_without_message_id_falls_back_to_placeholder() -> None:
+    # Reaction mode needs a message to react to; a turn with no message_id (rare)
+    # falls back to the text placeholder so the user still gets a signal.
+    ch = _channel_with_mock_bot()
+    ch.config = SimpleNamespace(cot_feedback="reaction")
+
+    async with ch._typing(123):
+        await _wait_for(lambda: ch.app.bot.send_message.await_count > 0)
+
+    ch.app.bot.set_message_reaction.assert_not_awaited()
+    ch.app.bot.delete_message.assert_awaited_once_with(123, 4242)
+
+
 def test_set_typing_waiting_is_noop_without_active_placeholder() -> None:
     # A subagent / admin-API approval has no _typing wrapper for the chat; toggling
     # must not raise (registry miss), it just does nothing.
@@ -294,151 +345,3 @@ async def test_approval_request_falls_back_to_last_chat() -> None:
     args, kwargs = ch.app.bot.send_message.call_args
     assert args[0] == -100
     assert kwargs.get("message_thread_id") == 9
-
-
-# --- /zz_skill_* commands (#178) ---
-
-
-def _skills_agent(entries, content="BODY", allow=None):
-    """Stub AgentCore with a skills engine returning ``entries``.
-
-    ``allow`` is the serving agent's skill allowlist (None/[] = all); index_entries
-    honours it exactly as the real engine does, so command scoping is exercised.
-    """
-
-    async def _index_entries(allow=None):
-        return [e for e in entries if e["name"] in allow] if allow else entries
-
-    agent = SimpleNamespace()
-    agent.skills = SimpleNamespace(
-        index_entries=_index_entries,
-        get_skill_content=AsyncMock(return_value=content),
-    )
-    agent.process = AsyncMock()
-    agent.allowed_skills_for = AsyncMock(return_value=allow)
-    return agent
-
-
-@pytest.mark.asyncio
-async def test_register_commands_appends_skill_entries() -> None:
-    ch = object.__new__(TelegramChannel)
-    ch.channel_name = "telegram"
-    ch.app = SimpleNamespace(bot=AsyncMock())
-    ch.agent = _skills_agent([{"name": "artifact-hosting", "summary": "Publish pages"}])
-    await ch.register_commands()
-    (commands,) = ch.app.bot.set_my_commands.await_args.args
-    by_name = {c.command: c.description for c in commands}
-    assert by_name["zz_skill_artifact_hosting"] == "Publish pages"
-    for c in commands:  # every generated name must be Telegram-valid
-        assert re.fullmatch(r"[a-z0-9_]{1,32}", c.command), c.command
-
-
-@pytest.mark.asyncio
-async def test_zz_skill_command_loads_into_history_and_chat() -> None:
-    ch = _dedup_channel()
-    ch.agent = _skills_agent([{"name": "artifact-hosting", "summary": "s"}], content="SKILL BODY")
-    ch.send = AsyncMock()
-    ch.react = AsyncMock()
-    await ch._on_text(_text_update("/zz_skill_artifact_hosting"), None)
-    await asyncio.sleep(0)
-    ch._handle_text.assert_not_awaited()  # handled as a command, not a turn
-    ch.agent.process.assert_awaited_once()
-    kwargs = ch.agent.process.await_args.kwargs
-    assert kwargs["respond"] is False  # record-only: rides into history
-    assert "SKILL BODY" in kwargs["message"]
-    ch.send.assert_not_awaited()  # content no longer sent to chat (#187)
-    ch.react.assert_awaited_once()
-    args = ch.react.await_args.args
-    assert args[2] == "checkmark"  # emoji
-    assert isinstance(args[1], int)  # message_id
-
-
-@pytest.mark.asyncio
-async def test_zz_skill_command_gated_when_not_responding() -> None:
-    # A record-only turn (respond=False: unaddressed group message, or a sender
-    # who failed the _may_act gate) must NOT trigger skill loading (#178 review).
-    ch = _dedup_channel()
-    ch._turn_routing = lambda u, m, c: {
-        "user_id": str(u.effective_user.id),
-        "speaker_tag": "",
-        "respond": False,
-        "addressed": False,
-    }
-    ch.agent = _skills_agent([{"name": "himalaya-email", "summary": "s"}])
-    ch.send = AsyncMock()
-    await ch._on_text(_text_update("/zz_skill_himalaya_email"), None)
-    await asyncio.sleep(0)
-    ch.agent.process.assert_not_awaited()
-    ch.send.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_register_commands_skips_colliding_slugs() -> None:
-    # Two skills whose slugs fold to the same command must not produce a duplicate
-    # BotCommand — Telegram rejects the whole list if it does (#178 review).
-    ch = object.__new__(TelegramChannel)
-    ch.channel_name = "telegram"
-    ch.app = SimpleNamespace(bot=AsyncMock())
-    ch.agent = _skills_agent(
-        [{"name": "web-search", "summary": "a"}, {"name": "web_search", "summary": "b"}]
-    )
-    await ch.register_commands()
-    (commands,) = ch.app.bot.set_my_commands.await_args.args
-    slugs = [c.command for c in commands]
-    assert len(slugs) == len(set(slugs))  # no duplicate command names
-    assert slugs.count("zz_skill_web_search") == 1
-
-
-@pytest.mark.asyncio
-async def test_zz_skill_unknown_name_reports_error() -> None:
-    ch = _dedup_channel()
-    ch.agent = _skills_agent([])
-    ch.send = AsyncMock()
-    await ch._on_text(_text_update("/zz_skill_nope"), None)
-    await asyncio.sleep(0)
-    ch.agent.process.assert_not_awaited()
-    assert "not available" in ch.send.await_args.args[1]
-
-
-@pytest.mark.asyncio
-async def test_zz_skill_out_of_allowlist_refused() -> None:
-    # A command for a skill outside the serving agent's allowlist is refused even
-    # if it exists in the store — the handler is an enforcement point (#178).
-    ch = _dedup_channel()
-    ch.agent = _skills_agent(
-        [{"name": "himalaya-email", "summary": "s"}, {"name": "wacli-whatsapp", "summary": "s"}],
-        allow=["himalaya-email"],  # wacli-whatsapp withheld from this agent
-    )
-    ch.send = AsyncMock()
-    await ch._on_text(_text_update("/zz_skill_wacli_whatsapp"), None)
-    await asyncio.sleep(0)
-    ch.agent.process.assert_not_awaited()  # body never loaded
-    assert "not available" in ch.send.await_args.args[1]
-
-
-@pytest.mark.asyncio
-async def test_register_commands_scoped_to_agent_allowlist() -> None:
-    # The published menu only advertises skills the bot's agent may load (#178).
-    ch = object.__new__(TelegramChannel)
-    ch.channel_name = "telegram:coach"
-    ch.app = SimpleNamespace(bot=AsyncMock())
-    ch.agent = _skills_agent(
-        [{"name": "himalaya-email", "summary": "s"}, {"name": "wacli-whatsapp", "summary": "s"}],
-        allow=["himalaya-email"],
-    )
-    await ch.register_commands()
-    (commands,) = ch.app.bot.set_my_commands.await_args.args
-    slugs = {c.command for c in commands}
-    assert "zz_skill_himalaya_email" in slugs
-    assert "zz_skill_wacli_whatsapp" not in slugs  # out of allowlist → no command
-
-
-@pytest.mark.asyncio
-async def test_zz_skill_aimed_at_other_bot_is_ignored() -> None:
-    ch = _dedup_channel()  # _bot_username = "coachbot"
-    ch.agent = _skills_agent([{"name": "weather", "summary": "s"}])
-    ch.send = AsyncMock()
-    await ch._on_text(_text_update("/zz_skill_weather@otherbot"), None)
-    await asyncio.sleep(0)
-    ch.send.assert_not_awaited()
-    ch.agent.process.assert_not_awaited()
