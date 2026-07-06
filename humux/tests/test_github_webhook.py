@@ -257,6 +257,82 @@ def test_webhook_author_gate(monkeypatch) -> None:
         coro.close()
 
 
+def test_webhook_mention_gate(monkeypatch) -> None:
+    captured = _capture_create_task(monkeypatch)
+    # Handle configured but not mentioned → ignored.
+    client, core = _client(agent=_agent(webhook_mention="my-agent"))
+    assert _post(client, ISSUE_PAYLOAD).text == "ignored"
+    core.process.assert_not_called()
+    # Mention in the body (any case, with or without stored @) wakes it.
+    mentioned = {
+        **ISSUE_PAYLOAD,
+        "issue": {**ISSUE_PAYLOAD["issue"], "body": "hey @My-Agent please look"},
+    }
+    assert _post(client, mentioned).status_code == 202
+    client_at, _c = _client(agent=_agent(webhook_mention="@my-agent"))
+    assert _post(client_at, mentioned).status_code == 202
+    # Mention in the title counts too.
+    titled = {
+        **ISSUE_PAYLOAD,
+        "issue": {**ISSUE_PAYLOAD["issue"], "title": "@my-agent: it breaks"},
+    }
+    assert _post(client, titled).status_code == 202
+    # A longer handle sharing the prefix does NOT match (word boundary).
+    other = {
+        **ISSUE_PAYLOAD,
+        "issue": {**ISSUE_PAYLOAD["issue"], "body": "cc @my-agent-2"},
+    }
+    assert _post(client, other).text == "ignored"
+    # An email containing the handle is not a mention (left boundary).
+    email = {
+        **ISSUE_PAYLOAD,
+        "issue": {**ISSUE_PAYLOAD["issue"], "body": "contact ops@my-agent for access"},
+    }
+    assert _post(client, email).text == "ignored"
+    # Comment events match the COMMENT body only: a once-mentioning title must
+    # not wake the agent for every later comment in the thread.
+    comment_no_mention = {
+        "action": "created",
+        "repository": ISSUE_PAYLOAD["repository"],
+        "issue": {**ISSUE_PAYLOAD["issue"], "title": "@my-agent: it breaks"},
+        "comment": {
+            "body": "thanks, me too",
+            "user": {"login": "bob"},
+            "html_url": "https://github.com/acme/widgets/issues/7#issuecomment-1",
+        },
+        "sender": {"login": "bob", "type": "User"},
+    }
+    assert _post(client, comment_no_mention, event="issue_comment").text == "ignored"
+    comment_mention = {
+        **comment_no_mention,
+        "comment": {**comment_no_mention["comment"], "body": "@my-agent take a look"},
+    }
+    assert _post(client, comment_mention, event="issue_comment").status_code == 202
+    # The App's own bot identity is dropped even when allowlisted — the
+    # config-proof self-reply loop guard.
+    own_echo = {**mentioned, "sender": {"login": "my-agent[bot]", "type": "Bot"}}
+    client2, core2 = _client(
+        agent=_agent(webhook_mention="my-agent", webhook_users=["my-agent[bot]"])
+    )
+    assert _post(client2, own_echo).text == "ignored"
+    core2.process.assert_not_called()
+    for coro in captured:
+        coro.close()
+
+
+def test_webhook_ping_goes_to_configured_chat(monkeypatch) -> None:
+    captured = _capture_create_task(monkeypatch)
+    own_bot = SimpleNamespace(send=AsyncMock(), config=SimpleNamespace(allowed_user_ids=[42]))
+    client, core = _client(
+        agent=_agent(webhook_chat_id="-100777:12"),
+        core_extra={"channels": {"telegram:dev": own_bot}},
+    )
+    core.process = AsyncMock(return_value=SimpleNamespace(text="heads up"))
+    assert _post(client, ISSUE_PAYLOAD).status_code == 202
+    asyncio.run(captured[0])
+    own_bot.send.assert_awaited_once_with("-100777:12", "heads up")
+
+
 def test_webhook_gated_delivery_stays_redeliverable(monkeypatch) -> None:
     # A delivery rejected by the author gate must NOT be deduped: after the
     # admin fixes the allowlist, GitHub's Redeliver has to work.
@@ -298,3 +374,34 @@ def test_webhook_runs_turn_in_background(monkeypatch) -> None:
     assert kwargs["agent_name"] == "dev"
     assert kwargs["chat_id"] == "github:acme/widgets#7"
     assert kwargs["channel"] == "system"
+
+
+def test_resolve_chat_titles() -> None:
+    # Live lookup + 10-min cache + bot-down fallback, all in one pass.
+    admin._chat_title_cache.clear()
+
+    class _Chat:
+        title = "Family group"
+        username = None
+        first_name = None
+        last_name = None
+
+    calls = {"n": 0}
+
+    async def get_chat(cid):
+        calls["n"] += 1
+        return _Chat()
+
+    bot = SimpleNamespace(get_chat=get_chat)
+    core = SimpleNamespace(channels={"telegram:dev": SimpleNamespace(app=SimpleNamespace(bot=bot))})
+    chats = [{"chat_id": "-100777:12", "kind": "group", "channel": "telegram:dev"}]
+    asyncio.run(admin._resolve_chat_titles(core, chats))
+    assert chats[0]["title"] == "Family group" and calls["n"] == 1
+    # Second resolve hits the TTL cache — no second API call.
+    chats2 = [{"chat_id": "-100777:12", "kind": "group", "channel": "telegram:dev"}]
+    asyncio.run(admin._resolve_chat_titles(core, chats2))
+    assert chats2[0]["title"] == "Family group" and calls["n"] == 1
+    # Unknown channel (bot down) → bare id, no crash, no title key.
+    dead = [{"chat_id": "42", "kind": "dm", "channel": "telegram:gone"}]
+    asyncio.run(admin._resolve_chat_titles(core, dead))
+    assert "title" not in dead[0]
