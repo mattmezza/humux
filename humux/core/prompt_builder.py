@@ -189,6 +189,21 @@ def build_prompt_sections(
         "</security>"
     )
 
+    # Multi-message replies (#202): a base capability, always documented so an
+    # agent or tool_usage override can't drop it. Lives in the intro next to the
+    # security rail rather than a toggleable section.
+    intro += (
+        "\n\n<messages>\n"
+        "You can send several messages in one turn, like a person texting: put "
+        "[[split]] between them and each part is delivered as its own message. Use it "
+        "to break a long reply into a few short bubbles, or to send a quick line and "
+        "then a detailed one — but don't overdo it; one message is usually right. "
+        "When voice is available, a part carrying the voice marker is sent as a voice "
+        "note, so you can mix text and voice bubbles. Reactions (set_reaction) and "
+        "images (generate_image) are separate and combine freely with these.\n"
+        "</messages>"
+    )
+
     character = f"<character>\n{character_text}\n</character>"
     about_user = f"<about_user>\n{about_user_block}\n</about_user>" if about_user_block else ""
     tool_usage = f"<tool_usage>\n{tool_usage_text}\n</tool_usage>"

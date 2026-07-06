@@ -1242,18 +1242,40 @@ class TelegramChannel:
         await self._send_response(chat_id, response)
 
     async def _send_response(self, chat_id: int | str, response) -> None:
-        """Send an AgentResponse back — voice or text, then any generated images.
+        """Send an AgentResponse back — each message (voice or text) in order,
+        then any generated images (#202).
 
-        Text goes through ``send()`` so Markdown is rendered (HTML), and photos are
-        sent bare afterwards — simpler and correct, vs. a raw-Markdown caption.
+        A turn may deliver several messages (multiple text bubbles, text + voice,
+        etc.); ``delivery_messages`` yields them in order, falling back to the flat
+        text/voice fields for old-style responses. Text goes through ``send()`` so
+        Markdown is rendered (HTML); photos are sent bare afterwards.
         """
         cid, kw = self._route(chat_id)
         images = [a for a in (getattr(response, "attachments", None) or []) if a.is_image]
-        if response.voice:
-            await self.app.bot.send_voice(cid, response.voice, **kw)
-        elif response.text:
-            await self.send(chat_id, response.text)
-        elif not images:
+        # Prefer the ordered messages list; tolerate a partial/old response object
+        # (some callers/tests pass a bare text/voice pair) as the surrounding
+        # getattr() style already does.
+        delivery = getattr(response, "delivery_messages", None)
+        if delivery is not None:
+            pairs = [(m.text, m.voice) for m in delivery]
+        else:
+            text, voice = getattr(response, "text", "") or "", getattr(response, "voice", None)
+            pairs = [(text, voice)] if (text or voice) else []
+        sent = False
+        for text, voice in pairs:
+            # Isolate each bubble: a failure on a later message must not swallow the
+            # ones already delivered (#202) — log and move on so the turn is at worst
+            # partial, never aborted mid-way.
+            try:
+                if voice:
+                    await self.app.bot.send_voice(cid, voice, **kw)
+                    sent = True
+                elif text:
+                    await self.send(chat_id, text)
+                    sent = True
+            except Exception:
+                log.exception("Failed to deliver a message bubble to chat_id=%s", chat_id)
+        if not sent and not images:
             log.warning("Skipping empty response for chat_id=%s", chat_id)
         for att in images:
             await self.app.bot.send_photo(cid, att.data, **kw)

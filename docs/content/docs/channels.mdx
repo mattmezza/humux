@@ -35,7 +35,8 @@ agent's row, after which every bot is configured per-agent. See
 ### Features
 
 - **Text messages** — standard chat with the agent
-- **Voice messages** — automatically transcribed via Whisper, agent can respond with synthesized voice
+- **Multi-message replies** — one turn can send several messages, like a person texting: multiple text bubbles, or a mix of text, voice notes, reactions and images. The model separates parts with a `[[split]]` marker; a single reply (no marker) is delivered as one message, exactly as before
+- **Voice messages** — automatically transcribed via Whisper, agent can respond with synthesized voice (per part, so text and voice can be mixed in one turn)
 - **Inline keyboards** — used for permission approval flow (Approve / Deny / Always allow / Stop)
 - **User ID whitelist** — only allowed users can interact with the bot
 - **Bot-per-agent** — every agent has its own bot token, so it's a separate Telegram contact, all running in one process; see below
