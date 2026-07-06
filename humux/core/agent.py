@@ -3085,11 +3085,11 @@ class AgentCore:
         path = str(params.get("path", "")).strip()
         if not path:
             return {"error": "Missing 'path'."}
-        log.info("Tool call: read — %s", path)
+        offset = _as_int(params.get("offset"), 0)
+        limit = _as_int(params.get("limit"), 100)
+        log.info("Tool call: read — %s:%d-%d", path, offset + 1, offset + limit)
         try:
-            return coding.read_file(
-                workspace, path, _as_int(params.get("offset"), 0), _as_int(params.get("limit"), 100)
-            )
+            return coding.read_file(workspace, path, offset, limit)
         except coding.WorkspaceError as exc:
             return {"error": str(exc)}
         except OSError as exc:
