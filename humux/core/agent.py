@@ -3777,10 +3777,19 @@ class AgentCore:
         # contextvar but is a different conversation — don't clobber the parent's
         # last-sent payload with the child's.
         cap_token = set_capture_context(None)
+        # Attribute the subagent's token usage to the child agent (#199 flw) so its
+        # (often heavy) generate() calls don't land in the parent's bucket or, for a
+        # scheduled/background spawn that ran outside any turn, in "(unknown)". Only
+        # override when there IS a named child: an anonymous subagent runs "as
+        # yourself", so it should keep the spawner's inherited attribution.
+        child_name = run.agent or (child_agent.name if child_agent else "")
+        usage_token = set_usage_agent(child_name) if child_name else None
         try:
             with subagent_stream(run.agent or run.run_id, fallback=run.agent):
                 return await self._run_subagent_loop_inner(task, child_agent, child_state, run)
         finally:
+            if usage_token is not None:
+                reset_usage_agent(usage_token)
             reset_capture_context(cap_token)
 
     async def _run_subagent_loop_inner(

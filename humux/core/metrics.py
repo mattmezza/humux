@@ -132,15 +132,18 @@ class TokenUsageStore:
                 }
 
             # Per-agent totals (all token kinds), most-consuming first — feeds the
-            # "top agent" dashboard card. Rows recorded before the agent column
-            # existed (or from subagents) carry ''; surface those as "(unknown)".
+            # "top agent" dashboard card. Only rows with a recorded agent: usage
+            # with no attribution (rows written before this column shipped, or a
+            # scheduled/anonymous run outside any turn) is NOT an agent, so it must
+            # not headline a "top agent" ranking — it still counts in the total /
+            # cached cards, which sum the whole table.
             cursor = await db.execute(
-                "SELECT COALESCE(NULLIF(agent, ''), '(unknown)') AS agent, "
+                "SELECT agent, "
                 "COALESCE(SUM(input_tokens + output_tokens + cache_read_input_tokens "
                 "+ cache_creation_input_tokens), 0) AS total "
                 "FROM token_usage "
-                "WHERE recorded_at >= datetime('now', ?) "
-                "GROUP BY 1 ORDER BY total DESC",
+                "WHERE recorded_at >= datetime('now', ?) AND agent IS NOT NULL AND agent != '' "
+                "GROUP BY agent ORDER BY total DESC",
                 (f"-{hours} hours",),
             )
             top_agents = [
