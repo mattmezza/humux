@@ -196,27 +196,40 @@ def _as_content_blocks(content: Any) -> list[dict[str, Any]]:
 
 
 def _coalesce_user_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Merge consecutive ``user`` messages into one, so a run of user turns is
-    sent as a single turn.
+    """Merge consecutive same-role messages so the array alternates user/assistant.
 
     Group multi-agent rooms (#30) record every message they see — including ones
     the bot stays silent on — so the replayed history can hold several user turns
-    in a row before the bot's reply. Anthropic requires strict user/assistant
-    alternation, so this normalises the array right before the API call instead of
-    making every caller track it. String contents join with a blank line; anything
-    multimodal falls back to concatenated content-part blocks (valid for both
-    Anthropic and the OpenAI-compatible providers). Assistant/tool messages are
-    left untouched — only plain user turns are ever produced back-to-back.
+    in a row before the bot's reply. Multi-message replies (#202) likewise store
+    one assistant row per delivered bubble, so a turn can leave several plain-text
+    assistant rows in a row. Anthropic requires strict user/assistant alternation,
+    so this normalises the array right before the API call instead of making every
+    caller track it.
+
+    User runs merge whether string or multimodal (string → blank-line join, else
+    concatenated content-part blocks). Assistant runs merge only when BOTH sides
+    are plain strings (the shape multi-message history produces); an assistant turn
+    carrying content blocks (tool_use) is left untouched — those never appear
+    back-to-back, and merging them would corrupt the tool_use/tool_result pairing.
     """
     out: list[dict[str, Any]] = []
     for msg in messages:
-        if out and out[-1].get("role") == "user" and msg.get("role") == "user":
-            prev, cur = out[-1].get("content"), msg.get("content")
-            if isinstance(prev, str) and isinstance(cur, str):
-                merged: Any = f"{prev}\n\n{cur}"
+        prev = out[-1] if out else None
+        role = msg.get("role")
+        if prev and prev.get("role") == role == "user":
+            pc, cc = prev.get("content"), msg.get("content")
+            if isinstance(pc, str) and isinstance(cc, str):
+                merged: Any = f"{pc}\n\n{cc}"
             else:
-                merged = _as_content_blocks(prev) + _as_content_blocks(cur)
-            out[-1] = {**out[-1], "content": merged}
+                merged = _as_content_blocks(pc) + _as_content_blocks(cc)
+            out[-1] = {**prev, "content": merged}
+        elif (
+            prev
+            and prev.get("role") == role == "assistant"
+            and isinstance(prev.get("content"), str)
+            and isinstance(msg.get("content"), str)
+        ):
+            out[-1] = {**prev, "content": f"{prev['content']}\n\n{msg['content']}"}
         else:
             out.append(dict(msg))
     return out

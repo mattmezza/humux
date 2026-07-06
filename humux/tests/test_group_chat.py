@@ -43,14 +43,20 @@ def test_coalesce_leaves_alternating_untouched() -> None:
     assert _coalesce_user_messages(msgs) == msgs
 
 
-def test_coalesce_does_not_merge_assistant_or_tool() -> None:
+def test_coalesce_merges_assistant_strings_not_tool() -> None:
+    # Multi-message replies (#202) store one assistant row per bubble, so plain
+    # string assistant turns now merge to keep alternation; tool turns don't.
     msgs = [
         {"role": "assistant", "content": "x"},
-        {"role": "assistant", "content": "y"},  # would never happen, must stay split
+        {"role": "assistant", "content": "y"},
         {"role": "user", "content": "a"},
         {"role": "tool", "content": "t"},
     ]
-    assert _coalesce_user_messages(msgs) == msgs
+    assert _coalesce_user_messages(msgs) == [
+        {"role": "assistant", "content": "x\n\ny"},
+        {"role": "user", "content": "a"},
+        {"role": "tool", "content": "t"},
+    ]
 
 
 def test_coalesce_runs_of_three() -> None:

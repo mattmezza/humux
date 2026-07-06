@@ -1263,12 +1263,18 @@ class TelegramChannel:
             pairs = [(text, voice)] if (text or voice) else []
         sent = False
         for text, voice in pairs:
-            if voice:
-                await self.app.bot.send_voice(cid, voice, **kw)
-                sent = True
-            elif text:
-                await self.send(chat_id, text)
-                sent = True
+            # Isolate each bubble: a failure on a later message must not swallow the
+            # ones already delivered (#202) — log and move on so the turn is at worst
+            # partial, never aborted mid-way.
+            try:
+                if voice:
+                    await self.app.bot.send_voice(cid, voice, **kw)
+                    sent = True
+                elif text:
+                    await self.send(chat_id, text)
+                    sent = True
+            except Exception:
+                log.exception("Failed to deliver a message bubble to chat_id=%s", chat_id)
         if not sent and not images:
             log.warning("Skipping empty response for chat_id=%s", chat_id)
         for att in images:

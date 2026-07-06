@@ -2115,7 +2115,7 @@ class AgentCore:
 
         return AgentResponse(
             text=final_text,
-            voice=messages[0].voice if messages else None,
+            voice=next((m.voice for m in messages if m.voice), None),
             attachments=request_state.get("pending_attachments", []),
             messages=messages,
         )
@@ -2306,7 +2306,7 @@ class AgentCore:
 
         return AgentResponse(
             text=final_text,
-            voice=messages[0].voice if messages else None,
+            voice=next((m.voice for m in messages if m.voice), None),
             attachments=request_state.get("pending_attachments", []),
             system_notice=system_notice,
             messages=messages,

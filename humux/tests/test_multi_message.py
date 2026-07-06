@@ -72,6 +72,37 @@ async def test_react_only_turn_yields_no_messages(agent):
     assert combined == ""
 
 
+# --- coalescer keeps alternation when a turn stored multiple assistant rows ----
+
+
+def test_consecutive_assistant_strings_merge():
+    from core.llm import _coalesce_user_messages
+
+    msgs = [
+        {"role": "user", "content": "hi"},
+        {"role": "assistant", "content": "one"},
+        {"role": "assistant", "content": "two"},
+        {"role": "user", "content": "next"},
+    ]
+    out = _coalesce_user_messages(msgs)
+    assert [m["role"] for m in out] == ["user", "assistant", "user"]
+    assert out[1]["content"] == "one\n\ntwo"
+
+
+def test_assistant_tool_use_blocks_not_merged():
+    from core.llm import _coalesce_user_messages
+
+    # An assistant turn carrying content blocks (tool_use) must never be merged
+    # into an adjacent plain-text assistant turn — it would corrupt the pairing.
+    blocks = [{"type": "tool_use", "id": "t1", "name": "x", "input": {}}]
+    msgs = [
+        {"role": "assistant", "content": "text"},
+        {"role": "assistant", "content": blocks},
+    ]
+    out = _coalesce_user_messages(msgs)
+    assert len(out) == 2
+
+
 @pytest.mark.asyncio
 async def test_voice_marker_stripped_per_part(agent):
     # No TTS pipeline configured → voice is None, but the marker must never leak.
