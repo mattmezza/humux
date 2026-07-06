@@ -574,17 +574,22 @@ async def test_run_subagent_effort_inherits_by_default(agent, monkeypatch) -> No
 
 @pytest.mark.asyncio
 async def test_run_subagent_effort_uses_scoped_client(agent, monkeypatch) -> None:
-    agent.llm = _ScriptedLLM([LLMResponse(text="ok", tool_calls=[])])
+    # The effort-scoped client is a clone: the run generates with the overridden
+    # thinking level while the main client stays untouched.
     captured: dict = {}
 
-    def spy(provider, level=""):
-        captured["level"] = level
-        return _ScriptedLLM([LLMResponse(text="ok", tool_calls=[])])
+    class _Recording(_ScriptedLLM):
+        thinking_level = ""
 
-    monkeypatch.setattr(agent, "_background_llm", spy)
+        async def generate(self, **kw) -> LLMResponse:
+            captured["level"] = self.thinking_level
+            return await super().generate(**kw)
+
+    agent.llm = _Recording([LLMResponse(text="ok", tool_calls=[])])
     result = await agent.run_subagent(task="x", thinking_effort="high")
     assert result["ok"] is True
     assert captured["level"] == "high"
+    assert agent.llm.thinking_level == ""  # main client untouched
     assert agent.subagents.get(result["run_id"]).effort == "high"
 
 
