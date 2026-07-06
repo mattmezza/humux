@@ -635,9 +635,9 @@
               // A chosen vault secret is referenced instead of storing a copy.
               e.token_secret = this.ghTokenSecret;
             }
-            // Webhook secret survives auth-mode switches (#210): the App's
-            // webhook keeps delivering even while the agent temporarily runs
-            // on a PAT, and toggling the dropdown never silently kills it.
+            // Webhook secret survives PAT/App identity switches (#210). Like
+            // every other per-agent gh field, it is dropped when the tool is
+            // set to 'inherit' — no per-agent gh config means no inbound webhook.
             if (this.ghWebhookSecret) e.webhook_secret = this.ghWebhookSecret;
             // Per-agent repo allowlist. Blank = no restriction.
             const repos = this.ghRepos.split(',').map(s => s.trim()).filter(Boolean);

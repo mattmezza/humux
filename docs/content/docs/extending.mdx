@@ -172,6 +172,10 @@ guard stops feedback loops), and the agent's **allowed repos** list, when set, a
 inbound events. Each issue or PR maps to its own conversation thread
 (`github:<owner>/<repo>#<n>`), so follow-up comments keep their context.
 
+The webhook is part of the agent's per-agent gh identity: it only fires while the
+agent's GitHub tool is **Enabled** (not *Disabled* and not *Inherit* — inherit means
+no per-agent gh config, which includes the webhook).
+
 ## Writing effective skill files
 
 ### Be specific about syntax

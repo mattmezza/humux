@@ -1683,24 +1683,29 @@ def create_admin_app(
         core = agent_state.agent
         if core is None:
             return Response("agent not running", status_code=503)
-        # GitHub caps payloads at 25 MB; reject anything bigger before buffering
-        # it — this is an unauthenticated route.
-        try:
-            if int(request.headers.get("Content-Length") or 0) > 26_000_000:
-                return Response("payload too large", status_code=413)
-        except ValueError:
-            return Response("bad request", status_code=400)
         agent = await core.agents.get(agent_name)
+        # Inbound webhooks ride the agent's gh identity, so they honor the same
+        # per-agent enabled flag as every other gh consumer (core/tools.py).
         gh = (agent.tool_config.get("gh") if agent and agent.enabled else None) or {}
+        if not gh.get("enabled"):
+            gh = {}
         secret_name = str(gh.get("webhook_secret") or "").strip()
         secret = secret_store.infra_resolve(secret_name) if secret_name and secret_store else None
-        body = await request.body()
+        # Stream with a hard cap (GitHub's payload limit is 25 MB): this route is
+        # unauthenticated, and Content-Length can be absent/lied about (chunked).
+        body = b""
+        async for chunk in request.stream():
+            body += chunk
+            if len(body) > 26_000_000:
+                return Response("payload too large", status_code=413)
         # Uniform 401 whether the agent is unknown, has no webhook configured, or
         # the signature is wrong — probing the URL space leaks nothing about
-        # which agents exist.
-        if not secret or not _github_sig_ok(
-            secret, body, request.headers.get("X-Hub-Signature-256")
-        ):
+        # which agents exist. The HMAC runs even without a secret (dummy key) so
+        # response timing doesn't distinguish the cases either.
+        sig_ok = _github_sig_ok(
+            secret or "missing", body, request.headers.get("X-Hub-Signature-256")
+        )
+        if not secret or not sig_ok:
             return Response("unauthorized", status_code=401)
         event = request.headers.get("X-GitHub-Event", "")
         if event == "ping":  # GitHub's webhook-creation handshake
@@ -1757,6 +1762,9 @@ def create_admin_app(
                     if ch and owner:
                         await ch.send(owner, text)
             except Exception:
+                # Forget the GUID so GitHub's "Redeliver" can retry a failed turn
+                # (a completed turn stays deduped).
+                _GH_SEEN_DELIVERIES.pop(delivery, None)
                 log.exception("GitHub webhook turn failed (agent=%s)", agent_name)
 
         # 200-class response immediately (GitHub's delivery timeout is ~10s);

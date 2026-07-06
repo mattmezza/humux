@@ -39,7 +39,7 @@ def _agent(**gh) -> SimpleNamespace:
     return SimpleNamespace(
         name="dev",
         enabled=True,
-        tool_config={"gh": {"webhook_secret": "WH_SECRET", **gh}},
+        tool_config={"gh": {"enabled": True, "webhook_secret": "WH_SECRET", **gh}},
     )
 
 
@@ -161,6 +161,34 @@ def test_webhook_unknown_agent_or_unconfigured_is_uniform_401() -> None:
     assert _post(client, ISSUE_PAYLOAD, slug="ghost").status_code == 401
     client2, _core2 = _client(agent=SimpleNamespace(name="dev", enabled=True, tool_config={}))
     assert _post(client2, ISSUE_PAYLOAD).status_code == 401
+    # gh tool disabled for the agent → webhook off too, same uniform 401.
+    client3, _core3 = _client(agent=_agent(enabled=False))
+    assert _post(client3, ISSUE_PAYLOAD).status_code == 401
+
+
+def test_webhook_caps_body_size() -> None:
+    client, core = _client()
+    resp = client.post(
+        "/webhooks/github/dev",
+        content=b"x" * 26_000_001,
+        headers={"X-GitHub-Event": "issues"},
+    )
+    assert resp.status_code == 413
+    core.process.assert_not_called()
+
+
+def test_webhook_failed_turn_frees_delivery_guid(monkeypatch) -> None:
+    captured = _capture_create_task(monkeypatch)
+    admin._GH_SEEN_DELIVERIES.clear()
+    client, core = _client()
+    core.process = AsyncMock(side_effect=RuntimeError("boom"))
+    assert _post(client, ISSUE_PAYLOAD, delivery="guid-x").status_code == 202
+    asyncio.run(captured[0])  # turn crashes; GUID must be forgotten
+    assert "guid-x" not in admin._GH_SEEN_DELIVERIES
+    resp = _post(client, ISSUE_PAYLOAD, delivery="guid-x")  # Redeliver works
+    assert resp.status_code == 202
+    for coro in captured[1:]:
+        coro.close()
 
 
 def test_webhook_dedupes_delivery_guid(monkeypatch) -> None:
