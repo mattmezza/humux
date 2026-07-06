@@ -283,6 +283,31 @@ def test_webhook_mention_gate(monkeypatch) -> None:
         "issue": {**ISSUE_PAYLOAD["issue"], "body": "cc @my-agent-2"},
     }
     assert _post(client, other).text == "ignored"
+    # An email containing the handle is not a mention (left boundary).
+    email = {
+        **ISSUE_PAYLOAD,
+        "issue": {**ISSUE_PAYLOAD["issue"], "body": "contact ops@my-agent for access"},
+    }
+    assert _post(client, email).text == "ignored"
+    # Comment events match the COMMENT body only: a once-mentioning title must
+    # not wake the agent for every later comment in the thread.
+    comment_no_mention = {
+        "action": "created",
+        "repository": ISSUE_PAYLOAD["repository"],
+        "issue": {**ISSUE_PAYLOAD["issue"], "title": "@my-agent: it breaks"},
+        "comment": {
+            "body": "thanks, me too",
+            "user": {"login": "bob"},
+            "html_url": "https://github.com/acme/widgets/issues/7#issuecomment-1",
+        },
+        "sender": {"login": "bob", "type": "User"},
+    }
+    assert _post(client, comment_no_mention, event="issue_comment").text == "ignored"
+    comment_mention = {
+        **comment_no_mention,
+        "comment": {**comment_no_mention["comment"], "body": "@my-agent take a look"},
+    }
+    assert _post(client, comment_mention, event="issue_comment").status_code == 202
     # The App's own bot identity is dropped even when allowlisted — the
     # config-proof self-reply loop guard.
     own_echo = {**mentioned, "sender": {"login": "my-agent[bot]", "type": "Bot"}}

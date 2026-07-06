@@ -649,14 +649,15 @@ def _github_event_task(
         return None
     comment = payload.get("comment") or {}
     body = str(comment.get("body") or item.get("body") or "")
-    # (?![\w-]) not \b: GitHub handles may contain hyphens, so "@my-agent"
-    # must not match inside "@my-agent-2".
-    if mention and not re.search(
-        rf"@{re.escape(mention)}(?![\w-])",
-        f"{item.get('title') or ''}\n{body}",
-        re.IGNORECASE,
-    ):
-        return None
+    # Boundaries on both sides, hyphen-aware ((?![\w-]) not \b): "@my-agent"
+    # must match neither "@my-agent-2" nor "ops@my-agent" (an email is not a
+    # mention — GitHub requires the @ not be preceded by a word char).
+    # Comment events check the COMMENT body only: matching the thread title too
+    # would wake the agent on every later comment of a once-mentioning thread.
+    if mention:
+        text = body if comment else f"{item.get('title') or ''}\n{body}"
+        if not re.search(rf"(?<![\w-])@{re.escape(mention)}(?![\w-])", text, re.IGNORECASE):
+            return None
     author = (comment.get("user") or item.get("user") or {}).get("login") or ""
     url = comment.get("html_url") or item.get("html_url") or ""
     task = (
@@ -1802,7 +1803,9 @@ def create_admin_app(
                     # its owner, not the default agent's — falling back to the
                     # owner-DM heuristic otherwise. webhook_chat_id, when set,
                     # overrides the target chat (e.g. a team group instead of
-                    # the owner DM).
+                    # the owner DM) — but ONLY on the agent's own bot: the chat
+                    # was picked from that bot's chat list, and a fallback bot
+                    # is typically not a member of it.
                     pinned_chat = str(gh.get("webhook_chat_id") or "").strip()
                     ch = core.channels.get(f"telegram:{agent_name}")
                     owner = (
@@ -1811,10 +1814,17 @@ def create_admin_app(
                         else None
                     )
                     if not (ch and owner):
-                        ch, fb_owner = _fallback_delivery(core)
-                        owner = pinned_chat or fb_owner
+                        ch, owner = _fallback_delivery(core)
                     if ch and owner:
-                        await ch.send(owner, text)
+                        try:
+                            await ch.send(owner, text)
+                        except Exception:
+                            # A failed PING must not mark the turn retryable —
+                            # the GitHub actions already ran; a redelivery
+                            # would run them again.
+                            log.exception(
+                                "GitHub webhook ping delivery failed (agent=%s)", agent_name
+                            )
             except Exception:
                 # Forget the GUID so GitHub's "Redeliver" can retry a failed turn
                 # (a completed turn stays deduped).

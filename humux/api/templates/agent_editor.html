@@ -418,6 +418,13 @@
                       <label class="label">Ping chat <span class="text-muted">(optional)</span></label>
                       <select class="select input-sm" x-model="ghWebhookChat">
                         <option value="">— owner DM (default) —</option>
+                        {# A stored ping chat no longer in the active list must still
+                           render (and survive a save) — as an extra option here, NOT
+                           pushed into `chats`, which also drives the per-chat
+                           settings card. #}
+                        <template x-if="ghWebhookChat && !chats.some(c => c.chat_id === ghWebhookChat)">
+                          <option :value="ghWebhookChat" x-text="ghWebhookChat + ' (saved)'"></option>
+                        </template>
                         <template x-for="c in chats" :key="c.chat_id">
                           <option :value="c.chat_id" x-text="c.chat_id + ' (' + c.kind + ')'"></option>
                         </template>
@@ -571,11 +578,6 @@
         this.ghWebhookUsersWasSet = Array.isArray(g.webhook_users);
         this.ghWebhookMention = g.webhook_mention || '';
         this.ghWebhookChat = g.webhook_chat_id || '';
-        // A stored ping chat no longer in the active list must still show (and
-        // survive a save) — mirror how account bindings handle stale entries.
-        if (this.ghWebhookChat && !this.chats.some(c => c.chat_id === this.ghWebhookChat)) {
-          this.chats.push({ chat_id: this.ghWebhookChat, kind: 'saved', last_active: '' });
-        }
         // Explicit stored mode wins; else infer from which fields are present.
         this.ghAuth = g.auth || ((g.app_id || g.private_key_secret) ? 'app' : 'pat');
 
