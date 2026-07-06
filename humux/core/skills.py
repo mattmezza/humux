@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import re
 import shutil
@@ -382,7 +383,10 @@ class SkillsStore:
         if ".." in skill_path.split("/"):
             raise ValueError("Skill path cannot contain '..'")
         with tempfile.TemporaryDirectory(prefix="skill-install-") as tmp:
-            proc = subprocess.run(
+            # to_thread: keep the event loop free during the clone (called from
+            # the admin API).
+            proc = await asyncio.to_thread(
+                subprocess.run,
                 ["git", "clone", "--depth", "1", repo_url, tmp],
                 capture_output=True,
                 text=True,

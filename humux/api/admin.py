@@ -944,6 +944,7 @@ def create_admin_app(
             "skill_editor.html",
             skill_name="",
             skill_content="",
+            skill_origin="",
             is_new=True,
         )
 
@@ -961,6 +962,7 @@ def create_admin_app(
             "skill_editor.html",
             skill_name=skill.get("name", ""),
             skill_content=skill.get("content", ""),
+            skill_origin=skill.get("origin") or "",
             is_new=False,
         )
 
@@ -2881,9 +2883,43 @@ def create_admin_app(
             raise HTTPException(400, "Skill name is required")
         if not content:
             raise HTTPException(400, "Skill content is required")
-        await store.upsert_skill(name, content)
+        try:
+            await store.upsert_skill(name, content)
+        except ValueError as exc:  # installed skill — read-only (#65)
+            raise HTTPException(400, str(exc)) from exc
         skills = await store.list_skills()
         return _render_partial("partials/skills.html", skills=skills)
+
+    @app.post("/skills/install", dependencies=[Depends(auth)])
+    async def install_skill(request: Request) -> HTMLResponse:
+        """Install an Agent Skills skill from a git repo (#65)."""
+        content_type = request.headers.get("content-type", "")
+        if "application/x-www-form-urlencoded" in content_type:
+            body = await request.form()
+        else:
+            body = await request.json()
+        url = str(body.get("url", "")).strip()
+        path = str(body.get("path", "")).strip()
+        if not url:
+            raise HTTPException(400, "Missing 'url' in request body")
+        store = await _skills_store_from_config(config_store)
+        try:
+            result = await store.install_from_git(url, path)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        skills = await store.list_skills()
+        return _render_partial("partials/skills.html", skills=skills, install_result=result)
+
+    @app.post("/skills/{name}/update", dependencies=[Depends(auth)])
+    async def update_skill(name: str) -> HTMLResponse:
+        """Re-install an installed skill from its recorded origin (#65)."""
+        store = await _skills_store_from_config(config_store)
+        try:
+            result = await store.update_installed_skill(name)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        skills = await store.list_skills()
+        return _render_partial("partials/skills.html", skills=skills, install_result=result)
 
     @app.post("/skills/delete", dependencies=[Depends(auth)])
     async def delete_skill(request: Request) -> HTMLResponse:
