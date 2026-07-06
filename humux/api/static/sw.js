@@ -8,12 +8,15 @@ const SHELL = [
   "/static/icon-192.png",
   "/static/icon-512.png",
   "/static/style.css",
-  "/offline",
 ];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE).then((cache) => cache.addAll(SHELL)),
+    // allSettled, not addAll: a single missing asset must not abort SW install
+    // (that would leave the app with no controller = not installable).
+    caches
+      .open(CACHE)
+      .then((cache) => Promise.allSettled(SHELL.map((u) => cache.add(u)))),
   );
   self.skipWaiting();
 });
