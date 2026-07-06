@@ -374,6 +374,22 @@
                         Installation ID are not secret.
                       </p>
                     </div>
+                    {# Inbound webhook (#210): App events wake this agent. #}
+                    <div>
+                      <label class="label">Webhook secret <span class="text-muted">(optional)</span></label>
+                      <select class="select input-sm" x-model="ghWebhookSecret">
+                        <option value="">— inbound webhook off —</option>
+                        <template x-for="n in infraNames" :key="n">
+                          <option :value="n" x-text="'Vault secret: ' + n"></option>
+                        </template>
+                      </select>
+                      <p class="text-xs text-muted mt-1">
+                        Store the App's webhook secret as an infra secret, pick it here, and set
+                        the App's webhook URL to
+                        <code x-text="location.origin + '/webhooks/github/' + (name.trim() || '&lt;agent&gt;')"></code>.
+                        Issues, PRs and comments then wake this agent in near-realtime.
+                      </p>
+                    </div>
                   </div>
                 </template>
 
@@ -463,6 +479,7 @@
       ghAppId: '',
       ghInstallationId: '',
       ghKeySecret: '',
+      ghWebhookSecret: '',
       infraAvailable: {{ infra_available|tojson }},
       infraNames: {{ infra_names|tojson }},
       modes: {},
@@ -505,6 +522,7 @@
         this.ghAppId = g.app_id || '';
         this.ghInstallationId = g.installation_id || '';
         this.ghKeySecret = g.private_key_secret || '';
+        this.ghWebhookSecret = g.webhook_secret || '';
         // Explicit stored mode wins; else infer from which fields are present.
         this.ghAuth = g.auth || ((g.app_id || g.private_key_secret) ? 'app' : 'pat');
 
@@ -613,6 +631,7 @@
               if (this.ghAppId.trim()) e.app_id = this.ghAppId.trim();
               if (this.ghInstallationId.trim()) e.installation_id = this.ghInstallationId.trim();
               if (this.ghKeySecret) e.private_key_secret = this.ghKeySecret;
+              if (this.ghWebhookSecret) e.webhook_secret = this.ghWebhookSecret;
             } else if (this.ghTokenSecret) {
               // A chosen vault secret is referenced instead of storing a copy.
               e.token_secret = this.ghTokenSecret;

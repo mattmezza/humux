@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import collections
 import hashlib
+import hmac
 import json
 import logging
 import os
@@ -570,6 +571,66 @@ def _agent_public(agent) -> dict:
 
     safe = replace(agent, bot_token=_redact(agent.bot_token))
     return {**asdict(safe), "markdown": to_markdown(safe)}
+
+
+# ---------------------------------------------------------------------------
+# Inbound GitHub App webhooks (issue #210)
+# ---------------------------------------------------------------------------
+
+# Events worth waking an agent for; everything else GitHub sends is ignored.
+_GH_WEBHOOK_EVENTS = {"issues", "issue_comment", "pull_request", "pull_request_review_comment"}
+# ponytail: opened/created/reopened only — edits, labels, syncs are noise; widen if a
+# real workflow needs more.
+_GH_WEBHOOK_ACTIONS = {"opened", "created", "reopened"}
+_GH_WEBHOOK_KIND = {
+    "issues": "issue",
+    "issue_comment": "issue comment",
+    "pull_request": "pull request",
+    "pull_request_review_comment": "PR review comment",
+}
+
+
+def _github_sig_ok(secret: str, body: bytes, header: str | None) -> bool:
+    """Verify GitHub's ``X-Hub-Signature-256`` HMAC over the raw body."""
+    if not header or not header.startswith("sha256="):
+        return False
+    digest = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(header.removeprefix("sha256="), digest)
+
+
+def _github_event_task(event: str, payload: dict) -> tuple[str, str] | None:
+    """Turn a webhook delivery into ``(task, chat_id)``, or ``None`` to ignore.
+
+    ``chat_id`` is the synthetic per-thread key ``github:<repo>#<n>`` so follow-up
+    events on the same issue/PR land in the same conversation (history continuity).
+    Events from ANY bot sender are dropped — the loop guard: our own App's actions
+    echo back as webhook deliveries, and two bots answering each other never ends.
+    """
+    if event not in _GH_WEBHOOK_EVENTS or payload.get("action") not in _GH_WEBHOOK_ACTIONS:
+        return None
+    if (payload.get("sender") or {}).get("type") == "Bot":
+        return None
+    repo = (payload.get("repository") or {}).get("full_name") or ""
+    item = payload.get("issue") or payload.get("pull_request") or {}
+    number = item.get("number")
+    if not repo or number is None:
+        return None
+    comment = payload.get("comment") or {}
+    body = str(comment.get("body") or item.get("body") or "")
+    author = (comment.get("user") or item.get("user") or {}).get("login") or ""
+    url = comment.get("html_url") or item.get("html_url") or ""
+    task = (
+        f"[GitHub] New {_GH_WEBHOOK_KIND[event]} ({payload.get('action')}) in {repo}: "
+        f"#{number} {item.get('title') or ''}\n"
+        f"Author: @{author}\nURL: {url}\n"
+        f"---\n{body[:4000]}\n---\n"
+        "Your GitHub App received this event. Act autonomously with the `gh` CLI "
+        "(you are authenticated as your bot identity): investigate and, if a reply or "
+        "action is warranted, do it. Use send_message only if the owner must know "
+        "something. If there is nothing the owner needs to hear, end your reply with "
+        "[NO_UPDATES]."
+    )
+    return task, f"github:{repo}#{number}"
 
 
 class AgentUpsertIn(BaseModel):
@@ -1601,6 +1662,68 @@ def create_admin_app(
             workspace_enabled=ws_enabled,
             workspace_directory=ws_directory,
         )
+
+    # ── Inbound GitHub App webhook → agent turn (issue #210) ──
+    # No admin auth: GitHub is the caller. The HMAC signature (per-agent
+    # webhook_secret, resolved from the infra vault) IS the auth boundary.
+    @app.post("/webhooks/github/{agent_name}", include_in_schema=False)
+    async def github_webhook(agent_name: str, request: Request) -> Response:
+        core = agent_state.agent
+        if core is None:
+            return Response("agent not running", status_code=503)
+        agent = await core.agents.get(agent_name)
+        gh = (agent.tool_config.get("gh") if agent and agent.enabled else None) or {}
+        secret_name = str(gh.get("webhook_secret") or "").strip()
+        secret = secret_store.infra_resolve(secret_name) if secret_name and secret_store else None
+        if not secret:
+            # Unknown agent, disabled agent, or no webhook configured — same 404,
+            # so the URL space leaks nothing about which agents exist.
+            return Response("not found", status_code=404)
+        body = await request.body()
+        if not _github_sig_ok(secret, body, request.headers.get("X-Hub-Signature-256")):
+            return Response("bad signature", status_code=401)
+        event = request.headers.get("X-GitHub-Event", "")
+        if event == "ping":  # GitHub's webhook-creation handshake
+            return Response("pong")
+        try:
+            payload = json.loads(body)
+        except json.JSONDecodeError:
+            return Response("bad payload", status_code=400)
+        if not isinstance(payload, dict):
+            return Response("bad payload", status_code=400)
+        parsed = _github_event_task(event, payload)
+        repos = gh.get("repos") or []
+        repo = (payload.get("repository") or {}).get("full_name") or ""
+        if parsed is None or (repos and repo not in repos):
+            return Response("ignored")
+        task, chat_id = parsed
+
+        async def _run_turn() -> None:
+            try:
+                # channel="system": autonomous background turn (auto-approved
+                # writes, no confirmation round-trips — nobody can answer one
+                # on a webhook). chat_id keeps per-issue/PR continuity.
+                response = await core.process(
+                    message=task,
+                    channel="system",
+                    user_id="github",
+                    chat_id=chat_id,
+                    agent_name=agent_name,
+                )
+                text = (response.text or "").replace("[NO_UPDATES]", "").strip()
+                if text:
+                    from core.scheduler import _fallback_delivery
+
+                    ch, owner = _fallback_delivery(core)
+                    if ch and owner:
+                        await ch.send(owner, text)
+            except Exception:
+                log.exception("GitHub webhook turn failed (agent=%s)", agent_name)
+
+        # 200-class response immediately (GitHub's delivery timeout is ~10s);
+        # the turn runs in the background like scheduler jobs.
+        asyncio.create_task(_run_turn())
+        return Response("accepted", status_code=202)
 
     @app.post("/tools/gh/test", dependencies=[Depends(auth)])
     async def test_gh_tool(request: Request) -> dict:
