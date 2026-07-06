@@ -33,18 +33,9 @@
 
   {# Token usage — three cards sharing one client-side period toggle (#199 flw).
      All periods are rendered into `stats`; switching just re-reads the map. #}
-  <div x-data="{
-         period: '24h',
-         periods: ['24h', '7d', '30d'],
-         stats: {{ token_stats|tojson }},
-         fmt(n) { return window.formatTokens ? window.formatTokens(n || 0) : String(n || 0); },
-         get s() { return this.stats[this.period] || {}; },
-         get total() { const s = this.s; return (s.total_input||0)+(s.total_output||0)+(s.total_cache_read||0)+(s.total_cache_creation||0); },
-         get cached() { return this.s.total_cache_read || 0; },
-         get uncached() { const s = this.s; return (s.total_input||0)+(s.total_cache_creation||0); },
-         get cachePct() { const c = this.cached, u = this.uncached; return (c+u) > 0 ? Math.round(c/(c+u)*1000)/10 : 0; },
-         get agents() { return this.s.top_agents || []; },
-       }">
+  {# Single-quoted attr + global factory (base.html): tojson escapes < > & ' but
+     NOT ", so the JSON must not sit in a double-quoted attribute. #}
+  <div x-data='tokenCards({{ token_stats|tojson }})'>
     <div class="flex items-center gap-3 mb-2">
       <span class="text-xs text-muted uppercase tracking-wider">Token usage</span>
       <div class="flex items-center gap-2">

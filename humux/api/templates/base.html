@@ -1352,6 +1352,26 @@
     window.formatTokens = formatTokens;
     window.estimateTokens = estimateTokens;
 
+    // Alpine factory for the overview token cards (#199 flw). Defined here (loaded
+    // once) so the dashboard partial can pass its per-request stats as a single
+    // JSON arg — keeping the JSON out of a double-quoted x-data attribute, which
+    // tojson's unescaped " would break.
+    function tokenCards(stats) {
+      return {
+        period: '24h',
+        periods: ['24h', '7d', '30d'],
+        stats: stats || {},
+        fmt(n) { return formatTokens(n || 0); },
+        get s() { return this.stats[this.period] || {}; },
+        get total() { const s = this.s; return (s.total_input||0)+(s.total_output||0)+(s.total_cache_read||0)+(s.total_cache_creation||0); },
+        get cached() { return this.s.total_cache_read || 0; },
+        get uncached() { const s = this.s; return (s.total_input||0)+(s.total_cache_creation||0); },
+        get cachePct() { const c = this.cached, u = this.uncached; return (c+u) > 0 ? Math.round(c/(c+u)*1000)/10 : 0; },
+        get agents() { return this.s.top_agents || []; },
+      };
+    }
+    window.tokenCards = tokenCards;
+
     // Global: listen for HX-Trigger showToast events from the server
     document.body.addEventListener('showToast', function(e) {
       if (window.showToast && e.detail && e.detail.value) {
