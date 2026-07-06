@@ -59,6 +59,7 @@ No cloud dependency. No data leaving your server. One `docker compose up` and yo
 - Each agent runs its own **Telegram bot** — several run concurrently as separate contacts
 - Agents are created and configured through the admin UI, no code needed
 - Per-agent **tool identities** — own `gh` token, own browser profile (#93)
+- Per-agent **GitHub App webhooks** — issues, PRs, and comments wake the agent in near-realtime (#210)
 
 </details>
 

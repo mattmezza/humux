@@ -137,6 +137,45 @@ freely mixed with PAT agents; an agent never borrows the owner's PAT. Optionally
 repo selection (the real, server-enforced boundary). Subagents inherit that repo scope and
 can only narrow it, never widen it.
 
+### Inbound webhooks: GitHub wakes the agent
+
+App auth is outbound — the agent acts on GitHub, but nothing tells it when something
+happens *on* GitHub. Add the inbound half by pointing the App's webhook at humux: new
+issues, PRs, and comments then wake the agent in near-realtime, and it acts autonomously
+with `gh` (posting replies, triaging, opening PRs) or DMs you via `send_message` when
+you should know something.
+
+Setup — works the same for a brand-new App or an **existing** one you already use for
+outbound auth:
+
+1. Generate a random secret (`openssl rand -hex 32`) and save it as an **infra secret**
+   under **Settings → Secrets** (e.g. `GH_WEBHOOK_DEV`).
+2. In the **Agents** editor, under the agent's *GitHub App* identity, pick that secret
+   as the **Webhook secret**. The editor shows the agent's webhook URL:
+   `https://<your-humux-host>/webhooks/github/<agent-slug>`.
+3. Open the App's settings on GitHub ([github.com/settings/apps](https://github.com/settings/apps)
+   → your app → **General**). Under **Webhook**, tick *Active*, paste the URL and the
+   same secret, and save.
+4. Still in the App's settings, under **Permissions & events → Subscribe to events**,
+   tick the events you care about: *Issues*, *Issue comment*, *Pull request*,
+   *Pull request review comment*. (An existing App may need the matching read
+   permissions — Issues and Pull requests — granted first; installations must approve
+   the permission update before events flow.)
+5. GitHub sends a signed `ping` on save — a green check in the App's
+   **Advanced → Recent Deliveries** confirms the URL and secret line up.
+
+Every delivery is verified against the secret (HMAC `X-Hub-Signature-256`); unsigned or
+mis-signed requests are rejected, so the endpoint is safe to expose publicly — it must be
+reachable by GitHub, so your humux host needs a public HTTPS URL (or a tunnel). Events
+from bot accounts are ignored (the agent's own actions echo back as deliveries — this
+guard stops feedback loops), and the agent's **allowed repos** list, when set, also gates
+inbound events. Each issue or PR maps to its own conversation thread
+(`github:<owner>/<repo>#<n>`), so follow-up comments keep their context.
+
+The webhook is part of the agent's per-agent gh identity: it only fires while the
+agent's GitHub tool is **Enabled** (not *Disabled* and not *Inherit* — inherit means
+no per-agent gh config, which includes the webhook).
+
 ## Writing effective skill files
 
 ### Be specific about syntax
