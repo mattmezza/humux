@@ -1252,13 +1252,22 @@ class TelegramChannel:
         """
         cid, kw = self._route(chat_id)
         images = [a for a in (getattr(response, "attachments", None) or []) if a.is_image]
+        # Prefer the ordered messages list; tolerate a partial/old response object
+        # (some callers/tests pass a bare text/voice pair) as the surrounding
+        # getattr() style already does.
+        delivery = getattr(response, "delivery_messages", None)
+        if delivery is not None:
+            pairs = [(m.text, m.voice) for m in delivery]
+        else:
+            text, voice = getattr(response, "text", "") or "", getattr(response, "voice", None)
+            pairs = [(text, voice)] if (text or voice) else []
         sent = False
-        for msg in response.delivery_messages:
-            if msg.voice:
-                await self.app.bot.send_voice(cid, msg.voice, **kw)
+        for text, voice in pairs:
+            if voice:
+                await self.app.bot.send_voice(cid, voice, **kw)
                 sent = True
-            elif msg.text:
-                await self.send(chat_id, msg.text)
+            elif text:
+                await self.send(chat_id, text)
                 sent = True
         if not sent and not images:
             log.warning("Skipping empty response for chat_id=%s", chat_id)

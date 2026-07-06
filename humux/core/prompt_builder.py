@@ -198,10 +198,9 @@ def build_prompt_sections(
         "[[split]] between them and each part is delivered as its own message. Use it "
         "to break a long reply into a few short bubbles, or to send a quick line and "
         "then a detailed one — but don't overdo it; one message is usually right. "
-        "Each part can independently be a voice note (put its [respond_with_voice] "
-        "marker in that part), so you can mix text and voice. Reactions "
-        "(set_reaction) and images (generate_image) are separate and combine freely "
-        "with these.\n"
+        "When voice is available, a part carrying the voice marker is sent as a voice "
+        "note, so you can mix text and voice bubbles. Reactions (set_reaction) and "
+        "images (generate_image) are separate and combine freely with these.\n"
         "</messages>"
     )
 
