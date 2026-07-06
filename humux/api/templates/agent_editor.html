@@ -390,6 +390,16 @@
                         Issues, PRs and comments then wake this agent in near-realtime.
                       </p>
                     </div>
+                    <div x-show="ghWebhookSecret">
+                      <label class="label">Webhook authors <span class="text-muted">(optional)</span></label>
+                      <input type="text" class="input-sm" x-model="ghWebhookUsers"
+                             placeholder="mattmezza, teammate  — blank = anyone">
+                      <p class="text-xs text-muted mt-1">
+                        Comma-separated GitHub usernames. When set, only events <em>authored</em>
+                        by these users wake the agent — recommended on public repos, where
+                        anyone can open issues.
+                      </p>
+                    </div>
                   </div>
                 </template>
 
@@ -480,6 +490,7 @@
       ghInstallationId: '',
       ghKeySecret: '',
       ghWebhookSecret: '',
+      ghWebhookUsers: '',
       infraAvailable: {{ infra_available|tojson }},
       infraNames: {{ infra_names|tojson }},
       modes: {},
@@ -523,6 +534,7 @@
         this.ghInstallationId = g.installation_id || '';
         this.ghKeySecret = g.private_key_secret || '';
         this.ghWebhookSecret = g.webhook_secret || '';
+        this.ghWebhookUsers = (g.webhook_users || []).join(', ');
         // Explicit stored mode wins; else infer from which fields are present.
         this.ghAuth = g.auth || ((g.app_id || g.private_key_secret) ? 'app' : 'pat');
 
@@ -639,6 +651,9 @@
             // every other per-agent gh field, it is dropped when the tool is
             // set to 'inherit' — no per-agent gh config means no inbound webhook.
             if (this.ghWebhookSecret) e.webhook_secret = this.ghWebhookSecret;
+            // Author gate rides the webhook: blank = anyone (key absent).
+            const wUsers = this.ghWebhookUsers.split(',').map(s => s.trim()).filter(Boolean);
+            if (this.ghWebhookSecret && wUsers.length) e.webhook_users = wUsers;
             // Per-agent repo allowlist. Blank = no restriction.
             const repos = this.ghRepos.split(',').map(s => s.trim()).filter(Boolean);
             if (repos.length) e.repos = repos;

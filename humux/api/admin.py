@@ -1735,6 +1735,16 @@ def create_admin_app(
             allowed = {str(r).strip().lower() for r in repos if r and str(r).strip()}
             if repo.lower() not in allowed:
                 return Response("ignored")
+        # Author gate: only these GitHub logins may wake the agent. Same list
+        # semantics as ``repos``. Anyone who can comment on an installed repo
+        # would otherwise trigger an autonomous auto-approved-writes turn —
+        # untenable on a public repo (prompt injection, token burn).
+        users = gh.get("webhook_users")
+        if users is not None:
+            sender = str((payload.get("sender") or {}).get("login") or "").strip().lower()
+            allowed_users = {str(u).strip().lower() for u in users if u and str(u).strip()}
+            if sender not in allowed_users:
+                return Response("ignored")
 
         async def _run_turn() -> None:
             try:

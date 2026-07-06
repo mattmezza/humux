@@ -227,6 +227,25 @@ def test_webhook_repo_allowlist_gates_events(monkeypatch) -> None:
         coro.close()
 
 
+def test_webhook_author_gate(monkeypatch) -> None:
+    captured = _capture_create_task(monkeypatch)
+    # Sender not on the list → ignored, no turn.
+    client, core = _client(agent=_agent(webhook_users=["mattmezza"]))
+    resp = _post(client, ISSUE_PAYLOAD)  # sender is alice
+    assert resp.status_code == 200 and resp.text == "ignored"
+    core.process.assert_not_called()
+    # Listed sender wakes the agent; match is case-insensitive.
+    client2, _core2 = _client(agent=_agent(webhook_users=["ALICE"]))
+    assert _post(client2, ISSUE_PAYLOAD).status_code == 202
+    # Present-but-empty list allows nobody; absent key allows anyone
+    # (the anyone case is every other 202 in this file).
+    client3, core3 = _client(agent=_agent(webhook_users=[]))
+    assert _post(client3, ISSUE_PAYLOAD).text == "ignored"
+    core3.process.assert_not_called()
+    for coro in captured:
+        coro.close()
+
+
 def test_webhook_delivers_via_agents_own_channel(monkeypatch) -> None:
     captured = _capture_create_task(monkeypatch)
     own_bot = SimpleNamespace(send=AsyncMock(), config=SimpleNamespace(allowed_user_ids=[42]))

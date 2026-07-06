@@ -172,6 +172,13 @@ guard stops feedback loops), and the agent's **allowed repos** list, when set, a
 inbound events. Each issue or PR maps to its own conversation thread
 (`github:<owner>/<repo>#<n>`), so follow-up comments keep their context.
 
+On a **public repo**, add a **Webhook authors** list (next to the webhook secret in the
+agent editor; raw frontmatter `gh: {..., webhook_users: [mattmezza, teammate]}`): only
+events *authored* by those GitHub users then wake the agent. Without it, anyone who can
+open an issue or comment triggers an autonomous turn — fine for private repos, a prompt
+injection and token-burn surface on public ones. Blank = anyone (the private-repo
+default).
+
 The webhook is part of the agent's per-agent gh identity: it only fires while the
 agent's GitHub tool is **Enabled** (not *Disabled* and not *Inherit* — inherit means
 no per-agent gh config, which includes the webhook).
