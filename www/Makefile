@@ -1,6 +1,6 @@
 .PHONY: help dev build watch deploy publish release
 
-TAILWIND := ./tailwindcss
+TAILWIND := ../tailwindcss
 CSS_IN := input.css
 CSS_OUT := assets/css/style.css
 WWW_DIR := .
@@ -68,10 +68,11 @@ build:
 # Deploy to Cloudflare Pages (requires wrangler CLI + CLOUDFLARE_API_TOKEN)
 deploy:
 	@command -v wrangler >/dev/null 2>&1 || { echo "wrangler not found. Install: npm i -g wrangler"; exit 1; }
-	wrangler pages deploy $(WWW_DIR) --project-name humux --exclude "tailwindcss"
+	wrangler pages deploy $(WWW_DIR) --project-name humux
 
 # Build + deploy in one step
-publish: build deploy
+publish: build
+	wrangler pages deploy $(WWW_DIR) --project-name humux
 
 # Create a release tag for GHA-based deploy (CF Pages)
 release:
