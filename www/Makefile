@@ -72,6 +72,7 @@ deploy:
 
 # Build + deploy in one step
 publish: build
+	git push
 	wrangler pages deploy $(WWW_DIR) --project-name humux
 
 # Create a release tag for GHA-based deploy (CF Pages)
