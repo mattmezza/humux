@@ -84,7 +84,7 @@ async def run_agent_task(
             message=task,
             channel="system",
             user_id="scheduler",
-            chat_id="scheduler",
+            chat_id=f"scheduler:{job_id}" if job_id else "scheduler",
             agent_name=agent_name or gen_agent,
         )
 
@@ -156,12 +156,19 @@ async def run_subagent_task(
     target = origin_chat_id or owner
     log.info("Scheduler running subagent (agent=%s): %s", agent_name or "default", task[:100])
     try:
+        # Scope fallback context with job_id so different scheduled jobs
+        # don't share conversation history when no origin was captured (#235).
+        _ctx_chat = f"scheduler:{job_id}" if (job_id and not origin_chat_id) else (target or "")
+        _ctx_user = (
+            f"scheduler:{job_id}" if (job_id and not origin_user_id)
+            else (origin_user_id or owner or "scheduler")
+        )
         result = await agent.run_subagent(
             task=task,
             agent_name=agent_name or "",
             origin_channel=channel,
-            origin_user_id=str(origin_user_id or owner or "scheduler"),
-            origin_chat_id=str(target or ""),
+            origin_user_id=str(_ctx_user),
+            origin_chat_id=str(_ctx_chat),
             background=False,
         )
         text = result.get("result") or result.get("error") or ""
