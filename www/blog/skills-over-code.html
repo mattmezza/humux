@@ -26,7 +26,7 @@
     "@type": "Article",
     "headline": "Skills Over Code: Teaching Agents via Markdown",
     "description": "Why describing CLI tools in markdown files beats writing Python adapter classes for every new agent capability.",
-    "datePublished": "2026-07-07",
+    "datePublished": "2026-04-28",
     "author": { "@type": "Person", "name": "Matteo Merola" },
     "publisher": { "@type": "Organization", "name": "humux" },
     "url": "https://humux.dev/blog/skills-over-code"
@@ -82,7 +82,7 @@
   <!-- Article -->
   <article class="mx-auto max-w-3xl px-5 py-16">
     <header class="mb-12">
-      <p class="text-xs font-mono mb-3" style="color: var(--color-muted);">July 7, 2026 &mdash; Matteo Merola</p>
+      <p class="text-xs font-mono mb-3" style="color: var(--color-muted);">April 28, 2026 &mdash; Matteo Merola</p>
       <h1 class="text-3xl sm:text-4xl font-bold leading-tight mb-4" style="color: #eee;">Skills Over Code: Teaching Agents via Markdown</h1>
       <p class="text-lg leading-relaxed" style="color: var(--color-secondary);">Why describing CLI tools in markdown files beats writing Python adapter classes for every new agent capability.</p>
     </header>
@@ -183,36 +183,11 @@ The JSON format returns structured data with
 
       <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">How skill loading works</h2>
 
-      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">Skills live in a <code class="inline-code">skills/</code> directory, each in its own folder with a <code class="inline-code">SKILL.md</code> file. At startup, the system scans for skill files and builds a lightweight index&mdash;just the skill name, description (first paragraph), and file path. When the agent is assembling its context for a conversation turn, relevant skills are loaded from disk and injected into the system prompt.</p>
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">Skills start as markdown files in a <code class="inline-code">skills/</code> directory&mdash;either flat files like <code class="inline-code">weather.md</code> or directories with a <code class="inline-code">SKILL.md</code> and optional bundled scripts. At startup, the system <em>seeds</em> these files into a SQLite database. From that point on, skills are loaded from the database, not the filesystem. This means you can edit, enable/disable, and manage skills through the admin UI without touching files on disk.</p>
 
-      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">The key insight is that skill content does not live permanently in the context window. It is loaded on demand. A skill about GitHub CLI is not consuming tokens when the user is asking about the weather. The index is small enough to always be present, so the agent knows what skills exist, but the full instructions are pulled in only when needed.</p>
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">The seeding process hashes each file&rsquo;s content. If the hash matches what&rsquo;s already in the DB, the seed is skipped. If you edit the file on disk, the next boot picks up the change. If you edit the skill via the admin UI, the DB version takes precedence until you reset it to its seed. This gives you the best of both worlds: version-controlled files for your base skills, and a live-editable database for iteration.</p>
 
-      <div class="terminal-window">
-        <div class="terminal-header">
-          <span class="terminal-dot red"></span>
-          <span class="terminal-dot yellow"></span>
-          <span class="terminal-dot green"></span>
-          <span class="ml-2 text-xs" style="color: var(--color-muted);">skill loading pseudocode</span>
-        </div>
-        <div class="terminal-body">
-<pre>def load_skills(skills_dir: Path) -> list[Skill]:
-    skills = []
-    for skill_file in skills_dir.rglob("SKILL.md"):
-        content = skill_file.read_text()
-        name = skill_file.parent.name
-        description = content.split("\n\n")[0]
-        skills.append(Skill(name=name, description=description,
-                            path=skill_file))
-    return skills
-
-def inject_skills(context: list, query: str, skills: list[Skill]):
-    for skill in skills:
-        if skill_is_relevant(query, skill.description):
-            content = skill.path.read_text()
-            context.append({"role": "system",
-                            "content": f"Skill: {skill.name}\n{content}"})</pre>
-        </div>
-      </div>
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">The key insight is that skill content does not live permanently in the context window. Skills are indexed by name and description. The full content is pulled in only when relevant to the current conversation turn. A skill about GitHub CLI is not consuming tokens when the user is asking about the weather.</p>
 
       <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">The bash executor</h2>
 
@@ -222,23 +197,11 @@ def inject_skills(context: list, query: str, skills: list[Skill]):
 
       <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">Installing skills from git</h2>
 
-      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">Skills can be installed from git repositories. A skill repo is just a directory with a <code class="inline-code">SKILL.md</code> and optionally some bundled helper scripts. Installation clones the repo into the skills directory and marks it as read-only with an <code class="inline-code">origin</code> field so updates can be pulled later.</p>
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">Skills can be installed from git repositories through the admin UI. A skill repo is just a directory with a <code class="inline-code">SKILL.md</code> and optionally some bundled helper scripts. You paste the repo URL into the skills page, and the system shallow-clones it, validates the SKILL.md, copies the content into a writable <code class="inline-code">data/skills/</code> directory, and seeds it into the database. An <code class="inline-code">.origin</code> marker records where the skill came from so you can pull updates later.</p>
 
-      <div class="terminal-window">
-        <div class="terminal-header">
-          <span class="terminal-dot red"></span>
-          <span class="terminal-dot yellow"></span>
-          <span class="terminal-dot green"></span>
-          <span class="ml-2 text-xs" style="color: var(--color-muted);">bash</span>
-        </div>
-        <div class="terminal-body">
-<pre><span class="terminal-prompt"></span><span style="color: var(--color-accent);">humux skill install</span> https://github.com/example/github-skill.git
-Cloning into 'skills/github'... done.
-Skill 'github' installed (read-only, origin: github.com/example/github-skill)</pre>
-        </div>
-      </div>
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">Installed skills are marked read-only in the admin UI&mdash;you cannot edit them inline, only update from their origin. This prevents drift between your local copy and the upstream repo. If you need to customize a community skill, fork the repo and install from your fork.</p>
 
-      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">This is the same model as package managers, but for agent capabilities. The skill author writes the markdown; users install with one command. No code compilation, no dependency resolution, no version conflicts. A skill is a text file.</p>
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">The result is a lightweight distribution model for agent capabilities. No package registry, no dependency resolution, no version conflicts. A skill is a text file in a git repo. The skill author writes the markdown; users install with a URL.</p>
 
       <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">Tradeoffs</h2>
 

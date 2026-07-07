@@ -26,7 +26,7 @@
     "@type": "Article",
     "headline": "Running a Full Agent Stack in a Single Container",
     "description": "Architecture decisions that make it possible to run LLM orchestration, voice, browser automation, email, calendar, and admin UI in one Docker container.",
-    "datePublished": "2026-07-07",
+    "datePublished": "2026-06-09",
     "author": { "@type": "Person", "name": "Matteo Merola" },
     "publisher": { "@type": "Organization", "name": "humux" },
     "url": "https://humux.dev/blog/single-container-agents"
@@ -82,7 +82,7 @@
   <!-- Article -->
   <article class="mx-auto max-w-3xl px-5 py-16">
     <header class="mb-12">
-      <p class="text-xs font-mono mb-3" style="color: var(--color-muted);">July 7, 2026 &mdash; Matteo Merola</p>
+      <p class="text-xs font-mono mb-3" style="color: var(--color-muted);">June 9, 2026 &mdash; Matteo Merola</p>
       <h1 class="text-3xl sm:text-4xl font-bold leading-tight mb-4" style="color: #eee;">Running a Full Agent Stack in a Single Container</h1>
       <p class="text-lg leading-relaxed" style="color: var(--color-secondary);">Architecture decisions that make it possible to run everything in one Docker container.</p>
     </header>
@@ -131,18 +131,18 @@
           <span class="ml-2 text-xs" style="color: var(--color-muted);">architecture.py</span>
         </div>
         <div class="terminal-body">
-<div><span style="color: var(--color-accent);">async def</span> run_command(cmd: list[str], timeout: int = 30) -> str:</div>
-<div>    proc = <span style="color: var(--color-accent);">await</span> asyncio.create_subprocess_exec(</div>
-<div>        *cmd,</div>
-<div>        stdout=asyncio.subprocess.PIPE,</div>
-<div>        stderr=asyncio.subprocess.PIPE,</div>
-<div>    )</div>
-<div>    stdout, stderr = <span style="color: var(--color-accent);">await</span> asyncio.wait_for(</div>
-<div>        proc.communicate(), timeout=timeout</div>
-<div>    )</div>
-<div>    <span style="color: var(--color-accent);">if</span> proc.returncode != 0:</div>
-<div>        <span style="color: var(--color-accent);">raise</span> ToolError(stderr.decode())</div>
-<div>    <span style="color: var(--color-accent);">return</span> stdout.decode()</div>
+<pre><span style="color: var(--color-accent);">async def</span> run_command(cmd: list[str], timeout: int = 30) -> str:
+    proc = <span style="color: var(--color-accent);">await</span> asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = <span style="color: var(--color-accent);">await</span> asyncio.wait_for(
+        proc.communicate(), timeout=timeout
+    )
+    <span style="color: var(--color-accent);">if</span> proc.returncode != 0:
+        <span style="color: var(--color-accent);">raise</span> ToolError(stderr.decode())
+    <span style="color: var(--color-accent);">return</span> stdout.decode()</pre>
         </div>
       </div>
 
@@ -162,12 +162,12 @@
           <span class="ml-2 text-xs" style="color: var(--color-muted);">main.py</span>
         </div>
         <div class="terminal-body">
-<div><span style="color: var(--color-accent);">async def</span> main():</div>
-<div>    <span style="color: var(--color-accent);">async with</span> TaskGroup() <span style="color: var(--color-accent);">as</span> tg:</div>
-<div>        tg.create_task(start_web_server())      <span style="color: var(--color-muted);"># FastAPI admin UI</span></div>
-<div>        tg.create_task(start_telegram_polling())  <span style="color: var(--color-muted);"># per-agent bots</span></div>
-<div>        tg.create_task(start_scheduler())         <span style="color: var(--color-muted);"># cron-like jobs</span></div>
-<div>        tg.create_task(start_cli_server())        <span style="color: var(--color-muted);"># Unix socket for CLI</span></div>
+<pre><span style="color: var(--color-accent);">async def</span> main():
+    <span style="color: var(--color-accent);">async with</span> TaskGroup() <span style="color: var(--color-accent);">as</span> tg:
+        tg.create_task(start_web_server())      <span style="color: var(--color-muted);"># FastAPI admin UI</span>
+        tg.create_task(start_telegram_polling())  <span style="color: var(--color-muted);"># per-agent bots</span>
+        tg.create_task(start_scheduler())         <span style="color: var(--color-muted);"># cron-like jobs</span>
+        tg.create_task(start_cli_server())        <span style="color: var(--color-muted);"># Unix socket for CLI</span></pre>
         </div>
       </div>
 
@@ -187,15 +187,15 @@
           <span class="ml-2 text-xs" style="color: var(--color-muted);">voice/stt.py</span>
         </div>
         <div class="terminal-body">
-<div><span style="color: var(--color-accent);">import</span> psutil</div>
-<div></div>
-<div><span style="color: var(--color-accent);">def</span> select_whisper_model() -> str:</div>
-<div>    avail_gb = psutil.virtual_memory().available / (1024**3)</div>
-<div>    <span style="color: var(--color-accent);">if</span> avail_gb >= 4:</div>
-<div>        <span style="color: var(--color-accent);">return</span> <span style="color: var(--color-warn);">"small"</span>   <span style="color: var(--color-muted);"># ~460MB, best accuracy</span></div>
-<div>    <span style="color: var(--color-accent);">if</span> avail_gb >= 2:</div>
-<div>        <span style="color: var(--color-accent);">return</span> <span style="color: var(--color-warn);">"base"</span>    <span style="color: var(--color-muted);"># ~140MB, good tradeoff</span></div>
-<div>    <span style="color: var(--color-accent);">return</span> <span style="color: var(--color-warn);">"tiny"</span>       <span style="color: var(--color-muted);"># ~75MB, adequate for clear audio</span></div>
+<pre><span style="color: var(--color-accent);">import</span> psutil
+
+<span style="color: var(--color-accent);">def</span> select_whisper_model() -> str:
+    avail_gb = psutil.virtual_memory().available / (1024**3)
+    <span style="color: var(--color-accent);">if</span> avail_gb >= 4:
+        <span style="color: var(--color-accent);">return</span> <span style="color: var(--color-warn);">"small"</span>   <span style="color: var(--color-muted);"># ~460MB, best accuracy</span>
+    <span style="color: var(--color-accent);">if</span> avail_gb >= 2:
+        <span style="color: var(--color-accent);">return</span> <span style="color: var(--color-warn);">"base"</span>    <span style="color: var(--color-muted);"># ~140MB, good tradeoff</span>
+    <span style="color: var(--color-accent);">return</span> <span style="color: var(--color-warn);">"tiny"</span>       <span style="color: var(--color-muted);"># ~75MB, adequate for clear audio</span></pre>
         </div>
       </div>
 
@@ -213,13 +213,13 @@
           <span class="ml-2 text-xs" style="color: var(--color-muted);">docker-compose.yml</span>
         </div>
         <div class="terminal-body">
-<div><span style="color: var(--color-accent);">services:</span></div>
-<div>  <span style="color: var(--color-accent);">humux:</span></div>
-<div>    image: ghcr.io/mattmezza/humux:latest</div>
-<div>    volumes:</div>
-<div>      - ./data:/app/data</div>
-<div>    ports:</div>
-<div>      - "8000:8000"</div>
+<pre><span style="color: var(--color-accent);">services:</span>
+  <span style="color: var(--color-accent);">humux:</span>
+    image: ghcr.io/mattmezza/humux:latest
+    volumes:
+      - ./data:/app/data
+    ports:
+      - "8000:8000"</pre>
         </div>
       </div>
 

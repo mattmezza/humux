@@ -1,0 +1,253 @@
+# humux — Human Multiplexer (Full Reference)
+
+> Self-hosted personal AI agent. One Docker container. Messaging, email, calendar, contacts, voice, memory, and automation.
+
+## Overview
+
+humux (pronounced /ˈhjuːmʌks/) is an open-source, self-hosted personal AI agent. It runs entirely in a single Docker container with no external database dependencies. humux acts as a unified intelligence layer across all channels of a person's digital life.
+
+- License: MIT
+- Language: Python 3.14 + uv
+- Repository: https://github.com/mattmezza/humux
+- Documentation: https://docs.humux.dev
+- Author: Matteo Merola / Merola Software & Services, Zürich
+- Minimum requirements: 2 vCPU, 2 GB RAM, Docker
+
+## Architecture
+
+Python orchestrator + battle-tested CLI tools. Python handles async orchestration and the LLM tool-use loop. Proven CLI tools handle protocol complexity:
+
+- Email: Himalaya CLI (Rust) — IMAP, JMAP, SMTP
+- Calendar: python-caldav — CalDAV protocol
+- Contacts: raw WebDAV requests — CardDAV protocol
+- Voice STT: faster-whisper (CTranslate2-based Whisper)
+- Voice TTS: edge-tts (cloud) or Kokoro 82M (offline, multilingual)
+- Browser: Playwright (headless Chromium)
+- Search: Tavily or self-hosted SearXNG
+- Storage: SQLite in WAL mode (8 databases, no external server)
+- Admin UI: FastAPI + Jinja2 + HTMX + Alpine.js + Tailwind CSS v4
+
+## Quick start
+
+```bash
+git clone https://github.com/mattmezza/humux.git
+cd humux
+cp .env.example .env
+cp config.yml.example config.yml
+docker compose up -d
+```
+
+Or one-liner:
+```bash
+docker run -d --name humux -p 8000:8000 -v ./data:/app/data ghcr.io/mattmezza/humux:latest
+```
+
+Admin UI at http://localhost:8000. Setup wizard walks through LLM API key, Telegram bot token, and agent configuration.
+
+## Channels
+
+### Telegram (primary)
+- Per-agent bots: each agent runs its own Telegram bot with isolated context
+- Voice messages: send voice, get voice reply (STT + TTS pipeline)
+- Inline approvals: approve/reject write actions via inline keyboard buttons
+- Reactions: emoji reactions to acknowledge messages without text
+- Per-chat settings: control who can trigger each agent per group (everyone/nobody/users)
+- Group chat: multiple agents in one group, only addressed bot replies, no loops
+- Multi-message replies: [[split]] marker produces multiple bubbles per turn
+
+### WhatsApp
+Via wacli CLI tool. Read and send messages. Integrated as a skill.
+
+### CLI
+Terminal-based interaction via `uv run python -m core.cli`. Resumable sessions, concurrent with live server, reachable via SSH. Uses Unix domain socket + WAL-mode SQLite for session state.
+
+## Email
+
+Powered by Himalaya CLI (Rust MUA). Multi-account support: Gmail, Fastmail, iCloud, any IMAP/SMTP provider.
+
+- Read, compose, search, reply, forward
+- Per-agent mailboxes with read or read-write access
+- Credentials resolved from encrypted vault — never in LLM context
+- Scheduled email checks via cron jobs
+
+## Calendar
+
+CalDAV integration. Works with Google Calendar, iCloud, Fastmail, any CalDAV server.
+
+- Read and write events
+- Per-agent access levels (read or read-write)
+- Bindable calendar accounts per agent
+- Scheduled morning briefings include today's events
+
+## Contacts
+
+CardDAV (raw WebDAV — the caldav Python library has no CardDAV support) and Google Contacts.
+
+- Search and create contacts
+- Per-agent access levels
+- Supports Purelymail, iCloud, Fastmail, Google
+
+## Agents
+
+Multiple agent identities, each with:
+- Own character/personality (markdown character file)
+- Own Telegram bot token
+- Own email/calendar/contacts account bindings
+- Own skill scope and tool scope
+- Own voice selection
+- Own GitHub App webhook access
+- Own LLM provider/model override
+
+Agents are created and configured in the admin UI. Enable/disable individually. Per-agent log streams.
+
+## Memory
+
+Four-tier persistent memory system:
+
+1. **T1 Lexical**: BM25-style word-overlap retrieval. Always on, zero dependencies.
+2. **T2 Semantic**: Embedding vectors via fastembed (on-device, private) or remote APIs. Scored using Generative Agents formula: relevance × importance × recency.
+3. **T3 Forgetting**: Importance scores + access recency. Cold memories auto-archive below threshold.
+4. **T4 Hygiene**: Near-duplicate clustering via embedding similarity, then LLM-driven merge during consolidation jobs.
+
+Automatic extraction pipeline: after each turn, the LLM extracts memories with ADD/UPDATE/DELETE/NOOP operations. Deduplication against existing memories.
+
+Two tiers of storage: permanent long-term facts and expiring short-term context.
+
+## Skills
+
+Markdown-based capability system. Instead of writing Python adapter classes, describe CLI tools in markdown files. The agent reads the description and calls tools through a whitelisted bash executor.
+
+### Skill file format
+Skills use a dual format: flat `<name>.md` files or directories with `<name>/SKILL.md` (for skills with bundled scripts). Frontmatter metadata supported (name, description, commands).
+
+### Skill lifecycle
+1. Markdown files in `skills/` directory (read-only in Docker)
+2. Seeded into SQLite database at startup (hash-based change detection)
+3. Loaded from database at runtime (editable via admin UI)
+4. Index injected into agent context; full content loaded on demand
+
+### Git installation
+Skills installable from git repos via admin UI. Shallow clone → validate SKILL.md → copy to `data/skills/<name>/` → record `.origin` marker → seed into DB. Installed skills are read-only; update = re-pull from origin.
+
+### Built-in skills
+13 skill files ship with humux: email, calendar, contacts, memory, voice, browser, WhatsApp, weather, scheduling, image generation, artifact hosting, jq, skill-creator.
+
+## Subagents
+
+Spawn scoped sub-loops under any agent:
+- Inherit-never-widen for tools, skills, secrets, and GitHub repo access
+- Sync mode: result returned in-turn
+- Background mode: distilled summary delivered later
+- Step, token, and thinking budgets
+- Monitor and cancel from Telegram or admin UI
+
+## Security
+
+### Secrets vault
+Two-tier encrypted vault:
+- Infrastructure vault: sealed with machine key at boot (for LLM API keys, bot tokens)
+- Agent vault: envelope encryption with admin password (for website logins, payment keys)
+- Secrets referenced as `${vault:NAME}` in config, `{{secret:NAME}}` in commands
+- The model never sees plaintext secret values
+- Bitwarden import supported
+
+### Permissions
+Glob-pattern rules with three levels:
+- ALWAYS: pre-approved, no interruption
+- ASK: requires approval via Telegram inline buttons
+- NEVER: blocked before execution
+
+Per-agent tool scoping. Per-agent GitHub repo allowlist.
+
+### Coding harness
+4 base tools: read, write, edit, bash. Workspace-confined (realpath containment). Reads pre-approved, writes ask permission. Hashline multi-edit format. Command prefix whitelist with interpreter/exec-wrapper safety guards.
+
+## Voice
+
+### Speech-to-text
+faster-whisper (CTranslate2-based). On-device, offline, multilingual. Auto-selects model size based on available RAM (tiny/base/small).
+
+### Text-to-speech
+- edge-tts: cloud-quality Microsoft voices, many languages
+- Kokoro 82M: fully offline, multilingual, ~350MB model
+- Per-agent voice selection
+- Voice marker syntax: LLM signals it wants to reply by voice
+
+## Browser automation
+
+Headless Chromium via Playwright. Self-driving explore mode (inner LLM loop navigates, fills forms, clicks). Persistent logged-in profiles. Per-domain action rules.
+
+## Web artifacts
+
+Agent writes files to `artifacts/<slug>/`, served as shareable links with sandboxed CSP. Multi-file sites, PDFs, images.
+
+## Image generation
+
+OpenRouter, fal.ai, or OpenAI DALL-E. Daily/monthly budget caps. Native photo delivery in Telegram.
+
+## Scheduled tasks
+
+Cron-based job scheduler. Job types:
+- agent: natural language task executed by an agent
+- system: raw CLI command
+- memory_consolidation: T4 hygiene job
+- subagent: scoped sub-task
+
+One-shot tasks via Telegram or admin UI. Filter by agent. Show/hide completed jobs.
+
+## Admin UI
+
+Full web dashboard: FastAPI + HTMX + Alpine.js + Tailwind CSS v4.
+
+- Setup wizard for first-boot configuration
+- Agent editor (character, skills, tools, voice, accounts, LLM provider)
+- Skills editor with live preview
+- Memory inspector (browse, edit, delete entries)
+- Job management (create, cancel, monitor)
+- Per-agent log streams (filterable by stream, level, time, text)
+- Prompt inspector (last-sent LLM payload per context)
+- Secrets vault management
+- GitHub webhook configuration
+
+## LLM providers
+
+Anthropic Claude, OpenAI, Google Gemini, Grok (xAI), DeepSeek, OpenRouter (any OpenAI-compatible). Configurable per-agent. Token usage tracking.
+
+## Goal decomposition
+
+Complex requests are broken into 2-6 ordered sub-goals via a cheap LLM call before the main model processes them. Simple requests skip this step.
+
+## Reply decision gate
+
+In group chats, a cheap LLM classifier decides per-message whether to reply. Hard rate cap guarantees runaway bot-to-bot loops terminate.
+
+## Mid-turn steering
+
+Any addressed follow-up message is injected into the running turn between rounds. The agent acknowledges with a 👀 reaction.
+
+## Configuration
+
+- `config.yml`: agent settings, channels, calendar, scheduler jobs
+- `character.md`: agent identity, personality, communication style
+- `skills/*.md`: skill files (13 built-in)
+- `.env`: environment variables (LLM keys, etc.)
+
+## Data storage
+
+8 SQLite databases in WAL mode:
+- config.db, skills.db, agents.db, history.db, memory.db, reflections.db, jobs.db, imagegen.db
+
+All under `/app/data`. Backup: `tar czf backup.tar.gz ./data`.
+
+## Links
+
+- Website: https://humux.dev
+- GitHub: https://github.com/mattmezza/humux
+- Documentation: https://docs.humux.dev
+- Blog: https://humux.dev/blog/
+- Releases: https://github.com/mattmezza/humux/releases
+- Author: https://x.com/_mattmezza_
+
+## Comparison
+
+humux differentiates from other personal AI agents (Hermes, OpenClaw, ZeroClaw, NemoClaw, TrustClaw) by having built-in email/calendar/contacts (not plugins), deep Telegram integration with per-agent bots, markdown skills, encrypted two-tier vault, and single-container deployment. See https://humux.dev/comparison.html for a detailed feature comparison.
