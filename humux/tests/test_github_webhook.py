@@ -51,8 +51,8 @@ class _Agents:
 
 
 def _agent(**gh) -> SimpleNamespace:
-    # webhook_digest off: these tests exercise gates/dispatch, not the digest
-    # (which needs a token + GitHub API; covered by its own tests below).
+    # webhook_digest/webhook_ack off: these tests exercise gates/dispatch, not
+    # the GitHub API extras (which need a token; covered by their own tests).
     return SimpleNamespace(
         name="dev",
         enabled=True,
@@ -61,6 +61,7 @@ def _agent(**gh) -> SimpleNamespace:
                 "enabled": True,
                 "webhook_secret": "WH_SECRET",
                 "webhook_digest": False,
+                "webhook_ack": False,
                 **gh,
             }
         },
@@ -669,6 +670,64 @@ def test_webhook_digest_prepended(monkeypatch, tmp_path) -> None:
     asyncio.run(captured[1])
     assert core.process.await_args.kwargs["message"].startswith("[GitHub] New issue")
     admin._GH_THREAD_TURNS.clear()
+
+
+def test_gh_ack_target_mapping() -> None:
+    assert (
+        admin._gh_ack_target("issues", ISSUE_PAYLOAD, "acme/widgets")
+        == "repos/acme/widgets/issues/7/reactions"
+    )
+    assert (
+        admin._gh_ack_target("pull_request", PR_PAYLOAD, "acme/widgets")
+        == "repos/acme/widgets/issues/15/reactions"
+    )
+    # Reviews have no reactions API → fall back to the PR itself.
+    review = {**PR_PAYLOAD, "review": {"id": 9, "body": "x"}}
+    assert (
+        admin._gh_ack_target("pull_request_review", review, "acme/widgets")
+        == "repos/acme/widgets/issues/15/reactions"
+    )
+    comment = {"comment": {"id": 33}, "issue": {"number": 7}}
+    assert (
+        admin._gh_ack_target("issue_comment", comment, "acme/widgets")
+        == "repos/acme/widgets/issues/comments/33/reactions"
+    )
+    assert (
+        admin._gh_ack_target("pull_request_review_comment", comment, "acme/widgets")
+        == "repos/acme/widgets/pulls/comments/33/reactions"
+    )
+    # Nothing sensible to react to on a CI run.
+    assert admin._gh_ack_target("workflow_run", {"workflow_run": {}}, "acme/widgets") == ""
+
+
+def test_webhook_ack_reaction_posted(monkeypatch) -> None:
+    captured = _capture_create_task(monkeypatch)
+    from core import github_digest, tools
+
+    monkeypatch.setattr(tools, "_agent_gh_token", lambda *a, **k: "tok-123")
+    acked: dict = {}
+
+    async def fake_ack(target, token, content="eyes"):
+        acked.update(target=target, token=token, content=content)
+        return True
+
+    monkeypatch.setattr(github_digest, "ack_reaction", fake_ack)
+    client, core = _client(agent=_agent(webhook_ack=True))
+    core.config = SimpleNamespace()  # token mint is stubbed; config is opaque
+    assert _post(client, ISSUE_PAYLOAD).status_code == 202
+    asyncio.run(captured[0])
+    assert acked == {
+        "target": "repos/acme/widgets/issues/7/reactions",
+        "token": "tok-123",
+        "content": "eyes",
+    }
+    core.process.assert_awaited_once()  # ack rides the turn, never replaces it
+    # Disabled → no reaction even though a target exists.
+    acked.clear()
+    client2, core2 = _client(agent=_agent(webhook_ack=False))
+    assert _post(client2, ISSUE_PAYLOAD).status_code == 202
+    asyncio.run(captured[1])
+    assert acked == {}
 
 
 def test_resolve_chat_titles() -> None:

@@ -1,4 +1,5 @@
-"""Thread digest for inbound GitHub webhook turns (#237).
+"""GitHub API helpers for inbound webhook turns: thread digest (#237) and the
+👀 start-of-work ack (#241).
 
 A webhook-woken agent has only seen the turns *it* was woken for: comments by
 other agents/humans, label changes, and state flips in between are invisible
@@ -6,8 +7,8 @@ to its chat history. GitHub holds the complete record, so each turn gets a
 fresh, bounded snapshot of the thread prepended to its task — the agent sees
 the full state before acting instead of (maybe) remembering to look it up.
 
-Failure is always soft: any error returns ``None`` and the turn runs with the
-event alone, exactly as before the digest existed.
+Failure is always soft: any error returns ``None``/``False`` and the turn
+runs exactly as it would have without the helper.
 """
 
 from __future__ import annotations
@@ -36,6 +37,20 @@ def _headers(token: str) -> dict[str, str]:
 def _clip(text: str, cap: int) -> str:
     text = (text or "").strip()
     return text if len(text) <= cap else text[: cap - 1] + "…"
+
+
+async def ack_reaction(target: str, token: str, content: str = "eyes") -> bool:
+    """React on the triggering item so "an agent is on it" shows in the GitHub
+    UI (#241). ``target`` is an API path like ``repos/o/r/issues/7/reactions``.
+    Best-effort: any failure returns ``False`` and is only logged."""
+    try:
+        async with httpx.AsyncClient(timeout=8, headers=_headers(token)) as client:
+            resp = await client.post(f"{_API}/{target}", json={"content": content})
+            resp.raise_for_status()
+        return True
+    except Exception as exc:  # noqa: BLE001 — the ack must never sink a turn
+        log.warning("ack reaction failed for %s: %s", target, exc)
+        return False
 
 
 async def thread_digest(repo: str, number: int, token: str) -> str | None:
