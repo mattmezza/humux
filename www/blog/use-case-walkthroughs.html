@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Four Workflows, One Agent: Use Case Walkthroughs — humux blog</title>
+  <meta name="description" content="Detailed configuration examples and conversation flows for four humux personas: solo developer, privacy advocate, power user, and team assistant.">
+  <link rel="canonical" href="https://humux.dev/blog/use-case-walkthroughs">
+
+  <meta property="og:title" content="Four Workflows, One Agent: Use Case Walkthroughs">
+  <meta property="og:description" content="Detailed configuration examples and conversation flows for four humux personas: solo developer, privacy advocate, power user, and team assistant.">
+  <meta property="og:url" content="https://humux.dev/blog/use-case-walkthroughs">
+  <meta property="og:type" content="article">
+  <meta property="og:image" content="https://humux.dev/assets/images/og-image.png">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Four Workflows, One Agent: Use Case Walkthroughs">
+  <meta name="twitter:description" content="Detailed configuration examples and conversation flows for four humux personas: solo developer, privacy advocate, power user, and team assistant.">
+  <meta name="twitter:image" content="https://humux.dev/assets/images/og-image.png">
+  <meta name="twitter:site" content="@_mattmezza_">
+  <meta name="twitter:creator" content="@_mattmezza_">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "headline": "Four Workflows, One Agent: Use Case Walkthroughs",
+    "description": "Detailed configuration examples and conversation flows for four humux personas: solo developer, privacy advocate, power user, and team assistant.",
+    "datePublished": "2026-07-10",
+    "author": { "@type": "Person", "name": "Matteo Merola" },
+    "publisher": { "@type": "Organization", "name": "humux" },
+    "url": "https://humux.dev/blog/use-case-walkthroughs"
+  }
+  </script>
+
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://humux.dev/"},{"@type":"ListItem","position":2,"name":"Blog","item":"https://humux.dev/blog/"},{"@type":"ListItem","position":3,"name":"Four Workflows, One Agent: Use Case Walkthroughs","item":"https://humux.dev/blog/use-case-walkthroughs.html"}]}
+  </script>
+
+  <link rel="alternate" type="application/rss+xml" title="humux blog" href="/blog/feed.xml">
+
+  <link rel="icon" type="image/svg+xml" href="/assets/images/favicon-32.svg">
+  <link rel="alternate icon" type="image/png" sizes="32x32" href="/assets/images/favicon-32.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/images/apple-touch-icon.png">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="/assets/css/style.css">
+
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script defer src="https://analytics.casa.merola.co/script.js" data-website-id="b395aaa1-97a5-494e-9ad8-15b3ba20318e"></script>
+</head>
+<body>
+
+  <!-- Nav -->
+  <nav x-data="{ open: false }" class="sticky top-0 z-50 border-b border-[var(--color-border)]" style="background: rgba(6,6,6,0.85); backdrop-filter: blur(12px);">
+    <div class="mx-auto flex max-w-6xl items-center justify-between px-5 py-3">
+      <a href="/" class="flex items-center gap-2 no-underline">
+        <span class="text-sm font-semibold tracking-wider" style="color: var(--color-accent);">humux</span>
+        <span class="hidden sm:inline text-xs" style="color: var(--color-muted);">/ˈhjuːmʌks/</span>
+      </a>
+      <div class="hidden md:flex items-center gap-5 text-xs">
+        <a href="/" class="no-underline transition-colors" style="color: var(--color-secondary);">Home</a>
+        <a href="/features.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Features</a>
+        <a href="/use-cases.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Use Cases</a>
+        <a href="/comparison.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Comparison</a>
+        <a href="/blog/" class="font-medium no-underline" style="color: var(--color-accent);">Blog</a>
+        <a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="no-underline transition-colors" style="color: var(--color-secondary);">
+          <svg class="inline-block h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        </a>
+        <a href="https://docs.humux.dev" target="_blank" rel="noopener" class="no-underline transition-colors" style="color: var(--color-secondary);">Docs</a>
+      </div>
+      <button @click="open = !open" class="md:hidden p-2" style="color: var(--color-secondary);" aria-label="Menu">
+        <svg x-show="!open" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        <svg x-show="open" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div x-show="open" @click.outside="open = false" x-cloak class="md:hidden border-t border-[var(--color-border)] px-5 py-4 space-y-3 text-sm" style="background: rgba(6,6,6,0.95);">
+      <a href="/" class="block no-underline transition-colors" style="color: var(--color-secondary);">Home</a>
+      <a href="/features.html" class="block no-underline transition-colors" style="color: var(--color-secondary);">Features</a>
+      <a href="/use-cases.html" class="block no-underline transition-colors" style="color: var(--color-secondary);">Use Cases</a>
+      <a href="/comparison.html" class="block no-underline transition-colors" style="color: var(--color-secondary);">Comparison</a>
+      <a href="/blog/" class="block font-medium no-underline" style="color: var(--color-accent);">Blog</a>
+      <a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="block no-underline transition-colors" style="color: var(--color-secondary);">GitHub</a>
+      <a href="https://docs.humux.dev" target="_blank" rel="noopener" class="block no-underline transition-colors" style="color: var(--color-secondary);">Docs</a>
+    </div>
+  </nav>
+
+  <!-- Article -->
+  <article class="mx-auto max-w-3xl px-5 py-16">
+    <header class="mb-12">
+      <p class="text-xs font-mono mb-3" style="color: var(--color-muted);">July 10, 2026 &mdash; Matteo Merola</p>
+      <h1 class="text-3xl sm:text-4xl font-bold leading-tight mb-4" style="color: #eee;">Four Workflows, One Agent: Use Case Walkthroughs</h1>
+      <p class="text-lg leading-relaxed" style="color: var(--color-secondary);">Real configuration snippets and conversation flows for four common humux setups.</p>
+    </header>
+
+    <div class="space-y-6">
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        The best way to understand what humux does is to see it configured for a real workflow. This article walks through four setups &mdash; the config that powers them and the conversations they produce.
+      </p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">1. The Solo Developer</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        You want an agent that can read your code, find bugs, and fix them &mdash; all through Telegram. The coding harness gives the agent four base tools (<code class="inline-code">read_file</code>, <code class="inline-code">write_file</code>, <code class="inline-code">edit_file</code>, <code class="inline-code">run_command</code>) confined to a workspace directory. Add the GitHub webhook and the agent can react to PRs and issues automatically.
+      </p>
+
+      <div class="terminal-window mt-6 mb-6">
+        <div class="terminal-header">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+          <span class="ml-2 text-xs" style="color: var(--color-muted);">config.yml</span>
+        </div>
+        <div class="terminal-body">
+<pre>agents:
+  - slug: forge
+    name: Forge
+    character: characters/forge.md
+    telegram_token: ${vault:FORGE_BOT_TOKEN}
+    skills: [coding, github, browser]
+    tools: [read_file, write_file, edit_file, run_command]
+    github_repos: [myorg/api, myorg/frontend]
+    workspace: /app/data/workspace</pre>
+        </div>
+      </div>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        With this config, a typical review session looks like this:
+      </p>
+
+      <div class="terminal-window mt-6 mb-6">
+        <div class="terminal-header">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+          <span class="ml-2 text-xs" style="color: var(--color-muted);">Telegram &mdash; Forge</span>
+        </div>
+        <div class="terminal-body">
+<pre>You: review the diff in workspace/pr-204
+
+Forge: Reading the diff... 3 files changed.
+
+  routes/auth.py — the token expiry check uses `<` instead
+  of `<=`. Tokens valid for exactly 0 remaining seconds get
+  rejected. Off-by-one.
+
+  routes/users.py — looks fine, pagination logic is correct.
+
+  tests/test_auth.py — no test covers the boundary case.
+
+You: fix the auth bug and add the test
+
+Forge: ✔ Applied fix in routes/auth.py:47
+  - if token.expires_at < now():
+  + if token.expires_at <= now():
+
+✔ Added test_token_expiry_boundary in tests/test_auth.py
+✔ Committed as a1b2c3d</pre>
+        </div>
+      </div>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        The agent reads files via <code class="inline-code">read_file</code>, applies the fix with <code class="inline-code">edit_file</code>, and runs <code class="inline-code">git commit</code> through <code class="inline-code">run_command</code>. Every write operation goes through the permission system &mdash; if permissions are set to ASK, you approve each file change via inline Telegram buttons before it lands.
+      </p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">2. The Privacy Advocate</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        You want everything local. No cloud TTS, no third-party search API, no credentials in plaintext config files. humux's two-tier vault seals infrastructure keys with a machine key at boot and agent secrets with your admin password. The model never sees the decrypted values &mdash; it references them as <code class="inline-code">${vault:NAME}</code> placeholders that resolve at the protocol layer.
+      </p>
+
+      <div class="terminal-window mt-6 mb-6">
+        <div class="terminal-header">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+          <span class="ml-2 text-xs" style="color: var(--color-muted);">config.yml</span>
+        </div>
+        <div class="terminal-body">
+<pre>llm:
+  provider: anthropic
+  api_key: ${vault:ANTHROPIC_KEY}
+
+voice:
+  tts_engine: kokoro      # fully offline, ~350MB model
+  stt_engine: whisper      # on-device via faster-whisper
+
+search:
+  provider: searxng
+  base_url: http://searxng:8080   # self-hosted, no API key
+
+agents:
+  - slug: sentinel
+    name: Sentinel
+    telegram_token: ${vault:SENTINEL_BOT_TOKEN}
+    skills: [memory, voice, weather, browser]</pre>
+        </div>
+      </div>
+
+      <div class="terminal-window mt-6 mb-6">
+        <div class="terminal-header">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+          <span class="ml-2 text-xs" style="color: var(--color-muted);">Telegram &mdash; Sentinel</span>
+        </div>
+        <div class="terminal-body">
+<pre>You: search for recent mass transit strikes in Switzerland
+
+Sentinel: Searching via SearXNG (local instance)...
+
+Found 4 results:
+1. SBB workers announce 48h strike starting July 15
+   — swissinfo.ch, 2 days ago
+2. Zurich tram union rejects latest offer
+   — tagesanzeiger.ch, 5 days ago
+...
+
+All queries routed through your SearXNG instance.
+No data sent to external search APIs.</pre>
+        </div>
+      </div>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        Voice works the same way. Send a voice message in Telegram: faster-whisper transcribes it on-device, the agent processes the text, and Kokoro 82M synthesizes the reply &mdash; no audio leaves your server. The bundled <code class="inline-code">docker-compose.yml</code> includes a SearXNG service, so the entire stack comes up with one command.
+      </p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">3. The Power User</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        You want your agent to handle email, calendar, and daily briefings. The key piece is the scheduler &mdash; a cron-based job system that runs agent tasks on a schedule. A daily briefing job triggers the agent to check email, calendar, and weather, then sends a summary to your Telegram chat.
+      </p>
+
+      <div class="terminal-window mt-6 mb-6">
+        <div class="terminal-header">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+          <span class="ml-2 text-xs" style="color: var(--color-muted);">config.yml</span>
+        </div>
+        <div class="terminal-body">
+<pre>agents:
+  - slug: atlas
+    name: Atlas
+    telegram_token: ${vault:ATLAS_BOT_TOKEN}
+    skills: [email, calendar, contacts, scheduling, weather]
+    email_accounts:
+      - address: me@fastmail.com
+        access: read-write
+    calendar_accounts:
+      - name: personal
+        url: https://caldav.fastmail.com/dav/calendars/...
+        access: read-write
+
+scheduler:
+  jobs:
+    - name: morning-briefing
+      agent: atlas
+      cron: "0 7 * * *"
+      task: >
+        Check my unread emails, today's calendar events,
+        and the weather in Zurich. Send a summary to my
+        Telegram chat.</pre>
+        </div>
+      </div>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        Every morning at 7:00, the scheduler fires the job. The agent calls <code class="inline-code">search_email</code>, <code class="inline-code">list_events</code>, and the weather skill, then composes a message:
+      </p>
+
+      <div class="terminal-window mt-6 mb-6">
+        <div class="terminal-header">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+          <span class="ml-2 text-xs" style="color: var(--color-muted);">Telegram &mdash; Atlas (07:00)</span>
+        </div>
+        <div class="terminal-body">
+<pre>Atlas: Good morning. Here's your Thursday briefing:
+
+Weather: Zurich, 19°C, partly cloudy, rain after 4pm.
+
+Calendar (3 events):
+  10:00  Standup — Google Meet
+  14:00  Dentist — Bahnhofstrasse 42
+  16:30  1:1 with Sara — Zoom
+
+Email (8 unread):
+  ⚡ Invoice from Hetzner — EUR 28.40, due July 15
+  ⚡ PR review request from Alex on api/#312
+  ... 6 newsletters (skipped)
+
+Reminder: you asked me to follow up with the
+landlord about the lease renewal this week.</pre>
+        </div>
+      </div>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        The briefing pulls from three sources in one turn. The reminder at the end comes from the memory system &mdash; the agent stored it when you mentioned the lease last Tuesday and surfaced it because the deadline is approaching.
+      </p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">4. The Team Assistant</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        You want multiple agents in one Telegram group, each handling a different domain. The trick: each agent runs its own Telegram bot, so they appear as separate participants. The addressing protocol is simple &mdash; mention the bot's name and it responds; no mention, no response. A reply decision gate (a cheap classifier) prevents bot-to-bot loops.
+      </p>
+
+      <div class="terminal-window mt-6 mb-6">
+        <div class="terminal-header">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+          <span class="ml-2 text-xs" style="color: var(--color-muted);">config.yml</span>
+        </div>
+        <div class="terminal-body">
+<pre>agents:
+  - slug: ops
+    name: OpsBot
+    character: characters/ops.md
+    telegram_token: ${vault:OPS_BOT_TOKEN}
+    skills: [github, coding, scheduling]
+    tools: [run_command, read_file]
+    github_repos: [myorg/infra]
+
+  - slug: research
+    name: ResearchBot
+    character: characters/research.md
+    telegram_token: ${vault:RESEARCH_BOT_TOKEN}
+    skills: [browser, memory, voice]
+    tools: [search_web, remember, recall]</pre>
+        </div>
+      </div>
+
+      <div class="terminal-window mt-6 mb-6">
+        <div class="terminal-header">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+          <span class="ml-2 text-xs" style="color: var(--color-muted);">Telegram &mdash; Team Chat</span>
+        </div>
+        <div class="terminal-body">
+<pre>Alice: @OpsBot what's the status of deploy #847?
+
+OpsBot: Deploy #847 completed at 14:32 UTC.
+  All health checks pass. 3 pods running.
+
+Bob: @ResearchBot find recent articles on OAuth 2.1
+  migration patterns
+
+ResearchBot: Searching... found 4 relevant articles:
+  1. "OAuth 2.1 Simplified" — aaron-parecki.com
+  2. "Migrating from OAuth 2.0" — auth0.com/blog
+  ...
+  Want me to summarize the key changes?
+
+Alice: @OpsBot can you also check if PR #312 is merged?
+
+OpsBot: PR #312 merged 2 hours ago by Alex.
+  CI passed. Deployed in #847.</pre>
+        </div>
+      </div>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        Both bots are in the same group. OpsBot handles infrastructure questions using the GitHub skill and <code class="inline-code">run_command</code>. ResearchBot handles knowledge questions using web search and memory. They never interfere with each other &mdash; the addressing protocol ensures only the mentioned bot responds. If Alice accidentally triggers both by mentioning two bots in one message, only the first-mentioned one acts.
+      </p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">The pattern</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        All four setups share the same structure: a <code class="inline-code">config.yml</code> entry that defines the agent's identity, skills, and tool scope, plus a <code class="inline-code">character.md</code> file that sets its personality. The config is the skeleton; the character is the voice. Swap either one and the same infrastructure produces a completely different agent.
+      </p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        The point isn't that these four personas are the only options &mdash; they're starting points. The actual configuration is a YAML file and a markdown file. Change a few lines, add a skill, adjust a permission rule, and you have something tailored to your exact workflow.
+      </p>
+    </div>
+
+    <!-- CTA -->
+    <div class="mt-16 pt-8 border-t" style="border-color: var(--color-border);">
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        All four workflows run out of the box with humux. One container, your config, your rules.
+        <a href="/" class="no-underline font-medium" style="color: var(--color-accent);">Get started &rarr;</a>
+      </p>
+    </div>
+  </article>
+
+  <!-- Footer -->
+  <footer class="border-t px-5 py-12" style="border-color: var(--color-border); background: var(--color-surface);">
+    <div class="mx-auto max-w-6xl">
+      <div class="flex flex-wrap items-start justify-between gap-8">
+        <div>
+          <span class="text-sm font-semibold" style="color: var(--color-accent);">humux</span>
+          <p class="mt-1 text-xs" style="color: var(--color-muted);">Human Multiplexer &mdash; /ˈhjuːmʌks/</p>
+          <p class="mt-0.5 text-xs" style="color: var(--color-muted);">Your self-hosted personal AI agent.</p>
+        </div>
+        <div class="flex flex-wrap gap-10">
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Site</span>
+            <ul class="mt-2 space-y-1 text-xs" style="color: var(--color-muted);">
+              <li><a href="/" class="no-underline">Home</a></li>
+              <li><a href="/features.html" class="no-underline">Features</a></li>
+              <li><a href="/use-cases.html" class="no-underline">Use Cases</a></li>
+              <li><a href="/comparison.html" class="no-underline">Comparison</a></li>
+              <li><a href="/blog/" class="no-underline">Blog</a></li>
+            </ul>
+          </div>
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Resources</span>
+            <ul class="mt-2 space-y-1 text-xs" style="color: var(--color-muted);">
+              <li><a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="no-underline">GitHub</a></li>
+              <li><a href="https://docs.humux.dev" target="_blank" rel="noopener" class="no-underline">Documentation</a></li>
+              <li><a href="https://github.com/mattmezza/humux/releases" target="_blank" rel="noopener" class="no-underline">Releases</a></li>
+            </ul>
+          </div>
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Author</span>
+            <ul class="mt-2 space-y-1 text-xs" style="color: var(--color-muted);">
+              <li><a href="https://x.com/_mattmezza_" target="_blank" rel="noopener" class="no-underline">@_mattmezza_</a></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div class="mt-10 border-t pt-6 text-center text-xs" style="border-color: var(--color-border); color: var(--color-muted);">
+        &copy; 2026 Merola Software &amp; Services. MIT License.
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

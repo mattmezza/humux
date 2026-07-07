@@ -66,6 +66,31 @@
     <priority>0.7</priority>
   </url>
   <url>
+    <loc>https://humux.dev/blog/secrets-management-agents.html</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://humux.dev/blog/group-chat-engineering.html</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://humux.dev/blog/replacing-cloud-ai.html</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://humux.dev/blog/use-case-walkthroughs.html</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://humux.dev/blog/release-notes-v025-v028.html</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
     <loc>https://humux.dev/comparison/humux-vs-hermes.html</loc>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>

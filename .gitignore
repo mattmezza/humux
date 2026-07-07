@@ -24,4 +24,3 @@ data/*.db
 
 # Tailwind CSS CLI binary (downloaded via make setup)
 tailwindcss
-www/content-strategy.md

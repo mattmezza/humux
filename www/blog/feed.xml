@@ -8,6 +8,46 @@
     <atom:link href="https://humux.dev/blog/feed.xml" rel="self" type="application/rss+xml"/>
 
     <item>
+      <title>Secrets Management for AI Agents: Why .env Files Aren't Enough</title>
+      <link>https://humux.dev/blog/secrets-management-agents.html</link>
+      <guid>https://humux.dev/blog/secrets-management-agents.html</guid>
+      <pubDate>Tue, 21 Jul 2026 00:00:00 +0000</pubDate>
+      <description>How a two-tier encrypted vault keeps credentials out of the model context and why .env files are a security risk for autonomous agents.</description>
+    </item>
+
+    <item>
+      <title>Group Chat Engineering: Multiple Agents, Zero Loops</title>
+      <link>https://humux.dev/blog/group-chat-engineering.html</link>
+      <guid>https://humux.dev/blog/group-chat-engineering.html</guid>
+      <pubDate>Thu, 17 Jul 2026 00:00:00 +0000</pubDate>
+      <description>The addressing protocol, reply decision gate, rate cap, and speaker tags that make multi-agent Telegram groups work.</description>
+    </item>
+
+    <item>
+      <title>How I Replaced My Cloud AI Assistant with a Self-Hosted Agent</title>
+      <link>https://humux.dev/blog/replacing-cloud-ai.html</link>
+      <guid>https://humux.dev/blog/replacing-cloud-ai.html</guid>
+      <pubDate>Mon, 14 Jul 2026 00:00:00 +0000</pubDate>
+      <description>A personal account of migrating from cloud AI assistants to humux — what worked, what broke, and what I'd do differently.</description>
+    </item>
+
+    <item>
+      <title>Four Ways to Use humux: Detailed Conversation Walkthroughs</title>
+      <link>https://humux.dev/blog/use-case-walkthroughs.html</link>
+      <guid>https://humux.dev/blog/use-case-walkthroughs.html</guid>
+      <pubDate>Fri, 10 Jul 2026 00:00:00 +0000</pubDate>
+      <description>Real conversation flows for four personas — from code review to email triage to multi-agent group chats.</description>
+    </item>
+
+    <item>
+      <title>Release Notes: v0.25 – v0.28</title>
+      <link>https://humux.dev/blog/release-notes-v025-v028.html</link>
+      <guid>https://humux.dev/blog/release-notes-v025-v028.html</guid>
+      <pubDate>Mon, 07 Jul 2026 00:00:00 +0000</pubDate>
+      <description>Four releases in one week: GitHub webhook integration, per-agent LLM overrides, token usage dashboard, and chain-of-thought feedback.</description>
+    </item>
+
+    <item>
       <title>Subagent Patterns: Scoped Delegation for Complex Tasks</title>
       <link>https://humux.dev/blog/subagent-patterns.html</link>
       <guid>https://humux.dev/blog/subagent-patterns.html</guid>

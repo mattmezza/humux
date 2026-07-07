@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How I Replaced My Cloud AI Assistant with a Self-Hosted Agent — humux blog</title>
+  <meta name="description" content="A personal account of migrating from cloud AI assistants to humux — what worked, what broke, and what I'd do differently.">
+  <link rel="canonical" href="https://humux.dev/blog/replacing-cloud-ai">
+
+  <meta property="og:title" content="How I Replaced My Cloud AI Assistant with a Self-Hosted Agent">
+  <meta property="og:description" content="A personal account of migrating from cloud AI assistants to humux — what worked, what broke, and what I'd do differently.">
+  <meta property="og:url" content="https://humux.dev/blog/replacing-cloud-ai">
+  <meta property="og:type" content="article">
+  <meta property="og:image" content="https://humux.dev/assets/images/og-image.png">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="How I Replaced My Cloud AI Assistant with a Self-Hosted Agent">
+  <meta name="twitter:description" content="A personal account of migrating from cloud AI assistants to humux — what worked, what broke, and what I'd do differently.">
+  <meta name="twitter:image" content="https://humux.dev/assets/images/og-image.png">
+  <meta name="twitter:site" content="@_mattmezza_">
+  <meta name="twitter:creator" content="@_mattmezza_">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "headline": "How I Replaced My Cloud AI Assistant with a Self-Hosted Agent",
+    "description": "A personal account of migrating from cloud AI assistants to humux — what worked, what broke, and what I'd do differently.",
+    "datePublished": "2026-07-14",
+    "author": { "@type": "Person", "name": "Matteo Merola" },
+    "publisher": { "@type": "Organization", "name": "humux" },
+    "url": "https://humux.dev/blog/replacing-cloud-ai"
+  }
+  </script>
+
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://humux.dev/"},{"@type":"ListItem","position":2,"name":"Blog","item":"https://humux.dev/blog/"},{"@type":"ListItem","position":3,"name":"How I Replaced My Cloud AI Assistant","item":"https://humux.dev/blog/replacing-cloud-ai.html"}]}
+  </script>
+
+  <link rel="alternate" type="application/rss+xml" title="humux blog" href="/blog/feed.xml">
+
+  <link rel="icon" type="image/svg+xml" href="/assets/images/favicon-32.svg">
+  <link rel="alternate icon" type="image/png" sizes="32x32" href="/assets/images/favicon-32.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/images/apple-touch-icon.png">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="/assets/css/style.css">
+
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script defer src="https://analytics.casa.merola.co/script.js" data-website-id="b395aaa1-97a5-494e-9ad8-15b3ba20318e"></script>
+</head>
+<body>
+
+  <!-- Nav -->
+  <nav x-data="{ open: false }" class="sticky top-0 z-50 border-b border-[var(--color-border)]" style="background: rgba(6,6,6,0.85); backdrop-filter: blur(12px);">
+    <div class="mx-auto flex max-w-6xl items-center justify-between px-5 py-3">
+      <a href="/" class="flex items-center gap-2 no-underline">
+        <span class="text-sm font-semibold tracking-wider" style="color: var(--color-accent);">humux</span>
+        <span class="hidden sm:inline text-xs" style="color: var(--color-muted);">/ˈhjuːmʌks/</span>
+      </a>
+      <div class="hidden md:flex items-center gap-5 text-xs">
+        <a href="/" class="no-underline transition-colors" style="color: var(--color-secondary);">Home</a>
+        <a href="/features.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Features</a>
+        <a href="/use-cases.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Use Cases</a>
+        <a href="/comparison.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Comparison</a>
+        <a href="/blog/" class="font-medium no-underline" style="color: var(--color-accent);">Blog</a>
+        <a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="no-underline transition-colors" style="color: var(--color-secondary);">
+          <svg class="inline-block h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        </a>
+        <a href="https://docs.humux.dev" target="_blank" rel="noopener" class="no-underline transition-colors" style="color: var(--color-secondary);">Docs</a>
+      </div>
+      <button @click="open = !open" class="md:hidden p-2" style="color: var(--color-secondary);" aria-label="Menu">
+        <svg x-show="!open" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        <svg x-show="open" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div x-show="open" @click.outside="open = false" x-cloak class="md:hidden border-t border-[var(--color-border)] px-5 py-4 space-y-3 text-sm" style="background: rgba(6,6,6,0.95);">
+      <a href="/" class="block no-underline transition-colors" style="color: var(--color-secondary);">Home</a>
+      <a href="/features.html" class="block no-underline transition-colors" style="color: var(--color-secondary);">Features</a>
+      <a href="/use-cases.html" class="block no-underline transition-colors" style="color: var(--color-secondary);">Use Cases</a>
+      <a href="/comparison.html" class="block no-underline transition-colors" style="color: var(--color-secondary);">Comparison</a>
+      <a href="/blog/" class="block font-medium no-underline" style="color: var(--color-accent);">Blog</a>
+      <a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="block no-underline transition-colors" style="color: var(--color-secondary);">GitHub</a>
+      <a href="https://docs.humux.dev" target="_blank" rel="noopener" class="block no-underline transition-colors" style="color: var(--color-secondary);">Docs</a>
+    </div>
+  </nav>
+
+  <!-- Article -->
+  <article class="mx-auto max-w-3xl px-5 py-16">
+    <header class="mb-12">
+      <p class="text-xs font-mono mb-3" style="color: var(--color-muted);">July 14, 2026 &mdash; Matteo Merola</p>
+      <h1 class="text-3xl sm:text-4xl font-bold leading-tight mb-4" style="color: #eee;">How I Replaced My Cloud AI Assistant with a Self-Hosted Agent</h1>
+      <p class="text-lg leading-relaxed" style="color: var(--color-secondary);">What worked, what broke, and what I wish I'd known before migrating to a self-hosted personal agent.</p>
+    </header>
+
+    <div class="space-y-6">
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        I used to spread my AI usage across four or five different services. A chat app for general questions. A coding assistant in my editor. A separate tool for email summarization. Another for scheduling. Each one had its own subscription, its own context window, and none of them knew what the others were doing.
+      </p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        The turning point wasn't a privacy scare or a billing shock, though both played a part. It was the realization that I was spending more time <em>switching between assistants</em> than I was saving by using them. I'd ask one to summarize a thread, then manually paste the summary into another so it could draft a reply. I had five tools and zero integration.
+      </p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">The setup</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        I run humux on a small home server &mdash; an Intel NUC with 32GB RAM. The entire stack is one Docker container: the agent runtime, the admin UI, voice processing, and the database. No sidecars, no Redis, no Kubernetes. Total resource usage at idle is about 400MB RAM and negligible CPU.
+      </p>
+
+      <div class="terminal-window mt-6 mb-6">
+        <div class="terminal-header">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+          <span class="ml-2 text-xs" style="color: var(--color-muted);">docker compose</span>
+        </div>
+        <div class="terminal-body">
+<pre>services:
+  humux:
+    image: ghcr.io/mattmezza/humux:latest
+    volumes:
+      - ./data:/app/data
+      - ./config.yml:/app/config.yml
+    ports:
+      - "8080:8080"
+    restart: unless-stopped</pre>
+        </div>
+      </div>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        That's the whole deployment. The config file defines my agents, their tools, and which LLM provider to use. I started with Anthropic's API for the reasoning model and added a local Ollama instance later for tasks where latency matters more than capability.
+      </p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">What I replaced</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        I consolidated five separate tools into three humux agents:
+      </p>
+
+      <ul class="list-disc pl-6 space-y-2 text-base leading-relaxed" style="color: var(--color-secondary);">
+        <li><strong style="color: #eee;">forge</strong> &mdash; my coding agent. Reviews PRs, edits files, runs tests, commits changes. Replaced the editor-integrated coding assistant and the separate code review tool.</li>
+        <li><strong style="color: #eee;">atlas</strong> &mdash; my productivity agent. Handles email triage, calendar management, morning briefings, and contact lookups. Replaced the email summarizer and the scheduling assistant.</li>
+        <li><strong style="color: #eee;">sage</strong> &mdash; my research agent. Web searches, document analysis, general questions. Replaced the chat-based AI assistant.</li>
+      </ul>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        The key difference: all three share the same memory database. When I tell sage about a project decision, forge remembers it during the next code review. When atlas reads an email about a deadline, sage can reference it when I ask about the project timeline. Context flows across agents because they share the same infrastructure.
+      </p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">What broke (at first)</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        The migration wasn't seamless. Three things caught me off guard:
+      </p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        <strong style="color: #eee;">Email credentials were the hardest part.</strong> Not technically &mdash; the vault handles encryption fine &mdash; but getting app passwords from Google, configuring IMAP with the right OAuth scopes, and testing CalDAV endpoints was a full afternoon of work. Cloud services hide this complexity; self-hosting exposes it. The Bitwarden import helped for passwords I already had stored.
+      </p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        <strong style="color: #eee;">Skill authoring took iteration.</strong> humux uses markdown skill files to teach agents how to use CLI tools. My first attempt at an email skill was too verbose &mdash; the model got confused by the wall of options. I rewrote it to show just the three most common patterns (send, search, list) and added edge cases only when the agent asked for help. The lesson: skills work best when they're concise.
+      </p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        <strong style="color: #eee;">Memory needed tuning.</strong> Out of the box, the agent remembered too much. Every offhand comment became a memory entry. I learned to configure the importance threshold and lean on the memory hygiene features (deduplication, reflection filtering) to keep the memory store useful rather than noisy.
+      </p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">What I gained</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        Three months in, the advantages are clear:
+      </p>
+
+      <ul class="list-disc pl-6 space-y-2 text-base leading-relaxed" style="color: var(--color-secondary);">
+        <li><strong style="color: #eee;">One interface.</strong> Everything goes through Telegram or the CLI. I don't switch apps. I don't copy-paste between tools. I say "summarize my unread emails and check if any conflict with today's calendar" and one agent handles both.</li>
+        <li><strong style="color: #eee;">Real context continuity.</strong> The agents remember what I told them last week. I don't re-explain project context every session. The memory system isn't perfect, but it's better than starting every conversation from scratch.</li>
+        <li><strong style="color: #eee;">Cost control.</strong> I pay for the LLM API tokens I use, nothing else. No subscriptions. My typical usage runs about $30/month in API costs across all three agents. That's less than two of the five subscriptions I was paying before.</li>
+        <li><strong style="color: #eee;">No data export anxiety.</strong> My conversations, memories, and credentials are in a SQLite database on my server. If I want to switch LLM providers, I change one line in the config. If I want to stop, my data is already mine.</li>
+      </ul>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">What I'd do differently</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        If I were starting over:
+      </p>
+
+      <ul class="list-disc pl-6 space-y-2 text-base leading-relaxed" style="color: var(--color-secondary);">
+        <li><strong style="color: #eee;">Start with one agent, not three.</strong> I configured all three agents on day one. I should have started with just the coding agent, gotten it working well, then added the others. Each agent's skills and personality take time to dial in.</li>
+        <li><strong style="color: #eee;">Set up the vault first.</strong> I initially put API keys in the config file directly and migrated them to the vault later. Starting with the vault avoids secrets ever appearing in plain text on disk.</li>
+        <li><strong style="color: #eee;">Write skills from real usage.</strong> I pre-wrote skills for every CLI tool I might need. Most of them went unused. The better approach: use the agent without skills, notice when it fails or asks how to do something, then write a skill for that specific gap.</li>
+      </ul>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        The migration took a weekend for the basics and about two weeks of incremental tuning to get everything working smoothly. It's not zero effort. But the result is an AI assistant that actually knows my workflow, runs on my hardware, and costs less than what I was paying before. That's the trade-off, and for me it was worth it.
+      </p>
+    </div>
+
+    <!-- CTA -->
+    <div class="mt-16 pt-8 border-t" style="border-color: var(--color-border);">
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        humux is open-source and runs in a single Docker container.
+        <a href="/" class="no-underline font-medium" style="color: var(--color-accent);">Try it yourself &rarr;</a>
+      </p>
+    </div>
+  </article>
+
+  <!-- Footer -->
+  <footer class="border-t px-5 py-12" style="border-color: var(--color-border); background: var(--color-surface);">
+    <div class="mx-auto max-w-6xl">
+      <div class="flex flex-wrap items-start justify-between gap-8">
+        <div>
+          <span class="text-sm font-semibold" style="color: var(--color-accent);">humux</span>
+          <p class="mt-1 text-xs" style="color: var(--color-muted);">Human Multiplexer &mdash; /ˈhjuːmʌks/</p>
+          <p class="mt-0.5 text-xs" style="color: var(--color-muted);">Your self-hosted personal AI agent.</p>
+        </div>
+        <div class="flex flex-wrap gap-10">
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Site</span>
+            <ul class="mt-2 space-y-1 text-xs" style="color: var(--color-muted);">
+              <li><a href="/" class="no-underline">Home</a></li>
+              <li><a href="/features.html" class="no-underline">Features</a></li>
+              <li><a href="/use-cases.html" class="no-underline">Use Cases</a></li>
+              <li><a href="/comparison.html" class="no-underline">Comparison</a></li>
+              <li><a href="/blog/" class="no-underline">Blog</a></li>
+            </ul>
+          </div>
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Resources</span>
+            <ul class="mt-2 space-y-1 text-xs" style="color: var(--color-muted);">
+              <li><a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="no-underline">GitHub</a></li>
+              <li><a href="https://docs.humux.dev" target="_blank" rel="noopener" class="no-underline">Documentation</a></li>
+              <li><a href="https://github.com/mattmezza/humux/releases" target="_blank" rel="noopener" class="no-underline">Releases</a></li>
+            </ul>
+          </div>
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Author</span>
+            <ul class="mt-2 space-y-1 text-xs" style="color: var(--color-muted);">
+              <li><a href="https://x.com/_mattmezza_" target="_blank" rel="noopener" class="no-underline">@_mattmezza_</a></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div class="mt-10 border-t pt-6 text-center text-xs" style="border-color: var(--color-border); color: var(--color-muted);">
+        &copy; 2026 Merola Software &amp; Services. MIT License.
+      </div>
+    </div>
+  </footer>
+</body>
+</html>
