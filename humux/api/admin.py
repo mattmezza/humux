@@ -705,6 +705,22 @@ def _gh_wal_remove(delivery: str) -> None:
         pass
 
 
+def _gh_ack_target(event: str, payload: dict, repo: str) -> str:
+    """API path to react 👀 on for this event, or "" when there is nothing
+    sensible to react to (#241). Reviews have no reactions API — fall back to
+    the PR itself; workflow runs have no reactable surface at all."""
+    comment = payload.get("comment") or {}
+    if event == "issue_comment" and comment.get("id"):
+        return f"repos/{repo}/issues/comments/{comment['id']}/reactions"
+    if event == "pull_request_review_comment" and comment.get("id"):
+        return f"repos/{repo}/pulls/comments/{comment['id']}/reactions"
+    if event in {"issues", "pull_request", "pull_request_review"}:
+        number = (payload.get("issue") or payload.get("pull_request") or {}).get("number")
+        if number is not None:
+            return f"repos/{repo}/issues/{number}/reactions"
+    return ""
+
+
 async def _execute_webhook_turn(
     core,
     secret_store,
@@ -714,28 +730,43 @@ async def _execute_webhook_turn(
     chat_id: str,
     repo: str,
     delivery: str,
+    ack: str = "",
 ) -> None:
     """Run one accepted webhook delivery as an autonomous agent turn.
 
-    Shared by the live route and startup replay. channel="system": autonomous
-    background turn (auto-approved writes, no confirmation round-trips — nobody
-    can answer one on a webhook). chat_id keeps per-thread continuity.
+    Shared by the live route and startup replay (which passes no ``ack`` — the
+    event is long past by then). channel="system": autonomous background turn
+    (auto-approved writes, no confirmation round-trips — nobody can answer one
+    on a webhook). chat_id keeps per-thread continuity.
     """
     try:
-        # Thread digest (#237): the agent's history only holds turns IT was
-        # woken for — prepend the current GitHub state of the thread so the
-        # turn decides from facts, not from a partial memory. Best-effort:
-        # no token / API down / disabled → the bare event, as before.
-        if gh.get("webhook_digest", True):
+        want_ack = bool(ack) and gh.get("webhook_ack", True)
+        token = None
+        if want_ack or gh.get("webhook_digest", True):
             try:
-                from core import github_digest
                 from core.tools import _agent_gh_token
 
                 agent = await core.agents.get(agent_name)
                 resolve = secret_store.infra_resolve if secret_store else (lambda _n: None)
                 token = _agent_gh_token(gh, agent_name, core.config, resolve) if agent else None
+            except Exception:  # noqa: BLE001 — ack/digest are best-effort extras
+                log.exception("webhook token mint failed (agent=%s)", agent_name)
+        # 👀 ack (#241): a visible "an agent is on it" in the GitHub UI, with
+        # the agent's own identity, before the (slow) turn runs.
+        if want_ack and token:
+            from core import github_digest
+
+            await github_digest.ack_reaction(ack, token)
+        # Thread digest (#237): the agent's history only holds turns IT was
+        # woken for — prepend the current GitHub state of the thread so the
+        # turn decides from facts, not from a partial memory. Best-effort:
+        # no token / API down / disabled → the bare event, as before.
+        if token and gh.get("webhook_digest", True):
+            try:
+                from core import github_digest
+
                 number = chat_id.rsplit("#", 1)[-1]
-                if token and number.isdigit():
+                if number.isdigit():
                     digest = await github_digest.thread_digest(repo, int(number), token)
                     if digest:
                         task = f"{task}\n{digest}"
@@ -2152,7 +2183,17 @@ def create_admin_app(
         # the turn runs in the background like scheduler jobs. Keep a strong ref
         # until it finishes.
         turn = asyncio.create_task(
-            _execute_webhook_turn(core, secret_store, agent_name, gh, task, chat_id, repo, delivery)
+            _execute_webhook_turn(
+                core,
+                secret_store,
+                agent_name,
+                gh,
+                task,
+                chat_id,
+                repo,
+                delivery,
+                ack=_gh_ack_target(event, payload, repo),
+            )
         )
         _GH_TURN_TASKS.add(turn)
         turn.add_done_callback(_GH_TURN_TASKS.discard)
