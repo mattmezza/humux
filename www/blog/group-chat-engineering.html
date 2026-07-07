@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Group Chat Engineering: Multi-Agent Coordination Without Loops — humux blog</title>
+  <meta name="description" content="How to run multiple AI agents in one Telegram group without bot-to-bot feedback loops, missed messages, or confused responses.">
+  <link rel="canonical" href="https://humux.dev/blog/group-chat-engineering">
+
+  <meta property="og:title" content="Group Chat Engineering: Multi-Agent Coordination Without Loops">
+  <meta property="og:description" content="How to run multiple AI agents in one Telegram group without bot-to-bot feedback loops, missed messages, or confused responses.">
+  <meta property="og:url" content="https://humux.dev/blog/group-chat-engineering">
+  <meta property="og:type" content="article">
+  <meta property="og:image" content="https://humux.dev/assets/images/og-image.png">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Group Chat Engineering: Multi-Agent Coordination Without Loops">
+  <meta name="twitter:description" content="How to run multiple AI agents in one Telegram group without bot-to-bot feedback loops, missed messages, or confused responses.">
+  <meta name="twitter:image" content="https://humux.dev/assets/images/og-image.png">
+  <meta name="twitter:site" content="@_mattmezza_">
+  <meta name="twitter:creator" content="@_mattmezza_">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "headline": "Group Chat Engineering: Multi-Agent Coordination Without Loops",
+    "description": "How to run multiple AI agents in one Telegram group without bot-to-bot feedback loops, missed messages, or confused responses.",
+    "datePublished": "2026-06-23",
+    "author": { "@type": "Person", "name": "Matteo Merola" },
+    "publisher": { "@type": "Organization", "name": "humux" },
+    "url": "https://humux.dev/blog/group-chat-engineering"
+  }
+  </script>
+
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://humux.dev/"},{"@type":"ListItem","position":2,"name":"Blog","item":"https://humux.dev/blog/"},{"@type":"ListItem","position":3,"name":"Group Chat Engineering: Multi-Agent Coordination Without Loops","item":"https://humux.dev/blog/group-chat-engineering.html"}]}
+  </script>
+
+  <link rel="alternate" type="application/rss+xml" title="humux blog" href="/blog/feed.xml">
+
+  <link rel="icon" type="image/svg+xml" href="/assets/images/favicon-32.svg">
+  <link rel="alternate icon" type="image/png" sizes="32x32" href="/assets/images/favicon-32.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/images/apple-touch-icon.png">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="/assets/css/style.css">
+
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script defer src="https://analytics.casa.merola.co/script.js" data-website-id="b395aaa1-97a5-494e-9ad8-15b3ba20318e"></script>
+</head>
+<body>
+
+  <!-- Nav -->
+  <nav x-data="{ open: false }" class="sticky top-0 z-50 border-b border-[var(--color-border)]" style="background: rgba(6,6,6,0.85); backdrop-filter: blur(12px);">
+    <div class="mx-auto flex max-w-6xl items-center justify-between px-5 py-3">
+      <a href="/" class="flex items-center gap-2 no-underline">
+        <span class="text-sm font-semibold tracking-wider" style="color: var(--color-accent);">humux</span>
+        <span class="hidden sm:inline text-xs" style="color: var(--color-muted);">/ˈhjuːmʌks/</span>
+      </a>
+      <div class="hidden md:flex items-center gap-5 text-xs">
+        <a href="/" class="no-underline transition-colors" style="color: var(--color-secondary);">Home</a>
+        <a href="/features.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Features</a>
+        <a href="/use-cases.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Use Cases</a>
+        <a href="/comparison.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Comparison</a>
+        <a href="/blog/" class="font-medium no-underline" style="color: var(--color-accent);">Blog</a>
+        <a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="no-underline transition-colors" style="color: var(--color-secondary);">
+          <svg class="inline-block h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        </a>
+        <a href="https://docs.humux.dev" target="_blank" rel="noopener" class="no-underline transition-colors" style="color: var(--color-secondary);">Docs</a>
+      </div>
+      <button @click="open = !open" class="md:hidden p-2" style="color: var(--color-secondary);" aria-label="Menu">
+        <svg x-show="!open" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        <svg x-show="open" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div x-show="open" @click.outside="open = false" x-cloak class="md:hidden border-t border-[var(--color-border)] px-5 py-4 space-y-3 text-sm" style="background: rgba(6,6,6,0.95);">
+      <a href="/" class="block no-underline transition-colors" style="color: var(--color-secondary);">Home</a>
+      <a href="/features.html" class="block no-underline transition-colors" style="color: var(--color-secondary);">Features</a>
+      <a href="/use-cases.html" class="block no-underline transition-colors" style="color: var(--color-secondary);">Use Cases</a>
+      <a href="/comparison.html" class="block no-underline transition-colors" style="color: var(--color-secondary);">Comparison</a>
+      <a href="/blog/" class="block font-medium no-underline" style="color: var(--color-accent);">Blog</a>
+      <a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="block no-underline transition-colors" style="color: var(--color-secondary);">GitHub</a>
+      <a href="https://docs.humux.dev" target="_blank" rel="noopener" class="block no-underline transition-colors" style="color: var(--color-secondary);">Docs</a>
+    </div>
+  </nav>
+
+  <!-- Article -->
+  <article class="mx-auto max-w-3xl px-5 py-16">
+    <header class="mb-12">
+      <p class="text-xs font-mono mb-3" style="color: var(--color-muted);">June 23, 2026 &mdash; Matteo Merola</p>
+      <h1 class="text-3xl sm:text-4xl font-bold leading-tight mb-4" style="color: #eee;">Group Chat Engineering: Multi-Agent Coordination Without Loops</h1>
+      <p class="text-lg leading-relaxed" style="color: var(--color-secondary);">How to run multiple agents in one Telegram group without bot-to-bot feedback loops, missed messages, or confused responses.</p>
+    </header>
+
+    <div class="space-y-6">
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        Put two bots in a Telegram group. Bot A says something. Bot B sees it, thinks it's a message worth responding to, and replies. Bot A sees Bot B's reply. It responds. Bot B responds to that. Within seconds you have an infinite loop burning through your API budget while your group chat scrolls into oblivion.
+      </p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        This is the fundamental problem of multi-agent group chat, and most systems solve it by not allowing it. One bot per group, or bots ignore each other by convention. But there are legitimate reasons to want multiple agents in one conversation &mdash; a DevOps bot and a research bot in a project channel, a personal assistant and a coding agent in your private group. humux runs this in production with four layers of protection.
+      </p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">Layer 1: The addressing protocol</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        The first and most important rule: agents only respond when addressed. No mention, no response. If a message mentions <code class="inline-code">@forge</code>, only Forge responds. If it mentions <code class="inline-code">@forge</code> and <code class="inline-code">@atlas</code>, only the <em>first</em> mentioned bot acts. This is deterministic &mdash; no ambiguity about who should respond.
+      </p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        The <code class="inline-code">_addressing_target</code> function parses the message entities and finds the first bot mention, skipping things that look like mentions but aren't &mdash; bot commands (<code class="inline-code">/start@forge</code>), URLs that happen to contain an @, and entity types that don't represent direct addressing.
+      </p>
+
+      <div class="terminal-window mt-6 mb-6">
+        <div class="terminal-header">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+          <span class="ml-2 text-xs" style="color: var(--color-muted);">addressing.py</span>
+        </div>
+        <div class="terminal-body">
+<pre>def _addressing_target(message) -> str | None:
+    """Return the bot username this message is addressed to, or None."""
+    for entity in message.entities or []:
+        if entity.type == "mention":
+            username = message.text[entity.offset:entity.offset + entity.length]
+            if username.lstrip("@") in known_bot_usernames:
+                return username.lstrip("@")
+    return None
+
+# "Hey @forge can you check the deploy?" → "forge"
+# "Check https://t.me/@forge_bot/123" → None (URL, not mention)
+# "@forge @atlas review this"          → "forge" (first wins)</pre>
+        </div>
+      </div>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        This single rule eliminates most loop scenarios. Bot A responds. Bot B sees Bot A's message. Bot B's username isn't in it, so Bot B stays quiet. No loop. The only way to create a loop is if the bots are configured to mention each other in their responses &mdash; and that's a character prompt problem, not an architecture problem.
+      </p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">Layer 2: The reply decision gate</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        Addressing handles the obvious case. But there are edge cases: a bot mentioned in a quote ("earlier @forge said X"), mentioned negatively ("don't bother @forge with this"), or mentioned in a forwarded message. The addressing protocol sees a mention and says "respond." The right answer is "don't."
+      </p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        The reply decision gate is a cheap classifier that runs <em>after</em> the addressing check passes. It takes the message, the bot's name, and the conversation context, and produces a binary decision: respond or stay silent. This runs on a fast, inexpensive model &mdash; not the main agent model. The cost per message is negligible.
+      </p>
+
+      <div class="terminal-window mt-6 mb-6">
+        <div class="terminal-header">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+          <span class="ml-2 text-xs" style="color: var(--color-muted);">reply gate</span>
+        </div>
+        <div class="terminal-body">
+<pre># The gate prompt (simplified):
+"You are deciding whether the bot '{bot_name}' should reply.
+The bot was mentioned, but is the user actually asking for
+a response? Reply YES or NO."
+
+# Examples where the gate says NO:
+# "As @forge mentioned earlier, the deploy is fine" → NO
+# "Don't ping @forge about this, it's not urgent"   → NO
+# "I forwarded @forge's message above for context"   → NO</pre>
+        </div>
+      </div>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">Layer 3: Hard rate cap</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        Layers 1 and 2 are smart. Layer 3 is dumb &mdash; and that's the point. If an agent has responded N times within M seconds in the same chat, it stops responding regardless of addressing or gate decisions. This is the circuit breaker that catches everything the smart layers miss.
+      </p>
+
+      <div class="terminal-window mt-6 mb-6">
+        <div class="terminal-header">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+          <span class="ml-2 text-xs" style="color: var(--color-muted);">config.yml</span>
+        </div>
+        <div class="terminal-body">
+<pre>agents:
+  - slug: forge
+    rate_cap:
+      max_responses: 5
+      window_seconds: 60
+    # If forge has already replied 5 times in the last 60s
+    # in the same chat, it goes silent until the window passes.</pre>
+        </div>
+      </div>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        The rate cap is deliberately conservative. In normal usage you'll never hit it &mdash; five responses per minute is well above natural conversation pace. But in a runaway loop, it fires within seconds and kills the spiral. The cap is per-chat, so an agent being active in one group doesn't affect its availability in another.
+      </p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">Layer 4: Speaker tags for context</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        In a 1:1 chat, the conversation is straightforward: user messages and agent responses. In a group, the agent needs to know <em>who</em> said what. humux injects speaker tags into the conversation history before sending it to the model:
+      </p>
+
+      <div class="terminal-window mt-6 mb-6">
+        <div class="terminal-header">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+          <span class="ml-2 text-xs" style="color: var(--color-muted);">group context</span>
+        </div>
+        <div class="terminal-body">
+<pre># What the model sees in a group conversation:
+[Alice] can you check the deploy status?
+[forge] Deploy #847 completed at 14:32 UTC. All health checks pass.
+[Bob] @atlas what's on the calendar for Thursday?
+[atlas] Thursday: standup at 10am, design review at 2pm.
+[Alice] @forge any errors in the last hour?</pre>
+        </div>
+      </div>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        The speaker tags include other bots. Forge can see that Atlas responded to Bob, which prevents it from jumping in with "I don't have calendar access" when nobody asked. Each agent has full visibility of the conversation flow but only acts when it's their turn.
+      </p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">Per-chat trigger settings</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        Not every group should have the same trigger rules. A project channel where everyone can invoke bots is different from a team channel where only leads should trigger the deploy agent. humux supports per-chat settings on each agent:
+      </p>
+
+      <div class="terminal-window mt-6 mb-6">
+        <div class="terminal-header">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+          <span class="ml-2 text-xs" style="color: var(--color-muted);">config.yml</span>
+        </div>
+        <div class="terminal-body">
+<pre>agents:
+  - slug: forge
+    chat_settings:
+      # Project group: anyone can trigger
+      "-1001234567890":
+        trigger: everyone
+
+      # Ops channel: only specific users
+      "-1009876543210":
+        trigger: users
+        allowed_users: [111222333, 444555666]
+
+      # Announce channel: bot never responds
+      "-1005555555555":
+        trigger: nobody</pre>
+        </div>
+      </div>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        Chat IDs are typed integers &mdash; Telegram's actual chat identifiers, not usernames or display names. The <code class="inline-code">trigger</code> field accepts three values: <code class="inline-code">everyone</code> (any user can address the bot), <code class="inline-code">users</code> (only user IDs in <code class="inline-code">allowed_users</code>), or <code class="inline-code">nobody</code> (the bot listens for context but never responds, useful for read-only monitoring). The Telegram Bot API doesn't expose group member lists, so there's no roster to enumerate &mdash; you add user IDs explicitly.
+      </p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">The defense-in-depth pattern</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        No single layer is perfect. The addressing protocol can be fooled by creative message formatting. The reply gate can misjudge a borderline case. The rate cap doesn't prevent the first few messages of a loop. But together, they create a defense-in-depth system where each layer catches what the previous one missed. In production, the addressing protocol stops 95% of unwanted responses. The gate catches most of the remaining 5%. The rate cap has fired exactly twice in six months &mdash; both times catching a conversation where two humans kept mentioning both bots in rapid succession, not an actual loop.
+      </p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        The result is a group chat where multiple agents coexist naturally. Each has its own personality, tools, and Telegram identity. Users address the one they want. The others stay quiet. And if anything goes wrong, the rate cap kills it before anyone's API budget takes a hit.
+      </p>
+    </div>
+
+    <!-- CTA -->
+    <div class="mt-16 pt-8 border-t" style="border-color: var(--color-border);">
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        humux supports multiple agents in one Telegram group with addressing, reply gating, and per-chat settings.
+        <a href="/" class="no-underline font-medium" style="color: var(--color-accent);">Try it &rarr;</a>
+      </p>
+    </div>
+  </article>
+
+  <!-- Footer -->
+  <footer class="border-t px-5 py-12" style="border-color: var(--color-border); background: var(--color-surface);">
+    <div class="mx-auto max-w-6xl">
+      <div class="flex flex-wrap items-start justify-between gap-8">
+        <div>
+          <span class="text-sm font-semibold" style="color: var(--color-accent);">humux</span>
+          <p class="mt-1 text-xs" style="color: var(--color-muted);">Human Multiplexer &mdash; /ˈhjuːmʌks/</p>
+          <p class="mt-0.5 text-xs" style="color: var(--color-muted);">Your self-hosted personal AI agent.</p>
+        </div>
+        <div class="flex flex-wrap gap-10">
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Site</span>
+            <ul class="mt-2 space-y-1 text-xs" style="color: var(--color-muted);">
+              <li><a href="/" class="no-underline">Home</a></li>
+              <li><a href="/features.html" class="no-underline">Features</a></li>
+              <li><a href="/use-cases.html" class="no-underline">Use Cases</a></li>
+              <li><a href="/comparison.html" class="no-underline">Comparison</a></li>
+              <li><a href="/blog/" class="no-underline">Blog</a></li>
+            </ul>
+          </div>
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Resources</span>
+            <ul class="mt-2 space-y-1 text-xs" style="color: var(--color-muted);">
+              <li><a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="no-underline">GitHub</a></li>
+              <li><a href="https://docs.humux.dev" target="_blank" rel="noopener" class="no-underline">Documentation</a></li>
+              <li><a href="https://github.com/mattmezza/humux/releases" target="_blank" rel="noopener" class="no-underline">Releases</a></li>
+            </ul>
+          </div>
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Author</span>
+            <ul class="mt-2 space-y-1 text-xs" style="color: var(--color-muted);">
+              <li><a href="https://x.com/_mattmezza_" target="_blank" rel="noopener" class="no-underline">@_mattmezza_</a></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div class="mt-10 border-t pt-6 text-center text-xs" style="border-color: var(--color-border); color: var(--color-muted);">
+        &copy; 2026 Merola Software &amp; Services. MIT License.
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

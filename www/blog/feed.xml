@@ -8,66 +8,94 @@
     <atom:link href="https://humux.dev/blog/feed.xml" rel="self" type="application/rss+xml"/>
 
     <item>
+      <title>Release Notes: v0.25 – v0.28</title>
+      <link>https://humux.dev/blog/release-notes-v025-v028.html</link>
+      <guid>https://humux.dev/blog/release-notes-v025-v028.html</guid>
+      <pubDate>Tue, 07 Jul 2026 00:00:00 +0000</pubDate>
+      <description>Four releases in one week: GitHub webhook integration, per-agent LLM overrides, token usage dashboard, and chain-of-thought feedback.</description>
+    </item>
+    <item>
+      <title>How I Replaced My Cloud AI Assistant with a Self-Hosted Agent</title>
+      <link>https://humux.dev/blog/replacing-cloud-ai.html</link>
+      <guid>https://humux.dev/blog/replacing-cloud-ai.html</guid>
+      <pubDate>Fri, 03 Jul 2026 00:00:00 +0000</pubDate>
+      <description>A personal account of migrating from cloud AI assistants to humux — what worked, what broke, and what I'd do differently.</description>
+    </item>
+    <item>
       <title>Subagent Patterns: Scoped Delegation for Complex Tasks</title>
       <link>https://humux.dev/blog/subagent-patterns.html</link>
       <guid>https://humux.dev/blog/subagent-patterns.html</guid>
-      <pubDate>Sat, 04 Jul 2026 00:00:00 +0000</pubDate>
-      <description>How to spawn scoped sub-tasks from an agent with inherit-never-widen security, budget controls, and sync or background execution modes.</description>
+      <pubDate>Sun, 28 Jun 2026 00:00:00 +0000</pubDate>
+      <description>How to spawn scoped sub-tasks with inherit-never-widen security, budget controls, and sync or background execution.</description>
     </item>
-
+    <item>
+      <title>Group Chat Engineering: Multiple Agents, Zero Loops</title>
+      <link>https://humux.dev/blog/group-chat-engineering.html</link>
+      <guid>https://humux.dev/blog/group-chat-engineering.html</guid>
+      <pubDate>Tue, 23 Jun 2026 00:00:00 +0000</pubDate>
+      <description>The addressing protocol, reply decision gate, rate cap, and speaker tags that make multi-agent Telegram groups work.</description>
+    </item>
     <item>
       <title>Why Multiple Agents Beat One Generalist</title>
       <link>https://humux.dev/blog/why-multiple-agents.html</link>
       <guid>https://humux.dev/blog/why-multiple-agents.html</guid>
-      <pubDate>Tue, 30 Jun 2026 00:00:00 +0000</pubDate>
-      <description>Running specialized agents with different skills, tools, and personalities produces better results than one monolithic agent trying to do everything.</description>
+      <pubDate>Thu, 18 Jun 2026 00:00:00 +0000</pubDate>
+      <description>Specialized agents with different skills, tools, and personalities outperform one monolithic agent trying to do everything.</description>
     </item>
-
+    <item>
+      <title>Four Workflows, One Agent: Use Case Walkthroughs</title>
+      <link>https://humux.dev/blog/use-case-walkthroughs.html</link>
+      <guid>https://humux.dev/blog/use-case-walkthroughs.html</guid>
+      <pubDate>Thu, 11 Jun 2026 00:00:00 +0000</pubDate>
+      <description>Real conversation flows for four personas — from code review to email triage to multi-agent group chats.</description>
+    </item>
     <item>
       <title>Voice Pipelines for Agents: On-Device STT and TTS</title>
       <link>https://humux.dev/blog/voice-pipelines-for-agents.html</link>
       <guid>https://humux.dev/blog/voice-pipelines-for-agents.html</guid>
-      <pubDate>Tue, 23 Jun 2026 00:00:00 +0000</pubDate>
+      <pubDate>Thu, 04 Jun 2026 00:00:00 +0000</pubDate>
       <description>Building offline-capable voice interaction with faster-whisper for speech-to-text and Kokoro 82M for text-to-speech.</description>
     </item>
-
     <item>
-      <title>Running a Full Agent Stack in a Single Container</title>
-      <link>https://humux.dev/blog/single-container-agents.html</link>
-      <guid>https://humux.dev/blog/single-container-agents.html</guid>
-      <pubDate>Tue, 09 Jun 2026 00:00:00 +0000</pubDate>
-      <description>Architecture decisions that make it possible to run LLM orchestration, voice, email, calendar, and admin UI in one Docker container.</description>
+      <title>Secrets Management for AI Agents: Why .env Files Aren't Enough</title>
+      <link>https://humux.dev/blog/secrets-management-agents.html</link>
+      <guid>https://humux.dev/blog/secrets-management-agents.html</guid>
+      <pubDate>Thu, 28 May 2026 00:00:00 +0000</pubDate>
+      <description>How a two-tier encrypted vault keeps credentials out of the model context and why .env files are a security risk for autonomous agents.</description>
     </item>
-
     <item>
       <title>Permission Engineering for Autonomous Agents</title>
       <link>https://humux.dev/blog/permission-engineering.html</link>
       <guid>https://humux.dev/blog/permission-engineering.html</guid>
-      <pubDate>Tue, 26 May 2026 00:00:00 +0000</pubDate>
+      <pubDate>Tue, 19 May 2026 00:00:00 +0000</pubDate>
       <description>Glob-pattern rules, approval flows via Telegram, and vault-sealed secrets that never enter the model context.</description>
     </item>
-
     <item>
       <title>Memory Architecture for Long-Running Agents</title>
       <link>https://humux.dev/blog/memory-architecture-for-agents.html</link>
       <guid>https://humux.dev/blog/memory-architecture-for-agents.html</guid>
-      <pubDate>Tue, 12 May 2026 00:00:00 +0000</pubDate>
+      <pubDate>Tue, 05 May 2026 00:00:00 +0000</pubDate>
       <description>Four tiers of memory: lexical retrieval, semantic search, importance-based forgetting, and hygiene via deduplication.</description>
     </item>
-
     <item>
       <title>Skills Over Code: Teaching Agents via Markdown</title>
       <link>https://humux.dev/blog/skills-over-code.html</link>
       <guid>https://humux.dev/blog/skills-over-code.html</guid>
-      <pubDate>Tue, 28 Apr 2026 00:00:00 +0000</pubDate>
+      <pubDate>Tue, 21 Apr 2026 00:00:00 +0000</pubDate>
       <description>Why describing CLI tools in markdown files beats writing Python adapter classes for every new agent capability.</description>
     </item>
-
+    <item>
+      <title>Running a Full Agent Stack in a Single Container</title>
+      <link>https://humux.dev/blog/single-container-agents.html</link>
+      <guid>https://humux.dev/blog/single-container-agents.html</guid>
+      <pubDate>Thu, 02 Apr 2026 00:00:00 +0000</pubDate>
+      <description>Architecture decisions that make it possible to run LLM orchestration, voice, email, calendar, and admin UI in one Docker container.</description>
+    </item>
     <item>
       <title>Designing Multi-Channel Agent Architectures</title>
       <link>https://humux.dev/blog/multi-channel-agent-architecture.html</link>
       <guid>https://humux.dev/blog/multi-channel-agent-architecture.html</guid>
-      <pubDate>Tue, 14 Apr 2026 00:00:00 +0000</pubDate>
+      <pubDate>Tue, 17 Mar 2026 00:00:00 +0000</pubDate>
       <description>How to build agents that operate across Telegram, email, calendar, and CLI as a unified system with a common message abstraction.</description>
     </item>
 
