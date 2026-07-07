@@ -6,6 +6,10 @@ CSS_OUT := assets/css/style.css
 WWW_DIR := .
 BUILD_DIR := dist
 
+# Platform detection for Tailwind download (must be before setup target)
+UNAME_S := $(shell uname -s)
+UNAME_M := $(shell uname -m)
+
 # Download Tailwind CSS CLI binary
 setup:
 	@echo "Downloading Tailwind CSS v4.3.2 for $(UNAME_S)/$(UNAME_M)..."
@@ -43,10 +47,6 @@ help:
 	@echo "  Release:"
 	@echo "    make release name=www-v0.1   Tag, push, trigger GHA deploy"
 	@echo ""
-
-# Platform detection for Tailwind download
-UNAME_S := $(shell uname -s)
-UNAME_M := $(shell uname -m)
 
 PORT ?= 9091
 
