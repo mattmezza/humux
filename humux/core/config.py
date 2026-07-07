@@ -96,10 +96,15 @@ class AgentConfig(BaseModel):
     thinking_level: str = ""  # "" (off) | "low" | "medium" | "high" — only for reasoning models
     # Hard ceiling on tokens the model may emit per response. The agentic loop
     # truncates mid-tool-call when this is too small for the output (e.g. a large
-    # file written via the write tool), so keep it generous. 8192 is safe across providers;
+    # file written via the write tool), so keep it generous. 16384 is safe across providers;
     # raise it on the LLM admin tab for capable models (Claude allows up to
     # 128000 — note large non-streaming outputs can approach provider timeouts).
-    max_tokens: int = 8192
+    max_tokens: int = 16384
+    # Hard backstop on LLM round-trips in a single user turn (each round may hold
+    # several tool calls), so even a model that ignores every error signal can't loop
+    # forever. Normal turns use a handful; raise it if a legitimate workflow needs more.
+    # Exposed on the LLM admin tab.
+    max_tool_rounds: int = 50
     # Sampling temperature for the main agent loop. Lower = steadier tool calls;
     # higher = more varied prose. Skipped automatically for reasoning calls. Tune
     # on the LLM admin tab. (#12)

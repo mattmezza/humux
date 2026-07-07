@@ -230,7 +230,7 @@
         .some(pat => id.includes(pat));
     };
 
-    function llmTab(provider, apiKey, model, openaiKey, openaiBaseUrl, googleKey, googleBaseUrl, grokKey, grokBaseUrl, deepseekKey, deepseekBaseUrl, openrouterKey, openrouterBaseUrl, extractionProvider, extractionModel, consolidationProvider, consolidationModel, gdEnabled, gdProvider, gdModel, trEnabled, trProvider, trModel, compactionProvider, compactionModel, thinkingLevel, extractionThinkingLevel, consolidationThinkingLevel, gdThinkingLevel, trThinkingLevel, compactionThinkingLevel, visionEnabled, visionProvider, visionModel, rdEnabled, rdProvider, rdModel, rdThinkingLevel, rdGroupOnly, rdMaxReplies, rdWindowSeconds, maxTokens, temperature, trMaxReflections) {
+    function llmTab(provider, apiKey, model, openaiKey, openaiBaseUrl, googleKey, googleBaseUrl, grokKey, grokBaseUrl, deepseekKey, deepseekBaseUrl, openrouterKey, openrouterBaseUrl, extractionProvider, extractionModel, consolidationProvider, consolidationModel, gdEnabled, gdProvider, gdModel, trEnabled, trProvider, trModel, compactionProvider, compactionModel, thinkingLevel, extractionThinkingLevel, consolidationThinkingLevel, gdThinkingLevel, trThinkingLevel, compactionThinkingLevel, visionEnabled, visionProvider, visionModel, rdEnabled, rdProvider, rdModel, rdThinkingLevel, rdGroupOnly, rdMaxReplies, rdWindowSeconds, maxTokens, maxToolRounds, temperature, trMaxReflections) {
       const currentProvider = provider || 'anthropic';
       return {
         // Sub-tab within the LLM tab (issue #114): inference | providers | history.
@@ -261,7 +261,8 @@
         provider: currentProvider,
         apiKey: apiKey || '',
         model: model || '',
-        maxTokens: maxTokens || '8192',
+        maxTokens: maxTokens || '16384',
+        maxToolRounds: maxToolRounds || '50',
         temperature: temperature || '0.5',
         thinkingLevel: thinkingLevel || '',
         extractionThinkingLevel: extractionThinkingLevel || '',

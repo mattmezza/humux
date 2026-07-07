@@ -1195,7 +1195,8 @@ def create_admin_app(
                 "provider": (await config_store.get("agent.llm_provider")) or "anthropic",
                 "model": (await config_store.get("agent.model")) or "",
                 "thinking_level": (await config_store.get("agent.thinking_level")) or "",
-                "max_tokens": (await config_store.get("agent.max_tokens")) or "8192",
+                "max_tokens": (await config_store.get("agent.max_tokens")) or "16384",
+                "max_tool_rounds": (await config_store.get("agent.max_tool_rounds")) or "50",
                 "temperature": (await config_store.get("agent.temperature")) or "0.5",
             },
         }
@@ -1530,7 +1531,8 @@ def create_admin_app(
         deepseek_vaulted = _is_vault_ref(deepseek_api_key)
         openrouter_vaulted = _is_vault_ref(openrouter_api_key)
         model = await config_store.get("agent.model") or "claude-4-6-sonnet"
-        max_tokens = await config_store.get("agent.max_tokens") or "8192"
+        max_tokens = await config_store.get("agent.max_tokens") or "16384"
+        max_tool_rounds = await config_store.get("agent.max_tool_rounds") or "50"
         thinking_level = await config_store.get("agent.thinking_level") or ""
         temperature = await config_store.get("agent.temperature") or "0.5"
         extraction_provider = await config_store.get("memory.extraction_provider") or "deepseek"
@@ -1594,6 +1596,7 @@ def create_admin_app(
             openrouter_base_url=openrouter_base_url,
             model=model,
             max_tokens=max_tokens,
+            max_tool_rounds=max_tool_rounds,
             temperature=temperature,
             thinking_level=thinking_level,
             extraction_provider=extraction_provider,
