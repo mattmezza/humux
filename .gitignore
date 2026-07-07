@@ -23,4 +23,4 @@ Thumbs.db
 data/*.db
 
 # Tailwind CSS CLI binary (downloaded via make setup)
-www/tailwindcss
+tailwindcss
