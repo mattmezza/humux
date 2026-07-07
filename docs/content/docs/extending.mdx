@@ -158,9 +158,11 @@ outbound auth:
    same secret, and save.
 4. Still in the App's settings, under **Permissions & events → Subscribe to events**,
    tick the events you care about: *Issues*, *Issue comment*, *Pull request*,
-   *Pull request review comment*. (An existing App may need the matching read
-   permissions — Issues and Pull requests — granted first; installations must approve
-   the permission update before events flow.)
+   *Pull request review comment* — plus *Pull request review* and *Workflow runs* if
+   the agent opts into them via `webhook_events` (below). (An existing App may need
+   the matching read permissions — Issues, Pull requests, and Actions for workflow
+   runs — granted first; installations must approve the permission update before
+   events flow.)
 5. GitHub sends a signed `ping` on save — a green check in the App's
    **Advanced → Recent Deliveries** confirms the URL and secret line up.
 
@@ -169,8 +171,11 @@ mis-signed requests are rejected, so the endpoint is safe to expose publicly —
 reachable by GitHub, so your humux host needs a public HTTPS URL (or a tunnel). Events
 from bot accounts are ignored (the agent's own actions echo back as deliveries — this
 guard stops feedback loops), and the agent's **allowed repos** list, when set, also gates
-inbound events. Each issue or PR maps to its own conversation thread
-(`github:<owner>/<repo>#<n>`), so follow-up comments keep their context.
+inbound events. Each issue maps to its own conversation thread
+(`github:<owner>/<repo>#<n>`) — and a PR that declares `Closes #n` in its body joins
+issue `n`'s thread, so the issue discussion, the PR, and its reviews share one
+conversation. Accepted deliveries are journaled to disk and replayed at startup, so a
+restart mid-turn doesn't silently lose the event.
 
 On a **public repo**, add a **Webhook authors** list (next to the webhook secret in the
 agent editor; raw frontmatter `gh: {..., webhook_users: [mattmezza, teammate]}`): only
@@ -193,6 +198,33 @@ Two more knobs next to the webhook secret:
   receives the agent's webhook pings (when a turn ends with something to report).
   Defaults to the owner's DM; pick any chat the agent's bot is active in — e.g. a
   team group — from the dropdown in the agent editor.
+
+Four more knobs exist as raw frontmatter only (no editor field; the editor preserves
+them across saves) — built for multi-agent workflows where several Apps coordinate on
+the same repos:
+
+- **Event map** (`gh: {..., webhook_events: {issues: [opened, reopened, closed],
+  pull_request: [opened, synchronize], pull_request_review: [submitted],
+  workflow_run: [completed], issue_comment: [created]}}`) — exactly which
+  event/action pairs wake the agent. Default: issues/PRs/comments/review-comments on
+  `opened`/`created`/`reopened`, as before. The extras worth knowing:
+  `issues.closed` (a merged PR closes its issue — the coordinator's dispatch
+  trigger), `pull_request_review.submitted` (a review with only a top-level body
+  fires no review-*comment* event at all), `pull_request.synchronize` (new pushes on
+  a PR), and `workflow_run.completed` (CI results, no relay Action needed; runs not
+  tied to a PR are skipped).
+- **Auto events** (`gh: {..., webhook_auto_events: [pull_request.opened]}`) — with a
+  mention gate set, these `event` / `event.action` keys wake the agent *without* an
+  @-mention. Role triggers: a reviewer agent must see every new PR, but should stay
+  mention-gated for everything else. The self-loop guard is unaffected.
+- **Rate cap** (`gh: {..., webhook_rate_limit: 20}`) — max webhook turns per thread
+  per hour (default 20). Author gates stop loops; this stops storms between mutually
+  allowlisted bots.
+- **Thread digest** (`gh: {..., webhook_digest: false}` to disable) — by default,
+  each webhook turn is prefixed with the thread's current state fetched live from
+  GitHub (title/state/labels/milestone/assignees + the last 10 comments) using the
+  agent's own gh identity. The agent's chat history only holds turns *it* was woken
+  for; the digest makes every turn see what other agents and humans did in between.
 
 The webhook is part of the agent's per-agent gh identity: it only fires while the
 agent's GitHub tool is **Enabled** (not *Disabled* and not *Inherit* — inherit means

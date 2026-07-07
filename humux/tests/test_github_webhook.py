@@ -10,6 +10,7 @@ from types import SimpleNamespace
 from typing import cast
 from unittest.mock import AsyncMock
 
+import pytest
 from fastapi.testclient import TestClient
 
 import api.admin as admin
@@ -17,6 +18,20 @@ from api.admin import AgentState, _github_event_task, _github_sig_ok, create_adm
 from core.config_store import ConfigStore
 
 SECRET = "s3cret"
+
+
+@pytest.fixture(autouse=True)
+def _webhook_state(monkeypatch, tmp_path):
+    """Isolate the module-global webhook state (#237): the per-thread rate-cap
+    dict would otherwise accumulate across tests (same chat key everywhere),
+    and the delivery WAL would write into the repo's real data/ dir."""
+    monkeypatch.setattr(admin, "_GH_WAL_DIR", tmp_path / "wal")
+    admin._GH_THREAD_TURNS.clear()
+    # Tests that stub asyncio.create_task leave fake tasks in the strong-ref
+    # set; drain it so a later test can gather the set safely.
+    admin._GH_TURN_TASKS.clear()
+    yield
+    admin._GH_THREAD_TURNS.clear()
 
 
 class _ConfigStoreStub:
@@ -36,10 +51,19 @@ class _Agents:
 
 
 def _agent(**gh) -> SimpleNamespace:
+    # webhook_digest off: these tests exercise gates/dispatch, not the digest
+    # (which needs a token + GitHub API; covered by its own tests below).
     return SimpleNamespace(
         name="dev",
         enabled=True,
-        tool_config={"gh": {"enabled": True, "webhook_secret": "WH_SECRET", **gh}},
+        tool_config={
+            "gh": {
+                "enabled": True,
+                "webhook_secret": "WH_SECRET",
+                "webhook_digest": False,
+                **gh,
+            }
+        },
     )
 
 
@@ -374,6 +398,272 @@ def test_webhook_runs_turn_in_background(monkeypatch) -> None:
     assert kwargs["agent_name"] == "dev"
     assert kwargs["chat_id"] == "github:acme/widgets#7"
     assert kwargs["channel"] == "system"
+
+
+PR_PAYLOAD = {
+    "action": "opened",
+    "repository": {"full_name": "acme/widgets"},
+    "pull_request": {
+        "number": 15,
+        "title": "Add login form",
+        "body": "Implements the form.\n\nCloses #7",
+        "user": {"login": "alice"},
+        "html_url": "https://github.com/acme/widgets/pull/15",
+    },
+    "sender": {"login": "alice", "type": "User"},
+}
+
+
+def test_event_task_threads_pr_into_linked_issue() -> None:
+    # "Closes #7" in the PR body → the PR joins issue 7's conversation.
+    parsed = _github_event_task("pull_request", PR_PAYLOAD)
+    assert parsed is not None
+    task, chat_id, _repo = parsed
+    assert chat_id == "github:acme/widgets#7"
+    assert "#15" in task  # the task still names the PR itself
+    # All GitHub closing keywords count, case-insensitively.
+    for kw in ("closes", "Closed", "fix", "Fixes", "fixed", "resolves", "Resolve"):
+        p = {**PR_PAYLOAD, "pull_request": {**PR_PAYLOAD["pull_request"], "body": f"{kw} #9"}}
+        assert _github_event_task("pull_request", p)[1] == "github:acme/widgets#9"
+    # No closing keyword → threads under its own number.
+    plain = {**PR_PAYLOAD, "pull_request": {**PR_PAYLOAD["pull_request"], "body": "WIP"}}
+    assert _github_event_task("pull_request", plain)[1] == "github:acme/widgets#15"
+    # A stray "fixes #N" in a plain ISSUE body must NOT re-thread the issue.
+    issue = {**ISSUE_PAYLOAD, "issue": {**ISSUE_PAYLOAD["issue"], "body": "fixes #3"}}
+    assert _github_event_task("issues", issue)[1] == "github:acme/widgets#7"
+    # A comment on a PR (GitHub sends it as an issue whose body is the PR's)
+    # threads into the linked issue too.
+    pr_comment = {
+        "action": "created",
+        "repository": {"full_name": "acme/widgets"},
+        "issue": {
+            "number": 15,
+            "title": "Add login form",
+            "body": "Implements the form.\n\nCloses #7",
+            "user": {"login": "alice"},
+            "html_url": "https://github.com/acme/widgets/pull/15",
+            "pull_request": {"url": "https://api.github.com/repos/acme/widgets/pulls/15"},
+        },
+        "comment": {
+            "body": "lgtm-ish",
+            "user": {"login": "bob"},
+            "html_url": "https://github.com/acme/widgets/pull/15#issuecomment-1",
+        },
+        "sender": {"login": "bob", "type": "User"},
+    }
+    assert _github_event_task("issue_comment", pr_comment)[1] == "github:acme/widgets#7"
+
+
+def test_event_task_new_events_are_opt_in() -> None:
+    # Defaults = pre-#237 behavior: closed/synchronize/review/CI stay silent.
+    closed = {**ISSUE_PAYLOAD, "action": "closed"}
+    assert _github_event_task("issues", closed) is None
+    sync = {**PR_PAYLOAD, "action": "synchronize"}
+    assert _github_event_task("pull_request", sync) is None
+    # Opted in via webhook_events → they wake the agent.
+    events = admin._gh_event_filter({"issues": ["opened", "closed"]})
+    parsed = _github_event_task("issues", closed, events=events)
+    assert parsed is not None and "(closed)" in parsed[0]
+    # …and the filter is exact: opting into closed doesn't admit reopened.
+    reopened = {**ISSUE_PAYLOAD, "action": "reopened"}
+    events2 = admin._gh_event_filter({"issues": ["closed"]})
+    assert _github_event_task("issues", reopened, events=events2) is None
+    # Unknown events/actions in the config are dropped, not honored.
+    junk = admin._gh_event_filter({"issues": ["deleted"], "star": ["created"]})
+    assert junk == {}
+    # Malformed config (not a dict) falls back to the defaults.
+    assert admin._gh_event_filter("issues") == admin._GH_DEFAULT_EVENTS
+
+
+def test_event_task_pull_request_review_submitted() -> None:
+    payload = {
+        "action": "submitted",
+        "repository": {"full_name": "acme/widgets"},
+        "pull_request": {
+            "number": 15,
+            "title": "Add login form",
+            "body": "Closes #7",
+            "user": {"login": "alice"},
+            "html_url": "https://github.com/acme/widgets/pull/15",
+        },
+        "review": {
+            "state": "changes_requested",
+            "body": "Please add a test for the empty-password case.",
+            "user": {"login": "rev"},
+            "html_url": "https://github.com/acme/widgets/pull/15#pullrequestreview-1",
+        },
+        "sender": {"login": "rev", "type": "User"},
+    }
+    events = admin._gh_event_filter({"pull_request_review": ["submitted"]})
+    parsed = _github_event_task("pull_request_review", payload, events=events)
+    assert parsed is not None
+    task, chat_id, _ = parsed
+    assert chat_id == "github:acme/widgets#7"  # threads with the PR's issue
+    assert "changes_requested" in task and "empty-password" in task and "@rev" in task
+
+
+def test_event_task_workflow_run_completed() -> None:
+    payload = {
+        "action": "completed",
+        "repository": {"full_name": "acme/widgets"},
+        "workflow_run": {
+            "name": "ci",
+            "conclusion": "failure",
+            "head_branch": "issue-7-login",
+            "html_url": "https://github.com/acme/widgets/actions/runs/1",
+            "pull_requests": [{"number": 15}],
+        },
+        "sender": {"login": "alice", "type": "User"},
+    }
+    events = admin._gh_event_filter({"workflow_run": ["completed"]})
+    parsed = _github_event_task("workflow_run", payload, events=events)
+    assert parsed is not None
+    task, chat_id, _ = parsed
+    assert chat_id == "github:acme/widgets#15"
+    assert "failure" in task and "actions/runs/1" in task
+    # A run with no associated PR (push to main, cron) has no thread → ignored.
+    no_pr = {**payload, "workflow_run": {**payload["workflow_run"], "pull_requests": []}}
+    assert _github_event_task("workflow_run", no_pr, events=events) is None
+
+
+def test_event_task_auto_events_bypass_mention_not_self_drop() -> None:
+    # Mention configured, not mentioned → normally ignored…
+    assert _github_event_task("pull_request", PR_PAYLOAD, mention="my-agent") is None
+    # …but an auto event wakes without the mention (role trigger), by
+    # event.action or bare event key.
+    for auto in ({"pull_request.opened"}, {"pull_request"}):
+        parsed = _github_event_task(
+            "pull_request", PR_PAYLOAD, mention="my-agent", auto=frozenset(auto)
+        )
+        assert parsed is not None
+    # The self-loop guard survives auto: the agent's own echo never wakes it.
+    own = {**PR_PAYLOAD, "sender": {"login": "my-agent[bot]", "type": "Bot"}}
+    assert (
+        _github_event_task(
+            "pull_request", own, mention="my-agent", auto=frozenset({"pull_request"})
+        )
+        is None
+    )
+    # Auto set parsing: scalar and junk are tolerated.
+    assert admin._gh_auto_set("issues.closed") == frozenset({"issues.closed"})
+    assert admin._gh_auto_set(None) == frozenset()
+    assert admin._gh_auto_set(42) == frozenset()
+
+
+def test_webhook_rate_cap(monkeypatch, tmp_path) -> None:
+    captured = _capture_create_task(monkeypatch)
+    monkeypatch.setattr(admin, "_GH_WAL_DIR", tmp_path / "wal")
+    admin._GH_THREAD_TURNS.clear()
+    client, core = _client(agent=_agent(webhook_rate_limit=2))
+    assert _post(client, ISSUE_PAYLOAD).status_code == 202
+    assert _post(client, ISSUE_PAYLOAD).status_code == 202
+    resp = _post(client, ISSUE_PAYLOAD)
+    assert resp.status_code == 200 and resp.text == "rate limited"
+    # Another thread is unaffected.
+    other = {**ISSUE_PAYLOAD, "issue": {**ISSUE_PAYLOAD["issue"], "number": 8}}
+    assert _post(client, other).status_code == 202
+    # Old timestamps age out of the window.
+    key = "github:acme/widgets#7"
+    admin._GH_THREAD_TURNS[key] = [t - 4000 for t in admin._GH_THREAD_TURNS[key]]
+    assert _post(client, ISSUE_PAYLOAD).status_code == 202
+    admin._GH_THREAD_TURNS.clear()
+    for coro in captured:
+        coro.close()
+
+
+def test_webhook_wal_written_and_cleared(monkeypatch, tmp_path) -> None:
+    captured = _capture_create_task(monkeypatch)
+    wal = tmp_path / "wal"
+    monkeypatch.setattr(admin, "_GH_WAL_DIR", wal)
+    admin._GH_SEEN_DELIVERIES.clear()
+    admin._GH_THREAD_TURNS.clear()
+    client, core = _client()
+    assert _post(client, ISSUE_PAYLOAD, delivery="guid-wal").status_code == 202
+    files = list(wal.glob("*.json"))
+    assert len(files) == 1
+    record = json.loads(files[0].read_text())
+    assert record["agent_name"] == "dev" and record["chat_id"] == "github:acme/widgets#7"
+    asyncio.run(captured[0])  # turn completes → WAL entry gone
+    assert list(wal.glob("*.json")) == []
+    # A failed turn clears its WAL entry too (replay must be a human decision).
+    core.process = AsyncMock(side_effect=RuntimeError("boom"))
+    assert _post(client, ISSUE_PAYLOAD, delivery="guid-wal2").status_code == 202
+    asyncio.run(captured[1])
+    assert list(wal.glob("*.json")) == []
+    assert "guid-wal2" not in admin._GH_SEEN_DELIVERIES  # redeliverable
+    admin._GH_THREAD_TURNS.clear()
+
+
+def test_webhook_wal_replay(monkeypatch, tmp_path) -> None:
+    wal = tmp_path / "wal"
+    wal.mkdir(parents=True)
+    monkeypatch.setattr(admin, "_GH_WAL_DIR", wal)
+    admin._GH_SEEN_DELIVERIES.clear()
+    record = {
+        "agent_name": "dev",
+        "task": "do the thing",
+        "chat_id": "github:acme/widgets#7",
+        "repo": "acme/widgets",
+        "delivery": "guid-replay",
+    }
+    (wal / "guid-replay.json").write_text(json.dumps(record))
+    # An entry for a gone/unconfigured agent is dropped without a turn.
+    (wal / "stale.json").write_text(json.dumps({**record, "agent_name": "ghost"}))
+    agent = _agent()
+    core = SimpleNamespace(
+        agents=_Agents(agent),
+        process=AsyncMock(return_value=SimpleNamespace(text="[NO_UPDATES]")),
+        channels={},
+    )
+    secret_store = SimpleNamespace(infra_resolve=lambda n: None)
+
+    async def run() -> int:
+        n = await admin.replay_webhook_deliveries(SimpleNamespace(agent=core), secret_store)
+        await asyncio.gather(*admin._GH_TURN_TASKS, return_exceptions=True)
+        return n
+
+    assert asyncio.run(run()) == 1
+    core.process.assert_awaited_once()
+    kwargs = core.process.await_args.kwargs
+    assert kwargs["chat_id"] == "github:acme/widgets#7" and kwargs["agent_name"] == "dev"
+    assert list(wal.glob("*.json")) == []  # both the replayed and the stale entry
+    assert "guid-replay" in admin._GH_SEEN_DELIVERIES  # stays deduped post-replay
+
+
+def test_webhook_digest_prepended(monkeypatch, tmp_path) -> None:
+    captured = _capture_create_task(monkeypatch)
+    monkeypatch.setattr(admin, "_GH_WAL_DIR", tmp_path / "wal")
+    admin._GH_THREAD_TURNS.clear()
+    from core import github_digest, tools
+
+    monkeypatch.setattr(tools, "_agent_gh_token", lambda *a, **k: "tok-123")
+
+    seen: dict = {}
+
+    async def fake_digest(repo, number, token):
+        seen.update(repo=repo, number=number, token=token)
+        return "[Thread state] acme/widgets#7 (open): It breaks"
+
+    monkeypatch.setattr(github_digest, "thread_digest", fake_digest)
+    client, core = _client(agent=_agent(webhook_digest=True))
+    core.config = SimpleNamespace()  # _agent_gh_token is stubbed; config is opaque
+    assert _post(client, ISSUE_PAYLOAD).status_code == 202
+    asyncio.run(captured[0])
+    message = core.process.await_args.kwargs["message"]
+    assert message.endswith("[Thread state] acme/widgets#7 (open): It breaks")
+    assert "[GitHub] New issue" in message
+    assert seen == {"repo": "acme/widgets", "number": 7, "token": "tok-123"}
+
+    # Digest failure must not sink the turn: the bare event still dispatches.
+    async def broken(repo, number, token):
+        raise RuntimeError("api down")
+
+    monkeypatch.setattr(github_digest, "thread_digest", broken)
+    core.process.reset_mock()
+    assert _post(client, ISSUE_PAYLOAD).status_code == 202
+    asyncio.run(captured[1])
+    assert core.process.await_args.kwargs["message"].startswith("[GitHub] New issue")
+    admin._GH_THREAD_TURNS.clear()
 
 
 def test_resolve_chat_titles() -> None:

@@ -578,17 +578,72 @@ def _agent_public(agent) -> dict:
 # Inbound GitHub App webhooks (issue #210)
 # ---------------------------------------------------------------------------
 
-# Events worth waking an agent for; everything else GitHub sends is ignored.
-_GH_WEBHOOK_EVENTS = {"issues", "issue_comment", "pull_request", "pull_request_review_comment"}
-# ponytail: opened/created/reopened only — edits, labels, syncs are noise; widen if a
-# real workflow needs more.
-_GH_WEBHOOK_ACTIONS = {"opened", "created", "reopened"}
+# Everything humux can turn into a task (#237). Agents opt into the
+# non-default pairs via ``webhook_events``; everything else GitHub sends is
+# ignored.
+_GH_SUPPORTED_EVENTS: dict[str, frozenset[str]] = {
+    "issues": frozenset({"opened", "reopened", "closed"}),
+    "issue_comment": frozenset({"created"}),
+    "pull_request": frozenset({"opened", "reopened", "synchronize"}),
+    "pull_request_review_comment": frozenset({"created"}),
+    "pull_request_review": frozenset({"submitted"}),
+    "workflow_run": frozenset({"completed"}),
+}
+# Default wake set = the pre-#237 behavior (opened/created/reopened only), so
+# existing agents don't start waking on closes/pushes/CI without opting in.
+_GH_DEFAULT_EVENTS: dict[str, frozenset[str]] = {
+    "issues": frozenset({"opened", "reopened"}),
+    "issue_comment": frozenset({"created"}),
+    "pull_request": frozenset({"opened", "reopened"}),
+    "pull_request_review_comment": frozenset({"created"}),
+}
 _GH_WEBHOOK_KIND = {
     "issues": "issue",
     "issue_comment": "issue comment",
     "pull_request": "pull request",
     "pull_request_review_comment": "PR review comment",
+    "pull_request_review": "PR review",
+    "workflow_run": "workflow run",
 }
+
+# GitHub's issue-closing keywords: threads PR events into the linked issue's
+# conversation ("Closes #12" in the PR body → chat github:<repo>#12) so issue
+# discussion, PR, and reviews share one history (#237).
+_GH_CLOSES_RE = re.compile(
+    r"(?:clos(?:e|es|ed)|fix(?:es|ed)?|resolv(?:e|es|ed))\s*:?\s+#(\d+)", re.IGNORECASE
+)
+
+
+def _gh_event_filter(value: object) -> dict[str, frozenset[str]]:
+    """The agent's ``webhook_events`` config as ``{event: allowed actions}``.
+
+    Absent/malformed = the legacy default set. A dict picks exact pairs within
+    what humux supports: ``{issues: [opened, closed]}`` wakes on those two only.
+    Unknown events/actions are dropped silently (a typo wakes less, never more).
+    """
+    if not isinstance(value, dict):
+        return _GH_DEFAULT_EVENTS
+    out: dict[str, frozenset[str]] = {}
+    for event, actions in value.items():
+        supported = _GH_SUPPORTED_EVENTS.get(str(event).strip().lower())
+        items = [actions] if isinstance(actions, str) else actions
+        if not supported or not isinstance(items, list):
+            continue
+        picked = frozenset(str(a).strip().lower() for a in items) & supported
+        if picked:
+            out[str(event).strip().lower()] = picked
+    return out
+
+
+def _gh_auto_set(value: object) -> frozenset[str]:
+    """``webhook_auto_events``: ``event`` / ``event.action`` keys that wake the
+    agent WITHOUT an @-mention — role triggers (a reviewer must see
+    ``pull_request.opened`` without being addressed) while the mention gate
+    keeps guarding everything else (#237)."""
+    items = [value] if isinstance(value, str) else value
+    if not isinstance(items, list):
+        return frozenset()
+    return frozenset(str(v).strip().lower() for v in items if v and str(v).strip())
 
 
 # Recently seen X-GitHub-Delivery GUIDs — GitHub retries on timeout and the UI
@@ -599,6 +654,183 @@ _GH_SEEN_MAX = 1024
 # Strong refs to in-flight webhook turns: the loop only holds a weak reference,
 # so a fire-and-forget task could be garbage-collected mid-run.
 _GH_TURN_TASKS: set[asyncio.Task] = set()
+
+# Per-thread turn timestamps for the rate cap (#237): author gates stop loops,
+# this stops storms — a runaway convention between allowlisted bots would
+# otherwise burn tokens unbounded. chat_id -> [monotonic-ish epoch seconds].
+_GH_THREAD_TURNS: dict[str, list[float]] = {}
+_GH_RATE_DEFAULT = 20  # webhook turns per thread per hour
+_GH_RATE_WINDOW = 3600.0
+
+# Accepted-delivery WAL (#237): GitHub gets its 202 immediately and never
+# retries, so a restart mid-turn silently loses the event. One JSON file per
+# in-flight delivery, removed on completion (success OR handled failure — a
+# handled failure frees the GUID for a manual Redeliver instead, because the
+# turn's actions may have partially run). Replayed by
+# :func:`replay_webhook_deliveries` at startup.
+_GH_WAL_DIR = Path("data") / "webhook-wal"
+
+
+def _gh_rate_exceeded(chat_id: str, limit: int) -> bool:
+    """True when this thread already ran ``limit`` turns in the window.
+    Records the turn otherwise. Prunes as it goes; the dict stays small because
+    keys with no recent turns are dropped."""
+    now = time.time()
+    stale = [k for k, v in _GH_THREAD_TURNS.items() if all(now - t >= _GH_RATE_WINDOW for t in v)]
+    for key in stale:
+        del _GH_THREAD_TURNS[key]
+    turns = [t for t in _GH_THREAD_TURNS.get(chat_id, []) if now - t < _GH_RATE_WINDOW]
+    if len(turns) >= limit:
+        _GH_THREAD_TURNS[chat_id] = turns
+        return True
+    turns.append(now)
+    _GH_THREAD_TURNS[chat_id] = turns
+    return False
+
+
+def _gh_wal_write(delivery: str, record: dict) -> None:
+    try:
+        _GH_WAL_DIR.mkdir(parents=True, exist_ok=True)
+        safe = re.sub(r"[^A-Za-z0-9_-]", "_", delivery)[:120]
+        (_GH_WAL_DIR / f"{safe}.json").write_text(json.dumps(record))
+    except OSError:  # WAL is belt-and-braces; never fail the delivery over it
+        log.exception("webhook WAL write failed (delivery=%s)", delivery)
+
+
+def _gh_wal_remove(delivery: str) -> None:
+    try:
+        safe = re.sub(r"[^A-Za-z0-9_-]", "_", delivery)[:120]
+        (_GH_WAL_DIR / f"{safe}.json").unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+async def _execute_webhook_turn(
+    core,
+    secret_store,
+    agent_name: str,
+    gh: dict,
+    task: str,
+    chat_id: str,
+    repo: str,
+    delivery: str,
+) -> None:
+    """Run one accepted webhook delivery as an autonomous agent turn.
+
+    Shared by the live route and startup replay. channel="system": autonomous
+    background turn (auto-approved writes, no confirmation round-trips — nobody
+    can answer one on a webhook). chat_id keeps per-thread continuity.
+    """
+    try:
+        # Thread digest (#237): the agent's history only holds turns IT was
+        # woken for — prepend the current GitHub state of the thread so the
+        # turn decides from facts, not from a partial memory. Best-effort:
+        # no token / API down / disabled → the bare event, as before.
+        if gh.get("webhook_digest", True):
+            try:
+                from core import github_digest
+                from core.tools import _agent_gh_token
+
+                agent = await core.agents.get(agent_name)
+                resolve = secret_store.infra_resolve if secret_store else (lambda _n: None)
+                token = _agent_gh_token(gh, agent_name, core.config, resolve) if agent else None
+                number = chat_id.rsplit("#", 1)[-1]
+                if token and number.isdigit():
+                    digest = await github_digest.thread_digest(repo, int(number), token)
+                    if digest:
+                        task = f"{task}\n{digest}"
+            except Exception:  # noqa: BLE001 — digest must never sink a turn
+                log.exception("webhook digest failed (agent=%s chat=%s)", agent_name, chat_id)
+        response = await core.process(
+            message=task,
+            channel="system",
+            user_id="github",
+            chat_id=chat_id,
+            agent_name=agent_name,
+        )
+        text = (response.text or "").replace("[NO_UPDATES]", "").strip()
+        if text:
+            from core.scheduler import _fallback_delivery, _get_owner_chat_id
+
+            # Deliver via THIS agent's own Telegram bot when it has one —
+            # its owner, not the default agent's — falling back to the
+            # owner-DM heuristic otherwise. webhook_chat_id, when set,
+            # overrides the target chat (e.g. a team group instead of
+            # the owner DM) — but ONLY on the agent's own bot: the chat
+            # was picked from that bot's chat list, and a fallback bot
+            # is typically not a member of it.
+            pinned_chat = str(gh.get("webhook_chat_id") or "").strip()
+            ch = core.channels.get(f"telegram:{agent_name}")
+            owner = (
+                pinned_chat or _get_owner_chat_id(core, f"telegram:{agent_name}") if ch else None
+            )
+            if not (ch and owner):
+                ch, owner = _fallback_delivery(core)
+            if ch and owner:
+                try:
+                    await ch.send(owner, text)
+                except Exception:
+                    # A failed PING must not mark the turn retryable —
+                    # the GitHub actions already ran; a redelivery
+                    # would run them again.
+                    log.exception("GitHub webhook ping delivery failed (agent=%s)", agent_name)
+        if delivery:
+            _gh_wal_remove(delivery)
+    except Exception:
+        # Forget the GUID so GitHub's "Redeliver" can retry a failed turn (a
+        # completed turn stays deduped). Drop the WAL entry too: the turn's
+        # actions may have partially run, so replay must be a HUMAN decision
+        # (Redeliver), never automatic.
+        _GH_SEEN_DELIVERIES.pop(delivery, None)
+        if delivery:
+            _gh_wal_remove(delivery)
+        log.exception("GitHub webhook turn failed (agent=%s)", agent_name)
+
+
+async def replay_webhook_deliveries(agent_state, secret_store) -> int:
+    """Re-run webhook deliveries that were accepted but lost to a restart (#237).
+
+    Called once at startup, after the agent core is up. Returns the number of
+    deliveries replayed. A delivery whose agent is gone or has webhooks
+    disabled is dropped (its WAL file removed) — config changed, the event is
+    stale.
+    """
+    core = getattr(agent_state, "agent", None)
+    if core is None or not _GH_WAL_DIR.is_dir():
+        return 0
+    replayed = 0
+    for path in sorted(_GH_WAL_DIR.glob("*.json")):
+        try:
+            record = json.loads(path.read_text())
+            agent = await core.agents.get(str(record.get("agent_name") or ""))
+            gh = (agent.tool_config.get("gh") if agent and agent.enabled else None) or {}
+            if not (gh.get("enabled") and gh.get("webhook_secret")):
+                path.unlink(missing_ok=True)
+                continue
+            delivery = str(record.get("delivery") or "")
+            if delivery:  # keep the GUID deduped across the replay
+                _GH_SEEN_DELIVERIES[delivery] = None
+            turn = asyncio.create_task(
+                _execute_webhook_turn(
+                    core,
+                    secret_store,
+                    str(record["agent_name"]),
+                    gh,
+                    str(record["task"]),
+                    str(record["chat_id"]),
+                    str(record.get("repo") or ""),
+                    delivery,
+                )
+            )
+            _GH_TURN_TASKS.add(turn)
+            turn.add_done_callback(_GH_TURN_TASKS.discard)
+            replayed += 1
+        except Exception:  # noqa: BLE001 — one bad WAL file must not stop the rest
+            log.exception("webhook WAL replay failed for %s", path.name)
+            path.unlink(missing_ok=True)
+    if replayed:
+        log.info("Replayed %d webhook delivery(ies) from WAL", replayed)
+    return replayed
 
 
 def _github_sig_ok(secret: str, body: bytes, header: str | None) -> bool:
@@ -616,11 +848,15 @@ def _github_event_task(
     payload: dict,
     allowed_authors: set[str] | None = None,
     mention: str = "",
+    events: dict[str, frozenset[str]] | None = None,
+    auto: frozenset[str] = frozenset(),
 ) -> tuple[str, str, str] | None:
     """Turn a webhook delivery into ``(task, chat_id, repo)``, or ``None`` to ignore.
 
     ``chat_id`` is the synthetic per-thread key ``github:<repo>#<n>`` so follow-up
-    events on the same issue/PR land in the same conversation (history continuity).
+    events on the same topic land in the same conversation (history continuity).
+    ``n`` is the ISSUE a PR declares it closes when it does (#237): the issue
+    discussion, its PR, and the PR's reviews are one unit of work — one thread.
 
     ``allowed_authors`` is the agent's ``webhook_users`` gate (lowercased logins):
     ``None`` = anyone, a set = only those senders (empty = nobody). Bot senders are
@@ -629,11 +865,17 @@ def _github_event_task(
     naming another App's ``other[bot]`` is an explicit trust decision.
 
     ``mention`` is the App's GitHub handle (lowercased, no ``@``): when set, only
-    events whose text actually mentions ``@handle`` wake the agent, and events
-    sent by ``handle[bot]`` itself are dropped unconditionally — the code-level
-    self-loop guard (listing your own bot in ``webhook_users`` can't override it).
+    events whose text actually mentions ``@handle`` wake the agent — except the
+    ``auto`` set (``event`` / ``event.action`` keys), which wakes regardless — and
+    events sent by ``handle[bot]`` itself are dropped unconditionally — the
+    code-level self-loop guard (neither ``webhook_users`` nor ``auto`` overrides
+    it).
+
+    ``events`` is the agent's wake map from :func:`_gh_event_filter` (default:
+    the legacy set).
     """
-    if event not in _GH_WEBHOOK_EVENTS or payload.get("action") not in _GH_WEBHOOK_ACTIONS:
+    action = str(payload.get("action") or "")
+    if action not in (events or _GH_DEFAULT_EVENTS).get(event, frozenset()):
         return None
     sender = payload.get("sender") or {}
     login = str(sender.get("login") or "").strip().lower()
@@ -644,25 +886,56 @@ def _github_event_task(
     if allowed_authors is None and sender.get("type") == "Bot":
         return None
     repo = (payload.get("repository") or {}).get("full_name") or ""
-    item = payload.get("issue") or payload.get("pull_request") or {}
-    number = item.get("number")
+    if event == "workflow_run":
+        # CI result: no issue/PR object — resolve the PR from the run itself.
+        # Runs not tied to a PR (push to main, cron) have no thread to land in.
+        run = payload.get("workflow_run") or {}
+        prs = run.get("pull_requests") or []
+        number = (prs[0] or {}).get("number") if prs else None
+        item = {
+            "title": f"{run.get('name') or 'workflow'} → {run.get('conclusion') or '?'}",
+            "body": (
+                f"Workflow '{run.get('name')}' concluded **{run.get('conclusion')}** "
+                f"on branch '{run.get('head_branch')}' (PR #{number}).\n"
+                f"Logs: {run.get('html_url') or ''}"
+            ),
+            "user": sender,
+            "html_url": run.get("html_url") or "",
+        }
+    else:
+        item = payload.get("issue") or payload.get("pull_request") or {}
+        number = item.get("number")
     if not repo or number is None:
         return None
-    comment = payload.get("comment") or {}
+    comment = payload.get("comment") or payload.get("review") or {}
     body = str(comment.get("body") or item.get("body") or "")
     # Boundaries on both sides, hyphen-aware ((?![\w-]) not \b): "@my-agent"
     # must match neither "@my-agent-2" nor "ops@my-agent" (an email is not a
     # mention — GitHub requires the @ not be preceded by a word char).
     # Comment events check the COMMENT body only: matching the thread title too
     # would wake the agent on every later comment of a once-mentioning thread.
-    if mention:
+    if mention and event not in auto and f"{event}.{action}" not in auto:
         text = body if comment else f"{item.get('title') or ''}\n{body}"
         if not re.search(rf"(?<![\w-])@{re.escape(mention)}(?![\w-])", text, re.IGNORECASE):
             return None
     author = (comment.get("user") or item.get("user") or {}).get("login") or ""
     url = comment.get("html_url") or item.get("html_url") or ""
+    # Thread key: a PR that closes an issue threads under THAT issue. The PR
+    # body rides ``pull_request`` on PR events and ``issue`` on comment events
+    # (GitHub represents a PR comment thread as an issue whose body is the
+    # PR's). Plain issues have no closing keywords pointing elsewhere — a
+    # stray "fixes #N" in an issue body must not re-thread it, hence PR-only.
+    topic = number
+    is_pr = bool(payload.get("pull_request")) or "pull_request" in (payload.get("issue") or {})
+    if is_pr:
+        linked = _GH_CLOSES_RE.search(str(item.get("body") or ""))
+        if linked:
+            topic = int(linked.group(1))
+    headline = _GH_WEBHOOK_KIND[event]
+    if event == "pull_request_review":
+        headline += f" ({(payload.get('review') or {}).get('state') or ''})"
     task = (
-        f"[GitHub] New {_GH_WEBHOOK_KIND[event]} ({payload.get('action')}) in {repo}: "
+        f"[GitHub] New {headline} ({action}) in {repo}: "
         f"#{number} {item.get('title') or ''}\n"
         f"Author: @{author}\nURL: {url}\n"
         f"---\n{body[:4000]}\n---\n"
@@ -672,7 +945,7 @@ def _github_event_task(
         "something. If there is nothing the owner needs to hear, end your reply with "
         "[NO_UPDATES]."
     )
-    return task, f"github:{repo}#{number}", repo
+    return task, f"github:{repo}#{topic}", repo
 
 
 # (channel_key, base_chat_id) -> (title, expiry_epoch). Titles come from live
@@ -1838,10 +2111,16 @@ def create_admin_app(
         # public repo (prompt injection, token burn). The whole sender decision
         # (incl. the bot loop guard) lives in _github_event_task.
         # Mention gate (webhook_mention): when the App's handle is configured,
-        # only events whose text @-mentions it wake the agent.
+        # only events whose text @-mentions it wake the agent — except the
+        # webhook_auto_events role triggers (#237).
         mention = str(gh.get("webhook_mention") or "").strip().lstrip("@").lower()
         parsed = _github_event_task(
-            event, payload, _allowlist(gh.get("webhook_users")), mention=mention
+            event,
+            payload,
+            _allowlist(gh.get("webhook_users")),
+            mention=mention,
+            events=_gh_event_filter(gh.get("webhook_events")),
+            auto=_gh_auto_set(gh.get("webhook_auto_events")),
         )
         if parsed is None:
             return Response("ignored")
@@ -1859,59 +2138,33 @@ def create_admin_app(
             _GH_SEEN_DELIVERIES[delivery] = None
             while len(_GH_SEEN_DELIVERIES) > _GH_SEEN_MAX:
                 _GH_SEEN_DELIVERIES.popitem(last=False)
-
-        async def _run_turn() -> None:
-            try:
-                # channel="system": autonomous background turn (auto-approved
-                # writes, no confirmation round-trips — nobody can answer one
-                # on a webhook). chat_id keeps per-issue/PR continuity.
-                response = await core.process(
-                    message=task,
-                    channel="system",
-                    user_id="github",
-                    chat_id=chat_id,
-                    agent_name=agent_name,
-                )
-                text = (response.text or "").replace("[NO_UPDATES]", "").strip()
-                if text:
-                    from core.scheduler import _fallback_delivery, _get_owner_chat_id
-
-                    # Deliver via THIS agent's own Telegram bot when it has one —
-                    # its owner, not the default agent's — falling back to the
-                    # owner-DM heuristic otherwise. webhook_chat_id, when set,
-                    # overrides the target chat (e.g. a team group instead of
-                    # the owner DM) — but ONLY on the agent's own bot: the chat
-                    # was picked from that bot's chat list, and a fallback bot
-                    # is typically not a member of it.
-                    pinned_chat = str(gh.get("webhook_chat_id") or "").strip()
-                    ch = core.channels.get(f"telegram:{agent_name}")
-                    owner = (
-                        pinned_chat or _get_owner_chat_id(core, f"telegram:{agent_name}")
-                        if ch
-                        else None
-                    )
-                    if not (ch and owner):
-                        ch, owner = _fallback_delivery(core)
-                    if ch and owner:
-                        try:
-                            await ch.send(owner, text)
-                        except Exception:
-                            # A failed PING must not mark the turn retryable —
-                            # the GitHub actions already ran; a redelivery
-                            # would run them again.
-                            log.exception(
-                                "GitHub webhook ping delivery failed (agent=%s)", agent_name
-                            )
-            except Exception:
-                # Forget the GUID so GitHub's "Redeliver" can retry a failed turn
-                # (a completed turn stays deduped).
-                _GH_SEEN_DELIVERIES.pop(delivery, None)
-                log.exception("GitHub webhook turn failed (agent=%s)", agent_name)
+        # Rate cap AFTER dedup (a duplicate must not count as a turn): the
+        # storm backstop for threads where allowlisted bots trigger each other.
+        try:
+            limit = int(gh.get("webhook_rate_limit") or 0)
+        except TypeError, ValueError:
+            limit = 0
+        if _gh_rate_exceeded(chat_id, limit if limit > 0 else _GH_RATE_DEFAULT):
+            log.warning("webhook rate cap hit (agent=%s chat=%s)", agent_name, chat_id)
+            return Response("rate limited")
+        if delivery:
+            _gh_wal_write(
+                delivery,
+                {
+                    "agent_name": agent_name,
+                    "task": task,
+                    "chat_id": chat_id,
+                    "repo": repo,
+                    "delivery": delivery,
+                },
+            )
 
         # 200-class response immediately (GitHub's delivery timeout is ~10s);
         # the turn runs in the background like scheduler jobs. Keep a strong ref
         # until it finishes.
-        turn = asyncio.create_task(_run_turn())
+        turn = asyncio.create_task(
+            _execute_webhook_turn(core, secret_store, agent_name, gh, task, chat_id, repo, delivery)
+        )
         _GH_TURN_TASKS.add(turn)
         turn.add_done_callback(_GH_TURN_TASKS.discard)
         return Response("accepted", status_code=202)

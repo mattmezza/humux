@@ -348,6 +348,11 @@ async def _lifespan(application):  # noqa: ANN001
         try:
             _agent_state.agent = await _start_agent(_config_store)
             _agent_state.status = "RUNNING"
+            # Webhook deliveries accepted before a restart but never run (#237)
+            # — replay them now that the core is up.
+            from api.admin import replay_webhook_deliveries
+
+            await replay_webhook_deliveries(_agent_state, _secret_store)
         except Exception:
             log.exception("Failed to start agent — falling back to setup mode")
             _agent_state.status = "STOPPED"

@@ -854,6 +854,15 @@
             // Per-agent repo allowlist. Blank = no restriction.
             const repos = this.ghRepos.split(',').map(s => s.trim()).filter(Boolean);
             if (repos.length) e.repos = repos;
+            // Config-only keys (webhook_events, webhook_auto_events,
+            // webhook_rate_limit, webhook_digest, … #237) have no form field —
+            // carry them through so a save from this editor can't drop them.
+            const managed = new Set(['enabled', 'auth', 'app_id', 'installation_id',
+              'private_key_secret', 'token_secret', 'webhook_secret', 'webhook_users',
+              'webhook_mention', 'webhook_chat_id', 'repos']);
+            for (const [key, val] of Object.entries(this.toolConfig.gh || {})) {
+              if (!managed.has(key)) e[key] = val;
+            }
           }
           tc[k] = e;
         }
