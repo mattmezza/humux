@@ -61,7 +61,7 @@ from core.subagents import (
     summarize_batch,
 )
 from core.task_reflection import ReflectionStore
-from core.tools import _gh_app_configured, effective_tool_env, github_repo_violation, tool_env
+from core.tools import _gh_app_configured, effective_tool_env, github_repo_violation
 from voice.pipeline import VoicePipeline
 
 log = logging.getLogger(__name__)
@@ -1010,7 +1010,9 @@ class AgentCore:
         # (a subagent spawned with no parent identity). The main flow resolves the
         # default agent row directly; this is the fallback for that one edge (#110).
         self._default_accounts = self._build_default_accounts(config)
-        self.executor = ToolExecutor(tool_env=tool_env(config))
+        resolve = self.secret_store.infra_resolve if self.secret_store else (lambda _n: None)
+        agent_env = effective_tool_env(self.config, self.agents.default_identity, resolve)
+        self.executor = ToolExecutor(tool_env=agent_env)
         # Image-generation usage guardrail (issue #55). Cheap to construct; the
         # SQLite table is created lazily on first use.
         self.image_budget = ImageBudget(config.tools.imagegen.db_path)
