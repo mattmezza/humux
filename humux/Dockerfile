@@ -26,6 +26,14 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
     && apt-get update && apt-get install -y --no-install-recommends gh \
     && rm -rf /var/lib/apt/lists/*
 
+# Node.js LTS (node/npm/npx) for JS/TS builds in the coding workspace — these
+# run through the coding-harness bash (permissions.py rules); they are NOT in
+# the run_command prefix allowlist (`npm run` = arbitrary execution).
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && rm -rf /var/lib/apt/lists/* \
+    && node --version && npm --version
+
 # Install wacli from pinned upstream tag (github.com/openclaw/wacli).
 # Bump WACLI_VERSION to cross WhatsApp protocol breaks (e.g. 405 Client Outdated).
 ARG WACLI_VERSION=v0.11.0
