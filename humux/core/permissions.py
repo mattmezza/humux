@@ -376,7 +376,7 @@ class PermissionEngine:
                 count,
             )
             db.execute("DELETE FROM yolo")
-        db.execute("INSERT INTO yolo (scope) VALUES (?)", (self._YOLO_SENTINEL,))
+        db.execute("INSERT OR IGNORE INTO yolo (scope) VALUES (?)", (self._YOLO_SENTINEL,))
         db.commit()
 
     @classmethod
