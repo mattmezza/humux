@@ -21,3 +21,6 @@ Thumbs.db
 
 # Runtime data (SQLite databases created by tests/dev runs)
 data/*.db
+
+# Tailwind CSS CLI binary (downloaded via make setup)
+www/tailwindcss

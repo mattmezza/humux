@@ -6,9 +6,33 @@ CSS_OUT := assets/css/style.css
 WWW_DIR := .
 BUILD_DIR := dist
 
+# Download Tailwind CSS CLI binary
+setup:
+	@echo "Downloading Tailwind CSS v4.3.2 for $(UNAME_S)/$(UNAME_M)..."
+ifeq ($(UNAME_S),Linux)
+	$(eval TW_PLATFORM := linux)
+else ifeq ($(UNAME_S),Darwin)
+	$(eval TW_PLATFORM := macos)
+else
+	$(error Unsupported OS: $(UNAME_S))
+endif
+ifeq ($(UNAME_M),x86_64)
+	$(eval TW_ARCH := x64)
+else ifeq ($(UNAME_M),arm64)
+	$(eval TW_ARCH := arm64)
+else ifeq ($(UNAME_M),aarch64)
+	$(eval TW_ARCH := arm64)
+else
+	$(error Unsupported arch: $(UNAME_M))
+endif
+	curl -sL "https://github.com/tailwindlabs/tailwindcss/releases/download/v4.3.2/tailwindcss-$(TW_PLATFORM)-$(TW_ARCH)" -o $(TAILWIND)
+	chmod +x $(TAILWIND)
+	@echo "Done: $(TAILWIND) ready"
+
 help:
 	@echo ""
 	@echo "humux website — Human Multiplexer marketing site"
+	@echo "  make setup     Download Tailwind CSS CLI binary"
 	@echo ""
 	@echo "  make dev       Start local dev server + Tailwind CSS watcher"
 	@echo "  make build     Build production CSS (minified)"
@@ -19,6 +43,10 @@ help:
 	@echo "  Release:"
 	@echo "    make release name=www-v0.1   Tag, push, trigger GHA deploy"
 	@echo ""
+
+# Platform detection for Tailwind download
+UNAME_S := $(shell uname -s)
+UNAME_M := $(shell uname -m)
 
 PORT ?= 9091
 
