@@ -281,6 +281,10 @@ class PermissionEngine:
     over a default rule of the same pattern; everything else falls back.
     """
 
+    # Sentinel row in the yolo table marking the #222 migration as complete.
+    _YOLO_SENTINEL = "__migrated_yolo_default_on__"
+
+
     def __init__(self, db_path: str = "data/config.db") -> None:
         self.db_path = db_path
         self.rules: dict[str, str] = dict(DEFAULT_RULES)
@@ -289,8 +293,9 @@ class PermissionEngine:
         self._ready = False
         # Pending approval requests: request_id → PendingApproval
         self._pending: dict[str, PendingApproval] = {}
-        # YOLO scopes (channels) with the approval prompt bypassed — see is_yolo.
-        self._yolo: set[str] = set()
+        # YOLO-opted-out scopes (channels). YOLO is ON by default (#222) for any
+        # scope NOT in this set. Use /yolo-off to opt out, /yolo-on to re-enable.
+        self._yolo_off: set[str] = set()
         self._load_persisted_rules()
         self._load_yolo()
 
@@ -315,7 +320,7 @@ class PermissionEngine:
                 db.execute("DROP TABLE permissions_legacy")
             else:
                 db.execute(_CREATE_PERMISSIONS)
-            db.execute("CREATE TABLE IF NOT EXISTS yolo (scope TEXT PRIMARY KEY)")
+            self._migrate_yolo(db)
             self._migrate_tool_renames(db)
         self._ready = True
 
@@ -346,6 +351,33 @@ class PermissionEngine:
             return pattern
         new_head = LEGACY_TOOL_RENAMES[head]
         return None if new_head is None else new_head + rest
+
+    def _migrate_yolo(self, db: sqlite3.Connection) -> None:
+        """Migrate the yolo table for the default-on semantic (#222).
+
+        Prior to #222 the yolo table stored opted-IN scopes and YOLO was OFF
+        by default. After #222 the table stores opted-OUT scopes and YOLO is ON
+        by default. Existing rows would invert meaning, so we clear the table
+        (all previously opted-in scopes get the new default = ON, which is the
+        same end state they had) and write a sentinel row so the migration
+        only runs once.
+        """
+        db.execute("CREATE TABLE IF NOT EXISTS yolo (scope TEXT PRIMARY KEY)")
+        row = db.execute(
+            "SELECT scope FROM yolo WHERE scope = ?", (self._YOLO_SENTINEL,)
+        ).fetchone()
+        if row:
+            return  # migration already ran
+        count = db.execute("SELECT COUNT(*) FROM yolo").fetchone()[0]
+        if count > 0:
+            log.warning(
+                "YOLO migration #222: clearing %d opted-in row(s) from yolo table "
+                "(default is now ON, table tracks opted-out scopes)",
+                count,
+            )
+            db.execute("DELETE FROM yolo")
+        db.execute("INSERT OR IGNORE INTO yolo (scope) VALUES (?)", (self._YOLO_SENTINEL,))
+        db.commit()
 
     @classmethod
     def _migrate_tool_renames(cls, db: sqlite3.Connection) -> None:
@@ -404,30 +436,38 @@ class PermissionEngine:
     def _load_yolo(self) -> None:
         self._ensure_schema()
         with sqlite3.connect(self.db_path) as db:
-            rows = db.execute("SELECT scope FROM yolo").fetchall()
-        self._yolo = {scope for (scope,) in rows}
+            rows = db.execute(
+                "SELECT scope FROM yolo WHERE scope != ?",
+                (self._YOLO_SENTINEL,),
+            ).fetchall()
+        self._yolo_off = {scope for (scope,) in rows}
 
     def set_yolo(self, scope: str, on: bool) -> None:
         """Turn the approval-bypass (YOLO) on/off for a scope (a channel name).
 
-        A scope in YOLO has ASK actions auto-approved without a prompt. NEVER
-        rules still hold — this is "act without asking", not "self-destruct".
-        Persisted so the choice survives a restart until explicitly turned off.
+        YOLO is ON by default (#222). A scope NOT in the opted-out set has
+        ASK actions auto-approved without a prompt. NEVER rules still hold —
+        this is "act without asking", not "self-destruct". Persisted so the
+        choice survives a restart until explicitly toggled.
         """
         self._ensure_schema()
         with sqlite3.connect(self.db_path) as db:
             if on:
-                db.execute("INSERT OR IGNORE INTO yolo (scope) VALUES (?)", (scope,))
-                self._yolo.add(scope)
-            else:
                 db.execute("DELETE FROM yolo WHERE scope = ?", (scope,))
-                self._yolo.discard(scope)
+                self._yolo_off.discard(scope)
+            else:
+                db.execute("INSERT OR IGNORE INTO yolo (scope) VALUES (?)", (scope,))
+                self._yolo_off.add(scope)
             db.commit()
         log.warning("YOLO mode %s for scope %r", "ON" if on else "OFF", scope)
 
     def is_yolo(self, scope: str) -> bool:
-        """True if the scope (channel) currently bypasses approval prompts."""
-        return scope in self._yolo
+        """True if the scope (channel) currently bypasses approval prompts.
+
+        YOLO is ON by default (#222). Only scopes explicitly opted out via
+        ``/yolo-off`` return False.
+        """
+        return scope not in self._yolo_off
 
     def _build_match_key(self, tool_name: str, params: dict | None = None) -> str:
         if tool_name == "bash" and params and "command" in params:

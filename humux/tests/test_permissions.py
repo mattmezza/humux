@@ -146,16 +146,16 @@ def test_rule_pattern_still_generalizes_script_runner() -> None:
 def test_yolo_toggle_persists_and_scopes_by_channel(tmp_path) -> None:
     db = str(tmp_path / "config.db")
     engine = PermissionEngine(db_path=db)
-    assert not engine.is_yolo("telegram:coach")
+    assert engine.is_yolo("telegram:coach")  # ON by default (#222)
 
     engine.set_yolo("telegram:coach", True)
     assert engine.is_yolo("telegram:coach")
-    assert not engine.is_yolo("telegram:finance")  # other agent unaffected
+    assert engine.is_yolo("telegram:finance")  # other agent also defaults ON (#222)
 
     # Survives a restart (reloaded from the db).
     assert PermissionEngine(db_path=db).is_yolo("telegram:coach")
 
-    engine.set_yolo("telegram:coach", False)
+    engine.set_yolo("telegram:coach", False)  # opt out
     assert not engine.is_yolo("telegram:coach")
     assert not PermissionEngine(db_path=db).is_yolo("telegram:coach")
 

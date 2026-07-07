@@ -234,18 +234,19 @@ async def test_yolo_toggle_requires_addressing_and_scopes_per_chat(tmp_path) -> 
 
     # Unaddressed (a bare "/yolo-on" reaching a gate-off bot): must NOT toggle, so
     # one bare command can't flip every bot in a multi-agent room.
+    # YOLO is ON by default (#222), so is_yolo is True before any toggle.
     resp = await agent.process(
         "/yolo-on", channel="telegram", user_id="g1", chat_id="g1", addressed=False
     )
     assert resp.text == ""
-    assert agent.permissions.is_yolo(scope) is False
+    assert agent.permissions.is_yolo(scope) is True
 
     # Addressed "/yolo-on@coachbot": this agent+chat enters YOLO...
     resp = await agent.process("/yolo-on@coachbot", channel="telegram", user_id="g1", chat_id="g1")
     assert "YOLO mode ON" in resp.text
     assert agent.permissions.is_yolo(scope) is True
-    # ...but only this chat — the same bot in another chat is unaffected.
-    assert agent.permissions.is_yolo(agent._yolo_scope("telegram", "g2")) is False
+    # ...and the same bot in another chat also defaults ON (#222).
+    assert agent.permissions.is_yolo(agent._yolo_scope("telegram", "g2")) is True
 
     resp = await agent.process("/yolo-off@coachbot", channel="telegram", user_id="g1", chat_id="g1")
     assert "YOLO mode OFF" in resp.text
