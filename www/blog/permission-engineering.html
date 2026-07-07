@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Permission Engineering for Autonomous Agents — humux blog</title>
+  <meta name="description" content="How to build a permission model that lets agents act autonomously while preventing dangerous actions, using glob rules, approval flows, and vault-sealed secrets.">
+  <link rel="canonical" href="https://humux.dev/blog/permission-engineering">
+
+  <meta property="og:title" content="Permission Engineering for Autonomous Agents">
+  <meta property="og:description" content="How to build a permission model that lets agents act autonomously while preventing dangerous actions, using glob rules, approval flows, and vault-sealed secrets.">
+  <meta property="og:url" content="https://humux.dev/blog/permission-engineering">
+  <meta property="og:type" content="article">
+  <meta property="og:image" content="https://humux.dev/assets/images/og-image.png">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Permission Engineering for Autonomous Agents">
+  <meta name="twitter:description" content="How to build a permission model that lets agents act autonomously while preventing dangerous actions.">
+  <meta name="twitter:image" content="https://humux.dev/assets/images/og-image.png">
+  <meta name="twitter:site" content="@_mattmezza_">
+  <meta name="twitter:creator" content="@_mattmezza_">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "headline": "Permission Engineering for Autonomous Agents",
+    "description": "How to build a permission model that lets agents act autonomously while preventing dangerous actions, using glob rules, approval flows, and vault-sealed secrets.",
+    "datePublished": "2026-07-07",
+    "author": { "@type": "Person", "name": "Matteo Merola" },
+    "publisher": { "@type": "Organization", "name": "humux" },
+    "url": "https://humux.dev/blog/permission-engineering"
+  }
+  </script>
+
+  <link rel="icon" type="image/svg+xml" href="/assets/images/favicon-32.svg">
+  <link rel="alternate icon" type="image/png" sizes="32x32" href="/assets/images/favicon-32.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/images/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/css/style.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script defer src="https://analytics.casa.merola.co/script.js" data-website-id="b395aaa1-97a5-494e-9ad8-15b3ba20318e"></script>
+</head>
+<body>
+
+  <!-- Nav -->
+  <nav x-data="{ open: false }" class="sticky top-0 z-50 border-b border-[var(--color-border)]" style="background: rgba(6,6,6,0.85); backdrop-filter: blur(12px);">
+    <div class="mx-auto flex max-w-6xl items-center justify-between px-5 py-3">
+      <a href="/" class="flex items-center gap-2 no-underline">
+        <span class="text-sm font-semibold tracking-wider" style="color: var(--color-accent);">humux</span>
+        <span class="hidden sm:inline text-xs" style="color: var(--color-muted);">/ˈhjuːmʌks/</span>
+      </a>
+      <div class="hidden md:flex items-center gap-5 text-xs">
+        <a href="/" class="no-underline transition-colors" style="color: var(--color-secondary);">Home</a>
+        <a href="/features.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Features</a>
+        <a href="/use-cases.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Use Cases</a>
+        <a href="/comparison.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Comparison</a>
+        <a href="/blog/" class="font-medium no-underline" style="color: var(--color-accent);">Blog</a>
+        <a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="no-underline transition-colors" style="color: var(--color-secondary);">
+          <svg class="inline-block h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        </a>
+        <a href="https://docs.humux.dev" target="_blank" rel="noopener" class="no-underline transition-colors" style="color: var(--color-secondary);">Docs</a>
+      </div>
+      <button @click="open = !open" class="md:hidden p-2" style="color: var(--color-secondary);" aria-label="Menu">
+        <svg x-show="!open" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        <svg x-show="open" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div x-show="open" @click.outside="open = false" x-cloak class="md:hidden border-t border-[var(--color-border)] px-5 py-4 space-y-3 text-sm" style="background: rgba(6,6,6,0.95);">
+      <a href="/" class="block no-underline transition-colors" style="color: var(--color-secondary);">Home</a>
+      <a href="/features.html" class="block no-underline transition-colors" style="color: var(--color-secondary);">Features</a>
+      <a href="/use-cases.html" class="block no-underline transition-colors" style="color: var(--color-secondary);">Use Cases</a>
+      <a href="/comparison.html" class="block no-underline transition-colors" style="color: var(--color-secondary);">Comparison</a>
+      <a href="/blog/" class="block font-medium no-underline" style="color: var(--color-accent);">Blog</a>
+      <a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="block no-underline transition-colors" style="color: var(--color-secondary);">GitHub</a>
+      <a href="https://docs.humux.dev" target="_blank" rel="noopener" class="block no-underline transition-colors" style="color: var(--color-secondary);">Docs</a>
+    </div>
+  </nav>
+
+  <!-- Article -->
+  <article class="mx-auto max-w-3xl px-5 py-16">
+    <header class="mb-12">
+      <p class="text-xs font-mono mb-3" style="color: var(--color-muted);">July 7, 2026 &mdash; Matteo Merola</p>
+      <h1 class="text-3xl sm:text-4xl font-bold leading-tight mb-4" style="color: #eee;">Permission Engineering for Autonomous Agents</h1>
+      <p class="text-lg leading-relaxed" style="color: var(--color-secondary);">How to let agents act on your behalf without giving them the keys to everything.</p>
+    </header>
+
+    <div class="space-y-6">
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">An agent that can only read is a chatbot. An agent that can write without guardrails is a liability. The interesting engineering sits between those two extremes: giving an agent enough autonomy to be useful while keeping a human in the loop for anything destructive.</p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">Most permission systems were designed for humans clicking buttons. OAuth scopes, RBAC roles, POSIX file permissions &mdash; they assume the caller understands consequences. Agents don't. An agent will happily <code class="inline-code">rm -rf /</code> if you ask it to &ldquo;clean up disk space&rdquo; and the permission model doesn't intervene. The challenge is building a permission layer that's granular enough to be safe, fast enough to not slow down autonomous operation, and simple enough that you can reason about what the agent can actually do.</p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">Three-tier glob rules</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">The foundation is a simple classification: every tool invocation falls into one of three buckets &mdash; <code class="inline-code">ALWAYS</code>, <code class="inline-code">ASK</code>, or <code class="inline-code">NEVER</code>. Rules are defined as glob patterns matched against the tool name and its arguments.</p>
+
+      <div class="terminal-window mt-6 mb-6">
+        <div class="terminal-header">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+          <span class="ml-2 text-xs" style="color: var(--color-muted);">config.yml &mdash; permission rules</span>
+        </div>
+        <div class="terminal-body">
+<pre>permissions:
+  - pattern: "read_email:*"
+    action: ALWAYS
+  - pattern: "send_email:*"
+    action: ASK
+  - pattern: "run_command:rm *"
+    action: NEVER
+  - pattern: "run_command:git push *"
+    action: ASK
+  - pattern: "run_command:git status"
+    action: ALWAYS
+  - pattern: "write_file:*/workspace/*"
+    action: ALWAYS
+  - pattern: "write_file:*"
+    action: NEVER</pre>
+        </div>
+      </div>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">The matching logic is intentionally simple &mdash; Python's <code class="inline-code">fnmatch</code> against a <code class="inline-code">tool_name:arg_string</code> key. Rules are evaluated top to bottom; first match wins. This means you put specific allows above general denies, just like firewall rules.</p>
+
+      <div class="terminal-window mt-6 mb-6">
+        <div class="terminal-header">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+          <span class="ml-2 text-xs" style="color: var(--color-muted);">permissions.py</span>
+        </div>
+        <div class="terminal-body">
+<pre><span style="color: var(--color-accent);">from</span> fnmatch <span style="color: var(--color-accent);">import</span> fnmatch
+<span style="color: var(--color-accent);">from</span> enum <span style="color: var(--color-accent);">import</span> Enum
+
+<span style="color: var(--color-accent);">class</span> Action(Enum):
+    ALWAYS = <span style="color: var(--color-warn);">"always"</span>
+    ASK    = <span style="color: var(--color-warn);">"ask"</span>
+    NEVER  = <span style="color: var(--color-warn);">"never"</span>
+
+<span style="color: var(--color-accent);">def</span> check_permission(rules, tool_name, args_str) -> Action:
+    key = f<span style="color: var(--color-warn);">"{tool_name}:{args_str}"</span>
+    <span style="color: var(--color-accent);">for</span> rule <span style="color: var(--color-accent);">in</span> rules:
+        <span style="color: var(--color-accent);">if</span> fnmatch(key, rule[<span style="color: var(--color-warn);">"pattern"</span>]):
+            <span style="color: var(--color-accent);">return</span> Action(rule[<span style="color: var(--color-warn);">"action"</span>].lower())
+    <span style="color: var(--color-accent);">return</span> Action.ASK  <span style="color: var(--color-muted);"># default: ask the human</span></pre>
+        </div>
+      </div>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">The default is <code class="inline-code">ASK</code>, not <code class="inline-code">ALWAYS</code>. This is the most important design decision in the whole system. Any tool invocation that doesn't match an explicit rule gets routed to the human for approval. You opt <em>in</em> to autonomy rather than opting out of danger.</p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">The approval flow</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">When a tool call resolves to <code class="inline-code">ASK</code>, the agent's turn pauses and a notification goes out to the admin channel. In humux, this is a Telegram message with inline buttons: <strong>Approve</strong>, <strong>Deny</strong>, and <strong>Approve &amp; Remember</strong> (which adds a new ALWAYS rule so the same action won't ask again).</p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">The approval message includes exactly what will execute &mdash; the tool name, the full arguments, and which agent is requesting it. No summarization, no natural-language paraphrase. You see the raw action because a paraphrase can hide the difference between <code class="inline-code">git push origin main</code> and <code class="inline-code">git push origin main --force</code>.</p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">Timeouts matter. If no response arrives within a configurable window (default: 5 minutes), the action is denied and the agent is told the approval timed out. This prevents zombie turns from piling up while you're asleep. The agent can decide to retry, skip, or ask the user what to do &mdash; but it won't sit blocked forever.</p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">Secrets that never touch the model</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">The hardest credential problem in agent systems isn't encryption &mdash; it's keeping secrets out of the prompt. If an agent has an API key in its context window, it can leak it in a response, log it, or include it in a tool call that sends data externally. The principle is straightforward: <strong>credentials are resolved at the execution boundary, never in the model context.</strong></p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">humux uses a two-tier encrypted vault. Infrastructure secrets (database URLs, API keys for the orchestration layer itself) are sealed with a machine-derived key &mdash; available at boot without human interaction. Agent-specific secrets (a user's email password, a calendar OAuth token) are sealed with an admin password using Fernet symmetric encryption and only decrypted when a tool actually needs them.</p>
+
+      <div class="terminal-window mt-6 mb-6">
+        <div class="terminal-header">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+          <span class="ml-2 text-xs" style="color: var(--color-muted);">vault.py &mdash; runtime resolution</span>
+        </div>
+        <div class="terminal-body">
+<pre><span style="color: var(--color-accent);">import</span> os
+<span style="color: var(--color-accent);">from</span> cryptography.fernet <span style="color: var(--color-accent);">import</span> Fernet
+
+<span style="color: var(--color-accent);">def</span> resolve_secrets(agent_slug, tool_env: dict) -> dict:
+    <span style="color: var(--color-muted);">"""Inject secrets into env vars for CLI tool execution.
+    The model never sees these values."""</span>
+    env = os.environ.copy()
+    vault = load_agent_vault(agent_slug)
+    <span style="color: var(--color-accent);">for</span> key, encrypted_val <span style="color: var(--color-accent);">in</span> vault.items():
+        <span style="color: var(--color-accent);">if</span> key <span style="color: var(--color-accent);">in</span> tool_env:
+            env[key] = _fernet.decrypt(encrypted_val).decode()
+    <span style="color: var(--color-accent);">return</span> env
+
+<span style="color: var(--color-muted);"># Tool execution uses the resolved env</span>
+result = subprocess.run(
+    cmd, env=resolve_secrets(agent.slug, tool.env_keys),
+    capture_output=<span style="color: var(--color-accent);">True</span>, timeout=<span style="color: var(--color-warn);">30</span>
+)</pre>
+        </div>
+      </div>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">The model asks to &ldquo;send an email to X&rdquo;, the tool executor resolves the SMTP password from the vault into an environment variable, runs the email CLI, and returns only the result (sent/failed) back to the model. At no point does the password exist in the conversation history.</p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">Workspace confinement</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">Permission rules handle <em>which</em> tools run. Workspace confinement handles <em>where</em> they can operate. Every agent gets a workspace directory, and all file operations are confined to it via <code class="inline-code">realpath</code> checks.</p>
+
+      <div class="terminal-window mt-6 mb-6">
+        <div class="terminal-header">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+          <span class="ml-2 text-xs" style="color: var(--color-muted);">confinement.py</span>
+        </div>
+        <div class="terminal-body">
+<pre><span style="color: var(--color-accent);">from</span> pathlib <span style="color: var(--color-accent);">import</span> Path
+
+<span style="color: var(--color-accent);">def</span> confine(path: str, workspace: Path) -> Path:
+    resolved = Path(path).resolve()
+    <span style="color: var(--color-accent);">if not</span> resolved.is_relative_to(workspace):
+        <span style="color: var(--color-accent);">raise</span> PermissionError(
+            f<span style="color: var(--color-warn);">"path {resolved} escapes workspace {workspace}"</span>
+        )
+    <span style="color: var(--color-accent);">return</span> resolved</pre>
+        </div>
+      </div>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">This catches symlink attacks and <code class="inline-code">../../../etc/passwd</code> traversals. The <code class="inline-code">resolve()</code> call follows symlinks before checking containment, so you can't bypass it by creating a symlink inside the workspace that points outside.</p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">The bash executor applies a similar principle: a whitelist of allowed commands, and each command's arguments are checked against the workspace boundary. Commands like <code class="inline-code">curl</code>, <code class="inline-code">wget</code>, or anything that can exfiltrate data are either blocked or gated behind <code class="inline-code">ASK</code> rules.</p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">Why not OAuth scopes or sandboxing?</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">OAuth scopes are designed for third-party app authorization. They're too coarse: a scope like <code class="inline-code">mail.send</code> either lets the agent send any email to anyone or blocks all sends. There's no way to express &ldquo;send email, but ask me first if the recipient is outside my organization.&rdquo; Glob patterns over tool+args let you express exactly that.</p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">Full sandboxing (containers, VMs, seccomp profiles) solves a different problem. It protects the host from the agent, but it also prevents the agent from doing useful work. An agent that can't access the filesystem, network, or system tools is an agent that can't send emails, manage calendars, or run CLI tools. The permission layer needs to operate <em>within</em> the agent's execution context, not around it.</p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">Capability-based security is the closest theoretical fit. Each tool invocation is a capability, and the permission system decides whether to grant it. The difference from a textbook capability system is pragmatic: capabilities are matched by pattern, not by unforgeable token, because the agent is the only caller and we control the execution environment. This trades some theoretical purity for operational simplicity &mdash; you can read the config file and understand exactly what the agent can do.</p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">The compound effect</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">None of these mechanisms is novel in isolation. Glob matching is ancient. Fernet encryption is a solved problem. Realpath confinement is a standard defense. The value is in the composition: permissions decide <em>if</em> an action runs, the vault keeps secrets out of the model context, workspace confinement limits <em>where</em> file operations land, and the approval flow keeps a human in the loop for anything uncertain.</p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">The system is deliberately boring. Every component is something you could implement in an afternoon. That's the point &mdash; the permission model for an autonomous agent shouldn't be the thing that keeps you up at night. It should be a predictable stack of simple rules that you can audit by reading a YAML file.</p>
+
+    </div>
+
+    <!-- CTA -->
+    <div class="mt-16 pt-8 border-t" style="border-color: var(--color-border);">
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        humux implements permission engineering for autonomous agents out of the box.
+        <a href="/" class="no-underline font-medium" style="color: var(--color-accent);">Try it &rarr;</a>
+      </p>
+    </div>
+  </article>
+
+  <!-- Footer -->
+  <footer class="border-t px-5 py-12" style="border-color: var(--color-border); background: var(--color-surface);">
+    <div class="mx-auto max-w-6xl">
+      <div class="flex flex-wrap items-start justify-between gap-8">
+        <div>
+          <span class="text-sm font-semibold" style="color: var(--color-accent);">humux</span>
+          <p class="mt-1 text-xs" style="color: var(--color-muted);">Human Multiplexer &mdash; /ˈhjuːmʌks/</p>
+          <p class="mt-0.5 text-xs" style="color: var(--color-muted);">Your self-hosted personal AI agent.</p>
+        </div>
+        <div class="flex flex-wrap gap-10">
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Site</span>
+            <ul class="mt-2 space-y-1 text-xs" style="color: var(--color-muted);">
+              <li><a href="/" class="no-underline">Home</a></li>
+              <li><a href="/features.html" class="no-underline">Features</a></li>
+              <li><a href="/use-cases.html" class="no-underline">Use Cases</a></li>
+              <li><a href="/comparison.html" class="no-underline">Comparison</a></li>
+              <li><a href="/blog/" class="no-underline">Blog</a></li>
+            </ul>
+          </div>
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Resources</span>
+            <ul class="mt-2 space-y-1 text-xs" style="color: var(--color-muted);">
+              <li><a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="no-underline">GitHub</a></li>
+              <li><a href="https://docs.humux.dev" target="_blank" rel="noopener" class="no-underline">Documentation</a></li>
+              <li><a href="https://github.com/mattmezza/humux/releases" target="_blank" rel="noopener" class="no-underline">Releases</a></li>
+            </ul>
+          </div>
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Author</span>
+            <ul class="mt-2 space-y-1 text-xs" style="color: var(--color-muted);">
+              <li><a href="https://x.com/_mattmezza_" target="_blank" rel="noopener" class="no-underline">@_mattmezza_</a></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div class="mt-10 border-t pt-6 text-center text-xs" style="border-color: var(--color-border); color: var(--color-muted);">
+        &copy; 2026 Merola Software &amp; Services. MIT License.
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

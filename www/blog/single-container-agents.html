@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Running a Full Agent Stack in a Single Container — humux blog</title>
+  <meta name="description" content="Architecture decisions that make it possible to run LLM orchestration, voice, browser automation, email, calendar, and admin UI in one Docker container.">
+  <link rel="canonical" href="https://humux.dev/blog/single-container-agents">
+
+  <meta property="og:title" content="Running a Full Agent Stack in a Single Container">
+  <meta property="og:description" content="Architecture decisions that make it possible to run LLM orchestration, voice, browser automation, email, calendar, and admin UI in one Docker container.">
+  <meta property="og:url" content="https://humux.dev/blog/single-container-agents">
+  <meta property="og:type" content="article">
+  <meta property="og:image" content="https://humux.dev/assets/images/og-image.png">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Running a Full Agent Stack in a Single Container">
+  <meta name="twitter:description" content="Architecture decisions for running a full agent stack in one Docker container.">
+  <meta name="twitter:image" content="https://humux.dev/assets/images/og-image.png">
+  <meta name="twitter:site" content="@_mattmezza_">
+  <meta name="twitter:creator" content="@_mattmezza_">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "headline": "Running a Full Agent Stack in a Single Container",
+    "description": "Architecture decisions that make it possible to run LLM orchestration, voice, browser automation, email, calendar, and admin UI in one Docker container.",
+    "datePublished": "2026-07-07",
+    "author": { "@type": "Person", "name": "Matteo Merola" },
+    "publisher": { "@type": "Organization", "name": "humux" },
+    "url": "https://humux.dev/blog/single-container-agents"
+  }
+  </script>
+
+  <link rel="icon" type="image/svg+xml" href="/assets/images/favicon-32.svg">
+  <link rel="alternate icon" type="image/png" sizes="32x32" href="/assets/images/favicon-32.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/images/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/css/style.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script defer src="https://analytics.casa.merola.co/script.js" data-website-id="b395aaa1-97a5-494e-9ad8-15b3ba20318e"></script>
+</head>
+<body>
+
+  <!-- Nav -->
+  <nav x-data="{ open: false }" class="sticky top-0 z-50 border-b border-[var(--color-border)]" style="background: rgba(6,6,6,0.85); backdrop-filter: blur(12px);">
+    <div class="mx-auto flex max-w-6xl items-center justify-between px-5 py-3">
+      <a href="/" class="flex items-center gap-2 no-underline">
+        <span class="text-sm font-semibold tracking-wider" style="color: var(--color-accent);">humux</span>
+        <span class="hidden sm:inline text-xs" style="color: var(--color-muted);">/ˈhjuːmʌks/</span>
+      </a>
+      <div class="hidden md:flex items-center gap-5 text-xs">
+        <a href="/" class="no-underline transition-colors" style="color: var(--color-secondary);">Home</a>
+        <a href="/features.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Features</a>
+        <a href="/use-cases.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Use Cases</a>
+        <a href="/comparison.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Comparison</a>
+        <a href="/blog/" class="font-medium no-underline" style="color: var(--color-accent);">Blog</a>
+        <a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="no-underline transition-colors" style="color: var(--color-secondary);">
+          <svg class="inline-block h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        </a>
+        <a href="https://docs.humux.dev" target="_blank" rel="noopener" class="no-underline transition-colors" style="color: var(--color-secondary);">Docs</a>
+      </div>
+      <button @click="open = !open" class="md:hidden p-2" style="color: var(--color-secondary);" aria-label="Menu">
+        <svg x-show="!open" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        <svg x-show="open" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div x-show="open" @click.outside="open = false" x-cloak class="md:hidden border-t border-[var(--color-border)] px-5 py-4 space-y-3 text-sm" style="background: rgba(6,6,6,0.95);">
+      <a href="/" class="block no-underline transition-colors" style="color: var(--color-secondary);">Home</a>
+      <a href="/features.html" class="block no-underline transition-colors" style="color: var(--color-secondary);">Features</a>
+      <a href="/use-cases.html" class="block no-underline transition-colors" style="color: var(--color-secondary);">Use Cases</a>
+      <a href="/comparison.html" class="block no-underline transition-colors" style="color: var(--color-secondary);">Comparison</a>
+      <a href="/blog/" class="block font-medium no-underline" style="color: var(--color-accent);">Blog</a>
+      <a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="block no-underline transition-colors" style="color: var(--color-secondary);">GitHub</a>
+      <a href="https://docs.humux.dev" target="_blank" rel="noopener" class="block no-underline transition-colors" style="color: var(--color-secondary);">Docs</a>
+    </div>
+  </nav>
+
+  <!-- Article -->
+  <article class="mx-auto max-w-3xl px-5 py-16">
+    <header class="mb-12">
+      <p class="text-xs font-mono mb-3" style="color: var(--color-muted);">July 7, 2026 &mdash; Matteo Merola</p>
+      <h1 class="text-3xl sm:text-4xl font-bold leading-tight mb-4" style="color: #eee;">Running a Full Agent Stack in a Single Container</h1>
+      <p class="text-lg leading-relaxed" style="color: var(--color-secondary);">Architecture decisions that make it possible to run everything in one Docker container.</p>
+    </header>
+
+    <div class="space-y-6">
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">The conventional wisdom is that each concern gets its own service. Web server, database, task queue, model inference &mdash; four containers minimum, plus orchestration to keep them talking. For a personal agent that one person runs on a VPS, this is overkill. humux ships as a single Docker image that bundles LLM orchestration, speech-to-text, text-to-speech, email, calendar, browser automation, and a web admin UI. Here&rsquo;s how, and the tradeoffs involved.</p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">SQLite over Postgres</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">The single biggest decision that enables the single-container approach is the database. Postgres is fantastic software, but it&rsquo;s also an entire server: its own process tree, its own memory management, its own configuration surface. For a personal agent with one concurrent user, SQLite in WAL (Write-Ahead Logging) mode gives you everything you need.</p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">WAL mode allows concurrent readers while a single writer commits. Since the agent&rsquo;s write pattern is &ldquo;one conversation turn at a time,&rdquo; writer contention is effectively zero. Meanwhile, the admin UI can read chat history, the scheduler can read job definitions, and the memory system can query embeddings &mdash; all without blocking each other.</p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">humux uses four separate SQLite databases rather than one monolith:</p>
+
+      <div class="terminal-window mt-4 mb-4">
+        <div class="terminal-header">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+          <span class="ml-2 text-xs" style="color: var(--color-muted);">data/</span>
+        </div>
+        <div class="terminal-body">
+<div>data/</div>
+<div>├── chat.db        # conversation history, per-agent contexts</div>
+<div>├── memory.db      # long-term + short-term memories, embeddings</div>
+<div>├── jobs.db        # scheduled tasks, one-shot jobs, run logs</div>
+<div>└── admin.db       # UI sessions, settings, audit trail</div>
+        </div>
+      </div>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">Separate databases mean separate WAL files, separate lock domains, and separate backup granularity. You can <code class="inline-code">cp memory.db memory.db.bak</code> without pausing chat writes. Each database is small enough that <code class="inline-code">VACUUM</code> takes milliseconds. And migration is straightforward: each database has its own schema version tracked in a <code class="inline-code">_meta</code> table.</p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">Python + CLI Architecture</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">The second key decision is how to handle protocol-specific work. Email via IMAP/SMTP is complex. Browser automation needs a full Chromium instance. Voice transcription requires native C++ inference. Embedding all of these as Python libraries would mean a massive dependency tree, C extension build headaches, and version conflicts.</p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">Instead, humux uses a Python orchestrator that shells out to purpose-built CLI tools:</p>
+
+      <div class="terminal-window mt-4 mb-4">
+        <div class="terminal-header">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+          <span class="ml-2 text-xs" style="color: var(--color-muted);">architecture.py</span>
+        </div>
+        <div class="terminal-body">
+<div><span style="color: var(--color-accent);">async def</span> run_command(cmd: list[str], timeout: int = 30) -> str:</div>
+<div>    proc = <span style="color: var(--color-accent);">await</span> asyncio.create_subprocess_exec(</div>
+<div>        *cmd,</div>
+<div>        stdout=asyncio.subprocess.PIPE,</div>
+<div>        stderr=asyncio.subprocess.PIPE,</div>
+<div>    )</div>
+<div>    stdout, stderr = <span style="color: var(--color-accent);">await</span> asyncio.wait_for(</div>
+<div>        proc.communicate(), timeout=timeout</div>
+<div>    )</div>
+<div>    <span style="color: var(--color-accent);">if</span> proc.returncode != 0:</div>
+<div>        <span style="color: var(--color-accent);">raise</span> ToolError(stderr.decode())</div>
+<div>    <span style="color: var(--color-accent);">return</span> stdout.decode()</div>
+        </div>
+      </div>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">Email goes through <a href="https://github.com/pimalaya/himalaya" target="_blank" rel="noopener" style="color: var(--color-accent);">Himalaya</a>, a Rust CLI that handles IMAP, JMAP, and SMTP. Browser automation runs through Playwright&rsquo;s CLI. Each tool is a statically linked binary (or self-contained runtime) that the Docker image bundles. Python never touches email parsing or browser DevTools directly &mdash; it just assembles the command, runs it, and parses the output.</p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">This architecture has a real benefit: each CLI tool can be tested, updated, and replaced independently. When Himalaya ships a new release, you update the binary. No Python dependency graph to untangle.</p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">Process Management Without a Process Manager</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">A common pattern in multi-service containers is to use supervisord or s6 as PID 1, spawning and watching child processes. humux doesn&rsquo;t need this because Python&rsquo;s asyncio is already a cooperative scheduler. The main process runs:</p>
+
+      <div class="terminal-window mt-4 mb-4">
+        <div class="terminal-header">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+          <span class="ml-2 text-xs" style="color: var(--color-muted);">main.py</span>
+        </div>
+        <div class="terminal-body">
+<div><span style="color: var(--color-accent);">async def</span> main():</div>
+<div>    <span style="color: var(--color-accent);">async with</span> TaskGroup() <span style="color: var(--color-accent);">as</span> tg:</div>
+<div>        tg.create_task(start_web_server())      <span style="color: var(--color-muted);"># FastAPI admin UI</span></div>
+<div>        tg.create_task(start_telegram_polling())  <span style="color: var(--color-muted);"># per-agent bots</span></div>
+<div>        tg.create_task(start_scheduler())         <span style="color: var(--color-muted);"># cron-like jobs</span></div>
+<div>        tg.create_task(start_cli_server())        <span style="color: var(--color-muted);"># Unix socket for CLI</span></div>
+        </div>
+      </div>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);"><code class="inline-code">TaskGroup</code> (Python 3.11+) gives you structured concurrency: if any task crashes with an unhandled exception, the group cancels the others and propagates. This is actually better than supervisord for this use case &mdash; you get clean shutdown semantics for free, and all tasks share the same event loop, which means they can share in-memory state like the agent registry without IPC.</p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">Resource Budgeting</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">The trickiest part of the single-container approach is memory. The web server and Telegram poller are cheap &mdash; a few MB each. But loading a Whisper model for speech-to-text can consume 200MB&ndash;1.5GB depending on the model size. Loading it at startup when most users may never send a voice message is wasteful.</p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">humux uses lazy loading: the Whisper model loads on the first voice message and stays resident. The model size is selected based on available memory:</p>
+
+      <div class="terminal-window mt-4 mb-4">
+        <div class="terminal-header">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+          <span class="ml-2 text-xs" style="color: var(--color-muted);">voice/stt.py</span>
+        </div>
+        <div class="terminal-body">
+<div><span style="color: var(--color-accent);">import</span> psutil</div>
+<div></div>
+<div><span style="color: var(--color-accent);">def</span> select_whisper_model() -> str:</div>
+<div>    avail_gb = psutil.virtual_memory().available / (1024**3)</div>
+<div>    <span style="color: var(--color-accent);">if</span> avail_gb >= 4:</div>
+<div>        <span style="color: var(--color-accent);">return</span> <span style="color: var(--color-warn);">"small"</span>   <span style="color: var(--color-muted);"># ~460MB, best accuracy</span></div>
+<div>    <span style="color: var(--color-accent);">if</span> avail_gb >= 2:</div>
+<div>        <span style="color: var(--color-accent);">return</span> <span style="color: var(--color-warn);">"base"</span>    <span style="color: var(--color-muted);"># ~140MB, good tradeoff</span></div>
+<div>    <span style="color: var(--color-accent);">return</span> <span style="color: var(--color-warn);">"tiny"</span>       <span style="color: var(--color-muted);"># ~75MB, adequate for clear audio</span></div>
+        </div>
+      </div>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">TTS is lighter. Kokoro 82M uses about 350MB but generates speech much faster than real-time, so inference is bursty: it allocates, generates a clip, and releases. In practice, voice and LLM API calls rarely overlap because they&rsquo;re part of the same turn pipeline: transcribe &rarr; think &rarr; synthesize.</p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">The Data Directory</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">Everything stateful lives under a single mount point:</p>
+
+      <div class="terminal-window mt-4 mb-4">
+        <div class="terminal-header">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+          <span class="ml-2 text-xs" style="color: var(--color-muted);">docker-compose.yml</span>
+        </div>
+        <div class="terminal-body">
+<div><span style="color: var(--color-accent);">services:</span></div>
+<div>  <span style="color: var(--color-accent);">humux:</span></div>
+<div>    image: ghcr.io/mattmezza/humux:latest</div>
+<div>    volumes:</div>
+<div>      - ./data:/app/data</div>
+<div>    ports:</div>
+<div>      - "8000:8000"</div>
+        </div>
+      </div>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">Inside <code class="inline-code">/app/data</code> you&rsquo;ll find the SQLite databases, agent workspaces (where the coding harness writes files), voice cache (generated TTS clips, keyed by text hash), skill definitions, and configuration. Backup is <code class="inline-code">tar czf backup.tar.gz ./data</code>. Restore is the reverse. No pg_dump, no redis-cli, no multi-step coordination.</p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">When to Split</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">The single-container approach works because of three properties: single user, moderate throughput, and stateful-by-nature workloads. It stops working when any of these change.</p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);"><strong style="color: #eee;">High voice throughput</strong> is the first bottleneck. If you&rsquo;re processing dozens of voice messages per minute, the Whisper model will saturate a single CPU. At that point, you want a dedicated transcription service that can scale horizontally &mdash; or a GPU-backed instance.</p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);"><strong style="color: #eee;">Multi-user deployments</strong> break the SQLite assumption. WAL mode supports one writer at a time. With multiple users making concurrent writes, you&rsquo;ll hit <code class="inline-code">SQLITE_BUSY</code>. This is where Postgres earns its keep.</p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);"><strong style="color: #eee;">Horizontal scaling</strong> isn&rsquo;t possible with a single container by definition. If you need the agent to survive a node failure, you need replication, which means external state stores and a load balancer.</p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">For a personal agent, none of these apply. One container, one volume, one backup. The operational surface area is minimal, and that&rsquo;s the point. You spend your time teaching the agent new skills, not debugging Kubernetes manifests.</p>
+
+    </div>
+
+    <!-- CTA -->
+    <div class="mt-16 pt-8 border-t" style="border-color: var(--color-border);">
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        humux runs the full agent stack in a single container out of the box.
+        <a href="/" class="no-underline font-medium" style="color: var(--color-accent);">Try it &rarr;</a>
+      </p>
+    </div>
+  </article>
+
+  <!-- Footer -->
+  <footer class="border-t px-5 py-12" style="border-color: var(--color-border); background: var(--color-surface);">
+    <div class="mx-auto max-w-6xl">
+      <div class="flex flex-wrap items-start justify-between gap-8">
+        <div>
+          <span class="text-sm font-semibold" style="color: var(--color-accent);">humux</span>
+          <p class="mt-1 text-xs" style="color: var(--color-muted);">Human Multiplexer &mdash; /ˈhjuːmʌks/</p>
+          <p class="mt-0.5 text-xs" style="color: var(--color-muted);">Your self-hosted personal AI agent.</p>
+        </div>
+        <div class="flex flex-wrap gap-10">
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Site</span>
+            <ul class="mt-2 space-y-1 text-xs" style="color: var(--color-muted);">
+              <li><a href="/" class="no-underline">Home</a></li>
+              <li><a href="/features.html" class="no-underline">Features</a></li>
+              <li><a href="/use-cases.html" class="no-underline">Use Cases</a></li>
+              <li><a href="/comparison.html" class="no-underline">Comparison</a></li>
+              <li><a href="/blog/" class="no-underline">Blog</a></li>
+            </ul>
+          </div>
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Resources</span>
+            <ul class="mt-2 space-y-1 text-xs" style="color: var(--color-muted);">
+              <li><a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="no-underline">GitHub</a></li>
+              <li><a href="https://docs.humux.dev" target="_blank" rel="noopener" class="no-underline">Documentation</a></li>
+              <li><a href="https://github.com/mattmezza/humux/releases" target="_blank" rel="noopener" class="no-underline">Releases</a></li>
+            </ul>
+          </div>
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Author</span>
+            <ul class="mt-2 space-y-1 text-xs" style="color: var(--color-muted);">
+              <li><a href="https://x.com/_mattmezza_" target="_blank" rel="noopener" class="no-underline">@_mattmezza_</a></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div class="mt-10 border-t pt-6 text-center text-xs" style="border-color: var(--color-border); color: var(--color-muted);">
+        &copy; 2026 Merola Software &amp; Services. MIT License.
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

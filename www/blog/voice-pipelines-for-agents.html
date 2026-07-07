@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Voice Pipelines for Agents: On-Device STT and TTS — humux blog</title>
+  <meta name="description" content="Building offline-capable voice interaction with faster-whisper for speech-to-text and Kokoro 82M for text-to-speech, including benchmarks and architecture.">
+  <link rel="canonical" href="https://humux.dev/blog/voice-pipelines-for-agents">
+
+  <meta property="og:title" content="Voice Pipelines for Agents: On-Device STT and TTS">
+  <meta property="og:description" content="Building offline-capable voice interaction with faster-whisper for speech-to-text and Kokoro 82M for text-to-speech.">
+  <meta property="og:url" content="https://humux.dev/blog/voice-pipelines-for-agents">
+  <meta property="og:type" content="article">
+  <meta property="og:image" content="https://humux.dev/assets/images/og-image.png">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Voice Pipelines for Agents: On-Device STT and TTS">
+  <meta name="twitter:description" content="Building offline-capable voice interaction with faster-whisper and Kokoro 82M.">
+  <meta name="twitter:image" content="https://humux.dev/assets/images/og-image.png">
+  <meta name="twitter:site" content="@_mattmezza_">
+  <meta name="twitter:creator" content="@_mattmezza_">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "headline": "Voice Pipelines for Agents: On-Device STT and TTS",
+    "description": "Building offline-capable voice interaction with faster-whisper for speech-to-text and Kokoro 82M for text-to-speech.",
+    "datePublished": "2026-07-07",
+    "author": { "@type": "Person", "name": "Matteo Merola" },
+    "publisher": { "@type": "Organization", "name": "humux" },
+    "url": "https://humux.dev/blog/voice-pipelines-for-agents"
+  }
+  </script>
+
+  <link rel="icon" type="image/svg+xml" href="/assets/images/favicon-32.svg">
+  <link rel="alternate icon" type="image/png" sizes="32x32" href="/assets/images/favicon-32.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/images/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/css/style.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script defer src="https://analytics.casa.merola.co/script.js" data-website-id="b395aaa1-97a5-494e-9ad8-15b3ba20318e"></script>
+</head>
+<body>
+
+  <!-- Nav -->
+  <nav x-data="{ open: false }" class="sticky top-0 z-50 border-b border-[var(--color-border)]" style="background: rgba(6,6,6,0.85); backdrop-filter: blur(12px);">
+    <div class="mx-auto flex max-w-6xl items-center justify-between px-5 py-3">
+      <a href="/" class="flex items-center gap-2 no-underline">
+        <span class="text-sm font-semibold tracking-wider" style="color: var(--color-accent);">humux</span>
+        <span class="hidden sm:inline text-xs" style="color: var(--color-muted);">/ˈhjuːmʌks/</span>
+      </a>
+      <div class="hidden md:flex items-center gap-5 text-xs">
+        <a href="/" class="no-underline transition-colors" style="color: var(--color-secondary);">Home</a>
+        <a href="/features.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Features</a>
+        <a href="/use-cases.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Use Cases</a>
+        <a href="/comparison.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Comparison</a>
+        <a href="/blog/" class="font-medium no-underline" style="color: var(--color-accent);">Blog</a>
+        <a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="no-underline transition-colors" style="color: var(--color-secondary);">
+          <svg class="inline-block h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        </a>
+        <a href="https://docs.humux.dev" target="_blank" rel="noopener" class="no-underline transition-colors" style="color: var(--color-secondary);">Docs</a>
+      </div>
+      <button @click="open = !open" class="md:hidden p-2" style="color: var(--color-secondary);" aria-label="Menu">
+        <svg x-show="!open" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        <svg x-show="open" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div x-show="open" @click.outside="open = false" x-cloak class="md:hidden border-t border-[var(--color-border)] px-5 py-4 space-y-3 text-sm" style="background: rgba(6,6,6,0.95);">
+      <a href="/" class="block no-underline transition-colors" style="color: var(--color-secondary);">Home</a>
+      <a href="/features.html" class="block no-underline transition-colors" style="color: var(--color-secondary);">Features</a>
+      <a href="/use-cases.html" class="block no-underline transition-colors" style="color: var(--color-secondary);">Use Cases</a>
+      <a href="/comparison.html" class="block no-underline transition-colors" style="color: var(--color-secondary);">Comparison</a>
+      <a href="/blog/" class="block font-medium no-underline" style="color: var(--color-accent);">Blog</a>
+      <a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="block no-underline transition-colors" style="color: var(--color-secondary);">GitHub</a>
+      <a href="https://docs.humux.dev" target="_blank" rel="noopener" class="block no-underline transition-colors" style="color: var(--color-secondary);">Docs</a>
+    </div>
+  </nav>
+
+  <!-- Article -->
+  <article class="mx-auto max-w-3xl px-5 py-16">
+    <header class="mb-12">
+      <p class="text-xs font-mono mb-3" style="color: var(--color-muted);">July 7, 2026 &mdash; Matteo Merola</p>
+      <h1 class="text-3xl sm:text-4xl font-bold leading-tight mb-4" style="color: #eee;">Voice Pipelines for Agents: On-Device STT and TTS</h1>
+      <p class="text-lg leading-relaxed" style="color: var(--color-secondary);">Building offline-capable voice interaction with faster-whisper and Kokoro.</p>
+    </header>
+
+    <div class="space-y-6">
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">Voice interaction adds a dimension that text alone can't match. When you're driving, cooking, or walking the dog, typing a message to your agent isn't practical. But most voice implementations either depend on cloud APIs (latency, privacy, cost) or require GPU hardware that a small self-hosted box doesn't have. The sweet spot is on-device inference with models small enough to run on CPU alongside everything else.</p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">This article covers the voice pipeline architecture in humux: how a Telegram voice note becomes a transcription, passes through the agent, and comes back as a spoken reply &mdash; all without leaving the machine.</p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">The Pipeline End to End</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">A voice round-trip has six stages. Each stage is a function call, and the whole thing runs sequentially in a single async task:</p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);"><strong style="color: #ccc;">1. Download</strong> &mdash; Telegram sends voice notes as OGG/Opus files. The bot API gives us a file ID; we download it to a temp path.<br>
+      <strong style="color: #ccc;">2. Transcode to WAV</strong> &mdash; faster-whisper expects 16kHz mono WAV. A single ffmpeg call handles this.<br>
+      <strong style="color: #ccc;">3. Transcribe (STT)</strong> &mdash; faster-whisper runs CTranslate2-optimized Whisper inference on CPU.<br>
+      <strong style="color: #ccc;">4. Agent turn</strong> &mdash; The transcribed text goes into the normal message pipeline, as if the user had typed it.<br>
+      <strong style="color: #ccc;">5. Synthesize (TTS)</strong> &mdash; If the agent's response contains a <code class="inline-code">[[voice]]</code> marker, the text is routed through Kokoro or edge-tts.<br>
+      <strong style="color: #ccc;">6. Send</strong> &mdash; The resulting WAV is transcoded to OGG/Opus and sent back as a Telegram voice note.</p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">The core transcription function is straightforward:</p>
+
+      <div class="terminal-window">
+        <div class="terminal-header">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+          <span class="ml-2 text-xs" style="color: var(--color-muted);">voice.py &mdash; STT</span>
+        </div>
+        <div class="terminal-body">
+<pre>from faster_whisper import WhisperModel
+
+model = WhisperModel("base", device="cpu", compute_type="int8")
+
+async def transcribe(audio_path: Path) -&gt; str:
+    wav_path = audio_path.with_suffix(".wav")
+    await run_command(
+        "ffmpeg", "-i", str(audio_path),
+        "-ar", "16000", "-ac", "1", "-f", "wav",
+        str(wav_path)
+    )
+    segments, info = model.transcribe(
+        str(wav_path), beam_size=3, language=None
+    )
+    text = " ".join(s.text.strip() for s in segments)
+    wav_path.unlink(missing_ok=True)
+    return text</pre>
+        </div>
+      </div>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">Setting <code class="inline-code">language=None</code> lets Whisper auto-detect. The <code class="inline-code">info</code> object returns the detected language and probability, which can be logged or used downstream. The <code class="inline-code">int8</code> compute type halves memory usage on CPU with negligible quality loss.</p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">Choosing a Whisper Model</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">faster-whisper ships CTranslate2-converted models in several sizes. The tradeoff is simple: bigger models transcribe more accurately but use more RAM and CPU time. Here are real numbers from a 4-core x86 CPU (Intel N100, the kind of thing you'd run a home server on):</p>
+
+      <div class="overflow-x-auto">
+        <table class="comparison-table mt-4 mb-4">
+          <thead>
+            <tr>
+              <th>Model</th>
+              <th>Params</th>
+              <th>10s audio</th>
+              <th>RAM</th>
+              <th>WER (en)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style="color: #ccc;">tiny</td>
+              <td>39M</td>
+              <td>~0.5s</td>
+              <td>~75 MB</td>
+              <td>~14%</td>
+            </tr>
+            <tr>
+              <td style="color: #ccc;">base</td>
+              <td>74M</td>
+              <td>~1.2s</td>
+              <td>~150 MB</td>
+              <td>~10%</td>
+            </tr>
+            <tr>
+              <td style="color: #ccc;">small</td>
+              <td>244M</td>
+              <td>~3.0s</td>
+              <td>~500 MB</td>
+              <td>~7%</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);"><code class="inline-code">base</code> is the default in humux. It handles accented English, Italian, German, and Spanish well enough for conversational messages. <code class="inline-code">tiny</code> works if you're tight on RAM or only deal with clean, single-speaker English. <code class="inline-code">small</code> is worth it for multilingual heavy use or noisy environments, but 500 MB of resident memory is significant when you're also running an embedding model and TTS in the same container.</p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">TTS: Cloud vs. Offline</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">humux supports two TTS backends, selectable per agent:</p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);"><strong style="color: #ccc;">edge-tts</strong> calls Microsoft's Edge speech service. Zero local resources, excellent voice quality across dozens of languages, but requires internet access. Since the audio is generated server-side, your agent's responses are sent to Microsoft. For personal use this may be fine; for privacy-sensitive deployments, it's a non-starter.</p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);"><strong style="color: #ccc;">Kokoro 82M</strong> runs entirely on-device. At 82 million parameters, it's small enough to run on CPU in under a second per sentence. The quality is remarkably good for its size &mdash; natural prosody, no robotic artifacts &mdash; though it currently covers fewer languages than edge-tts. It loads ~200 MB into RAM and stays resident.</p>
+
+      <div class="terminal-window">
+        <div class="terminal-header">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+          <span class="ml-2 text-xs" style="color: var(--color-muted);">voice.py &mdash; TTS</span>
+        </div>
+        <div class="terminal-body">
+<pre>async def synthesize(text: str, voice_id: str, backend: str) -&gt; Path:
+    out = tmp_path / f"{uuid4().hex}.wav"
+    if backend == "kokoro":
+        audio = kokoro_model.generate(text, voice=voice_id)
+        sf.write(str(out), audio, samplerate=24000)
+    else:
+        communicate = edge_tts.Communicate(text, voice_id)
+        await communicate.save(str(out))
+    return out
+
+async def to_ogg(wav_path: Path) -&gt; Path:
+    ogg_path = wav_path.with_suffix(".ogg")
+    await run_command(
+        "ffmpeg", "-i", str(wav_path),
+        "-c:a", "libopus", "-b:a", "48k",
+        str(ogg_path)
+    )
+    return ogg_path</pre>
+        </div>
+      </div>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">The Voice Marker Protocol</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">Not every response should be spoken. A three-paragraph answer with code snippets makes no sense as audio. The agent decides by including a <code class="inline-code">[[voice]]</code> marker in its response. The output post-processor strips the marker and routes through TTS:</p>
+
+      <div class="terminal-window">
+        <div class="terminal-header">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+          <span class="ml-2 text-xs" style="color: var(--color-muted);">output.py</span>
+        </div>
+        <div class="terminal-body">
+<pre>VOICE_MARKER = "[[voice]]"
+
+async def process_response(text: str, agent: Agent, chat_id: int):
+    if VOICE_MARKER in text:
+        spoken = text.replace(VOICE_MARKER, "").strip()
+        wav = await synthesize(spoken, agent.voice_id, agent.tts_backend)
+        ogg = await to_ogg(wav)
+        await bot.send_voice(chat_id, ogg)
+        wav.unlink(missing_ok=True)
+        ogg.unlink(missing_ok=True)
+    else:
+        await bot.send_message(chat_id, text)</pre>
+        </div>
+      </div>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">The agent's system prompt instructs it: "When the user sent a voice message and your reply is short and conversational, include [[voice]] at the start of your response." This keeps the decision with the model, where context about message length and content type lives. The rule is a heuristic, not a hard gate &mdash; the agent learns quickly which responses work as voice and which don't.</p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">Per-Agent Voice Selection</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">Each agent in humux has a <code class="inline-code">voice_id</code> and <code class="inline-code">tts_backend</code> field in its configuration. A household might have one agent using a deep male Kokoro voice and another using a female edge-tts voice. This is configured in the admin UI or directly in the agent's YAML:</p>
+
+      <div class="terminal-window">
+        <div class="terminal-header">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+          <span class="ml-2 text-xs" style="color: var(--color-muted);">config.yml</span>
+        </div>
+        <div class="terminal-body">
+<pre>agents:
+  jarvis:
+    tts_backend: kokoro
+    voice_id: af_heart
+    whisper_model: base
+  friday:
+    tts_backend: edge-tts
+    voice_id: en-US-AriaNeural
+    whisper_model: base</pre>
+        </div>
+      </div>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">The Whisper model is also per-agent, though in practice most deployments use the same model everywhere. Splitting it only makes sense if one agent handles primarily non-English input and you want to give it the larger <code class="inline-code">small</code> model for better multilingual accuracy.</p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">Multilingual Handling</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">Whisper auto-detects language from the first 30 seconds of audio. In practice, for messages under a minute, this just works &mdash; it identifies the language, transcribes in that language, and returns the text. No language configuration needed.</p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">TTS is where it gets interesting. Kokoro voices are language-specific: an English voice can't synthesize Italian. The pipeline detects the language of the outgoing text (a simple heuristic based on character ranges and common words, falling back to the detected STT language) and picks the matching voice variant. If no matching voice exists, it falls back to text output instead of generating garbled audio.</p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">End-to-End Performance</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">Total round-trip for a typical voice interaction (10-second message, one-sentence reply) on a 4-core CPU:</p>
+
+      <div class="overflow-x-auto">
+        <table class="comparison-table mt-4 mb-4">
+          <thead>
+            <tr>
+              <th>Stage</th>
+              <th>Duration</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style="color: #ccc;">Download + transcode</td>
+              <td>~0.3s</td>
+            </tr>
+            <tr>
+              <td style="color: #ccc;">STT (base model)</td>
+              <td>~1.2s</td>
+            </tr>
+            <tr>
+              <td style="color: #ccc;">Agent turn</td>
+              <td>~2.0s</td>
+            </tr>
+            <tr>
+              <td style="color: #ccc;">TTS (Kokoro)</td>
+              <td>~0.8s</td>
+            </tr>
+            <tr>
+              <td style="color: #ccc;">Transcode + upload</td>
+              <td>~0.3s</td>
+            </tr>
+            <tr>
+              <td style="color: #ccc;"><strong>Total</strong></td>
+              <td><strong>~4.6s</strong></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">Under five seconds feels conversational. The agent turn (the actual thinking time) dominates for longer responses. The voice infrastructure itself &mdash; STT plus TTS plus transcoding &mdash; adds about 2.5 seconds of overhead, which is roughly what a human takes to start replying in a real conversation.</p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">The key decision in this architecture is keeping both models resident in memory. Loading Whisper on demand would add 3-4 seconds of cold-start time. At 150 MB (base) + 200 MB (Kokoro), the combined footprint is 350 MB &mdash; significant on a 2 GB VPS, comfortable on a 4 GB one. If memory is tight, edge-tts eliminates the Kokoro cost entirely, and you can drop to <code class="inline-code">tiny</code> whisper for another 75 MB savings.</p>
+    </div>
+
+    <!-- CTA -->
+    <div class="mt-16 pt-8 border-t" style="border-color: var(--color-border);">
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        humux implements on-device voice pipelines out of the box.
+        <a href="/" class="no-underline font-medium" style="color: var(--color-accent);">Try it &rarr;</a>
+      </p>
+    </div>
+  </article>
+
+  <!-- Footer -->
+  <footer class="border-t px-5 py-12" style="border-color: var(--color-border); background: var(--color-surface);">
+    <div class="mx-auto max-w-6xl">
+      <div class="flex flex-wrap items-start justify-between gap-8">
+        <div>
+          <span class="text-sm font-semibold" style="color: var(--color-accent);">humux</span>
+          <p class="mt-1 text-xs" style="color: var(--color-muted);">Human Multiplexer &mdash; /ˈhjuːmʌks/</p>
+          <p class="mt-0.5 text-xs" style="color: var(--color-muted);">Your self-hosted personal AI agent.</p>
+        </div>
+        <div class="flex flex-wrap gap-10">
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Site</span>
+            <ul class="mt-2 space-y-1 text-xs" style="color: var(--color-muted);">
+              <li><a href="/" class="no-underline">Home</a></li>
+              <li><a href="/features.html" class="no-underline">Features</a></li>
+              <li><a href="/use-cases.html" class="no-underline">Use Cases</a></li>
+              <li><a href="/comparison.html" class="no-underline">Comparison</a></li>
+              <li><a href="/blog/" class="no-underline">Blog</a></li>
+            </ul>
+          </div>
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Resources</span>
+            <ul class="mt-2 space-y-1 text-xs" style="color: var(--color-muted);">
+              <li><a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="no-underline">GitHub</a></li>
+              <li><a href="https://docs.humux.dev" target="_blank" rel="noopener" class="no-underline">Documentation</a></li>
+              <li><a href="https://github.com/mattmezza/humux/releases" target="_blank" rel="noopener" class="no-underline">Releases</a></li>
+            </ul>
+          </div>
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Author</span>
+            <ul class="mt-2 space-y-1 text-xs" style="color: var(--color-muted);">
+              <li><a href="https://x.com/_mattmezza_" target="_blank" rel="noopener" class="no-underline">@_mattmezza_</a></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div class="mt-10 border-t pt-6 text-center text-xs" style="border-color: var(--color-border); color: var(--color-muted);">
+        &copy; 2026 Merola Software &amp; Services. MIT License.
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Skills Over Code: Teaching Agents via Markdown — humux blog</title>
+  <meta name="description" content="Why describing CLI tools in markdown files beats writing Python adapter classes for every new agent capability.">
+  <link rel="canonical" href="https://humux.dev/blog/skills-over-code">
+
+  <meta property="og:title" content="Skills Over Code: Teaching Agents via Markdown">
+  <meta property="og:description" content="Why describing CLI tools in markdown files beats writing Python adapter classes for every new agent capability.">
+  <meta property="og:url" content="https://humux.dev/blog/skills-over-code">
+  <meta property="og:type" content="article">
+  <meta property="og:image" content="https://humux.dev/assets/images/og-image.png">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Skills Over Code: Teaching Agents via Markdown">
+  <meta name="twitter:description" content="Why describing CLI tools in markdown files beats writing Python adapter classes for every new agent capability.">
+  <meta name="twitter:image" content="https://humux.dev/assets/images/og-image.png">
+  <meta name="twitter:site" content="@_mattmezza_">
+  <meta name="twitter:creator" content="@_mattmezza_">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "headline": "Skills Over Code: Teaching Agents via Markdown",
+    "description": "Why describing CLI tools in markdown files beats writing Python adapter classes for every new agent capability.",
+    "datePublished": "2026-07-07",
+    "author": { "@type": "Person", "name": "Matteo Merola" },
+    "publisher": { "@type": "Organization", "name": "humux" },
+    "url": "https://humux.dev/blog/skills-over-code"
+  }
+  </script>
+
+  <link rel="icon" type="image/svg+xml" href="/assets/images/favicon-32.svg">
+  <link rel="alternate icon" type="image/png" sizes="32x32" href="/assets/images/favicon-32.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/images/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/css/style.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script defer src="https://analytics.casa.merola.co/script.js" data-website-id="b395aaa1-97a5-494e-9ad8-15b3ba20318e"></script>
+</head>
+<body>
+
+  <!-- Nav -->
+  <nav x-data="{ open: false }" class="sticky top-0 z-50 border-b border-[var(--color-border)]" style="background: rgba(6,6,6,0.85); backdrop-filter: blur(12px);">
+    <div class="mx-auto flex max-w-6xl items-center justify-between px-5 py-3">
+      <a href="/" class="flex items-center gap-2 no-underline">
+        <span class="text-sm font-semibold tracking-wider" style="color: var(--color-accent);">humux</span>
+        <span class="hidden sm:inline text-xs" style="color: var(--color-muted);">/ˈhjuːmʌks/</span>
+      </a>
+      <div class="hidden md:flex items-center gap-5 text-xs">
+        <a href="/" class="no-underline transition-colors" style="color: var(--color-secondary);">Home</a>
+        <a href="/features.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Features</a>
+        <a href="/use-cases.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Use Cases</a>
+        <a href="/comparison.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Comparison</a>
+        <a href="/blog/" class="font-medium no-underline" style="color: var(--color-accent);">Blog</a>
+        <a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="no-underline transition-colors" style="color: var(--color-secondary);">
+          <svg class="inline-block h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        </a>
+        <a href="https://docs.humux.dev" target="_blank" rel="noopener" class="no-underline transition-colors" style="color: var(--color-secondary);">Docs</a>
+      </div>
+      <button @click="open = !open" class="md:hidden p-2" style="color: var(--color-secondary);" aria-label="Menu">
+        <svg x-show="!open" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        <svg x-show="open" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div x-show="open" @click.outside="open = false" x-cloak class="md:hidden border-t border-[var(--color-border)] px-5 py-4 space-y-3 text-sm" style="background: rgba(6,6,6,0.95);">
+      <a href="/" class="block no-underline transition-colors" style="color: var(--color-secondary);">Home</a>
+      <a href="/features.html" class="block no-underline transition-colors" style="color: var(--color-secondary);">Features</a>
+      <a href="/use-cases.html" class="block no-underline transition-colors" style="color: var(--color-secondary);">Use Cases</a>
+      <a href="/comparison.html" class="block no-underline transition-colors" style="color: var(--color-secondary);">Comparison</a>
+      <a href="/blog/" class="block font-medium no-underline" style="color: var(--color-accent);">Blog</a>
+      <a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="block no-underline transition-colors" style="color: var(--color-secondary);">GitHub</a>
+      <a href="https://docs.humux.dev" target="_blank" rel="noopener" class="block no-underline transition-colors" style="color: var(--color-secondary);">Docs</a>
+    </div>
+  </nav>
+
+  <!-- Article -->
+  <article class="mx-auto max-w-3xl px-5 py-16">
+    <header class="mb-12">
+      <p class="text-xs font-mono mb-3" style="color: var(--color-muted);">July 7, 2026 &mdash; Matteo Merola</p>
+      <h1 class="text-3xl sm:text-4xl font-bold leading-tight mb-4" style="color: #eee;">Skills Over Code: Teaching Agents via Markdown</h1>
+      <p class="text-lg leading-relaxed" style="color: var(--color-secondary);">Why describing CLI tools in markdown files beats writing Python adapter classes for every new agent capability.</p>
+    </header>
+
+    <div class="space-y-6">
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">Every agent framework I&rsquo;ve used has the same onboarding story: you want the agent to check the weather, so you write a <code class="inline-code">WeatherTool</code> class. You define the input schema. You write the API call. You register the tool. You write tests. Forty minutes later, you have a working tool that wraps what is essentially a one-line <code class="inline-code">curl</code> command.</p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">Multiply that by every capability you want the agent to have&mdash;GitHub, Jira, DNS lookups, package management, deployment scripts&mdash;and the &ldquo;agent framework&rdquo; becomes a full-time job writing adapter classes. The agent itself is a thin orchestration layer buried under hundreds of lines of glue code.</p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">There is another way. Instead of writing code for each capability, you write a markdown file that describes the CLI tool the agent should use. The agent reads the description, understands the tool, and calls it through a whitelisted bash executor. No adapter class. No input schema. No registration ceremony.</p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">The adapter class problem</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">Here is what a typical tool definition looks like in most agent frameworks:</p>
+
+      <div class="terminal-window">
+        <div class="terminal-header">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+          <span class="ml-2 text-xs" style="color: var(--color-muted);">weather_tool.py</span>
+        </div>
+        <div class="terminal-body">
+<pre>class WeatherTool(BaseTool):
+    name = "get_weather"
+    description = "Get current weather for a city"
+
+    class InputSchema(BaseModel):
+        city: str
+        units: str = "metric"
+
+    def run(self, city: str, units: str = "metric") -> str:
+        resp = requests.get(
+            "https://wttr.in/{city}",
+            params={"format": "j1"},
+        )
+        data = resp.json()
+        temp = data["current_condition"][0]["temp_C"]
+        desc = data["current_condition"][0]["weatherDesc"][0]["value"]
+        return f"{city}: {temp}°C, {desc}"</pre>
+        </div>
+      </div>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">That is 15 lines of Python to wrap what <code class="inline-code">curl wttr.in/Berlin?format=j1</code> already does. And it is fragile&mdash;when the upstream API changes its response shape, you fix it in Python. When you want to add a new parameter, you update the Pydantic model, the method signature, and the API call. Each tool is a little maintenance surface.</p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">The deeper problem is that this pattern scales linearly with capabilities. Twenty tools means twenty adapter files, twenty sets of tests, and twenty things to update when the framework releases a breaking change to <code class="inline-code">BaseTool</code>.</p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">Skills: the markdown alternative</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">A skill is a markdown file that teaches the agent how to use an existing CLI tool. No code. The agent reads the file and learns the tool&rsquo;s interface, expected outputs, and common patterns. Here is a real example&mdash;a weather skill:</p>
+
+      <div class="terminal-window">
+        <div class="terminal-header">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+          <span class="ml-2 text-xs" style="color: var(--color-muted);">skills/weather/SKILL.md</span>
+        </div>
+        <div class="terminal-body">
+<pre># Weather Lookup
+
+Check current weather conditions and forecasts for any location.
+
+## Usage
+
+Use `curl` to query wttr.in:
+
+```bash
+# Current conditions (concise)
+curl -s "wttr.in/{location}?format=%C+%t+%h+%w"
+
+# Detailed JSON response
+curl -s "wttr.in/{location}?format=j1"
+
+# 3-day forecast
+curl -s "wttr.in/{location}?format=v2"
+```
+
+## Output format
+
+The concise format returns a single line:
+`Partly cloudy +18°C 45% →11km/h`
+
+The JSON format returns structured data with
+`current_condition`, `nearest_area`, and `weather` arrays.
+
+## Examples
+
+- "What's the weather in Berlin?" →
+  `curl -s "wttr.in/Berlin?format=%C+%t+%h+%w"`
+- "Will it rain in Tokyo this week?" →
+  `curl -s "wttr.in/Tokyo?format=v2"`</pre>
+        </div>
+      </div>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">That is the entire skill. No Python. No schema. No registration. The agent reads this file, understands that it should use <code class="inline-code">curl</code> against <code class="inline-code">wttr.in</code>, and calls the bash executor when someone asks about weather.</p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">How skill loading works</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">Skills live in a <code class="inline-code">skills/</code> directory, each in its own folder with a <code class="inline-code">SKILL.md</code> file. At startup, the system scans for skill files and builds a lightweight index&mdash;just the skill name, description (first paragraph), and file path. When the agent is assembling its context for a conversation turn, relevant skills are loaded from disk and injected into the system prompt.</p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">The key insight is that skill content does not live permanently in the context window. It is loaded on demand. A skill about GitHub CLI is not consuming tokens when the user is asking about the weather. The index is small enough to always be present, so the agent knows what skills exist, but the full instructions are pulled in only when needed.</p>
+
+      <div class="terminal-window">
+        <div class="terminal-header">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+          <span class="ml-2 text-xs" style="color: var(--color-muted);">skill loading pseudocode</span>
+        </div>
+        <div class="terminal-body">
+<pre>def load_skills(skills_dir: Path) -> list[Skill]:
+    skills = []
+    for skill_file in skills_dir.rglob("SKILL.md"):
+        content = skill_file.read_text()
+        name = skill_file.parent.name
+        description = content.split("\n\n")[0]
+        skills.append(Skill(name=name, description=description,
+                            path=skill_file))
+    return skills
+
+def inject_skills(context: list, query: str, skills: list[Skill]):
+    for skill in skills:
+        if skill_is_relevant(query, skill.description):
+            content = skill.path.read_text()
+            context.append({"role": "system",
+                            "content": f"Skill: {skill.name}\n{content}"})</pre>
+        </div>
+      </div>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">The bash executor</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">Skills instruct the agent to run CLI commands. Those commands execute through a whitelisted bash executor&mdash;not an open shell. The executor enforces a permission model: each command pattern is checked against a set of glob rules (ALWAYS allowed, ASK for approval, NEVER permitted). A skill that uses <code class="inline-code">curl</code> works because <code class="inline-code">curl</code> is in the default allowlist. A skill that tries to run <code class="inline-code">rm -rf /</code> gets blocked before it executes.</p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">The executor also enforces timeouts, captures stdout/stderr separately, and returns structured results so the agent can distinguish between a command that failed and one that returned an error message as its normal output.</p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">Installing skills from git</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">Skills can be installed from git repositories. A skill repo is just a directory with a <code class="inline-code">SKILL.md</code> and optionally some bundled helper scripts. Installation clones the repo into the skills directory and marks it as read-only with an <code class="inline-code">origin</code> field so updates can be pulled later.</p>
+
+      <div class="terminal-window">
+        <div class="terminal-header">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+          <span class="ml-2 text-xs" style="color: var(--color-muted);">bash</span>
+        </div>
+        <div class="terminal-body">
+<pre><span class="terminal-prompt"></span><span style="color: var(--color-accent);">humux skill install</span> https://github.com/example/github-skill.git
+Cloning into 'skills/github'... done.
+Skill 'github' installed (read-only, origin: github.com/example/github-skill)</pre>
+        </div>
+      </div>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">This is the same model as package managers, but for agent capabilities. The skill author writes the markdown; users install with one command. No code compilation, no dependency resolution, no version conflicts. A skill is a text file.</p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">Tradeoffs</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">This approach is not free. There are real tradeoffs worth understanding.</p>
+
+      <h3 class="text-xl font-semibold mt-8 mb-3" style="color: #eee;">Flexibility vs. type safety</h3>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">Adapter classes give you compile-time (or at least Pydantic-time) validation of inputs. A skill file gives you nothing&mdash;the agent might construct a malformed command. In practice, this matters less than you would expect. The bash executor catches failures, and the agent sees the error output and self-corrects. The feedback loop is fast: bad command &rarr; error message &rarr; fixed command. That said, for tools where a malformed call has side effects (sending an email, deleting a resource), the permission model is your safety net, not type checking.</p>
+
+      <h3 class="text-xl font-semibold mt-8 mb-3" style="color: #eee;">CLI latency vs. native API calls</h3>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">Spawning a subprocess is slower than calling a Python function. A native <code class="inline-code">requests.get()</code> takes maybe 200ms for the network round trip. Shelling out to <code class="inline-code">curl</code> adds process startup overhead&mdash;typically 5-15ms on Linux. For agent interactions where the LLM inference itself takes 1-3 seconds, the subprocess overhead is noise. If you need to call a tool thousands of times in a tight loop, write a native tool. For the 95% case of one-shot calls during conversation, a subprocess is fine.</p>
+
+      <h3 class="text-xl font-semibold mt-8 mb-3" style="color: #eee;">Discoverability</h3>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">With typed tool classes, your IDE shows you what is available. With skill files, you need to read the skills directory. This is a real downside for developers. It is not a downside for the agent&mdash;it sees the skill index in its context and knows exactly what is available. The discoverability problem is a human one, and it is solved by a simple <code class="inline-code">ls skills/</code> or a UI that lists installed skills.</p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">When to use each approach</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">Skills work best for capabilities that wrap existing CLI tools: <code class="inline-code">git</code>, <code class="inline-code">curl</code>, <code class="inline-code">jq</code>, <code class="inline-code">gh</code>, <code class="inline-code">himalaya</code>, <code class="inline-code">docker</code>. The tool already exists, is already tested, and already has documentation. Writing an adapter class for it is pure overhead.</p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">Native tool classes make sense for capabilities that require complex state management, need to interact with Python objects in memory, or must call APIs where the authentication flow is complex enough that a bash one-liner will not cut it. In humux, calendar and contacts use native Python tools because the CalDAV and CardDAV protocols require stateful HTTP sessions with authentication that would be painful to express as CLI commands.</p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">The sweet spot is a hybrid: native tools for the core platform (messaging, calendar, memory, voice) and skills for everything else. The core tools are stable and worth the maintenance cost. The long tail of capabilities&mdash;weather, search, deployment, monitoring&mdash;changes frequently and is better served by markdown files that anyone can write and share.</p>
+
+    </div>
+
+    <!-- CTA -->
+    <div class="mt-16 pt-8 border-t" style="border-color: var(--color-border);">
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        humux implements the skills-over-code paradigm out of the box.
+        <a href="/" class="no-underline font-medium" style="color: var(--color-accent);">Try it &rarr;</a>
+      </p>
+    </div>
+  </article>
+
+  <!-- Footer -->
+  <footer class="border-t px-5 py-12" style="border-color: var(--color-border); background: var(--color-surface);">
+    <div class="mx-auto max-w-6xl">
+      <div class="flex flex-wrap items-start justify-between gap-8">
+        <div>
+          <span class="text-sm font-semibold" style="color: var(--color-accent);">humux</span>
+          <p class="mt-1 text-xs" style="color: var(--color-muted);">Human Multiplexer &mdash; /ˈhjuːmʌks/</p>
+          <p class="mt-0.5 text-xs" style="color: var(--color-muted);">Your self-hosted personal AI agent.</p>
+        </div>
+        <div class="flex flex-wrap gap-10">
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Site</span>
+            <ul class="mt-2 space-y-1 text-xs" style="color: var(--color-muted);">
+              <li><a href="/" class="no-underline">Home</a></li>
+              <li><a href="/features.html" class="no-underline">Features</a></li>
+              <li><a href="/use-cases.html" class="no-underline">Use Cases</a></li>
+              <li><a href="/comparison.html" class="no-underline">Comparison</a></li>
+              <li><a href="/blog/" class="no-underline">Blog</a></li>
+            </ul>
+          </div>
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Resources</span>
+            <ul class="mt-2 space-y-1 text-xs" style="color: var(--color-muted);">
+              <li><a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="no-underline">GitHub</a></li>
+              <li><a href="https://docs.humux.dev" target="_blank" rel="noopener" class="no-underline">Documentation</a></li>
+              <li><a href="https://github.com/mattmezza/humux/releases" target="_blank" rel="noopener" class="no-underline">Releases</a></li>
+            </ul>
+          </div>
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Author</span>
+            <ul class="mt-2 space-y-1 text-xs" style="color: var(--color-muted);">
+              <li><a href="https://x.com/_mattmezza_" target="_blank" rel="noopener" class="no-underline">@_mattmezza_</a></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div class="mt-10 border-t pt-6 text-center text-xs" style="border-color: var(--color-border); color: var(--color-muted);">
+        &copy; 2026 Merola Software &amp; Services. MIT License.
+      </div>
+    </div>
+  </footer>
+</body>
+</html>
