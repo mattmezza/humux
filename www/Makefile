@@ -68,7 +68,7 @@ build:
 # Deploy to Cloudflare Pages (requires wrangler CLI + CLOUDFLARE_API_TOKEN)
 deploy:
 	@command -v wrangler >/dev/null 2>&1 || { echo "wrangler not found. Install: npm i -g wrangler"; exit 1; }
-	wrangler pages deploy $(WWW_DIR) --project-name humux
+	wrangler pages deploy $(WWW_DIR) --project-name humux --exclude "tailwindcss"
 
 # Build + deploy in one step
 publish: build deploy
