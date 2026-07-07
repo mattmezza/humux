@@ -159,7 +159,10 @@ async def run_subagent_task(
         # Scope fallback context with job_id so different scheduled jobs
         # don't share conversation history when no origin was captured (#235).
         _ctx_chat = f"scheduler:{job_id}" if (job_id and not origin_chat_id) else (target or "")
-        _ctx_user = f"scheduler:{job_id}" if (job_id and not origin_user_id) else (origin_user_id or owner or "scheduler")
+        _ctx_user = (
+            f"scheduler:{job_id}" if (job_id and not origin_user_id)
+            else (origin_user_id or owner or "scheduler")
+        )
         result = await agent.run_subagent(
             task=task,
             agent_name=agent_name or "",
