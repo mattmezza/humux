@@ -512,28 +512,6 @@
                         identity are always dropped (self-reply loop guard).
                       </p>
                     </div>
-                    <div x-show="ghWebhookSecret">
-                      <label class="label">Ping chat <span class="text-muted">(optional)</span></label>
-                      <select class="select input-sm" x-model="ghWebhookChat">
-                        <option value="">— owner DM (default) —</option>
-                        {# A stored ping chat no longer in the active list must still
-                           render (and survive a save) — as an extra option here, NOT
-                           pushed into `chats`, which also drives the per-chat
-                           settings card. #}
-                        <template x-if="ghWebhookChat && !chats.some(c => c.chat_id === ghWebhookChat)">
-                          <option :value="ghWebhookChat" x-text="ghWebhookChat + ' (saved)'"></option>
-                        </template>
-                        <template x-for="c in chats" :key="c.chat_id">
-                          <option :value="c.chat_id"
-                                  x-text="(c.title ? c.title + ' — ' : '') + c.chat_id + ' (' + c.kind + ')'"></option>
-                        </template>
-                      </select>
-                      <p class="text-xs text-muted mt-1">
-                        Telegram chat that receives this agent's webhook pings (when a turn has
-                        something to report). Chats appear here once the agent's bot has been
-                        active in them.
-                      </p>
-                    </div>
                   </div>
                 </template>
 
@@ -638,7 +616,6 @@
       ghWebhookUsers: '',
       ghWebhookUsersWasSet: false,
       ghWebhookMention: '',
-      ghWebhookChat: '',
       infraAvailable: {{ infra_available|tojson }},
       infraNames: {{ infra_names|tojson }},
       modes: {},
@@ -703,7 +680,6 @@
         // save of an unrelated field doesn't silently flip it to "anyone".
         this.ghWebhookUsersWasSet = Array.isArray(g.webhook_users);
         this.ghWebhookMention = g.webhook_mention || '';
-        this.ghWebhookChat = g.webhook_chat_id || '';
         // Explicit stored mode wins; else infer from which fields are present.
         this.ghAuth = g.auth || ((g.app_id || g.private_key_secret) ? 'app' : 'pat');
 
@@ -848,15 +824,14 @@
             if (this.ghWebhookSecret && this.ghWebhookMention.trim()) {
               e.webhook_mention = this.ghWebhookMention.trim().replace(/^@/, '');
             }
-            if (this.ghWebhookChat) {
-              e.webhook_chat_id = this.ghWebhookChat;
-            }
             // Per-agent repo allowlist. Blank = no restriction.
             const repos = this.ghRepos.split(',').map(s => s.trim()).filter(Boolean);
             if (repos.length) e.repos = repos;
             // Config-only keys (webhook_events, webhook_auto_events,
             // webhook_rate_limit, webhook_digest, … #237) have no form field —
             // carry them through so a save from this editor can't drop them.
+            // webhook_chat_id stays "managed" though gone (#239): a save from
+            // this editor actively drops the retired key from stored config.
             const managed = new Set(['enabled', 'auth', 'app_id', 'installation_id',
               'private_key_secret', 'token_secret', 'webhook_secret', 'webhook_users',
               'webhook_mention', 'webhook_chat_id', 'repos']);

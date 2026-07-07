@@ -344,17 +344,21 @@ def test_webhook_mention_gate(monkeypatch) -> None:
         coro.close()
 
 
-def test_webhook_ping_goes_to_configured_chat(monkeypatch) -> None:
+def test_webhook_reply_is_discarded_not_delivered(monkeypatch) -> None:
+    # #239: the turn's final reply goes nowhere — no Telegram ping, no
+    # owner-DM fallback. send_message (inside the turn) is the only channel.
     captured = _capture_create_task(monkeypatch)
     own_bot = SimpleNamespace(send=AsyncMock(), config=SimpleNamespace(allowed_user_ids=[42]))
+    default_bot = SimpleNamespace(send=AsyncMock(), config=SimpleNamespace(allowed_user_ids=[1]))
     client, core = _client(
-        agent=_agent(webhook_chat_id="-100777:12"),
-        core_extra={"channels": {"telegram:dev": own_bot}},
+        agent=_agent(webhook_chat_id="-100777:12"),  # legacy key: ignored
+        core_extra={"channels": {"telegram": default_bot, "telegram:dev": own_bot}},
     )
     core.process = AsyncMock(return_value=SimpleNamespace(text="heads up"))
     assert _post(client, ISSUE_PAYLOAD).status_code == 202
     asyncio.run(captured[0])
-    own_bot.send.assert_awaited_once_with("-100777:12", "heads up")
+    own_bot.send.assert_not_awaited()
+    default_bot.send.assert_not_awaited()
 
 
 def test_webhook_gated_delivery_stays_redeliverable(monkeypatch) -> None:
@@ -370,18 +374,19 @@ def test_webhook_gated_delivery_stays_redeliverable(monkeypatch) -> None:
         coro.close()
 
 
-def test_webhook_delivers_via_agents_own_channel(monkeypatch) -> None:
-    captured = _capture_create_task(monkeypatch)
-    own_bot = SimpleNamespace(send=AsyncMock(), config=SimpleNamespace(allowed_user_ids=[42]))
-    default_bot = SimpleNamespace(send=AsyncMock(), config=SimpleNamespace(allowed_user_ids=[1]))
-    client, core = _client(
-        core_extra={"channels": {"telegram": default_bot, "telegram:dev": own_bot}}
-    )
-    core.process = AsyncMock(return_value=SimpleNamespace(text="triaged the issue"))
-    assert _post(client, ISSUE_PAYLOAD).status_code == 202
-    asyncio.run(captured[0])
-    own_bot.send.assert_awaited_once_with(42, "triaged the issue")
-    default_bot.send.assert_not_awaited()
+def test_event_task_states_bot_identity() -> None:
+    # #239: with a mention handle configured the task tells the agent who it
+    # is on GitHub (an installation token can't discover its own slug).
+    mentioned = {
+        **ISSUE_PAYLOAD,
+        "issue": {**ISSUE_PAYLOAD["issue"], "body": "hey @my-agent please look"},
+    }
+    task, _, _ = _github_event_task("issues", mentioned, mention="my-agent")
+    assert "You act on GitHub as @my-agent[bot]." in task
+    task2, _, _ = _github_event_task("issues", ISSUE_PAYLOAD)
+    assert "You act on GitHub" not in task2
+    assert "discarded" in task2  # reply-goes-nowhere instruction replaces [NO_UPDATES]
+    assert "NO_UPDATES" not in task2
 
 
 def test_webhook_runs_turn_in_background(monkeypatch) -> None:
