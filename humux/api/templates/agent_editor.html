@@ -848,7 +848,7 @@
             if (this.ghWebhookSecret && this.ghWebhookMention.trim()) {
               e.webhook_mention = this.ghWebhookMention.trim().replace(/^@/, '');
             }
-            if (this.ghWebhookSecret && this.ghWebhookChat) {
+            if (this.ghWebhookChat) {
               e.webhook_chat_id = this.ghWebhookChat;
             }
             // Per-agent repo allowlist. Blank = no restriction.
