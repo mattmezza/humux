@@ -741,6 +741,12 @@ async def _execute_webhook_turn(
                         task = f"{task}\n{digest}"
             except Exception:  # noqa: BLE001 — digest must never sink a turn
                 log.exception("webhook digest failed (agent=%s chat=%s)", agent_name, chat_id)
+        # The final reply is deliberately NOT delivered anywhere (#239): a
+        # pinned/heuristic Telegram chat is out-of-band — the message lands in
+        # a conversation whose history the agent doesn't share, so follow-ups
+        # reference something it has no memory of. The turn's record lives on
+        # GitHub and in the thread chat; the agent reaches the owner with
+        # send_message when something genuinely needs them.
         response = await core.process(
             message=task,
             channel="system",
@@ -748,32 +754,9 @@ async def _execute_webhook_turn(
             chat_id=chat_id,
             agent_name=agent_name,
         )
-        text = (response.text or "").replace("[NO_UPDATES]", "").strip()
+        text = (response.text or "").strip()
         if text:
-            from core.scheduler import _fallback_delivery, _get_owner_chat_id
-
-            # Deliver via THIS agent's own Telegram bot when it has one —
-            # its owner, not the default agent's — falling back to the
-            # owner-DM heuristic otherwise. webhook_chat_id, when set,
-            # overrides the target chat (e.g. a team group instead of
-            # the owner DM) — but ONLY on the agent's own bot: the chat
-            # was picked from that bot's chat list, and a fallback bot
-            # is typically not a member of it.
-            pinned_chat = str(gh.get("webhook_chat_id") or "").strip()
-            ch = core.channels.get(f"telegram:{agent_name}")
-            owner = (
-                pinned_chat or _get_owner_chat_id(core, f"telegram:{agent_name}") if ch else None
-            )
-            if not (ch and owner):
-                ch, owner = _fallback_delivery(core)
-            if ch and owner:
-                try:
-                    await ch.send(owner, text)
-                except Exception:
-                    # A failed PING must not mark the turn retryable —
-                    # the GitHub actions already ran; a redelivery
-                    # would run them again.
-                    log.exception("GitHub webhook ping delivery failed (agent=%s)", agent_name)
+            log.debug("webhook turn reply discarded (agent=%s chat=%s)", agent_name, chat_id)
         if delivery:
             _gh_wal_remove(delivery)
     except Exception:
@@ -934,16 +917,19 @@ def _github_event_task(
     headline = _GH_WEBHOOK_KIND[event]
     if event == "pull_request_review":
         headline += f" ({(payload.get('review') or {}).get('state') or ''})"
+    # An installation token can't discover its own App slug, so tell the agent
+    # who it is on GitHub when the handle is configured (#239).
+    identity = f"You act on GitHub as @{mention}[bot]. " if mention else ""
     task = (
         f"[GitHub] New {headline} ({action}) in {repo}: "
         f"#{number} {item.get('title') or ''}\n"
         f"Author: @{author}\nURL: {url}\n"
         f"---\n{body[:4000]}\n---\n"
-        "Your GitHub App received this event. Act autonomously with the `gh` CLI "
-        "(you are authenticated as your bot identity): investigate and, if a reply or "
-        "action is warranted, do it. Use send_message only if the owner must know "
-        "something. If there is nothing the owner needs to hear, end your reply with "
-        "[NO_UPDATES]."
+        f"Your GitHub App received this event. {identity}Act autonomously with the "
+        "`gh` CLI (you are authenticated as your bot identity): investigate and, if "
+        "a reply or action is warranted, do it. Your final reply here is discarded — "
+        "it is not delivered to anyone. If the owner genuinely must know something, "
+        "use the send_message tool."
     )
     return task, f"github:{repo}#{topic}", repo
 

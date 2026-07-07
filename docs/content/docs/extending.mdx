@@ -187,17 +187,20 @@ listing overrides the bot loop guard. **Never list your own App's bot login**: i
 actions echo back as deliveries and the agent would answer itself forever (with a
 **Mention gate** configured this is blocked in code regardless).
 
-Two more knobs next to the webhook secret:
+One more knob next to the webhook secret:
 
 - **Mention gate** (`gh: {..., webhook_mention: my-agent}`) — the App's GitHub handle.
   When set, only issues, PRs and comments whose text actually mentions `@my-agent`
   wake the agent, instead of every event on the repo; and anything sent by
   `my-agent[bot]` itself is always dropped, closing the self-reply loop at the code
-  level. Recommended whenever the App watches a busy repo.
-- **Ping chat** (`gh: {..., webhook_chat_id: "-1001234567"}`) — the Telegram chat that
-  receives the agent's webhook pings (when a turn ends with something to report).
-  Defaults to the owner's DM; pick any chat the agent's bot is active in — e.g. a
-  team group — from the dropdown in the agent editor.
+  level. Recommended whenever the App watches a busy repo. The handle is also stated
+  in the turn's task text (`You act on GitHub as @my-agent[bot]`), so the agent knows
+  its own identity — an installation token can't discover its slug.
+
+A webhook turn's final reply is discarded, not delivered anywhere: a pinned Telegram
+chat proved out-of-band (the message landed in a conversation whose history the agent
+doesn't share). When something genuinely needs the owner, the agent uses
+`send_message` — a deliberate act, in a real conversation.
 
 Four more knobs exist as raw frontmatter only (no editor field; the editor preserves
 them across saves) — built for multi-agent workflows where several Apps coordinate on
