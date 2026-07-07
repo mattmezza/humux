@@ -14,7 +14,8 @@ agent:
   openrouter_api_key: "${OPENROUTER_API_KEY}"   # one key, many models via an OpenAI-compatible gateway
   openrouter_base_url: "${OPENROUTER_BASE_URL}" # optional; defaults to https://openrouter.ai/api/v1
   model: "deepseek-v4-flash"
-  max_tokens: 8192                  # max tokens the model may emit per response; raise for capable models (Claude up to 128000)
+  max_tokens: 16384                 # max tokens the model may emit per response; raise for capable models (Claude up to 128000)
+  max_tool_rounds: 50              # max LLM round-trips per user turn; raise for complex multi-step workflows
   timezone: "Europe/Zurich"
   skills_dir: "skills/"
   agents_dir: "agents/"        # optional seed dir — drop agent .md files here to auto-seed (empty by default)

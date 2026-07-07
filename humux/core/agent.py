@@ -147,11 +147,6 @@ _REPEAT_FAILURE_NOTICE = (
     "kept failing. Stop retrying it — change the arguments, take a different "
     "approach, or report the problem to the user."
 )
-# Hard backstop on LLM round-trips in a single user turn (each round may hold
-# several tool calls), so even a model that ignores every error signal can't loop
-# forever. ponytail: generous ceiling — normal turns use a handful; raise it if a
-# legitimate workflow needs more.
-_MAX_TOOL_ROUNDS = 50
 _LOOP_ABORT_MESSAGE = (
     "I had to stop — I made too many tool calls without reaching an answer. "
     "Could you rephrase, or break the request into smaller steps?"
@@ -2061,7 +2056,7 @@ class AgentCore:
         rounds = 0
         abort = self._active_turns_map().get((channel, user_id, chat_id))
         stopped = False
-        while response.tool_calls and rounds < _MAX_TOOL_ROUNDS:
+        while response.tool_calls and rounds < self.config.agent.max_tool_rounds:
             rounds += 1
             if abort and abort.is_set():  # /stop or the Stop button fired (#146)
                 stopped = True
@@ -2227,7 +2222,7 @@ class AgentCore:
         rounds = 0
         abort = self._active_turns_map().get((channel, user_id, chat_id))
         stopped = False
-        while response.tool_calls and rounds < _MAX_TOOL_ROUNDS:
+        while response.tool_calls and rounds < self.config.agent.max_tool_rounds:
             rounds += 1
             if abort and abort.is_set():  # /stop or the Stop button fired (#146)
                 stopped = True

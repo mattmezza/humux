@@ -68,7 +68,8 @@
   {{ rd_group_only|default('true', true)|tojson|forceescape }},
   {{ rd_max_replies|default('6', true)|tojson|forceescape }},
   {{ rd_window_seconds|default('120', true)|tojson|forceescape }},
-  {{ max_tokens|default('8192', true)|tojson|forceescape }},
+  {{ max_tokens|default('16384', true)|tojson|forceescape }},
+  {{ max_tool_rounds|default('50', true)|tojson|forceescape }},
   {{ temperature|default('0.5', true)|tojson|forceescape }},
   {{ tr_max_reflections|default('12', true)|tojson|forceescape }}
 )">
@@ -124,10 +125,17 @@
         </div>
       </div>
 
-      <div>
-        <label class="label">Max output tokens</label>
-        <input type="number" min="256" class="input-sm" style="max-width:200px" x-model="maxTokens">
-        <p class="text-muted text-xs mt-1">Hard ceiling on tokens the model may emit per response. Too low truncates large outputs (e.g. web artifacts) mid-generation. Default 8192; raise for capable models (Claude allows up to 128000).</p>
+      <div class="flex flex-wrap gap-4">
+        <div>
+          <label class="label">Max output tokens</label>
+          <input type="number" min="256" class="input-sm" style="max-width:200px" x-model="maxTokens">
+          <p class="text-muted text-xs mt-1">Hard ceiling on tokens the model may emit per response. Too low truncates large outputs (e.g. web artifacts) mid-generation. Default 16384; raise for capable models (Claude allows up to 128000).</p>
+        </div>
+        <div>
+          <label class="label">Max tool rounds</label>
+          <input type="number" min="1" class="input-sm" style="max-width:160px" x-model="maxToolRounds">
+          <p class="text-muted text-xs mt-1">Hard backstop on LLM round-trips in a single user turn. Default 50; raise if a legitimate workflow needs more rounds.</p>
+        </div>
       </div>
 
       <div>
@@ -153,6 +161,7 @@
                     'agent.model': model,
                     'agent.thinking_level': thinkingLevel,
                     'agent.max_tokens': String(maxTokens),
+                    'agent.max_tool_rounds': String(maxToolRounds),
                     'agent.temperature': String(temperature)
                   }})
                 })
