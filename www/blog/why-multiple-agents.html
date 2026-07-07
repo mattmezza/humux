@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Why Multiple Agents Beat One Generalist — humux blog</title>
+  <meta name="description" content="Running specialized agents with different skills, tools, and personalities produces better results than one monolithic agent trying to do everything.">
+  <link rel="canonical" href="https://humux.dev/blog/why-multiple-agents">
+
+  <meta property="og:title" content="Why Multiple Agents Beat One Generalist">
+  <meta property="og:description" content="Running specialized agents with different skills, tools, and personalities produces better results than one monolithic agent trying to do everything.">
+  <meta property="og:url" content="https://humux.dev/blog/why-multiple-agents">
+  <meta property="og:type" content="article">
+  <meta property="og:image" content="https://humux.dev/assets/images/og-image.png">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Why Multiple Agents Beat One Generalist">
+  <meta name="twitter:description" content="Running specialized agents with different skills, tools, and personalities produces better results than one monolithic agent trying to do everything.">
+  <meta name="twitter:image" content="https://humux.dev/assets/images/og-image.png">
+  <meta name="twitter:site" content="@_mattmezza_">
+  <meta name="twitter:creator" content="@_mattmezza_">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "headline": "Why Multiple Agents Beat One Generalist",
+    "description": "Running specialized agents with different skills, tools, and personalities produces better results than one monolithic agent trying to do everything.",
+    "datePublished": "2026-06-30",
+    "author": { "@type": "Person", "name": "Matteo Merola" },
+    "publisher": { "@type": "Organization", "name": "humux" },
+    "url": "https://humux.dev/blog/why-multiple-agents"
+  }
+  </script>
+
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://humux.dev/"},{"@type":"ListItem","position":2,"name":"Blog","item":"https://humux.dev/blog/"},{"@type":"ListItem","position":3,"name":"Why Multiple Agents Beat One Generalist","item":"https://humux.dev/blog/why-multiple-agents.html"}]}
+  </script>
+
+  <link rel="alternate" type="application/rss+xml" title="humux blog" href="/blog/feed.xml">
+
+  <link rel="icon" type="image/svg+xml" href="/assets/images/favicon-32.svg">
+  <link rel="alternate icon" type="image/png" sizes="32x32" href="/assets/images/favicon-32.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/images/apple-touch-icon.png">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="/assets/css/style.css">
+
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script defer src="https://analytics.casa.merola.co/script.js" data-website-id="b395aaa1-97a5-494e-9ad8-15b3ba20318e"></script>
+</head>
+<body>
+
+  <!-- Nav -->
+  <nav x-data="{ open: false }" class="sticky top-0 z-50 border-b border-[var(--color-border)]" style="background: rgba(6,6,6,0.85); backdrop-filter: blur(12px);">
+    <div class="mx-auto flex max-w-6xl items-center justify-between px-5 py-3">
+      <a href="/" class="flex items-center gap-2 no-underline">
+        <span class="text-sm font-semibold tracking-wider" style="color: var(--color-accent);">humux</span>
+        <span class="hidden sm:inline text-xs" style="color: var(--color-muted);">/ˈhjuːmʌks/</span>
+      </a>
+      <div class="hidden md:flex items-center gap-5 text-xs">
+        <a href="/" class="no-underline transition-colors" style="color: var(--color-secondary);">Home</a>
+        <a href="/features.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Features</a>
+        <a href="/use-cases.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Use Cases</a>
+        <a href="/comparison.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Comparison</a>
+        <a href="/blog/" class="font-medium no-underline" style="color: var(--color-accent);">Blog</a>
+        <a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="no-underline transition-colors" style="color: var(--color-secondary);">
+          <svg class="inline-block h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        </a>
+        <a href="https://docs.humux.dev" target="_blank" rel="noopener" class="no-underline transition-colors" style="color: var(--color-secondary);">Docs</a>
+      </div>
+      <button @click="open = !open" class="md:hidden p-2" style="color: var(--color-secondary);" aria-label="Menu">
+        <svg x-show="!open" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        <svg x-show="open" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div x-show="open" @click.outside="open = false" x-cloak class="md:hidden border-t border-[var(--color-border)] px-5 py-4 space-y-3 text-sm" style="background: rgba(6,6,6,0.95);">
+      <a href="/" class="block no-underline transition-colors" style="color: var(--color-secondary);">Home</a>
+      <a href="/features.html" class="block no-underline transition-colors" style="color: var(--color-secondary);">Features</a>
+      <a href="/use-cases.html" class="block no-underline transition-colors" style="color: var(--color-secondary);">Use Cases</a>
+      <a href="/comparison.html" class="block no-underline transition-colors" style="color: var(--color-secondary);">Comparison</a>
+      <a href="/blog/" class="block font-medium no-underline" style="color: var(--color-accent);">Blog</a>
+      <a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="block no-underline transition-colors" style="color: var(--color-secondary);">GitHub</a>
+      <a href="https://docs.humux.dev" target="_blank" rel="noopener" class="block no-underline transition-colors" style="color: var(--color-secondary);">Docs</a>
+    </div>
+  </nav>
+
+  <!-- Article -->
+  <article class="mx-auto max-w-3xl px-5 py-16">
+    <header class="mb-12">
+      <p class="text-xs font-mono mb-3" style="color: var(--color-muted);">June 30, 2026 &mdash; Matteo Merola</p>
+      <h1 class="text-3xl sm:text-4xl font-bold leading-tight mb-4" style="color: #eee;">Why Multiple Agents Beat One Generalist</h1>
+      <p class="text-lg leading-relaxed" style="color: var(--color-secondary);">Specialized agents with different skills, tools, and personalities outperform one monolithic agent trying to do everything.</p>
+    </header>
+
+    <div class="space-y-6">
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        The default instinct when building a personal agent is to make one powerful assistant that handles everything: emails, scheduling, research, coding, home automation. You give it all the tools, a long system prompt that covers every use case, and hope the model figures out which hat to wear.
+      </p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        It works &mdash; until it doesn't. A 15,000-token system prompt full of conflicting personas and fifty tools creates a context where the model spends most of its reasoning capacity just parsing what it's supposed to be right now. The email-writing agent leaks the casual Telegram tone. The code reviewer starts adding emoji. The research assistant hallucinates tool names from a different skill set loaded three conversations ago.
+      </p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">The specialization argument</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        The fix is the same one that works in human organizations: specialization. Instead of one agent that does everything, run multiple agents that each do one thing well. Each agent gets:
+      </p>
+
+      <ul class="list-disc pl-6 space-y-2 text-base leading-relaxed" style="color: var(--color-secondary);">
+        <li><strong style="color: #eee;">Its own personality.</strong> A work assistant writes differently than a creative brainstorming partner. A terse ops bot that sends deployment summaries needs a different voice than a personal journal companion that asks thoughtful follow-up questions.</li>
+        <li><strong style="color: #eee;">Its own tool scope.</strong> The email agent sees email tools. The coding agent sees the file system. Neither sees the other's tools. Fewer tools means less confusion about which tool to pick, and fewer opportunities to accidentally send an email when you meant to write a file.</li>
+        <li><strong style="color: #eee;">Its own skill set.</strong> Skills are markdown files that describe how to use CLI tools. A DevOps agent gets the deployment and monitoring skills. A personal assistant gets calendar and contacts skills. Loading only relevant skills keeps the context focused.</li>
+        <li><strong style="color: #eee;">Its own account bindings.</strong> Each agent can have its own email address, its own calendar, its own contacts database. The work agent reads your work Gmail; the personal agent reads your personal inbox. No cross-contamination.</li>
+      </ul>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">Context window economics</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        There's a practical reason beyond clean separation: context window real estate. Every tool definition, every skill description, every line of the system prompt takes tokens. A generalist agent with 50 tools and 12 skills might burn 8,000 tokens before the user even says hello. That's 8,000 tokens the model can't use for actual reasoning about the current task.
+      </p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        A specialized agent with 8 tools and 3 skills might use 2,000 tokens for setup. That leaves dramatically more room for conversation history, retrieved memories, and the chain-of-thought reasoning that actually produces good outputs. You're not just getting a cleaner prompt &mdash; you're getting a smarter agent because it has more room to think.
+      </p>
+
+      <div class="terminal-window mt-6 mb-6">
+        <div class="terminal-header">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+          <span class="ml-2 text-xs" style="color: var(--color-muted);">config.yml</span>
+        </div>
+        <div class="terminal-body">
+<pre>agents:
+  - slug: work
+    name: Atlas
+    character: characters/atlas.md
+    telegram_token: ${vault:ATLAS_TOKEN}
+    skills: [email, calendar, contacts, scheduling]
+    tools: [send_email, search_email, list_events, ...]
+    email_accounts: [work@company.com]
+    calendar_accounts: [work-calendar]
+
+  - slug: dev
+    name: Forge
+    character: characters/forge.md
+    telegram_token: ${vault:FORGE_TOKEN}
+    skills: [coding, github, browser]
+    tools: [read_file, write_file, edit_file, run_command]
+    github_repos: [org/api, org/frontend]
+
+  - slug: personal
+    name: Sage
+    character: characters/sage.md
+    telegram_token: ${vault:SAGE_TOKEN}
+    skills: [memory, voice, weather, contacts]
+    tools: [remember, recall, search_contacts]
+    email_accounts: [me@personal.com]</pre>
+        </div>
+      </div>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        Three agents, each focused. Atlas handles work communications and scheduling. Forge writes and reviews code. Sage is a personal assistant for everyday tasks. They share the same infrastructure &mdash; same Docker container, same SQLite databases, same memory system &mdash; but each operates with a focused context.
+      </p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">Personality as a feature</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        This isn't just about technical separation. Different tasks genuinely benefit from different communication styles. A work agent should be professional, concise, and careful about tone &mdash; it's drafting emails your colleagues will read. A personal brainstorming agent should be playful, willing to explore tangents, and comfortable saying "that's a weird idea but let's run with it."
+      </p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        In humux, each agent has a <code class="inline-code">character.md</code> file that defines its personality, communication style, and domain knowledge. This isn't a gimmick &mdash; it's a system prompt engineering technique. A character file that says "you are a senior DevOps engineer who values brevity and always includes the relevant log line" produces meaningfully different outputs than one that says "you are a helpful assistant." The model adapts its reasoning, not just its tone.
+      </p>
+
+      <div class="terminal-window mt-6 mb-6">
+        <div class="terminal-header">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+          <span class="ml-2 text-xs" style="color: var(--color-muted);">characters/forge.md</span>
+        </div>
+        <div class="terminal-body">
+<pre># Forge
+
+You are Forge, a senior software engineer.
+
+## Communication style
+- Direct, technical, no filler
+- Always reference specific files and line numbers
+- When reviewing code, lead with the most critical issue
+- Use code blocks, not prose descriptions
+- If a task is ambiguous, ask one clarifying question
+  rather than guessing
+
+## Domain expertise
+- Python, TypeScript, infrastructure
+- Strong opinions on testing and deployment
+- Defaults to the simplest working solution</pre>
+        </div>
+      </div>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">Group chats: multiple agents, one conversation</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        The multi-agent pattern gets interesting in group chats. In humux, you can add multiple agent bots to the same Telegram group. Each agent has its own bot identity, so they appear as separate participants. The addressing protocol is simple: mention a bot's name, and only that bot responds. No mention, no response.
+      </p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        This creates a natural workflow. You're in a project group chat with your team. You mention <code class="inline-code">@forge</code> to review a PR. Then mention <code class="inline-code">@atlas</code> to schedule a meeting about the findings. Each agent sees the full group chat history for context, but only responds when addressed. A reply decision gate (a cheap classifier) prevents agents from talking over each other or creating bot-to-bot feedback loops.
+      </p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">The shared infrastructure advantage</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        Running multiple agents doesn't mean running multiple servers. In humux, all agents share the same process, the same SQLite databases, the same memory system, and the same Docker container. The isolation is logical, not physical. This means:
+      </p>
+
+      <ul class="list-disc pl-6 space-y-2 text-base leading-relaxed" style="color: var(--color-secondary);">
+        <li>One deployment to maintain, not five</li>
+        <li>Shared memory &mdash; if your personal agent learns your dietary preferences, your work agent can access that when booking a restaurant for a client lunch</li>
+        <li>Shared contacts &mdash; create a contact once, all agents can find it</li>
+        <li>One admin UI to manage everything</li>
+        <li>Resource efficiency &mdash; agents aren't running separate model instances; they share the same LLM API connection pool</li>
+      </ul>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        The mental model is closer to "one brain, multiple roles" than "multiple independent agents." The specialization is in the interface layer &mdash; what tools, skills, and personality each role presents &mdash; not in the infrastructure.
+      </p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">When to split</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        Not everything needs its own agent. The rule of thumb: split when the tools, tone, or trust boundary differ. If two tasks use the same tools with the same personality, they belong on the same agent. If a task needs access to sensitive systems (production databases, payment APIs), it should probably be its own agent with tighter permission rules and a more cautious personality.
+      </p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        Start with two agents: one for work, one for personal. Add more when you notice friction &mdash; when the generalist's system prompt gets long enough that it starts forgetting instructions, when the tone bleeds between contexts, or when you want different permission levels for different categories of actions. The infrastructure supports it; the split is just a new entry in the config file and a new character markdown file.
+      </p>
+    </div>
+
+    <!-- CTA -->
+    <div class="mt-16 pt-8 border-t" style="border-color: var(--color-border);">
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        humux supports multiple specialized agents out of the box, each with its own identity, tools, and personality.
+        <a href="/" class="no-underline font-medium" style="color: var(--color-accent);">Try it &rarr;</a>
+      </p>
+    </div>
+  </article>
+
+  <!-- Footer -->
+  <footer class="border-t px-5 py-12" style="border-color: var(--color-border); background: var(--color-surface);">
+    <div class="mx-auto max-w-6xl">
+      <div class="flex flex-wrap items-start justify-between gap-8">
+        <div>
+          <span class="text-sm font-semibold" style="color: var(--color-accent);">humux</span>
+          <p class="mt-1 text-xs" style="color: var(--color-muted);">Human Multiplexer &mdash; /ˈhjuːmʌks/</p>
+          <p class="mt-0.5 text-xs" style="color: var(--color-muted);">Your self-hosted personal AI agent.</p>
+        </div>
+        <div class="flex flex-wrap gap-10">
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Site</span>
+            <ul class="mt-2 space-y-1 text-xs" style="color: var(--color-muted);">
+              <li><a href="/" class="no-underline">Home</a></li>
+              <li><a href="/features.html" class="no-underline">Features</a></li>
+              <li><a href="/use-cases.html" class="no-underline">Use Cases</a></li>
+              <li><a href="/comparison.html" class="no-underline">Comparison</a></li>
+              <li><a href="/blog/" class="no-underline">Blog</a></li>
+            </ul>
+          </div>
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Resources</span>
+            <ul class="mt-2 space-y-1 text-xs" style="color: var(--color-muted);">
+              <li><a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="no-underline">GitHub</a></li>
+              <li><a href="https://docs.humux.dev" target="_blank" rel="noopener" class="no-underline">Documentation</a></li>
+              <li><a href="https://github.com/mattmezza/humux/releases" target="_blank" rel="noopener" class="no-underline">Releases</a></li>
+            </ul>
+          </div>
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Author</span>
+            <ul class="mt-2 space-y-1 text-xs" style="color: var(--color-muted);">
+              <li><a href="https://x.com/_mattmezza_" target="_blank" rel="noopener" class="no-underline">@_mattmezza_</a></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div class="mt-10 border-t pt-6 text-center text-xs" style="border-color: var(--color-border); color: var(--color-muted);">
+        &copy; 2026 Merola Software &amp; Services. MIT License.
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

@@ -20,8 +20,40 @@
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="humux — Human Multiplexer">
   <meta name="twitter:description" content="Your self-hosted personal AI agent. One container.">
+  <meta name="twitter:image" content="https://humux.dev/assets/images/og-image.png">
+  <meta name="twitter:site" content="@_mattmezza_">
+  <meta name="twitter:creator" content="@_mattmezza_">
+
+  <!-- JSON-LD -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "humux",
+    "alternateName": "Human Multiplexer",
+    "description": "Self-hosted personal AI agent. One Docker container. Unified messaging, email, calendar, contacts, voice, and automation.",
+    "url": "https://humux.dev",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Linux, macOS, Windows (Docker)",
+    "license": "https://opensource.org/licenses/MIT",
+    "isAccessibleForFree": true,
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+    "author": {
+      "@type": "Organization",
+      "name": "Merola Software & Services",
+      "url": "https://github.com/mattmezza"
+    },
+    "codeRepository": "https://github.com/mattmezza/humux"
+  }
+  </script>
 
   <!-- Favicon -->
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://humux.dev/"}]}
+  </script>
+
+  <link rel="alternate" type="application/rss+xml" title="humux blog" href="/blog/feed.xml">
+
   <link rel="icon" type="image/svg+xml" href="/assets/images/favicon-32.svg">
   <link rel="alternate icon" type="image/png" sizes="32x32" href="/assets/images/favicon-32.png">
   <link rel="apple-touch-icon" sizes="180x180" href="/assets/images/apple-touch-icon.png">
@@ -60,9 +92,7 @@
         <a href="/features.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Features</a>
         <a href="/use-cases.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Use Cases</a>
         <a href="/comparison.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Comparison</a>
-<a href="/features.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Features</a>
-        <a href="/use-cases.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Use Cases</a>
-        <a href="/comparison.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Comparison</a>
+        <a href="/blog/" class="no-underline transition-colors" style="color: var(--color-secondary);">Blog</a>
         <a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="no-underline transition-colors" style="color: var(--color-secondary);">
           <svg class="inline-block h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
         </a>
@@ -80,10 +110,9 @@
       <a href="/features.html" class="block no-underline transition-colors" style="color: var(--color-secondary);">Features</a>
       <a href="/use-cases.html" class="block no-underline transition-colors" style="color: var(--color-secondary);">Use Cases</a>
       <a href="/comparison.html" class="block no-underline transition-colors" style="color: var(--color-secondary);">Comparison</a>
-<a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="block no-underline transition-colors" style="color: var(--color-secondary);">GitHub</a>
+      <a href="/blog/" class="block no-underline transition-colors" style="color: var(--color-secondary);">Blog</a>
+      <a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="block no-underline transition-colors" style="color: var(--color-secondary);">GitHub</a>
       <a href="https://docs.humux.dev" target="_blank" rel="noopener" class="block no-underline transition-colors" style="color: var(--color-secondary);">Docs</a>
-    </div>
-  </nav>
     </div>
   </nav>
 
@@ -106,14 +135,14 @@
       </div>
 
       <h1 class="mx-auto mb-6 max-w-3xl text-4xl font-bold leading-tight sm:text-5xl md:text-6xl" style="color: #eee;">
-        <span class="glow-text">Your agents squad,</span><br>
+        <span class="glow-text">Your agent squad,</span><br>
         <span style="color: var(--color-accent);">fully under your control.</span>
       </h1>
 
       <p class="mx-auto mb-8 max-w-2xl text-lg leading-relaxed" style="color: var(--color-secondary);">
-        humux is a self-hosted personal AI agent that runs in a single Docker container.
-        Unified interface across messaging, email, calendars, contacts &mdash; with
-        autonomous action, scheduled tasks, voice interaction, and persistent memory.
+        A self-hosted personal AI that handles messaging, email, calendar, and contacts
+        in a single Docker container. Scheduled tasks, voice interaction, persistent memory
+        &mdash; no cloud dependencies, no third-party data access.
       </p>
 
       <div class="flex flex-wrap items-center justify-center gap-4">
@@ -212,9 +241,9 @@
     <div class="mx-auto max-w-6xl">
       <div class="mb-14 text-center">
         <span class="tag mb-4">Capabilities</span>
-        <h2 class="mt-3 text-3xl font-bold" style="color: #eee;">Everything your personal AI needs</h2>
+        <h2 class="mt-3 text-3xl font-bold" style="color: #eee;">Everything built in, nothing bolted on</h2>
         <p class="mx-auto mt-3 max-w-xl" style="color: var(--color-secondary);">
-          One unified interface across the tools you already use.
+          Email, calendar, contacts, voice &mdash; native integrations, not third-party plugins.
         </p>
       </div>
 
@@ -286,8 +315,8 @@
           </div>
           <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Memory</h3>
           <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">
-            Two-tier memory: permanent long-term facts and expiring short-term context.
-            Both extracted automatically from conversations.
+            Four-tier memory: lexical retrieval, semantic search, importance-based
+            forgetting, and automatic deduplication. Extracted from every conversation.
           </p>
         </div>
       </div>
@@ -309,8 +338,9 @@
           <span class="tag mb-4">Architecture</span>
           <h2 class="mt-3 text-3xl font-bold leading-tight" style="color: #eee;">Python orchestrator +<br>battle-tested CLI tools</h2>
           <p class="mt-4 leading-relaxed" style="color: var(--color-secondary);">
-            humux doesn't re-invent wheels. Python glues everything together while
-            proven tools handle each protocol:
+            Python handles orchestration and the LLM loop. Proven CLI tools
+            handle each protocol &mdash; Rust for email, CalDAV for calendars,
+            Playwright for browsing:
           </p>
 
           <div class="mt-6 grid gap-2">
@@ -376,8 +406,8 @@
       <span class="tag mb-4">Open Source</span>
       <h2 class="mt-3 text-3xl font-bold" style="color: #eee;">Built in the open</h2>
       <p class="mx-auto mt-3 max-w-lg leading-relaxed" style="color: var(--color-secondary);">
-        humux is 100% open source under the MIT license. Contributions, issues,
-        and ideas welcome. Star it on GitHub, fork it, or jump into discussions.
+        MIT licensed. Every line of code is on GitHub &mdash; read it, fork it, contribute.
+        No telemetry, no usage tracking, no cloud callbacks.
       </p>
       <div class="mt-8 flex flex-wrap items-center justify-center gap-4">
         <a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="btn-accent text-sm no-underline gap-2">
@@ -411,6 +441,7 @@
               <li><a href="/features.html" class="no-underline">Features</a></li>
               <li><a href="/use-cases.html" class="no-underline">Use Cases</a></li>
               <li><a href="/comparison.html" class="no-underline">Comparison</a></li>
+              <li><a href="/blog/" class="no-underline">Blog</a></li>
             </ul>
           </div>
           <div>

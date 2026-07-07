@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>humux blog</title>
+    <link>https://humux.dev/blog/</link>
+    <description>Deep dives into agent architecture, memory systems, and self-hosted infrastructure.</description>
+    <language>en</language>
+    <atom:link href="https://humux.dev/blog/feed.xml" rel="self" type="application/rss+xml"/>
+
+    <item>
+      <title>Subagent Patterns: Scoped Delegation for Complex Tasks</title>
+      <link>https://humux.dev/blog/subagent-patterns.html</link>
+      <guid>https://humux.dev/blog/subagent-patterns.html</guid>
+      <pubDate>Sat, 04 Jul 2026 00:00:00 +0000</pubDate>
+      <description>How to spawn scoped sub-tasks from an agent with inherit-never-widen security, budget controls, and sync or background execution modes.</description>
+    </item>
+
+    <item>
+      <title>Why Multiple Agents Beat One Generalist</title>
+      <link>https://humux.dev/blog/why-multiple-agents.html</link>
+      <guid>https://humux.dev/blog/why-multiple-agents.html</guid>
+      <pubDate>Tue, 30 Jun 2026 00:00:00 +0000</pubDate>
+      <description>Running specialized agents with different skills, tools, and personalities produces better results than one monolithic agent trying to do everything.</description>
+    </item>
+
+    <item>
+      <title>Voice Pipelines for Agents: On-Device STT and TTS</title>
+      <link>https://humux.dev/blog/voice-pipelines-for-agents.html</link>
+      <guid>https://humux.dev/blog/voice-pipelines-for-agents.html</guid>
+      <pubDate>Tue, 23 Jun 2026 00:00:00 +0000</pubDate>
+      <description>Building offline-capable voice interaction with faster-whisper for speech-to-text and Kokoro 82M for text-to-speech.</description>
+    </item>
+
+    <item>
+      <title>Running a Full Agent Stack in a Single Container</title>
+      <link>https://humux.dev/blog/single-container-agents.html</link>
+      <guid>https://humux.dev/blog/single-container-agents.html</guid>
+      <pubDate>Tue, 09 Jun 2026 00:00:00 +0000</pubDate>
+      <description>Architecture decisions that make it possible to run LLM orchestration, voice, email, calendar, and admin UI in one Docker container.</description>
+    </item>
+
+    <item>
+      <title>Permission Engineering for Autonomous Agents</title>
+      <link>https://humux.dev/blog/permission-engineering.html</link>
+      <guid>https://humux.dev/blog/permission-engineering.html</guid>
+      <pubDate>Tue, 26 May 2026 00:00:00 +0000</pubDate>
+      <description>Glob-pattern rules, approval flows via Telegram, and vault-sealed secrets that never enter the model context.</description>
+    </item>
+
+    <item>
+      <title>Memory Architecture for Long-Running Agents</title>
+      <link>https://humux.dev/blog/memory-architecture-for-agents.html</link>
+      <guid>https://humux.dev/blog/memory-architecture-for-agents.html</guid>
+      <pubDate>Tue, 12 May 2026 00:00:00 +0000</pubDate>
+      <description>Four tiers of memory: lexical retrieval, semantic search, importance-based forgetting, and hygiene via deduplication.</description>
+    </item>
+
+    <item>
+      <title>Skills Over Code: Teaching Agents via Markdown</title>
+      <link>https://humux.dev/blog/skills-over-code.html</link>
+      <guid>https://humux.dev/blog/skills-over-code.html</guid>
+      <pubDate>Tue, 28 Apr 2026 00:00:00 +0000</pubDate>
+      <description>Why describing CLI tools in markdown files beats writing Python adapter classes for every new agent capability.</description>
+    </item>
+
+    <item>
+      <title>Designing Multi-Channel Agent Architectures</title>
+      <link>https://humux.dev/blog/multi-channel-agent-architecture.html</link>
+      <guid>https://humux.dev/blog/multi-channel-agent-architecture.html</guid>
+      <pubDate>Tue, 14 Apr 2026 00:00:00 +0000</pubDate>
+      <description>How to build agents that operate across Telegram, email, calendar, and CLI as a unified system with a common message abstraction.</description>
+    </item>
+
+  </channel>
+</rss>

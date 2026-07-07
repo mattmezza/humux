@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Designing Multi-Channel Agent Architectures — humux blog</title>
+  <meta name="description" content="How to build agents that operate across Telegram, email, calendar, and CLI as a unified system with a common message abstraction.">
+  <link rel="canonical" href="https://humux.dev/blog/multi-channel-agent-architecture">
+
+  <meta property="og:title" content="Designing Multi-Channel Agent Architectures">
+  <meta property="og:description" content="How to build agents that operate across Telegram, email, calendar, and CLI as a unified system with a common message abstraction.">
+  <meta property="og:url" content="https://humux.dev/blog/multi-channel-agent-architecture">
+  <meta property="og:type" content="article">
+  <meta property="og:image" content="https://humux.dev/assets/images/og-image.png">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Designing Multi-Channel Agent Architectures">
+  <meta name="twitter:description" content="How to build agents that operate across Telegram, email, calendar, and CLI as a unified system with a common message abstraction.">
+  <meta name="twitter:image" content="https://humux.dev/assets/images/og-image.png">
+  <meta name="twitter:site" content="@_mattmezza_">
+  <meta name="twitter:creator" content="@_mattmezza_">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "headline": "Designing Multi-Channel Agent Architectures",
+    "description": "How to build agents that operate across Telegram, email, calendar, and CLI as a unified system with a common message abstraction.",
+    "datePublished": "2026-04-14",
+    "author": { "@type": "Person", "name": "Matteo Merola" },
+    "publisher": { "@type": "Organization", "name": "humux" },
+    "url": "https://humux.dev/blog/multi-channel-agent-architecture"
+  }
+  </script>
+
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://humux.dev/"},{"@type":"ListItem","position":2,"name":"Blog","item":"https://humux.dev/blog/"},{"@type":"ListItem","position":3,"name":"Designing Multi-Channel Agent Architectures","item":"https://humux.dev/blog/multi-channel-agent-architecture.html"}]}
+  </script>
+
+  <link rel="alternate" type="application/rss+xml" title="humux blog" href="/blog/feed.xml">
+
+  <link rel="icon" type="image/svg+xml" href="/assets/images/favicon-32.svg">
+  <link rel="alternate icon" type="image/png" sizes="32x32" href="/assets/images/favicon-32.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/images/apple-touch-icon.png">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="/assets/css/style.css">
+
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script defer src="https://analytics.casa.merola.co/script.js" data-website-id="b395aaa1-97a5-494e-9ad8-15b3ba20318e"></script>
+</head>
+<body>
+
+  <!-- Nav -->
+  <nav x-data="{ open: false }" class="sticky top-0 z-50 border-b border-[var(--color-border)]" style="background: rgba(6,6,6,0.85); backdrop-filter: blur(12px);">
+    <div class="mx-auto flex max-w-6xl items-center justify-between px-5 py-3">
+      <a href="/" class="flex items-center gap-2 no-underline">
+        <span class="text-sm font-semibold tracking-wider" style="color: var(--color-accent);">humux</span>
+        <span class="hidden sm:inline text-xs" style="color: var(--color-muted);">/ˈhjuːmʌks/</span>
+      </a>
+      <div class="hidden md:flex items-center gap-5 text-xs">
+        <a href="/" class="no-underline transition-colors" style="color: var(--color-secondary);">Home</a>
+        <a href="/features.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Features</a>
+        <a href="/use-cases.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Use Cases</a>
+        <a href="/comparison.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Comparison</a>
+        <a href="/blog/" class="font-medium no-underline" style="color: var(--color-accent);">Blog</a>
+        <a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="no-underline transition-colors" style="color: var(--color-secondary);">
+          <svg class="inline-block h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        </a>
+        <a href="https://docs.humux.dev" target="_blank" rel="noopener" class="no-underline transition-colors" style="color: var(--color-secondary);">Docs</a>
+      </div>
+      <button @click="open = !open" class="md:hidden p-2" style="color: var(--color-secondary);" aria-label="Menu">
+        <svg x-show="!open" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        <svg x-show="open" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div x-show="open" @click.outside="open = false" x-cloak class="md:hidden border-t border-[var(--color-border)] px-5 py-4 space-y-3 text-sm" style="background: rgba(6,6,6,0.95);">
+      <a href="/" class="block no-underline transition-colors" style="color: var(--color-secondary);">Home</a>
+      <a href="/features.html" class="block no-underline transition-colors" style="color: var(--color-secondary);">Features</a>
+      <a href="/use-cases.html" class="block no-underline transition-colors" style="color: var(--color-secondary);">Use Cases</a>
+      <a href="/comparison.html" class="block no-underline transition-colors" style="color: var(--color-secondary);">Comparison</a>
+      <a href="/blog/" class="block font-medium no-underline" style="color: var(--color-accent);">Blog</a>
+      <a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="block no-underline transition-colors" style="color: var(--color-secondary);">GitHub</a>
+      <a href="https://docs.humux.dev" target="_blank" rel="noopener" class="block no-underline transition-colors" style="color: var(--color-secondary);">Docs</a>
+    </div>
+  </nav>
+
+  <!-- Article -->
+  <article class="mx-auto max-w-3xl px-5 py-16">
+    <header class="mb-12">
+      <p class="text-xs font-mono mb-3" style="color: var(--color-muted);">April 14, 2026 &mdash; Matteo Merola</p>
+      <h1 class="text-3xl sm:text-4xl font-bold leading-tight mb-4" style="color: #eee;">Designing Multi-Channel Agent Architectures</h1>
+      <p class="text-lg leading-relaxed" style="color: var(--color-secondary);">How to build agents that operate across Telegram, email, calendar, and CLI as a unified system.</p>
+    </header>
+
+    <div class="space-y-6">
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        The moment you connect an agent to a second communication channel, you face a design fork. Either you write channel-specific logic twice &mdash; one handler for Telegram, another for email, a third for your terminal &mdash; or you introduce a message abstraction that normalizes everything into a common format. The first path is fast to start. The second is the only one that survives past three channels.
+      </p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        This article walks through the channel abstraction pattern, how to handle capabilities that only exist on some channels, and the async orchestration model that lets channels run independently while sharing agent state. The examples come from humux, where this architecture has been running in production across Telegram, email, CalDAV, and CLI for over a year.
+      </p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">The common message format</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        Every channel &mdash; Telegram, IMAP, a terminal prompt &mdash; produces something different. Telegram gives you an <code class="inline-code">Update</code> object with nested entities, reply markup, and media arrays. Email gives you a MIME tree. A CLI gives you a string. The first thing you need is a dataclass that all of these normalize into:
+      </p>
+
+      <div class="terminal-window mt-6 mb-6">
+        <div class="terminal-header">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+          <span class="ml-2 text-xs" style="color: var(--color-muted);">message.py</span>
+        </div>
+        <div class="terminal-body">
+<pre>@dataclass
+class Message:
+    text: str
+    sender: str
+    channel: str            # "telegram", "email", "cli"
+    chat_id: str            # normalized identifier
+    timestamp: datetime
+    attachments: list[Attachment] = field(default_factory=list)
+    metadata: dict = field(default_factory=dict)
+    reply_to: str | None = None</pre>
+        </div>
+      </div>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        The <code class="inline-code">metadata</code> dict is deliberate. It carries channel-specific data &mdash; Telegram's <code class="inline-code">message_id</code> for reactions, an email's <code class="inline-code">In-Reply-To</code> header for threading &mdash; without polluting the core schema. Everything downstream of this dataclass works with the same interface regardless of origin.
+      </p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        Each channel implements one function: convert its native format into a <code class="inline-code">Message</code>. That's the entire abstraction. No abstract base class with twelve methods. One function per channel.
+      </p>
+
+      <div class="terminal-window mt-6 mb-6">
+        <div class="terminal-header">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+          <span class="ml-2 text-xs" style="color: var(--color-muted);">channels/telegram.py</span>
+        </div>
+        <div class="terminal-body">
+<pre>def normalize(update: Update) -> Message:
+    msg = update.message or update.edited_message
+    attachments = []
+    if msg.voice:
+        attachments.append(Attachment(
+            kind="voice", file_id=msg.voice.file_id
+        ))
+    return Message(
+        text=msg.text or msg.caption or "",
+        sender=str(msg.from_user.id),
+        channel="telegram",
+        chat_id=str(msg.chat.id),
+        timestamp=msg.date,
+        attachments=attachments,
+        metadata={"message_id": msg.message_id},
+    )</pre>
+        </div>
+      </div>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">Channel-specific capabilities</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        Not every channel can do the same things. Telegram has inline keyboards, reactions, and voice messages. Email has CC/BCC, attachments, and threading. CLI has neither &mdash; but it has the lowest latency and doesn't require network access.
+      </p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        The temptation is to model these as a capability matrix: a registry of features each channel supports, queried at runtime. Don't. That approach scales poorly and forces every new feature through a capabilities check. Instead, handle channel-specific output at the <em>response</em> layer:
+      </p>
+
+      <div class="terminal-window mt-6 mb-6">
+        <div class="terminal-header">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+          <span class="ml-2 text-xs" style="color: var(--color-muted);">response.py</span>
+        </div>
+        <div class="terminal-body">
+<pre>@dataclass
+class Response:
+    text: str
+    voice: bytes | None = None
+    buttons: list[list[Button]] | None = None
+    reaction: str | None = None
+
+async def deliver(response: Response, channel: str, chat_id: str):
+    match channel:
+        case "telegram":
+            if response.voice:
+                await send_voice(chat_id, response.voice)
+            elif response.buttons:
+                await send_with_keyboard(chat_id, response.text,
+                                         response.buttons)
+            else:
+                await send_text(chat_id, response.text)
+        case "email":
+            await send_email(chat_id, response.text)
+        case "cli":
+            print(response.text)</pre>
+        </div>
+      </div>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        The agent core produces a <code class="inline-code">Response</code> with everything it <em>wants</em> to say. Each channel picks what it can handle. Telegram renders the buttons; email ignores them and just sends the text. CLI prints it. The agent doesn't know or care which channel is listening. This is the critical separation: the agent thinks in responses, channels think in delivery.
+      </p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">Async orchestration and shared state</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        Each channel runs as an independent async loop. Telegram uses long polling (or webhooks). Email polls IMAP on an interval. CLI blocks on <code class="inline-code">stdin</code>. They don't coordinate with each other &mdash; they all feed into the same agent through the normalized <code class="inline-code">Message</code> interface.
+      </p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        State sharing happens through the database, not through in-memory structures. In humux, all channels write to the same SQLite history database (WAL mode for concurrent readers). When the agent processes a message from Telegram, it sees the full conversation history including CLI interactions. When you switch to the terminal to test something, the agent has full context from the Telegram thread.
+      </p>
+
+      <div class="terminal-window mt-6 mb-6">
+        <div class="terminal-header">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+          <span class="ml-2 text-xs" style="color: var(--color-muted);">orchestrator.py</span>
+        </div>
+        <div class="terminal-body">
+<pre>async def run(agent: Agent, channels: list[Channel]):
+    async with TaskGroup() as tg:
+        for ch in channels:
+            tg.create_task(ch.listen(
+                callback=lambda msg: handle(agent, msg)
+            ))
+
+async def handle(agent: Agent, msg: Message):
+    history = await db.get_history(msg.chat_id)
+    response = await agent.think(history + [msg])
+    await db.save(msg)
+    await db.save_response(response, msg.chat_id)
+    await deliver(response, msg.channel, msg.chat_id)</pre>
+        </div>
+      </div>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        The <code class="inline-code">TaskGroup</code> pattern (Python 3.11+) is clean here: each channel is a long-lived task, and if one crashes, the group propagates the exception cleanly. No supervisor trees, no restart policies. The process manager handles restarts at the container level.
+      </p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">Per-agent bots and identity isolation</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        humux takes this a step further: each agent gets its own Telegram bot token. Instead of one bot routing messages to different agents, each agent <em>is</em> a separate bot with its own username, avatar, and conversation history. This matters in group chats &mdash; you can add multiple agents to the same group, and each responds independently based on an addressing protocol (mention the bot's name, it responds; otherwise it stays quiet).
+      </p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        The identity isolation extends to all channels. Each agent can have its own email account, its own calendar bindings, its own set of skills. The channel layer doesn't know about this &mdash; it just maps <code class="inline-code">chat_id</code> to the right agent and lets the agent core handle the rest.
+      </p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">CLI as a first-class channel</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        Most agent frameworks treat CLI as a debug tool. That's a mistake. A terminal channel with the same message format means you can test any agent behavior locally without sending a single Telegram message. In humux, the CLI channel uses SQLite WAL for session persistence &mdash; you can <code class="inline-code">Ctrl-C</code> and resume the same conversation later.
+      </p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        It also serves as the fallback. If the Telegram API is down, scheduled jobs still execute and deliver results through the CLI channel's history. When the network recovers, the agent has full context of what happened offline.
+      </p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">Key takeaways</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        The multi-channel pattern boils down to three decisions: normalize input into a common <code class="inline-code">Message</code>, let the agent produce channel-agnostic <code class="inline-code">Response</code> objects, and share state through the database rather than in-memory structures. Each channel runs as an independent async task. Channel-specific capabilities are handled at the delivery layer, not the agent layer.
+      </p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        The entire abstraction is two dataclasses, one <code class="inline-code">deliver</code> function with a match statement, and one <code class="inline-code">normalize</code> function per channel. No framework, no plugin system, no capability registry. That's the point &mdash; the architecture that survives is the one simple enough that you can hold it in your head while debugging at 2am.
+      </p>
+    </div>
+
+    <!-- CTA -->
+    <div class="mt-16 pt-8 border-t" style="border-color: var(--color-border);">
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        humux implements multi-channel agent architecture out of the box.
+        <a href="/" class="no-underline font-medium" style="color: var(--color-accent);">Try it &rarr;</a>
+      </p>
+    </div>
+  </article>
+
+  <!-- Footer -->
+  <footer class="border-t px-5 py-12" style="border-color: var(--color-border); background: var(--color-surface);">
+    <div class="mx-auto max-w-6xl">
+      <div class="flex flex-wrap items-start justify-between gap-8">
+        <div>
+          <span class="text-sm font-semibold" style="color: var(--color-accent);">humux</span>
+          <p class="mt-1 text-xs" style="color: var(--color-muted);">Human Multiplexer &mdash; /ˈhjuːmʌks/</p>
+          <p class="mt-0.5 text-xs" style="color: var(--color-muted);">Your self-hosted personal AI agent.</p>
+        </div>
+        <div class="flex flex-wrap gap-10">
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Site</span>
+            <ul class="mt-2 space-y-1 text-xs" style="color: var(--color-muted);">
+              <li><a href="/" class="no-underline">Home</a></li>
+              <li><a href="/features.html" class="no-underline">Features</a></li>
+              <li><a href="/use-cases.html" class="no-underline">Use Cases</a></li>
+              <li><a href="/comparison.html" class="no-underline">Comparison</a></li>
+              <li><a href="/blog/" class="no-underline">Blog</a></li>
+            </ul>
+          </div>
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Resources</span>
+            <ul class="mt-2 space-y-1 text-xs" style="color: var(--color-muted);">
+              <li><a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="no-underline">GitHub</a></li>
+              <li><a href="https://docs.humux.dev" target="_blank" rel="noopener" class="no-underline">Documentation</a></li>
+              <li><a href="https://github.com/mattmezza/humux/releases" target="_blank" rel="noopener" class="no-underline">Releases</a></li>
+            </ul>
+          </div>
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Author</span>
+            <ul class="mt-2 space-y-1 text-xs" style="color: var(--color-muted);">
+              <li><a href="https://x.com/_mattmezza_" target="_blank" rel="noopener" class="no-underline">@_mattmezza_</a></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div class="mt-10 border-t pt-6 text-center text-xs" style="border-color: var(--color-border); color: var(--color-muted);">
+        &copy; 2026 Merola Software &amp; Services. MIT License.
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

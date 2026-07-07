@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Subagent Patterns: Scoped Delegation for Complex Tasks — humux blog</title>
+  <meta name="description" content="How to spawn scoped sub-tasks from an agent with inherit-never-widen security, budget controls, and sync or background execution modes.">
+  <link rel="canonical" href="https://humux.dev/blog/subagent-patterns">
+
+  <meta property="og:title" content="Subagent Patterns: Scoped Delegation for Complex Tasks">
+  <meta property="og:description" content="How to spawn scoped sub-tasks from an agent with inherit-never-widen security, budget controls, and sync or background execution modes.">
+  <meta property="og:url" content="https://humux.dev/blog/subagent-patterns">
+  <meta property="og:type" content="article">
+  <meta property="og:image" content="https://humux.dev/assets/images/og-image.png">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Subagent Patterns: Scoped Delegation for Complex Tasks">
+  <meta name="twitter:description" content="How to spawn scoped sub-tasks from an agent with inherit-never-widen security, budget controls, and sync or background execution modes.">
+  <meta name="twitter:image" content="https://humux.dev/assets/images/og-image.png">
+  <meta name="twitter:site" content="@_mattmezza_">
+  <meta name="twitter:creator" content="@_mattmezza_">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "headline": "Subagent Patterns: Scoped Delegation for Complex Tasks",
+    "description": "How to spawn scoped sub-tasks from an agent with inherit-never-widen security, budget controls, and sync or background execution modes.",
+    "datePublished": "2026-07-04",
+    "author": { "@type": "Person", "name": "Matteo Merola" },
+    "publisher": { "@type": "Organization", "name": "humux" },
+    "url": "https://humux.dev/blog/subagent-patterns"
+  }
+  </script>
+
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://humux.dev/"},{"@type":"ListItem","position":2,"name":"Blog","item":"https://humux.dev/blog/"},{"@type":"ListItem","position":3,"name":"Subagent Patterns: Scoped Delegation for Complex Tasks","item":"https://humux.dev/blog/subagent-patterns.html"}]}
+  </script>
+
+  <link rel="alternate" type="application/rss+xml" title="humux blog" href="/blog/feed.xml">
+
+  <link rel="icon" type="image/svg+xml" href="/assets/images/favicon-32.svg">
+  <link rel="alternate icon" type="image/png" sizes="32x32" href="/assets/images/favicon-32.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/images/apple-touch-icon.png">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="/assets/css/style.css">
+
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script defer src="https://analytics.casa.merola.co/script.js" data-website-id="b395aaa1-97a5-494e-9ad8-15b3ba20318e"></script>
+</head>
+<body>
+
+  <!-- Nav -->
+  <nav x-data="{ open: false }" class="sticky top-0 z-50 border-b border-[var(--color-border)]" style="background: rgba(6,6,6,0.85); backdrop-filter: blur(12px);">
+    <div class="mx-auto flex max-w-6xl items-center justify-between px-5 py-3">
+      <a href="/" class="flex items-center gap-2 no-underline">
+        <span class="text-sm font-semibold tracking-wider" style="color: var(--color-accent);">humux</span>
+        <span class="hidden sm:inline text-xs" style="color: var(--color-muted);">/ˈhjuːmʌks/</span>
+      </a>
+      <div class="hidden md:flex items-center gap-5 text-xs">
+        <a href="/" class="no-underline transition-colors" style="color: var(--color-secondary);">Home</a>
+        <a href="/features.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Features</a>
+        <a href="/use-cases.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Use Cases</a>
+        <a href="/comparison.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Comparison</a>
+        <a href="/blog/" class="font-medium no-underline" style="color: var(--color-accent);">Blog</a>
+        <a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="no-underline transition-colors" style="color: var(--color-secondary);">
+          <svg class="inline-block h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        </a>
+        <a href="https://docs.humux.dev" target="_blank" rel="noopener" class="no-underline transition-colors" style="color: var(--color-secondary);">Docs</a>
+      </div>
+      <button @click="open = !open" class="md:hidden p-2" style="color: var(--color-secondary);" aria-label="Menu">
+        <svg x-show="!open" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        <svg x-show="open" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div x-show="open" @click.outside="open = false" x-cloak class="md:hidden border-t border-[var(--color-border)] px-5 py-4 space-y-3 text-sm" style="background: rgba(6,6,6,0.95);">
+      <a href="/" class="block no-underline transition-colors" style="color: var(--color-secondary);">Home</a>
+      <a href="/features.html" class="block no-underline transition-colors" style="color: var(--color-secondary);">Features</a>
+      <a href="/use-cases.html" class="block no-underline transition-colors" style="color: var(--color-secondary);">Use Cases</a>
+      <a href="/comparison.html" class="block no-underline transition-colors" style="color: var(--color-secondary);">Comparison</a>
+      <a href="/blog/" class="block font-medium no-underline" style="color: var(--color-accent);">Blog</a>
+      <a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="block no-underline transition-colors" style="color: var(--color-secondary);">GitHub</a>
+      <a href="https://docs.humux.dev" target="_blank" rel="noopener" class="block no-underline transition-colors" style="color: var(--color-secondary);">Docs</a>
+    </div>
+  </nav>
+
+  <!-- Article -->
+  <article class="mx-auto max-w-3xl px-5 py-16">
+    <header class="mb-12">
+      <p class="text-xs font-mono mb-3" style="color: var(--color-muted);">July 4, 2026 &mdash; Matteo Merola</p>
+      <h1 class="text-3xl sm:text-4xl font-bold leading-tight mb-4" style="color: #eee;">Subagent Patterns: Scoped Delegation for Complex Tasks</h1>
+      <p class="text-lg leading-relaxed" style="color: var(--color-secondary);">How to spawn scoped sub-tasks from an agent with inherit-never-widen security, budget controls, and sync or background execution.</p>
+    </header>
+
+    <div class="space-y-6">
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        An agent that can call tools is useful. An agent that can spawn other agents is powerful &mdash; and dangerous. The moment you let an agent delegate work to a sub-loop, you've introduced a recursion that can burn through your API budget, access systems it shouldn't, or run indefinitely. The design challenge isn't "how do we spawn subagents" &mdash; it's "how do we make spawning safe by default."
+      </p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        This article covers the subagent model in humux: the inherit-never-widen security principle, the two execution modes (sync and background), the budget system that caps runaway loops, and the practical patterns that make delegation useful without making it scary.
+      </p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">Inherit, never widen</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        The core security principle for subagents is simple: a child can inherit permissions from its parent, but it can never exceed them. If the parent agent has access to tools A, B, and C, the subagent can be given A and B, or just A, or none &mdash; but never D. Same for skills, secrets, and GitHub repo access.
+      </p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        This is enforced at spawn time, not at execution time. When a parent agent calls <code class="inline-code">spawn_subagent</code>, the system validates that every requested tool, skill, and secret is in the parent's own scope. If the request asks for something the parent doesn't have, the spawn fails with an error &mdash; not silently, not with a degraded scope.
+      </p>
+
+      <div class="terminal-window mt-6 mb-6">
+        <div class="terminal-header">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+          <span class="ml-2 text-xs" style="color: var(--color-muted);">spawn example</span>
+        </div>
+        <div class="terminal-body">
+<pre># Parent agent (Atlas) has: email, calendar, contacts, scheduling
+# This spawn succeeds — email is in the parent's scope
+spawn_subagent(
+    task="Search for all emails from acme.com in the last week "
+         "and summarize the key action items",
+    tools=["search_email"],
+    skills=["email"],
+    max_steps=10,
+    max_tokens=50000,
+)
+
+# This spawn fails — coding tools are not in Atlas's scope
+spawn_subagent(
+    task="Fix the bug in api/routes.py",
+    tools=["read_file", "edit_file"],  # NOT in parent scope
+    skills=["coding"],                  # NOT in parent scope
+)</pre>
+        </div>
+      </div>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        The inherit-never-widen rule makes the trust model composable. You configure trust at the agent level (Atlas can read email but not write code), and every subagent Atlas spawns automatically respects that boundary. You never need to audit what a subagent might do &mdash; it's bounded by what its parent can do, which is bounded by what you configured.
+      </p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">Sync vs. background execution</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        Not every delegated task needs the same execution model. Some tasks are quick lookups: "check the calendar for tomorrow's meetings." Others are long-running research: "read through the last 50 emails and find everything related to the budget review." Forcing both through the same pipe is wasteful.
+      </p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        humux supports two modes:
+      </p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        <strong style="color: #eee;">Sync mode</strong> blocks the parent until the subagent completes. The result is returned directly into the parent's tool-use loop, as if it were a tool call result. Use this for tasks where the parent needs the output to continue its reasoning: "look up X so I can decide Y."
+      </p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        <strong style="color: #eee;">Background mode</strong> returns immediately with a task ID. The subagent runs independently, and when it completes, a distilled summary is delivered to the originating chat. The parent is free to continue its own conversation. Use this for tasks that take minutes and don't block the current interaction: "compile a weekly report and send it to me when it's done."
+      </p>
+
+      <div class="terminal-window mt-6 mb-6">
+        <div class="terminal-header">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+          <span class="ml-2 text-xs" style="color: var(--color-muted);">execution modes</span>
+        </div>
+        <div class="terminal-body">
+<pre># Sync: parent waits, gets result inline
+result = spawn_subagent(
+    task="What meetings do I have tomorrow?",
+    tools=["list_events"],
+    mode="sync",
+    max_steps=5,
+)
+# result is immediately available for the parent to reason about
+
+# Background: parent continues, result delivered later
+spawn_subagent(
+    task="Read all emails from this week, group by project, "
+         "and write a summary with action items",
+    tools=["search_email"],
+    skills=["email"],
+    mode="background",
+    max_steps=30,
+    max_tokens=100000,
+)
+# Returns task_id immediately; summary appears in chat when done</pre>
+        </div>
+      </div>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">Budget controls</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        The most important safety mechanism for subagents isn't permission scoping &mdash; it's budget limits. Without them, a subagent can enter an infinite tool-use loop and burn through your entire LLM API credit before you notice. humux enforces three types of budgets:
+      </p>
+
+      <ul class="list-disc pl-6 space-y-2 text-base leading-relaxed" style="color: var(--color-secondary);">
+        <li><strong style="color: #eee;">Step budget</strong> &mdash; maximum number of tool-use rounds. A subagent with <code class="inline-code">max_steps=10</code> can make at most 10 tool calls before it's forced to return what it has. This is the most intuitive budget: "you get 10 actions, make them count."</li>
+        <li><strong style="color: #eee;">Token budget</strong> &mdash; maximum input + output tokens across all LLM calls. This caps the API cost directly. A subagent with <code class="inline-code">max_tokens=50000</code> stops when it's consumed 50K tokens, regardless of how many steps that took.</li>
+        <li><strong style="color: #eee;">Thinking budget</strong> &mdash; for models that support extended thinking, this caps the reasoning tokens separately. Useful when you want the subagent to be thorough in its reasoning but not in its output.</li>
+      </ul>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        When any budget is exhausted, the subagent is asked to produce a final response with whatever it has so far. It doesn't crash &mdash; it wraps up. The parent (or the user) gets a result, even if it's partial. The budget enforcement happens at the orchestrator level, not inside the model &mdash; the model can't decide to ignore its budget.
+      </p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">Practical delegation patterns</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        After running subagents in production, a few patterns have emerged as consistently useful:
+      </p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        <strong style="color: #eee;">Research-then-decide.</strong> The parent spawns a sync subagent to gather information, waits for the result, then makes a decision based on what it found. "Check my calendar for Thursday availability, then draft a reply to this meeting request." The subagent handles the mechanical lookup; the parent handles the judgment call.
+      </p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        <strong style="color: #eee;">Parallel investigation.</strong> The parent spawns multiple background subagents, each searching a different source: one reads email, another checks the calendar, a third searches the web. The results arrive independently and the parent synthesizes them. This is useful for morning briefings: "what happened overnight?" triggers parallel lookups across all channels.
+      </p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        <strong style="color: #eee;">Narrow-scope specialist.</strong> Instead of giving the main agent access to a risky tool, give it the ability to spawn a subagent that has that tool with a tight step budget. The parent can ask the subagent to "run this one command and report the output" without having persistent access to the shell. The subagent's scope is narrowed for one job and then it's done.
+      </p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">Monitoring and cancellation</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        Running subagents need visibility. In humux, active subagents appear in the admin UI's job manager and can be monitored from Telegram. Each subagent inherits its parent's log stream with a <code class="inline-code">[subagent:]</code> prefix, so you can see exactly what the child is doing in the parent's logs.
+      </p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        Cancellation works from both the admin UI and Telegram. If a background subagent is taking too long or heading in the wrong direction, you cancel it and the parent is notified. No zombie processes, no orphaned API calls. The orchestrator cleans up the subagent's state and delivers a "cancelled" status to the originating chat.
+      </p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">The design constraint</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        The temptation with subagents is to build an agent that spawns agents that spawn agents &mdash; a recursive tree of delegation. In practice, one level of delegation covers every use case we've encountered. The parent has context and judgment; the child has focus and a bounded scope. Going deeper adds complexity without adding capability, because the information still has to flow back up through each layer.
+      </p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        The right mental model for subagents isn't "autonomous agents collaborating" &mdash; it's "one agent with the ability to run focused side-quests." The parent stays in control. The children do the work. The budgets ensure nobody runs away with the credit card.
+      </p>
+    </div>
+
+    <!-- CTA -->
+    <div class="mt-16 pt-8 border-t" style="border-color: var(--color-border);">
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        humux supports subagent delegation with inherit-never-widen scoping, budget controls, and Telegram monitoring.
+        <a href="/" class="no-underline font-medium" style="color: var(--color-accent);">Try it &rarr;</a>
+      </p>
+    </div>
+  </article>
+
+  <!-- Footer -->
+  <footer class="border-t px-5 py-12" style="border-color: var(--color-border); background: var(--color-surface);">
+    <div class="mx-auto max-w-6xl">
+      <div class="flex flex-wrap items-start justify-between gap-8">
+        <div>
+          <span class="text-sm font-semibold" style="color: var(--color-accent);">humux</span>
+          <p class="mt-1 text-xs" style="color: var(--color-muted);">Human Multiplexer &mdash; /ˈhjuːmʌks/</p>
+          <p class="mt-0.5 text-xs" style="color: var(--color-muted);">Your self-hosted personal AI agent.</p>
+        </div>
+        <div class="flex flex-wrap gap-10">
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Site</span>
+            <ul class="mt-2 space-y-1 text-xs" style="color: var(--color-muted);">
+              <li><a href="/" class="no-underline">Home</a></li>
+              <li><a href="/features.html" class="no-underline">Features</a></li>
+              <li><a href="/use-cases.html" class="no-underline">Use Cases</a></li>
+              <li><a href="/comparison.html" class="no-underline">Comparison</a></li>
+              <li><a href="/blog/" class="no-underline">Blog</a></li>
+            </ul>
+          </div>
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Resources</span>
+            <ul class="mt-2 space-y-1 text-xs" style="color: var(--color-muted);">
+              <li><a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="no-underline">GitHub</a></li>
+              <li><a href="https://docs.humux.dev" target="_blank" rel="noopener" class="no-underline">Documentation</a></li>
+              <li><a href="https://github.com/mattmezza/humux/releases" target="_blank" rel="noopener" class="no-underline">Releases</a></li>
+            </ul>
+          </div>
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Author</span>
+            <ul class="mt-2 space-y-1 text-xs" style="color: var(--color-muted);">
+              <li><a href="https://x.com/_mattmezza_" target="_blank" rel="noopener" class="no-underline">@_mattmezza_</a></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div class="mt-10 border-t pt-6 text-center text-xs" style="border-color: var(--color-border); color: var(--color-muted);">
+        &copy; 2026 Merola Software &amp; Services. MIT License.
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

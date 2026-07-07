@@ -1,0 +1,57 @@
+# humux — Human Multiplexer
+
+> Self-hosted personal AI agent. One Docker container.
+
+humux is an open-source, self-hosted personal AI agent that runs in a single Docker container. It unifies messaging (Telegram, WhatsApp, CLI), email (IMAP/SMTP via Himalaya), calendar (CalDAV), and contacts (CardDAV) under one autonomous agent with persistent memory, scheduled tasks, voice interaction, and a web admin UI.
+
+## Key facts
+
+- License: MIT
+- Language: Python 3.14
+- Repository: https://github.com/mattmezza/humux
+- Documentation: https://docs.humux.dev
+- Author: Matteo Merola / Merola Software & Services, Zürich
+
+## What makes it different
+
+- Email, calendar, and contacts are built in — not via third-party plugins
+- Skills system: teach the agent new CLI tools by writing markdown files, no code
+- Encrypted two-tier secrets vault (infra keys + agent secrets) — credentials never enter the LLM context
+- Multiple agents with per-agent Telegram bots, voice, email accounts, and tool scopes
+- Four-tier memory: lexical retrieval, semantic search, importance-based forgetting, deduplication
+- Single container deployment — SQLite, no external databases, no Kubernetes
+
+## Quick start
+
+```bash
+docker run -d --name humux -p 8000:8000 -v ./data:/app/data ghcr.io/mattmezza/humux:latest
+```
+
+Admin UI at http://localhost:8000 — setup wizard guides through LLM API key, Telegram bot, and agent configuration.
+
+## Capabilities
+
+- Messaging: Telegram (per-agent bots, voice, reactions, inline approvals), WhatsApp, CLI
+- Email: read, compose, search, manage — per-agent mailboxes with vault-secured credentials
+- Calendar: CalDAV (Google Calendar, iCloud, Fastmail) — read/write events, scheduled briefings
+- Contacts: CardDAV + Google Contacts — search, create, per-agent access levels
+- Voice: STT via faster-whisper (on-device), TTS via edge-tts or Kokoro 82M (offline)
+- Memory: four-tier system with automatic extraction from conversations
+- Skills: markdown-based, installable from git repos via admin UI
+- Subagents: scoped sub-tasks with step/token/thinking budgets
+- Browser: headless Playwright with persistent profiles and per-domain rules
+- Coding: read/write/edit/bash tools confined to workspace directory
+- Scheduling: cron-based jobs for briefings, email checks, custom tasks
+- Security: ALWAYS/ASK/NEVER permission rules, Telegram inline approval buttons
+
+## LLM providers
+
+Anthropic, OpenAI, Google Gemini, Grok (xAI), DeepSeek, OpenRouter — configurable per-agent.
+
+## Links
+
+- Site: https://humux.dev
+- GitHub: https://github.com/mattmezza/humux
+- Docs: https://docs.humux.dev
+- Blog: https://humux.dev/blog/
+- Releases: https://github.com/mattmezza/humux/releases

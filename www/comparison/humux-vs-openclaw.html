@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>humux vs OpenClaw — Comparison</title>
+  <meta name="description" content="How humux compares to OpenClaw — the most popular personal AI agent with 25+ messaging channels and cross-platform desktop apps.">
+  <link rel="canonical" href="https://humux.dev/comparison/humux-vs-openclaw">
+
+  <meta property="og:title" content="humux vs OpenClaw — Comparison">
+  <meta property="og:description" content="How humux compares to OpenClaw — the most popular personal AI agent with 25+ messaging channels and cross-platform desktop apps.">
+  <meta property="og:url" content="https://humux.dev/comparison/humux-vs-openclaw">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="https://humux.dev/assets/images/og-image.png">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="humux vs OpenClaw — Comparison">
+  <meta name="twitter:description" content="How humux compares to OpenClaw — the most popular personal AI agent with 25+ messaging channels and cross-platform desktop apps.">
+  <meta name="twitter:image" content="https://humux.dev/assets/images/og-image.png">
+  <meta name="twitter:site" content="@_mattmezza_">
+  <meta name="twitter:creator" content="@_mattmezza_">
+
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://humux.dev/"},{"@type":"ListItem","position":2,"name":"Comparison","item":"https://humux.dev/comparison.html"},{"@type":"ListItem","position":3,"name":"humux vs OpenClaw","item":"https://humux.dev/comparison/humux-vs-openclaw.html"}]}
+  </script>
+
+  <link rel="alternate" type="application/rss+xml" title="humux blog" href="/blog/feed.xml">
+
+  <link rel="icon" type="image/svg+xml" href="/assets/images/favicon-32.svg">
+  <link rel="alternate icon" type="image/png" sizes="32x32" href="/assets/images/favicon-32.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/images/apple-touch-icon.png">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="/assets/css/style.css">
+
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script defer src="https://analytics.casa.merola.co/script.js" data-website-id="b395aaa1-97a5-494e-9ad8-15b3ba20318e"></script>
+</head>
+<body>
+
+  <!-- Nav -->
+  <nav x-data="{ open: false }" class="sticky top-0 z-50 border-b border-[var(--color-border)]" style="background: rgba(6,6,6,0.85); backdrop-filter: blur(12px);">
+    <div class="mx-auto flex max-w-6xl items-center justify-between px-5 py-3">
+      <a href="/" class="flex items-center gap-2 no-underline">
+        <span class="text-sm font-semibold tracking-wider" style="color: var(--color-accent);">humux</span>
+        <span class="hidden sm:inline text-xs" style="color: var(--color-muted);">/ˈhjuːmʌks/</span>
+      </a>
+      <div class="hidden md:flex items-center gap-5 text-xs">
+        <a href="/" class="no-underline transition-colors" style="color: var(--color-secondary);">Home</a>
+        <a href="/features.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Features</a>
+        <a href="/use-cases.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Use Cases</a>
+        <a href="/comparison.html" class="font-medium no-underline" style="color: var(--color-accent);">Comparison</a>
+        <a href="/blog/" class="no-underline transition-colors" style="color: var(--color-secondary);">Blog</a>
+        <a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="no-underline transition-colors" style="color: var(--color-secondary);">
+          <svg class="inline-block h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        </a>
+        <a href="https://docs.humux.dev" target="_blank" rel="noopener" class="no-underline transition-colors" style="color: var(--color-secondary);">Docs</a>
+      </div>
+      <button @click="open = !open" class="md:hidden p-2" style="color: var(--color-secondary);" aria-label="Menu">
+        <svg x-show="!open" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        <svg x-show="open" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div x-show="open" @click.outside="open = false" x-cloak class="md:hidden border-t border-[var(--color-border)] px-5 py-4 space-y-3 text-sm" style="background: rgba(6,6,6,0.95);">
+      <a href="/" class="block no-underline transition-colors" style="color: var(--color-secondary);">Home</a>
+      <a href="/features.html" class="block no-underline transition-colors" style="color: var(--color-secondary);">Features</a>
+      <a href="/use-cases.html" class="block no-underline transition-colors" style="color: var(--color-secondary);">Use Cases</a>
+      <a href="/comparison.html" class="block font-medium no-underline" style="color: var(--color-accent);">Comparison</a>
+      <a href="/blog/" class="block no-underline transition-colors" style="color: var(--color-secondary);">Blog</a>
+      <a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="block no-underline transition-colors" style="color: var(--color-secondary);">GitHub</a>
+      <a href="https://docs.humux.dev" target="_blank" rel="noopener" class="block no-underline transition-colors" style="color: var(--color-secondary);">Docs</a>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="border-b px-5 py-20 text-center" style="border-color: var(--color-border); background: var(--color-surface);">
+    <span class="tag">Comparison</span>
+    <h1 class="mx-auto mt-4 max-w-3xl text-4xl font-bold leading-tight sm:text-5xl" style="color: #eee;">
+      humux vs.<br><span style="color: var(--color-accent);">OpenClaw</span>
+    </h1>
+    <p class="mx-auto mt-4 max-w-xl leading-relaxed" style="color: var(--color-secondary);">
+      How humux compares to OpenClaw — the most popular personal AI agent with 25+ messaging channels and cross-platform desktop apps.
+    </p>
+    <p class="mx-auto mt-2 text-xs" style="color: var(--color-muted);">
+      <a href="https://github.com/openclaw/openclaw" target="_blank" rel="noopener" class="no-underline">OpenClaw</a> &mdash; 381k &#9733; &mdash; TypeScript &mdash; MIT
+    </p>
+  </section>
+
+  <!-- Feature comparison table -->
+  <section class="px-5 py-16">
+    <div class="mx-auto max-w-3xl">
+      <div class="overflow-x-auto rounded-lg border" style="border-color: var(--color-border);">
+        <table class="comparison-table">
+          <thead>
+            <tr>
+              <th class="min-w-[180px]">Feature</th>
+              <th class="min-w-[120px] text-center" style="color: var(--color-accent);">humux</th>
+              <th class="min-w-[120px] text-center" style="color: var(--color-secondary);">OpenClaw</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="font-medium" style="color: #ddd;">Self-hosted</td>
+              <td class="text-center check" style="color: var(--color-accent);"><svg class="inline h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></td>
+              <td class="text-center check" style="color: currentColor;"><svg class="inline h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></td>
+            </tr>
+            <tr>
+              <td class="font-medium" style="color: #ddd;">Single container deploy</td>
+              <td class="text-center check" style="color: var(--color-accent);"><svg class="inline h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></td>
+              <td class="text-center cross"><svg class="inline h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></td>
+            </tr>
+            <tr>
+              <td class="font-medium" style="color: #ddd;">Messaging channels</td>
+              <td class="text-center" style="color: var(--color-accent);">3</td>
+              <td class="text-center" style="color: var(--color-secondary);">25+</td>
+            </tr>
+            <tr>
+              <td class="font-medium" style="color: #ddd;">Telegram (per-agent bots)</td>
+              <td class="text-center check" style="color: var(--color-accent);"><svg class="inline h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></td>
+              <td class="text-center check" style="color: currentColor;"><svg class="inline h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></td>
+            </tr>
+            <tr>
+              <td class="font-medium" style="color: #ddd;">WhatsApp</td>
+              <td class="text-center check" style="color: var(--color-accent);"><svg class="inline h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></td>
+              <td class="text-center check" style="color: currentColor;"><svg class="inline h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></td>
+            </tr>
+            <tr>
+              <td class="font-medium" style="color: #ddd;">CLI channel</td>
+              <td class="text-center check" style="color: var(--color-accent);"><svg class="inline h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></td>
+              <td class="text-center cross"><svg class="inline h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></td>
+            </tr>
+            <tr>
+              <td class="font-medium" style="color: #ddd;">Email (IMAP/SMTP)</td>
+              <td class="text-center check" style="color: var(--color-accent);"><svg class="inline h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></td>
+              <td class="text-center cross"><svg class="inline h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></td>
+            </tr>
+            <tr>
+              <td class="font-medium" style="color: #ddd;">Calendar (CalDAV)</td>
+              <td class="text-center check" style="color: var(--color-accent);"><svg class="inline h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></td>
+              <td class="text-center cross"><svg class="inline h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></td>
+            </tr>
+            <tr>
+              <td class="font-medium" style="color: #ddd;">Contacts (CardDAV)</td>
+              <td class="text-center check" style="color: var(--color-accent);"><svg class="inline h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></td>
+              <td class="text-center cross"><svg class="inline h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></td>
+            </tr>
+            <tr>
+              <td class="font-medium" style="color: #ddd;">Persistent memory</td>
+              <td class="text-center check" style="color: var(--color-accent);"><svg class="inline h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></td>
+              <td class="text-center check" style="color: currentColor;"><svg class="inline h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></td>
+            </tr>
+            <tr>
+              <td class="font-medium" style="color: #ddd;">Voice (STT + TTS)</td>
+              <td class="text-center check" style="color: var(--color-accent);"><svg class="inline h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></td>
+              <td class="text-center check" style="color: currentColor;"><svg class="inline h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></td>
+            </tr>
+            <tr>
+              <td class="font-medium" style="color: #ddd;">Markdown skills</td>
+              <td class="text-center check" style="color: var(--color-accent);"><svg class="inline h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></td>
+              <td class="text-center check" style="color: currentColor;"><svg class="inline h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></td>
+            </tr>
+            <tr>
+              <td class="font-medium" style="color: #ddd;">Subagents</td>
+              <td class="text-center check" style="color: var(--color-accent);"><svg class="inline h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></td>
+              <td class="text-center check" style="color: currentColor;"><svg class="inline h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></td>
+            </tr>
+            <tr>
+              <td class="font-medium" style="color: #ddd;">Scheduled tasks / cron</td>
+              <td class="text-center check" style="color: var(--color-accent);"><svg class="inline h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></td>
+              <td class="text-center cross"><svg class="inline h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></td>
+            </tr>
+            <tr>
+              <td class="font-medium" style="color: #ddd;">Web search</td>
+              <td class="text-center check" style="color: var(--color-accent);"><svg class="inline h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></td>
+              <td class="text-center check" style="color: currentColor;"><svg class="inline h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></td>
+            </tr>
+            <tr>
+              <td class="font-medium" style="color: #ddd;">Browser automation</td>
+              <td class="text-center check" style="color: var(--color-accent);"><svg class="inline h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></td>
+              <td class="text-center cross"><svg class="inline h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></td>
+            </tr>
+            <tr>
+              <td class="font-medium" style="color: #ddd;">Encrypted secrets vault</td>
+              <td class="text-center check" style="color: var(--color-accent);"><svg class="inline h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></td>
+              <td class="text-center cross"><svg class="inline h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></td>
+            </tr>
+            <tr>
+              <td class="font-medium" style="color: #ddd;">Granular permissions</td>
+              <td class="text-center check" style="color: var(--color-accent);"><svg class="inline h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></td>
+              <td class="text-center cross"><svg class="inline h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></td>
+            </tr>
+            <tr>
+              <td class="font-medium" style="color: #ddd;">Admin web UI</td>
+              <td class="text-center check" style="color: var(--color-accent);"><svg class="inline h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></td>
+              <td class="text-center cross"><svg class="inline h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></td>
+            </tr>
+            <tr>
+              <td class="font-medium" style="color: #ddd;">LLM providers</td>
+              <td class="text-center" style="color: var(--color-accent);">6</td>
+              <td class="text-center" style="color: var(--color-secondary);">~20</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="mt-4 text-xs text-center" style="color: var(--color-muted);">
+        Info gathered from public repos and docs. Products evolve &mdash; check each project for current state.
+      </p>
+    </div>
+  </section>
+
+  <!-- Strengths -->
+  <section class="border-t px-5 py-16" style="border-color: var(--color-border); background: var(--color-surface);">
+    <div class="mx-auto max-w-4xl">
+      <div class="grid gap-8 md:grid-cols-2">
+
+        <div class="rounded-lg border p-6" style="border-color: var(--color-border); background: var(--color-base);">
+          <div class="flex items-center gap-2 mb-4">
+            <span class="text-lg">🦞</span>
+            <h2 class="text-lg font-bold" style="color: #eee;">Where OpenClaw wins</h2>
+          </div>
+          <ul class="space-y-2 text-sm leading-relaxed" style="color: var(--color-secondary);">
+        <li>25+ messaging channels (Signal, iMessage, Discord, Slack, and many more)</li>
+        <li>Cross-platform desktop apps for macOS, Linux, and Windows</li>
+        <li>Largest ecosystem and community of any personal AI agent (381k stars)</li>
+        <li>More LLM providers (~20 vs humux's 6)</li>
+        <li>Sponsored by OpenAI, GitHub, NVIDIA, and Vercel</li>
+          </ul>
+        </div>
+
+        <div class="rounded-lg border p-6" style="border-color: var(--color-accent-dim); background: var(--color-accent-glow);">
+          <div class="flex items-center gap-2 mb-4">
+            <span class="text-lg">&#9889;</span>
+            <h2 class="text-lg font-bold" style="color: #eee;">Where humux wins</h2>
+          </div>
+          <ul class="space-y-2 text-sm leading-relaxed" style="color: var(--color-secondary);">
+        <li>Built-in email, calendar, and contacts — not available in OpenClaw</li>
+        <li>Single container deploy (OpenClaw requires multiple services)</li>
+        <li>Scheduled tasks and cron jobs (absent in OpenClaw)</li>
+        <li>Browser automation with persistent profiles (not in OpenClaw)</li>
+        <li>Encrypted vault, granular permissions, and admin web UI</li>
+          </ul>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- Verdict -->
+  <section class="px-5 py-16">
+    <div class="mx-auto max-w-3xl text-center">
+      <h2 class="text-2xl font-bold mb-4" style="color: #eee;">The bottom line</h2>
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        Choose OpenClaw if you need 20+ messaging platforms, desktop apps, or the largest community. Choose humux if you want a complete personal productivity agent with email, calendar, scheduling, and a single-container deployment.
+      </p>
+      <p class="mt-4 text-sm" style="color: var(--color-muted);">
+        <a href="/comparison.html" class="no-underline" style="color: var(--color-accent);">&larr; See the full comparison table</a>
+      </p>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="border-t px-5 py-20 text-center" style="border-color: var(--color-border); background: var(--color-surface);">
+    <div class="mx-auto max-w-xl">
+      <h2 class="text-2xl font-bold" style="color: #eee;">Run your own personal AI</h2>
+      <p class="mt-3 leading-relaxed" style="color: var(--color-secondary);">
+        One container. All integrations built in. Your data stays yours.
+      </p>
+      <div class="mt-6 flex flex-wrap justify-center gap-3">
+        <a href="/" class="btn-accent no-underline text-sm">Quick Start</a>
+        <a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="btn-ghost no-underline text-sm">Star on GitHub</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="border-t px-5 py-12" style="border-color: var(--color-border); background: var(--color-surface);">
+    <div class="mx-auto max-w-6xl">
+      <div class="flex flex-wrap items-start justify-between gap-8">
+        <div>
+          <span class="text-sm font-semibold" style="color: var(--color-accent);">humux</span>
+          <p class="mt-1 text-xs" style="color: var(--color-muted);">Human Multiplexer &mdash; /ˈhjuːmʌks/</p>
+          <p class="mt-0.5 text-xs" style="color: var(--color-muted);">Your self-hosted personal AI agent.</p>
+        </div>
+        <div class="flex flex-wrap gap-10">
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Site</span>
+            <ul class="mt-2 space-y-1 text-xs" style="color: var(--color-muted);">
+              <li><a href="/" class="no-underline">Home</a></li>
+              <li><a href="/features.html" class="no-underline">Features</a></li>
+              <li><a href="/use-cases.html" class="no-underline">Use Cases</a></li>
+              <li><a href="/comparison.html" class="no-underline">Comparison</a></li>
+              <li><a href="/blog/" class="no-underline">Blog</a></li>
+            </ul>
+          </div>
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Resources</span>
+            <ul class="mt-2 space-y-1 text-xs" style="color: var(--color-muted);">
+              <li><a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="no-underline">GitHub</a></li>
+              <li><a href="https://docs.humux.dev" target="_blank" rel="noopener" class="no-underline">Documentation</a></li>
+              <li><a href="https://github.com/mattmezza/humux/releases" target="_blank" rel="noopener" class="no-underline">Releases</a></li>
+            </ul>
+          </div>
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Author</span>
+            <ul class="mt-2 space-y-1 text-xs" style="color: var(--color-muted);">
+              <li><a href="https://x.com/_mattmezza_" target="_blank" rel="noopener" class="no-underline">@_mattmezza_</a></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div class="mt-10 border-t pt-6 text-center text-xs" style="border-color: var(--color-border); color: var(--color-muted);">
+        &copy; 2026 Merola Software &amp; Services. MIT License.
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

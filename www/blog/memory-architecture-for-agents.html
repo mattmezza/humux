@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Memory Architecture for Long-Running Agents — humux blog</title>
+  <meta name="description" content="Four tiers of memory for personal agents: lexical retrieval, semantic search, importance-based forgetting, and hygiene via deduplication.">
+  <link rel="canonical" href="https://humux.dev/blog/memory-architecture-for-agents">
+
+  <meta property="og:title" content="Memory Architecture for Long-Running Agents">
+  <meta property="og:description" content="Four tiers of memory for personal agents: lexical retrieval, semantic search, importance-based forgetting, and hygiene via deduplication.">
+  <meta property="og:url" content="https://humux.dev/blog/memory-architecture-for-agents">
+  <meta property="og:type" content="article">
+  <meta property="og:image" content="https://humux.dev/assets/images/og-image.png">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Memory Architecture for Long-Running Agents">
+  <meta name="twitter:description" content="Four tiers of memory for personal agents: lexical retrieval, semantic search, importance-based forgetting, and hygiene via deduplication.">
+  <meta name="twitter:image" content="https://humux.dev/assets/images/og-image.png">
+  <meta name="twitter:site" content="@_mattmezza_">
+  <meta name="twitter:creator" content="@_mattmezza_">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "headline": "Memory Architecture for Long-Running Agents",
+    "description": "Four tiers of memory for personal agents: lexical retrieval, semantic search, importance-based forgetting, and hygiene via deduplication.",
+    "datePublished": "2026-05-12",
+    "author": { "@type": "Person", "name": "Matteo Merola" },
+    "publisher": { "@type": "Organization", "name": "humux" },
+    "url": "https://humux.dev/blog/memory-architecture-for-agents"
+  }
+  </script>
+
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://humux.dev/"},{"@type":"ListItem","position":2,"name":"Blog","item":"https://humux.dev/blog/"},{"@type":"ListItem","position":3,"name":"Memory Architecture for Long-Running Agents","item":"https://humux.dev/blog/memory-architecture-for-agents.html"}]}
+  </script>
+
+  <link rel="alternate" type="application/rss+xml" title="humux blog" href="/blog/feed.xml">
+
+  <link rel="icon" type="image/svg+xml" href="/assets/images/favicon-32.svg">
+  <link rel="alternate icon" type="image/png" sizes="32x32" href="/assets/images/favicon-32.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/images/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/css/style.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script defer src="https://analytics.casa.merola.co/script.js" data-website-id="b395aaa1-97a5-494e-9ad8-15b3ba20318e"></script>
+</head>
+<body>
+
+  <!-- Nav -->
+  <nav x-data="{ open: false }" class="sticky top-0 z-50 border-b border-[var(--color-border)]" style="background: rgba(6,6,6,0.85); backdrop-filter: blur(12px);">
+    <div class="mx-auto flex max-w-6xl items-center justify-between px-5 py-3">
+      <a href="/" class="flex items-center gap-2 no-underline">
+        <span class="text-sm font-semibold tracking-wider" style="color: var(--color-accent);">humux</span>
+        <span class="hidden sm:inline text-xs" style="color: var(--color-muted);">/ˈhjuːmʌks/</span>
+      </a>
+      <div class="hidden md:flex items-center gap-5 text-xs">
+        <a href="/" class="no-underline transition-colors" style="color: var(--color-secondary);">Home</a>
+        <a href="/features.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Features</a>
+        <a href="/use-cases.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Use Cases</a>
+        <a href="/comparison.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Comparison</a>
+        <a href="/blog/" class="font-medium no-underline" style="color: var(--color-accent);">Blog</a>
+        <a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="no-underline transition-colors" style="color: var(--color-secondary);">
+          <svg class="inline-block h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        </a>
+        <a href="https://docs.humux.dev" target="_blank" rel="noopener" class="no-underline transition-colors" style="color: var(--color-secondary);">Docs</a>
+      </div>
+      <button @click="open = !open" class="md:hidden p-2" style="color: var(--color-secondary);" aria-label="Menu">
+        <svg x-show="!open" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        <svg x-show="open" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div x-show="open" @click.outside="open = false" x-cloak class="md:hidden border-t border-[var(--color-border)] px-5 py-4 space-y-3 text-sm" style="background: rgba(6,6,6,0.95);">
+      <a href="/" class="block no-underline transition-colors" style="color: var(--color-secondary);">Home</a>
+      <a href="/features.html" class="block no-underline transition-colors" style="color: var(--color-secondary);">Features</a>
+      <a href="/use-cases.html" class="block no-underline transition-colors" style="color: var(--color-secondary);">Use Cases</a>
+      <a href="/comparison.html" class="block no-underline transition-colors" style="color: var(--color-secondary);">Comparison</a>
+      <a href="/blog/" class="block font-medium no-underline" style="color: var(--color-accent);">Blog</a>
+      <a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="block no-underline transition-colors" style="color: var(--color-secondary);">GitHub</a>
+      <a href="https://docs.humux.dev" target="_blank" rel="noopener" class="block no-underline transition-colors" style="color: var(--color-secondary);">Docs</a>
+    </div>
+  </nav>
+
+  <!-- Article -->
+  <article class="mx-auto max-w-3xl px-5 py-16">
+    <header class="mb-12">
+      <p class="text-xs font-mono mb-3" style="color: var(--color-muted);">May 12, 2026 &mdash; Matteo Merola</p>
+      <h1 class="text-3xl sm:text-4xl font-bold leading-tight mb-4" style="color: #eee;">Memory Architecture for Long-Running Agents</h1>
+      <p class="text-lg leading-relaxed" style="color: var(--color-secondary);">Four tiers of memory that let a personal agent remember what matters and forget what doesn't.</p>
+    </header>
+
+    <div class="space-y-6">
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        Most agent frameworks treat memory as a solved problem: embed everything, retrieve the top-k chunks, stuff them into the prompt. This works fine for a chatbot that lives for one session. It falls apart completely for a personal agent that runs for months, accumulates thousands of memories, and needs to distinguish between "my dentist appointment is on Thursday" (important, time-sensitive) and "the user once mentioned they like Italian food" (useful background, low urgency).
+      </p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        After running humux as my own daily agent for over a year, I've settled on a four-tier memory architecture that handles retrieval, ranking, forgetting, and deduplication. Here's how it works and why each tier exists.
+      </p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">Why flat RAG breaks down</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        Naive retrieval-augmented generation has three failure modes at scale. First, the store grows without bound. After six months of daily use, you have tens of thousands of memories. Embedding search returns results, but relevance degrades because the embedding space gets crowded&mdash;semantically similar but factually contradictory memories compete for the same top-k slots. Second, there's no notion of importance. "User's mother's birthday is March 15" and "user asked about the weather once" get equal standing. Third, contradictions accumulate. The user's phone number changed, they moved cities, their project priorities shifted&mdash;but old memories still float around, and the retriever has no way to prefer the fresh one.
+      </p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        You need retrieval <em>and</em> ranking <em>and</em> garbage collection <em>and</em> deduplication. Four concerns, four tiers.
+      </p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">Tier 1: Lexical retrieval</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        Before reaching for embeddings, try BM25-style word overlap. It's fast, deterministic, and surprisingly effective for proper nouns, dates, and specific terms that embedding models often muddle. When someone asks "what's Marco's email?", lexical search on "Marco email" nails it. Embedding search might return memories about email in general.
+      </p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        The implementation is straightforward: SQLite FTS5 (full-text search) over the memory text column. No external service, no model inference, sub-millisecond. humux runs lexical and semantic retrieval in parallel and merges the candidate sets before scoring.
+      </p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">Tier 2: Semantic retrieval with composite scoring</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        For queries where exact words don't match&mdash;"what does the user do for work?" when the memory says "senior engineer at Acme Corp"&mdash;you need embeddings. humux uses <a href="https://github.com/qdrant/fastembed" class="no-underline" style="color: var(--color-accent);">fastembed</a> to compute embeddings locally (no API calls, no data leaving the machine). The model runs on CPU, takes about 30MB of RAM, and embeds a sentence in under 10ms.
+      </p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        But cosine similarity alone isn't enough. Inspired by the <a href="https://arxiv.org/abs/2304.03442" class="no-underline" style="color: var(--color-accent);">Generative Agents</a> paper, each memory carries metadata that feeds a composite score:
+      </p>
+
+      <div class="terminal-window mt-6 mb-6">
+        <div class="terminal-header">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+          <span class="ml-2 text-xs" style="color: var(--color-muted);">memory/scoring.py</span>
+        </div>
+        <div class="terminal-body">
+<pre>import math
+from datetime import datetime, timezone
+
+ALPHA = 1.0   # relevance weight
+BETA  = 1.0   # importance weight
+GAMMA = 1.0   # recency weight
+DECAY = 0.995 # per-hour decay factor
+
+def score_memory(
+    relevance: float,   # cosine similarity or BM25 score, normalized 0-1
+    importance: int,     # 1-10, set at extraction time
+    last_accessed: datetime,
+) -> float:
+    now = datetime.now(timezone.utc)
+    hours = (now - last_accessed).total_seconds() / 3600
+    recency = math.pow(DECAY, hours)
+    return ALPHA * relevance + BETA * (importance / 10) + GAMMA * recency</pre>
+        </div>
+      </div>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        Three components, each pulling in a different direction. <strong>Relevance</strong> is the similarity to the current query. <strong>Importance</strong> is a 1&ndash;10 score assigned when the memory is created&mdash;a birthday rates 9, a casual mention of a restaurant rates 3. <strong>Recency</strong> decays exponentially: a memory accessed an hour ago gets a near-1.0 boost, one untouched for a month gets almost nothing. The decay factor of 0.995 means a memory loses half its recency score after about 139 hours (~6 days).
+      </p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        When a memory is retrieved and used in a response, its <code class="inline-code">last_accessed</code> timestamp updates. Important memories that keep getting used stay hot. Unimportant ones fade naturally.
+      </p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">The extraction pipeline</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        Memories don't appear from nowhere. After each conversation turn, the orchestrator asks the model to reflect on the exchange and emit structured operations:
+      </p>
+
+      <div class="terminal-window mt-6 mb-6">
+        <div class="terminal-header">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+          <span class="ml-2 text-xs" style="color: var(--color-muted);">memory/extraction.py &mdash; reflection prompt (simplified)</span>
+        </div>
+        <div class="terminal-body">
+<pre>REFLECT_PROMPT = """Given this conversation, extract memory operations.
+Each operation is one of:
+  ADD    — new fact worth remembering (set importance 1-10)
+  UPDATE — corrects or refines an existing memory (reference by ID)
+  DELETE — a memory is now known to be false or outdated
+  NOOP   — nothing worth remembering
+
+Return JSON: [{"op": "ADD", "text": "...", "importance": 7}, ...]
+Only extract durable facts. Skip transient chitchat."""</pre>
+        </div>
+      </div>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        The model sees the last few turns plus the candidate memories that were retrieved for context, which lets it issue <code class="inline-code">UPDATE</code> operations that reference existing memory IDs. This is how contradictions get resolved: the user says "I moved to Berlin", the model sees the old memory "user lives in Milan", and emits an <code class="inline-code">UPDATE</code> replacing it.
+      </p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">Tier 3: Forgetting</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        Even with good extraction, the store grows. Tier 3 is a background job that archives cold memories. The rule is simple: memories below an importance threshold whose recency score has decayed past a cutoff get moved to an archive table. They're not deleted&mdash;they can be resurrected if a query specifically matches&mdash;but they're excluded from the default retrieval pool.
+      </p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        In practice, this means a memory with importance 2 that hasn't been accessed in three weeks gets archived. A memory with importance 9 survives much longer. The threshold is tunable, but the defaults work well: most agents stabilize at a few hundred active memories after the first month, even with heavy daily use.
+      </p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">Tier 4: Hygiene</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        The extraction model isn't perfect. It will sometimes create a new memory that's a near-duplicate of an existing one. "User works at Acme" and "User is a senior engineer at Acme Corp" are semantically close enough (cosine similarity above 0.92) to be suspicious. The hygiene pass runs periodically, clusters memories by embedding similarity, and hands clusters to the model with a simple prompt: "These memories look similar. Merge them into one, keeping the most complete version, or mark as distinct if they're actually different."
+      </p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        This also catches phantom memories&mdash;ones that were extracted from the model's own output rather than from user input. A common failure mode is the model "remembering" a tool name that doesn't exist because it hallucinated one during a previous turn. The hygiene pass gives the model a second look at these in isolation, where they're easier to spot and delete.
+      </p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">The storage layer</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        All of this lives in SQLite. The schema is minimal:
+      </p>
+
+      <div class="terminal-window mt-6 mb-6">
+        <div class="terminal-header">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+          <span class="ml-2 text-xs" style="color: var(--color-muted);">schema (simplified)</span>
+        </div>
+        <div class="terminal-body">
+<pre>CREATE TABLE memories (
+    id          TEXT PRIMARY KEY,
+    agent_slug  TEXT NOT NULL,
+    scope       TEXT NOT NULL DEFAULT 'global',  -- or chat-specific
+    text        TEXT NOT NULL,
+    embedding   BLOB,          -- f32 vector, stored raw
+    importance  INTEGER NOT NULL DEFAULT 5,
+    created_at  TEXT NOT NULL,
+    accessed_at TEXT NOT NULL,
+    archived    INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE VIRTUAL TABLE memories_fts USING fts5(text, content=memories);</pre>
+        </div>
+      </div>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        The <code class="inline-code">scope</code> column is important: some memories are global to an agent ("user's timezone is CET"), while others are specific to a chat context ("in this group, refer to the project as Phoenix"). The retriever filters by scope before scoring, so chat-specific memories don't leak into unrelated conversations.
+      </p>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        Embeddings are stored as raw float32 blobs. Cosine similarity is computed in Python with a simple dot product&mdash;numpy isn't even needed for the store sizes a personal agent deals with. At 10,000 memories with 384-dimensional embeddings, a brute-force scan takes about 2ms. A vector database would be overkill here.
+      </p>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">Putting it together</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        The four tiers work in concert. On every turn: T1 and T2 retrieve candidates, composite scoring ranks them, the top memories enter the prompt context. After the response, the extraction pipeline produces ADD/UPDATE/DELETE operations. In the background, T3 periodically archives cold memories and T4 deduplicates the store. The net effect is a memory system that grows in quality over time rather than just in size. After a few months of use, the active memory set is dense with high-value facts and free of contradictions&mdash;which is exactly what you want for a personal agent that's supposed to know you.
+      </p>
+
+    </div>
+
+    <!-- CTA -->
+    <div class="mt-16 pt-8 border-t" style="border-color: var(--color-border);">
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        humux implements this full memory architecture out of the box.
+        <a href="/" class="no-underline font-medium" style="color: var(--color-accent);">Try it &rarr;</a>
+      </p>
+    </div>
+  </article>
+
+  <!-- Footer -->
+  <footer class="border-t px-5 py-12" style="border-color: var(--color-border); background: var(--color-surface);">
+    <div class="mx-auto max-w-6xl">
+      <div class="flex flex-wrap items-start justify-between gap-8">
+        <div>
+          <span class="text-sm font-semibold" style="color: var(--color-accent);">humux</span>
+          <p class="mt-1 text-xs" style="color: var(--color-muted);">Human Multiplexer &mdash; /ˈhjuːmʌks/</p>
+          <p class="mt-0.5 text-xs" style="color: var(--color-muted);">Your self-hosted personal AI agent.</p>
+        </div>
+        <div class="flex flex-wrap gap-10">
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Site</span>
+            <ul class="mt-2 space-y-1 text-xs" style="color: var(--color-muted);">
+              <li><a href="/" class="no-underline">Home</a></li>
+              <li><a href="/features.html" class="no-underline">Features</a></li>
+              <li><a href="/use-cases.html" class="no-underline">Use Cases</a></li>
+              <li><a href="/comparison.html" class="no-underline">Comparison</a></li>
+              <li><a href="/blog/" class="no-underline">Blog</a></li>
+            </ul>
+          </div>
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Resources</span>
+            <ul class="mt-2 space-y-1 text-xs" style="color: var(--color-muted);">
+              <li><a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="no-underline">GitHub</a></li>
+              <li><a href="https://docs.humux.dev" target="_blank" rel="noopener" class="no-underline">Documentation</a></li>
+              <li><a href="https://github.com/mattmezza/humux/releases" target="_blank" rel="noopener" class="no-underline">Releases</a></li>
+            </ul>
+          </div>
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Author</span>
+            <ul class="mt-2 space-y-1 text-xs" style="color: var(--color-muted);">
+              <li><a href="https://x.com/_mattmezza_" target="_blank" rel="noopener" class="no-underline">@_mattmezza_</a></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div class="mt-10 border-t pt-6 text-center text-xs" style="border-color: var(--color-border); color: var(--color-muted);">
+        &copy; 2026 Merola Software &amp; Services. MIT License.
+      </div>
+    </div>
+  </footer>
+</body>
+</html>
