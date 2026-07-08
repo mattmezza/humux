@@ -191,10 +191,15 @@ sidecar-browser: $(SIDECAR_NET)
 	@echo "browser → ws://localhost:$(BROWSER_PORT)"
 
 sidecar-whisper: $(SIDECAR_NET)
+	@if docker info 2>/dev/null | grep -q 'Runtimes.*nvidia'; then \
+		gpu='--gpus all'; \
+	else \
+		gpu=''; \
+	fi; \
 	docker run -d --name humux-whisper \
 		--network $(SIDECAR_NET) \
 		-p $(WHISPER_PORT):8000 \
-		--gpus all \
+		$$gpu \
 		--restart unless-stopped \
 		fedirz/faster-whisper-server:latest-cpu
 	@echo "whisper → http://localhost:$(WHISPER_PORT)/v1"
