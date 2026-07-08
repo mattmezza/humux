@@ -1,5 +1,5 @@
 # ---------- builder: compile wacli (Go + CGO) ----------
-FROM golang:1.24-bookworm AS wacli-builder
+FROM golang:1.25-bookworm AS wacli-builder
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential pkg-config \
     && rm -rf /var/lib/apt/lists/*
