@@ -21,6 +21,7 @@
 @layer base {
   body {
     font-family: var(--font-mono);
+    color-scheme: dark;
     @apply bg-[#0a0a0a] text-gray-200 text-sm leading-relaxed antialiased;
   }
 
