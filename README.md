@@ -126,6 +126,7 @@ Memories are extracted automatically from conversations. The agent reads AND wri
 
 - **STT**: [faster-whisper](https://github.com/SYSTRAN/faster-whisper) — local, offline, multi-language
 - **TTS**: [edge-tts](https://github.com/rany2/edge-tts) (cloud) or **Kokoro 82M** (fully offline, multilingual)
+- Kokoro can run as a **sidecar container** via an OpenAI-compatible TTS API (`docker compose --profile kokoro up`)
 - Voice marker syntax lets the model request a spoken reply per-turn
 - Per-agent voice selection
 
