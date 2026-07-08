@@ -588,8 +588,8 @@
     <p class="text-muted text-xs mb-4">Configure the Anthropic API key and test the connection.</p>
     <form class="space-y-3" @submit.prevent>
       <div>
-        <label class="label" for="llm-anthropic-key">Anthropic API Key</label>
-        <input type="text" class="input-sm" style="max-width:500px; display:none"
+        <label class="label" {% if not anthropic_vaulted %}for="llm-anthropic-key"{% endif %}>Anthropic API Key</label>
+        <input type="text" class="input-sm" name="anthropic-username-hint" style="max-width:500px; display:none"
                autocomplete="username" aria-hidden="true" tabindex="-1">
         {% if anthropic_vaulted %}
         <div class="text-xs text-muted py-1" style="max-width:500px">🔒 Stored in the vault as <code>${vault:ANTHROPIC_API_KEY}</code> for easy reuse — manage it from the <button type="button" class="text-accent hover:underline" @click="$dispatch('switch-tab', 'secrets')">Vaults</button> tab.</div>
@@ -651,7 +651,7 @@
     <p class="text-muted text-xs mb-4">Configure the OpenAI key and optional base URL, then test the connection.</p>
     <form class="space-y-3" @submit.prevent>
       <div>
-        <label class="label" for="llm-openai-key">OpenAI API Key</label>
+        <label class="label" {% if not openai_vaulted %}for="llm-openai-key"{% endif %}>OpenAI API Key</label>
         {% if openai_vaulted %}
         <div class="text-xs text-muted py-1" style="max-width:500px">🔒 Stored in the vault as <code>${vault:OPENAI_API_KEY}</code> for easy reuse — manage it from the <button type="button" class="text-accent hover:underline" @click="$dispatch('switch-tab', 'secrets')">Vaults</button> tab.</div>
         {% else %}
@@ -718,7 +718,7 @@
     <p class="text-muted text-xs mb-4">Configure the Google API key and optional base URL, then test the connection.</p>
     <form class="space-y-3" @submit.prevent>
       <div>
-        <label class="label" for="llm-google-key">Google API Key</label>
+        <label class="label" {% if not google_vaulted %}for="llm-google-key"{% endif %}>Google API Key</label>
         {% if google_vaulted %}
         <div class="text-xs text-muted py-1" style="max-width:500px">🔒 Stored in the vault as <code>${vault:GOOGLE_API_KEY}</code> for easy reuse — manage it from the <button type="button" class="text-accent hover:underline" @click="$dispatch('switch-tab', 'secrets')">Vaults</button> tab.</div>
         {% else %}
@@ -785,7 +785,7 @@
     <p class="text-muted text-xs mb-4">Configure the Grok key and optional base URL, then test the connection.</p>
     <form class="space-y-3" @submit.prevent>
       <div>
-        <label class="label" for="llm-grok-key">Grok API Key</label>
+        <label class="label" {% if not grok_vaulted %}for="llm-grok-key"{% endif %}>Grok API Key</label>
         {% if grok_vaulted %}
         <div class="text-xs text-muted py-1" style="max-width:500px">🔒 Stored in the vault as <code>${vault:GROK_API_KEY}</code> for easy reuse — manage it from the <button type="button" class="text-accent hover:underline" @click="$dispatch('switch-tab', 'secrets')">Vaults</button> tab.</div>
         {% else %}
@@ -852,7 +852,7 @@
     <p class="text-muted text-xs mb-4">Configure the DeepSeek key and optional base URL, then test the connection.</p>
     <form class="space-y-3" @submit.prevent>
       <div>
-        <label class="label" for="llm-deepseek-key">DeepSeek API Key</label>
+        <label class="label" {% if not deepseek_vaulted %}for="llm-deepseek-key"{% endif %}>DeepSeek API Key</label>
         {% if deepseek_vaulted %}
         <div class="text-xs text-muted py-1" style="max-width:500px">🔒 Stored in the vault as <code>${vault:DEEPSEEK_API_KEY}</code> for easy reuse — manage it from the <button type="button" class="text-accent hover:underline" @click="$dispatch('switch-tab', 'secrets')">Vaults</button> tab.</div>
         {% else %}
@@ -920,7 +920,7 @@
     <p class="text-muted text-xs mb-4">OpenRouter can auto-route around provider outages and fall back between hosts, and publishes transparent per-token pricing per model. Docs: <a href="https://openrouter.ai/docs" target="_blank" rel="noopener">openrouter.ai/docs</a> · Models &amp; pricing: <a href="https://openrouter.ai/models" target="_blank" rel="noopener">openrouter.ai/models</a> · Routing &amp; fallbacks: <a href="https://openrouter.ai/docs/features/provider-routing" target="_blank" rel="noopener">provider routing</a>.</p>
     <form class="space-y-3" @submit.prevent>
       <div>
-        <label class="label" for="llm-openrouter-key">OpenRouter API Key</label>
+        <label class="label" {% if not openrouter_vaulted %}for="llm-openrouter-key"{% endif %}>OpenRouter API Key</label>
         {% if openrouter_vaulted %}
         <div class="text-xs text-muted py-1" style="max-width:500px">🔒 Stored in the vault as <code>${vault:OPENROUTER_API_KEY}</code> for easy reuse — manage it from the <button type="button" class="text-accent hover:underline" @click="$dispatch('switch-tab', 'secrets')">Vaults</button> tab.</div>
         {% else %}

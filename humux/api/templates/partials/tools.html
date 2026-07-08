@@ -223,13 +223,13 @@
       </div>
 
       <div>
-        <label class="label" for="tools-imagegen-key">API key</label>
+        <label class="label" {% if not imagegen_key_vaulted %}for="tools-imagegen-key"{% endif %}>API key</label>
         {% if imagegen_key_vaulted %}
         <div class="text-xs text-muted py-1" style="max-width:500px">
           🔒 Stored in the <strong>Secrets</strong> vault — manage it there.
         </div>
         {% else %}
-        <input type="text" class="input-sm" style="max-width:500px; display:none"
+        <input type="text" class="input-sm" name="imagegen-username-hint" style="max-width:500px; display:none"
                autocomplete="username" aria-hidden="true" tabindex="-1">
         <input type="password" class="input-sm" style="max-width:500px"
                autocomplete="new-password" x-model="apiKey" id="tools-imagegen-key"
@@ -301,11 +301,11 @@
       </div>
 
       <div x-show="provider === 'tavily'">
-        <label class="label" for="tools-search-key">API Key</label>
+        <label class="label" {% if not search_vaulted %}for="tools-search-key"{% endif %}>API Key</label>
         {% if search_vaulted %}
         <div class="text-xs text-muted py-1" style="max-width:500px">🔒 Stored in the vault as <code>${vault:TAVILY_API_KEY}</code> — manage it from the <button type="button" class="text-accent hover:underline" @click="$dispatch('switch-tab', 'secrets')">Vaults</button> tab.</div>
         {% else %}
-        <input type="text" class="input-sm" style="max-width:500px; display:none"
+        <input type="text" class="input-sm" name="search-username-hint" style="max-width:500px; display:none"
                autocomplete="username" aria-hidden="true" tabindex="-1">
         <input type="password" class="input-sm" style="max-width:500px"
                autocomplete="new-password" x-model="apiKey" placeholder="tvly-..." id="tools-search-key">
@@ -426,14 +426,14 @@
     {# PAT mode #}
     <div class="space-y-3" x-show="ghMode === 'pat'">
       <div>
-        <label class="label" for="tools-gh-token">Personal Access Token</label>
+        <label class="label" {% if not gh_token_vaulted %}for="tools-gh-token"{% endif %}>Personal Access Token</label>
         {% if gh_token_vaulted %}
         <div class="text-xs text-muted py-1" style="max-width:500px">
           🔒 Stored in the <strong>Secrets</strong> vault — manage it there.
           Injected as <code>GH_TOKEN</code> so <code>gh</code> stays authenticated.
         </div>
         {% else %}
-        <input type="text" class="input-sm" style="max-width:500px; display:none"
+        <input type="text" class="input-sm" name="gh-username-hint" style="max-width:500px; display:none"
                autocomplete="username" aria-hidden="true" tabindex="-1">
         <input type="password" class="input-sm" style="max-width:500px"
                autocomplete="new-password"
@@ -471,7 +471,7 @@
         </div>
       </div>
       <div>
-        <label class="label" for="tools-gh-private-key">Private key (PEM)</label>
+        <label class="label" {% if not gh_key_vaulted %}for="tools-gh-private-key"{% endif %}>Private key (PEM)</label>
         {% if gh_key_vaulted %}
         <div class="text-xs text-muted py-1" style="max-width:640px">
           🔒 Stored in the <strong>Secrets</strong> vault — manage it there. Never shown or logged.

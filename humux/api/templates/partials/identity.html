@@ -67,7 +67,7 @@
         <input type="text" class="input-sm" style="max-width:300px" x-model="previewText"
                placeholder="Type a few words to hear… (blank = sample)" id="voice-preview-text">
         <select x-show="backend === 'kokoro'" class="input-sm" style="max-width:180px"
-                x-model="previewLang" title="Pronunciation language" aria-label="Pronunciation language">
+                x-model="previewLang" id="voice-preview-lang" title="Pronunciation language" aria-label="Pronunciation language">
           <option value="">Auto (match voice)</option>
           {% for code, label in kokoro_languages %}
           <option value="{{ code }}">{{ label }}</option>
