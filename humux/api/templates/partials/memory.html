@@ -6,7 +6,7 @@
     // Embeddings (Tier 2)
     embEnabled: {{ emb_enabled|default('true', true)|tojson|forceescape }} === 'true',
     embProvider: {{ emb_provider|default('local', true)|tojson|forceescape }},
-    embModel: {{ emb_model|default('BAAI/bge-small-en-v1.5', true)|tojson|forceescape }},
+    embModel: {{ emb_model|default('intfloat/multilingual-e5-small', true)|tojson|forceescape }},
     embBaseUrl: {{ emb_base_url|default('', true)|tojson|forceescape }},
     embTopK: {{ emb_top_k|default('12', true)|tojson|forceescape }},
     embRecallTopK: {{ emb_recall_top_k|default('10', true)|tojson|forceescape }},
@@ -136,8 +136,8 @@
       <div>
         <label class="label" for="mem-emb-model">Model</label>
         <input type="text" class="input-sm" style="max-width:420px" x-model="embModel" :disabled="!embEnabled"
-               placeholder="BAAI/bge-small-en-v1.5" id="mem-emb-model">
-        <p class="text-muted text-xs mt-1" x-show="isLocal">Small CPU model (384-dim, ~130MB). Bundled in Docker; use “Download model” if missing.</p>
+               placeholder="intfloat/multilingual-e5-small" id="mem-emb-model">
+        <p class="text-muted text-xs mt-1" x-show="isLocal">Multilingual CPU model (384-dim, ~470MB).</p>
         <p class="text-muted text-xs mt-1" x-show="!isLocal">e.g. <code>text-embedding-3-small</code> (OpenAI) or <code>text-embedding-004</code> (Google).</p>
       </div>
 
