@@ -120,7 +120,8 @@
 
       <div>
         <label class="label" for="mem-emb-backend">Backend</label>
-        <select class="input-sm" style="max-width:320px" x-model="embProvider" :disabled="!embEnabled" id="mem-emb-backend">
+        <select class="input-sm" style="max-width:360px" x-model="embProvider" :disabled="!embEnabled" id="mem-emb-backend">
+          <option value="sidecar">Sidecar (infinity on localhost:7997, no key)</option>
           <option value="local">Local (on-device, private, no key)</option>
           <option value="openai">OpenAI API</option>
           <option value="google">Google API</option>

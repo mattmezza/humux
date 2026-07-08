@@ -2399,7 +2399,7 @@ def create_admin_app(
         ctx: dict[str, object] = {
             "memory_long_term_limit": await _cfg("memory.long_term_limit", "50"),
             "emb_enabled": await _bool("memory.embedding.enabled", "true"),
-            "emb_provider": await _cfg("memory.embedding.provider", "local"),
+            "emb_provider": await _cfg("memory.embedding.provider", "sidecar"),
             "emb_model": await _cfg("memory.embedding.model", "BAAI/bge-small-en-v1.5"),
             "emb_base_url": await _cfg("memory.embedding.base_url", ""),
             "emb_top_k": await _cfg("memory.embedding.injection_top_k", "12"),
