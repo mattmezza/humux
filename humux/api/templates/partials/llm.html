@@ -149,7 +149,7 @@
 
     <div class="flex items-center gap-2 mt-4">
       <button class="btn-primary btn-sm"
-              @click="
+              @click="withLoading($el, () =>
                 fetch('/config', {
                   method: 'PATCH',
                   headers: {
@@ -171,7 +171,7 @@
                   if (resultOk && window.showToast) { window.showToast('LLM settings saved'); }
                 })
                 .catch(e => { resultOk = false; result = e.message; })
-              ">
+              )">
         Save
       </button>
     </div>
@@ -233,7 +233,7 @@
 
     <div class="flex items-center gap-2 mt-4">
       <button class="btn-primary btn-sm"
-              @click="
+              @click="withLoading($el, () =>
                 fetch('/config', {
                   method: 'PATCH',
                   headers: {
@@ -255,7 +255,7 @@
                   if (memoryResultOk && window.showToast) { window.showToast('Memory model settings saved'); }
                 })
                 .catch(e => { memoryResultOk = false; memoryResult = e.message; })
-              ">
+              )">
         Save memory models
       </button>
     </div>
@@ -298,7 +298,7 @@
 
     <div class="flex items-center gap-2 mt-4">
       <button class="btn-primary btn-sm"
-              @click="
+              @click="withLoading($el, () =>
                 fetch('/config', {
                   method: 'PATCH',
                   headers: {
@@ -318,7 +318,7 @@
                   if (gdResultOk && window.showToast) { window.showToast('Goal decomposition settings saved'); }
                 })
                 .catch(e => { gdResultOk = false; gdResult = e.message; })
-              ">
+              )">
         Save goal decomposition
       </button>
     </div>
@@ -366,7 +366,7 @@
 
     <div class="flex items-center gap-2 mt-4">
       <button class="btn-primary btn-sm"
-              @click="
+              @click="withLoading($el, () =>
                 fetch('/config', {
                   method: 'PATCH',
                   headers: {
@@ -387,7 +387,7 @@
                   if (trResultOk && window.showToast) { window.showToast('Task reflection settings saved'); }
                 })
                 .catch(e => { trResultOk = false; trResult = e.message; })
-              ">
+              )">
         Save task reflection
       </button>
     </div>
@@ -447,7 +447,7 @@
 
     <div class="flex items-center gap-2 mt-4">
       <button class="btn-primary btn-sm"
-              @click="
+              @click="withLoading($el, () =>
                 fetch('/config', {
                   method: 'PATCH',
                   headers: {
@@ -470,7 +470,7 @@
                   if (rdResultOk && window.showToast) { window.showToast('Reply decision settings saved'); }
                 })
                 .catch(e => { rdResultOk = false; rdResult = e.message; })
-              ">
+              )">
         Save reply decision
       </button>
     </div>
@@ -508,7 +508,7 @@
 
     <div class="flex items-center gap-2 mt-4">
       <button class="btn-primary btn-sm"
-              @click="
+              @click="withLoading($el, () =>
                 fetch('/config', {
                   method: 'PATCH',
                   headers: {
@@ -527,7 +527,7 @@
                   if (compactionResultOk && window.showToast) { window.showToast('Compaction model saved'); }
                 })
                 .catch(e => { compactionResultOk = false; compactionResult = e.message; })
-              ">
+              )">
         Save compaction model
       </button>
     </div>
@@ -571,7 +571,7 @@
     </form>
 
     <div class="flex items-center gap-2 mt-4">
-      <button class="btn-primary btn-sm" @click="saveVision()">Save vision fallback</button>
+      <button class="btn-primary btn-sm" @click="withLoading($el, () => saveVision())">Save vision fallback</button>
     </div>
     <template x-if="visionResult">
       <div :class="visionResultOk ? 'alert-success' : 'alert-error'" class="mt-2" x-text="visionResult"></div>
@@ -622,7 +622,7 @@
     </form>
     <div class="flex items-center gap-2 mt-4">
       <button class="btn btn-sm"
-              @click="
+              @click="withLoading($el, () =>
                 fetch('/config', {
                   method: 'PATCH',
                   headers: {
@@ -640,7 +640,7 @@
                   if (resultOk) { reloadLlmPartial(); }
                 })
                 .catch(e => { resultOk = false; result = e.message; })
-              ">
+              )">
         Save Anthropic
       </button>
     </div>
@@ -688,7 +688,7 @@
     </form>
     <div class="flex items-center gap-2 mt-4">
       <button class="btn btn-sm"
-              @click="
+              @click="withLoading($el, () =>
                 fetch('/config', {
                   method: 'PATCH',
                   headers: {
@@ -707,7 +707,7 @@
                   if (resultOk) { reloadLlmPartial(); }
                 })
                 .catch(e => { resultOk = false; result = e.message; })
-              ">
+              )">
         Save OpenAI
       </button>
     </div>
@@ -755,7 +755,7 @@
     </form>
     <div class="flex items-center gap-2 mt-4">
       <button class="btn btn-sm"
-              @click="
+              @click="withLoading($el, () =>
                 fetch('/config', {
                   method: 'PATCH',
                   headers: {
@@ -774,7 +774,7 @@
                   if (resultOk) { reloadLlmPartial(); }
                 })
                 .catch(e => { resultOk = false; result = e.message; })
-              ">
+              )">
         Save Google
       </button>
     </div>
@@ -822,7 +822,7 @@
     </form>
     <div class="flex items-center gap-2 mt-4">
       <button class="btn btn-sm"
-              @click="
+              @click="withLoading($el, () =>
                 fetch('/config', {
                   method: 'PATCH',
                   headers: {
@@ -841,7 +841,7 @@
                   if (resultOk) { reloadLlmPartial(); }
                 })
                 .catch(e => { resultOk = false; result = e.message; })
-              ">
+              )">
         Save Grok
       </button>
     </div>
@@ -889,7 +889,7 @@
     </form>
     <div class="flex items-center gap-2 mt-4">
       <button class="btn btn-sm"
-              @click="
+              @click="withLoading($el, () =>
                 fetch('/config', {
                   method: 'PATCH',
                   headers: {
@@ -908,7 +908,7 @@
                   if (resultOk) { reloadLlmPartial(); }
                 })
                 .catch(e => { resultOk = false; result = e.message; })
-              ">
+              )">
         Save DeepSeek
       </button>
     </div>
@@ -957,7 +957,7 @@
     </form>
     <div class="flex items-center gap-2 mt-4">
       <button class="btn btn-sm"
-              @click="
+              @click="withLoading($el, () =>
                 fetch('/config', {
                   method: 'PATCH',
                   headers: {
@@ -976,7 +976,7 @@
                   if (resultOk) { reloadLlmPartial(); }
                 })
                 .catch(e => { resultOk = false; result = e.message; })
-              ">
+              )">
         Save OpenRouter
       </button>
     </div>

@@ -27,7 +27,7 @@
 
     <div class="flex items-center gap-2 flex-wrap">
       <button class="btn btn-sm" type="button"
-              @click="saveOAuthCreds()"
+              @click="withLoading($el, () => saveOAuthCreds())"
               :disabled="!oauthClientId.trim() || !oauthClientSecret.trim()">
         Save credentials
       </button>
@@ -119,7 +119,7 @@
   </div>
 
   <div class="flex items-center gap-2 mt-4">
-    <button class="btn-primary btn-sm" type="button" @click="saveProviders()">Save calendars</button>
+    <button class="btn-primary btn-sm" type="button" @click="withLoading($el, () => saveProviders())">Save calendars</button>
     <span class="text-xs text-muted" x-text="status"></span>
   </div>
   <template x-if="result">

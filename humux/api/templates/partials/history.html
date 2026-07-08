@@ -76,7 +76,7 @@
 
     <div class="flex items-center gap-2 mt-4">
       <button class="btn-primary btn-sm"
-              @click="
+              @click="withLoading($el, () => {
                 const vals = {
                   'compaction.enabled': String(compactionEnabled === true || compactionEnabled === 'true'),
                   'compaction.threshold_type': thresholdType,
@@ -85,7 +85,7 @@
                   'compaction.context_window': String(contextWindow),
                   'compaction.keep_recent_turns': String(keepRecentTurns)
                 };
-                fetch('/config', {
+                return fetch('/config', {
                   method: 'PATCH',
                   headers: {
                     'Content-Type': 'application/json',
@@ -99,7 +99,7 @@
                   if (cResultOk && window.showToast) { window.showToast('Compaction settings saved'); }
                 })
                 .catch(e => { cResultOk = false; cResult = e.message; })
-              ">
+              })">
         Save
       </button>
       <span class="text-muted text-xs">Compaction model is set in the LLM tab.</span>

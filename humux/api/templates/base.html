@@ -404,7 +404,7 @@
           this.saveVision();
         },
         saveVision() {
-          fetch('/config', {
+          return fetch('/config', {
             method: 'PATCH',
             headers: {
               'Content-Type': 'application/json',
@@ -779,7 +779,7 @@
         saveOAuthCreds() {
           this.oauthStatus = 'Saving...';
           this.oauthResult = '';
-          fetch('/calendar/google/oauth/save-credentials', {
+          return fetch('/calendar/google/oauth/save-credentials', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -870,7 +870,7 @@
             }))
             .filter(p => p.name || p.url || p.username || p.password);
           const url = new URL('/calendar/providers', window.location.origin);
-          fetch(url.toString(), {
+          return fetch(url.toString(), {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -1041,7 +1041,7 @@
               client_secret: (p.client_secret || '').trim()
             }))
             .filter(p => p.name || p.url || p.username || p.password || p.client_id || p.client_secret);
-          fetch('/contacts/providers', {
+          return fetch('/contacts/providers', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -1224,7 +1224,7 @@
               password: (p.password || '').trim()
             }))
             .filter(p => p.name || p.email || p.imap_host || p.smtp_host);
-          fetch('/email/providers', {
+          return fetch('/email/providers', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
