@@ -2133,7 +2133,12 @@ def create_admin_app(
         # Mention gate (webhook_mention): when the App's handle is configured,
         # only events whose text @-mentions it wake the agent — except the
         # webhook_auto_events role triggers (#237).
-        mention = str(gh.get("webhook_mention") or "").strip().lstrip("@").lower()
+        # Normalize: the handle is the bare App slug. A stored "@x" or "x[bot]"
+        # (an easy config mistake) would break the self-loop guard — it compares
+        # the sender to "<mention>[bot]", so "x[bot]" self-matches never (#244).
+        mention = (
+            str(gh.get("webhook_mention") or "").strip().lstrip("@").lower().removesuffix("[bot]")
+        )
         parsed = _github_event_task(
             event,
             payload,
@@ -2145,6 +2150,12 @@ def create_admin_app(
         if parsed is None:
             return Response("ignored")
         task, chat_id, repo = parsed
+        # Per-agent conversation (#244): a chat is keyed by (channel, user_id,
+        # chat_id) with NO agent dimension, so two agents woken by the same
+        # thread would share one history — each seeing the other's turns as its
+        # own. Scope the key by agent; cross-agent visibility comes from the
+        # thread digest, rebuilt from GitHub every turn.
+        chat_id = chat_id.replace("github:", f"github:{agent_name}:", 1)
         # Repo gate — same semantics as github_repo_violation (core/tools.py).
         allowed_repos = _allowlist(gh.get("repos"))
         if allowed_repos is not None and repo.lower() not in allowed_repos:

@@ -402,7 +402,7 @@ def test_webhook_runs_turn_in_background(monkeypatch) -> None:
     core.process.assert_awaited_once()
     kwargs = core.process.await_args.kwargs
     assert kwargs["agent_name"] == "dev"
-    assert kwargs["chat_id"] == "github:acme/widgets#7"
+    assert kwargs["chat_id"] == "github:dev:acme/widgets#7"  # agent-scoped (#244)
     assert kwargs["channel"] == "system"
 
 
@@ -569,7 +569,7 @@ def test_webhook_rate_cap(monkeypatch, tmp_path) -> None:
     other = {**ISSUE_PAYLOAD, "issue": {**ISSUE_PAYLOAD["issue"], "number": 8}}
     assert _post(client, other).status_code == 202
     # Old timestamps age out of the window.
-    key = "github:acme/widgets#7"
+    key = "github:dev:acme/widgets#7"
     admin._GH_THREAD_TURNS[key] = [t - 4000 for t in admin._GH_THREAD_TURNS[key]]
     assert _post(client, ISSUE_PAYLOAD).status_code == 202
     admin._GH_THREAD_TURNS.clear()
@@ -588,7 +588,7 @@ def test_webhook_wal_written_and_cleared(monkeypatch, tmp_path) -> None:
     files = list(wal.glob("*.json"))
     assert len(files) == 1
     record = json.loads(files[0].read_text())
-    assert record["agent_name"] == "dev" and record["chat_id"] == "github:acme/widgets#7"
+    assert record["agent_name"] == "dev" and record["chat_id"] == "github:dev:acme/widgets#7"
     asyncio.run(captured[0])  # turn completes → WAL entry gone
     assert list(wal.glob("*.json")) == []
     # A failed turn clears its WAL entry too (replay must be a human decision).
@@ -670,6 +670,29 @@ def test_webhook_digest_prepended(monkeypatch, tmp_path) -> None:
     asyncio.run(captured[1])
     assert core.process.await_args.kwargs["message"].startswith("[GitHub] New issue")
     admin._GH_THREAD_TURNS.clear()
+
+
+def test_webhook_mention_bot_suffix_normalized(monkeypatch) -> None:
+    # A webhook_mention stored as "cliobit[bot]" (easy config mistake) must
+    # behave exactly like the bare slug (#244): mentions still wake the agent,
+    # and the SELF-LOOP GUARD still drops the agent's own echoes — unnormalized
+    # it compared the sender to "cliobit[bot][bot]" and never matched.
+    captured = _capture_create_task(monkeypatch)
+    mentioned = {
+        **ISSUE_PAYLOAD,
+        "issue": {**ISSUE_PAYLOAD["issue"], "body": "hey @cliobit[bot] please look"},
+    }
+    client, core = _client(agent=_agent(webhook_mention="cliobit[bot]"))
+    assert _post(client, mentioned).status_code == 202
+    asyncio.run(captured[0])
+    message = core.process.await_args.kwargs["message"]
+    assert "You act on GitHub as @cliobit[bot]." in message  # not [bot][bot]
+    own_echo = {**mentioned, "sender": {"login": "cliobit[bot]", "type": "Bot"}}
+    client2, core2 = _client(
+        agent=_agent(webhook_mention="cliobit[bot]", webhook_users=["cliobit[bot]"])
+    )
+    assert _post(client2, own_echo).text == "ignored"
+    core2.process.assert_not_called()
 
 
 def test_gh_ack_target_mapping() -> None:
