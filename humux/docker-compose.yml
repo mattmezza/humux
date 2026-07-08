@@ -33,3 +33,12 @@ services:
   #   profiles: ["browser"]
   #   environment:
   #     - MAX_CONCURRENT_SESSIONS=2
+
+  # Optional Kokoro TTS sidecar — OpenAI-compatible TTS on port 8880.
+  # Start with:  docker compose --profile kokoro up
+  # Then set voice.tts_api_base_url to http://kokoro:8880/v1 in the admin UI.
+  kokoro:
+    image: ghcr.io/remsky/kokoro-fastapi-cpu:latest
+    container_name: humux-kokoro
+    restart: unless-stopped
+    profiles: ["kokoro"]
