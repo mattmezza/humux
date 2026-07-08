@@ -17,12 +17,21 @@ entry to ``_REGISTRY`` below describing its env + prompt advertisement.
 
 from __future__ import annotations
 
+import logging
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from core.config import Config
+
+log = logging.getLogger(__name__)
+
+# Sentinel GH_TOKEN for an agent whose own identity failed to resolve (#263):
+# an ABSENT token would let gh/git fall back to ambient container auth
+# (hosts.yml, a setup-git credential helper) and act as whoever logged in —
+# typically the owner. An invalid token makes gh fail loudly instead.
+GH_NO_IDENTITY = "humux-no-identity"
 
 if TYPE_CHECKING:
     from core.agents import Agent
@@ -468,6 +477,32 @@ def effective_tool_env(
             token = _agent_gh_token(gh, agent.name, config, resolve_secret)
             if token:
                 env["GH_TOKEN"] = token
+            else:
+                # Fail CLOSED (#263): no resolvable identity must mean loud gh
+                # failures, never a silent fallback to ambient container auth.
+                log.warning(
+                    "Agent %s: gh enabled but no identity resolved — failing closed",
+                    agent.name,
+                )
+                env["GH_TOKEN"] = GH_NO_IDENTITY
+            # Commits authored as the bot (#263): env beats any `git config
+            # user.*` the model sets in a shared workspace, so bot work can't
+            # carry the owner's name. The app slug rides webhook_mention; the
+            # plain noreply form displays the bot name (no avatar link — that
+            # would need the bot USER id, which isn't known offline).
+            slug = (
+                str(gh.get("webhook_mention") or "")
+                .strip()
+                .lstrip("@")
+                .lower()
+                .removesuffix("[bot]")
+            )
+            if slug and _agent_has_own_app(gh):
+                bot = f"{slug}[bot]"
+                env["GIT_AUTHOR_NAME"] = bot
+                env["GIT_COMMITTER_NAME"] = bot
+                env["GIT_AUTHOR_EMAIL"] = f"{bot}@users.noreply.github.com"
+                env["GIT_COMMITTER_EMAIL"] = f"{bot}@users.noreply.github.com"
 
     browser = agent.tool_setting("browser")
     if browser is not None and browser.get("enabled") and config.tools.browser.enabled:

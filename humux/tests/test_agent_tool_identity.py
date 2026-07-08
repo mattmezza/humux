@@ -64,14 +64,47 @@ async def test_agent_with_own_token(agent: AgentCore, monkeypatch) -> None:
     assert cap["tool_env"]["GH_TOKEN"] == "hopper-token"  # its own, not the owner's
 
 
-async def test_agent_gh_enabled_but_no_token_does_not_borrow_owner(
-    agent: AgentCore, monkeypatch
-) -> None:
-    # gh switched on but no token stored for this agent → no GH_TOKEN at all,
-    # rather than silently inheriting the owner's.
+async def test_agent_gh_enabled_but_no_token_fails_closed(agent: AgentCore, monkeypatch) -> None:
+    # gh switched on but no token resolvable for this agent → an INVALID
+    # sentinel token (#263), not merely an absent one: with GH_TOKEN unset,
+    # gh/git fall back to ambient container auth (hosts.yml, a setup-git
+    # credential helper) and act as whoever logged in — usually the owner.
+    from core.tools import GH_NO_IDENTITY
+
     atlas = Agent(name="atlas", tool_config={"gh": {"enabled": True}})
     cap = await _run(agent, atlas, monkeypatch)
-    assert "GH_TOKEN" not in cap["tool_env"]
+    assert cap["tool_env"]["GH_TOKEN"] == GH_NO_IDENTITY
+    assert cap["tool_env"]["GH_TOKEN"] != "owner-token"
+
+
+async def test_agent_app_identity_sets_bot_git_authorship(agent: AgentCore, monkeypatch) -> None:
+    # An agent with its own App + webhook_mention commits as <slug>[bot] (#263):
+    # the env wins over any `git config user.*` the model sets in the workspace.
+    import core.tools as tools_mod
+
+    monkeypatch.setattr(tools_mod, "_agent_app_token", lambda gh, resolve: "app-token")
+    bot = Agent(
+        name="kindral",
+        tool_config={
+            "gh": {
+                "enabled": True,
+                "auth": "app",
+                "app_id": "1",
+                "installation_id": "2",
+                "private_key_secret": "PEM",
+                "webhook_mention": "kindralai",
+            }
+        },
+    )
+    cap = await _run(agent, bot, monkeypatch)
+    env = cap["tool_env"]
+    assert env["GH_TOKEN"] == "app-token"
+    assert env["GIT_AUTHOR_NAME"] == "kindralai[bot]"
+    assert env["GIT_COMMITTER_EMAIL"] == "kindralai[bot]@users.noreply.github.com"
+    # A PAT agent (no own app) gets no forced git identity.
+    pat = Agent(name="hopper", tool_config={"gh": {"enabled": True}})
+    cap2 = await _run(agent, pat, monkeypatch)
+    assert "GIT_AUTHOR_NAME" not in cap2["tool_env"]
 
 
 async def test_agent_gh_disabled_strips_owner_token(agent: AgentCore, monkeypatch) -> None:

@@ -31,6 +31,16 @@ def test_unknown_action_defaults_to_ask() -> None:
     assert engine.check("send_fax", {}) == PermissionLevel.ASK
 
 
+def test_gh_auth_mutations_are_never(tmp_path) -> None:
+    # gh auth login/logout/setup-git/refresh mutate SHARED container auth state
+    # and `gh auth token` prints the secret (#263); status stays readable.
+    engine = PermissionEngine()
+    for sub in ("login", "logout", "setup-git", "refresh", "token"):
+        got = engine.check("bash", {"command": f"gh auth {sub}"})
+        assert got == PermissionLevel.NEVER, sub
+    assert engine.check("bash", {"command": "gh auth status"}) == PermissionLevel.ALWAYS
+
+
 @pytest.mark.asyncio
 async def test_approval_request_lifecycle() -> None:
     engine = PermissionEngine()

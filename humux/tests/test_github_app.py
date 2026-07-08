@@ -16,7 +16,7 @@ from core.agent import _narrow_gh_repos
 from core.agents import Agent
 from core.config import Config
 from core.config_store import ConfigStore
-from core.tools import _gh_env, effective_tool_env, github_repo_violation
+from core.tools import GH_NO_IDENTITY, _gh_env, effective_tool_env, github_repo_violation
 
 AUTH = {"Authorization": "Bearer secret"}
 
@@ -162,7 +162,8 @@ def test_agent_own_app_mint_failure_does_not_cross_to_system(monkeypatch) -> Non
             }
         },
     )
-    assert "GH_TOKEN" not in effective_tool_env(cfg, coder, {"CODER_KEY": "pem"}.get)
+    # Fail-closed (#263): the sentinel, never absent (absent = ambient auth).
+    assert effective_tool_env(cfg, coder, {"CODER_KEY": "pem"}.get)["GH_TOKEN"] == GH_NO_IDENTITY
 
 
 def test_legacy_auth_own_app_mint_failure_does_not_cross_to_system(monkeypatch) -> None:
@@ -181,7 +182,8 @@ def test_legacy_auth_own_app_mint_failure_does_not_cross_to_system(monkeypatch) 
             }
         },
     )
-    assert "GH_TOKEN" not in effective_tool_env(cfg, coder, {"CODER_KEY": "pem"}.get)
+    # Fail-closed (#263): the sentinel, never absent (absent = ambient auth).
+    assert effective_tool_env(cfg, coder, {"CODER_KEY": "pem"}.get)["GH_TOKEN"] == GH_NO_IDENTITY
 
 
 def test_agent_auth_pat_never_uses_app(monkeypatch) -> None:
@@ -193,7 +195,7 @@ def test_agent_auth_pat_never_uses_app(monkeypatch) -> None:
     assert effective_tool_env(cfg, p, vault.get)["GH_TOKEN"] == "pat-tok"
     # Explicit PAT with no token → nothing (never the App bot, never the owner).
     none = Agent(name="none", tool_config={"gh": {"enabled": True, "auth": "pat"}})
-    assert "GH_TOKEN" not in effective_tool_env(cfg, none, lambda _n: None)
+    assert effective_tool_env(cfg, none, lambda _n: None)["GH_TOKEN"] == GH_NO_IDENTITY
 
 
 def test_system_auth_pat_disables_app(monkeypatch) -> None:
@@ -205,7 +207,7 @@ def test_system_auth_pat_disables_app(monkeypatch) -> None:
     assert _gh_env(cfg) == {"GH_TOKEN": "sys-pat"}
     # And the App bot is not offered to agents.
     atlas = Agent(name="atlas", tool_config={"gh": {"enabled": True}})
-    assert "GH_TOKEN" not in effective_tool_env(cfg, atlas, lambda _n: None)
+    assert effective_tool_env(cfg, atlas, lambda _n: None)["GH_TOKEN"] == GH_NO_IDENTITY
 
 
 def test_gh_env_auth_app_uses_app(monkeypatch) -> None:
