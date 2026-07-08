@@ -331,20 +331,24 @@
           </div>
           <div>
             <h2 class="text-lg font-semibold" style="color: #eee;">Voice</h2>
-            <p class="text-xs" style="color: var(--color-muted);">Speech-to-text, text-to-speech, offline capable</p>
+            <p class="text-xs" style="color: var(--color-muted);">Local or remote STT &amp; TTS, sidecar-ready, offline capable</p>
           </div>
         </div>
         <svg class="h-4 w-4 transition-transform duration-200" :class="{ 'rotate-180': open }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--color-muted);"><polyline points="6 9 12 15 18 9"/></svg>
       </button>
       <div x-show="open" x-collapse>
-        <div class="grid gap-6 sm:grid-cols-2">
+        <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           <div class="feature-card">
             <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Speech-to-text</h3>
-            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">Powered by faster-whisper. Transcribe voice messages from Telegram. On-device, no external API needed.</p>
+            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">Local via faster-whisper or remote via any OpenAI-compatible STT endpoint. Toggle between local and remote in the admin UI. Run Whisper as a sidecar to keep the main image slim.</p>
           </div>
           <div class="feature-card">
             <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Text-to-speech</h3>
-            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">edge-tts for cloud-quality voices, or Kokoro 82M for fully offline multilingual TTS. Both integrated and selectable.</p>
+            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">edge-tts for cloud-quality voices, Kokoro 82M for fully offline multilingual TTS, or any OpenAI-compatible remote endpoint. Switch between local and remote per-engine.</p>
+          </div>
+          <div class="feature-card">
+            <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Flexible deployment</h3>
+            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">Run voice models in the main container or as Docker sidecars. Whisper and Kokoro have dedicated sidecar services — keep your core image under 1 GB while retaining full voice capabilities.</p>
           </div>
         </div>
       </div>
