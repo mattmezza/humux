@@ -4072,7 +4072,13 @@ def create_admin_app(
                 api_key = emb.api_key or getattr(cfg, f"{emb.provider}_api_key", "")
                 base_url = emb.base_url or getattr(cfg, f"{emb.provider}_base_url", "") or None
                 if not api_key:
-                    raise HTTPException(400, f"No API key configured for provider {emb.provider}")
+                    if not base_url:
+                        raise HTTPException(
+                            400, f"No API key configured for provider {emb.provider}"
+                        )
+                    # Keyless OpenAI-compatible endpoint (the sidecar default,
+                    # #253) — same rule as AgentCore._build_embedder.
+                    api_key = "none"
                 client = EmbeddingClient(
                     provider=emb.provider,
                     api_key=api_key,
