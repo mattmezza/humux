@@ -15,8 +15,8 @@
   previewLang: '',
   voiceResult: '',
   voiceOk: false,
-  _sttMode: {{ ('remote' if stt_api_base_url else 'local')|tojson }},
-  _ttsMode: {{ ('remote' if tts_api_base_url else ('kokoro' if backend == 'kokoro' else 'edge-tts'))|tojson }},
+  _sttMode: {{ ('remote' if stt_api_base_url else 'local')|tojson|forceescape }},
+  _ttsMode: {{ ('remote' if tts_api_base_url else ('kokoro' if backend == 'kokoro' else 'edge-tts'))|tojson|forceescape }},
   get sttMode() { return this._sttMode; },
   set sttMode(val) { this._sttMode = val; },
   get ttsMode() { return this._ttsMode; },
@@ -34,7 +34,7 @@
 
     {# ── STT ── #}
     <div>
-      <label class="label" id="stt-engine-label">STT engine</label>
+      <span class="label" id="stt-engine-label">STT engine</span>
       <div class="flex gap-1 flex-wrap" role="radiogroup" aria-labelledby="stt-engine-label">
         <template x-if="sttLocalAvail">
           <button class="btn btn-sm" :class="sttMode === 'local' ? 'btn-primary' : 'btn-ghost'"
@@ -65,7 +65,7 @@
 
     {# ── TTS ── #}
     <div>
-      <label class="label" id="tts-engine-label">TTS engine</label>
+      <span class="label" id="tts-engine-label">TTS engine</span>
       <div class="flex gap-1 flex-wrap" role="radiogroup" aria-labelledby="tts-engine-label">
         <button class="btn btn-sm" :class="ttsMode === 'edge-tts' ? 'btn-primary' : 'btn-ghost'"
                 @click="ttsMode = 'edge-tts'" role="radio" :aria-checked="ttsMode === 'edge-tts'">Edge TTS (cloud)</button>
