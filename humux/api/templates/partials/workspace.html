@@ -34,8 +34,8 @@
     <div class="flex items-center justify-between gap-3 mb-1">
       <h3 class="text-sm text-accent">Coding harness</h3>
       <div class="flex items-center gap-2">
-        <label class="label mb-0">Enabled</label>
-        <input type="checkbox" x-model="enabled" :checked="enabled === 'true' || enabled === true">
+        <label class="label mb-0" for="workspace-enabled">Enabled</label>
+        <input type="checkbox" x-model="enabled" :checked="enabled === 'true' || enabled === true" id="workspace-enabled">
       </div>
     </div>
     <p class="text-muted text-xs mb-4">
@@ -51,8 +51,8 @@
     </p>
     <div class="space-y-3" x-show="enabled === 'true' || enabled === true">
       <div>
-        <label class="label">Allowed workspace directory</label>
-        <input type="text" class="input-sm" style="max-width:500px" x-model="directory"
+        <label class="label" for="workspace-directory">Allowed workspace directory</label>
+        <input type="text" class="input-sm" style="max-width:500px" x-model="directory" id="workspace-directory"
                placeholder="~/projects/my-repo">
         <p class="text-muted text-xs mt-1">
           Absolute path (or <code>~</code>) to the only directory the assistant may

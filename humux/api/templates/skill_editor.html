@@ -22,11 +22,11 @@
     <div class="flex-[2] min-w-[260px]">
       <div class="card">
         <div class="mb-3">
-          <label class="label">Skill name</label>
+          <label class="label" for="skill-name">Skill name</label>
           <input id="skill-name" class="input" value="{{ skill_name }}" {% if not is_new %}readonly{% endif %} placeholder="himalaya-email">
         </div>
         <div class="mb-3">
-          <label class="label">Markdown content</label>
+          <label class="label" for="skill-content">Markdown content</label>
           <textarea id="skill-content" class="textarea" style="min-height: 420px;"
                     placeholder="# Skill title
 
