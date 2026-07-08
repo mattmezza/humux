@@ -15,24 +15,17 @@ services:
       - ./character.md:/app/character.md:ro
       - ./skills:/app/skills:ro
     env_file: .env
-    # Browser tool (issue #16). Two options:
-    #  - All-in-one (default): Chromium is bundled in the image (~500-700MB), so no
-    #    runtime download. Opt out with `--build-arg INSTALL_BROWSER=false`.
-    #  - Lean core: build with INSTALL_BROWSER=false, run the sidecar below, and set
-    #    tools.browser.cdp_url to its CDP endpoint. Profiles persist on ./data.
-    # environment:
-    #   - BROWSER_CDP_URL=ws://browser:3000
 
   # Optional headless-Chromium sidecar (keeps the main image lean). Start with:
   #   docker compose --profile browser up
-  # Exposes a CDP endpoint; point tools.browser.cdp_url at ws://browser:3000.
-  # browser:
-  #   image: browserless/chrome:latest
-  #   container_name: humux-browser
-  #   restart: unless-stopped
-  #   profiles: ["browser"]
-  #   environment:
-  #     - MAX_CONCURRENT_SESSIONS=2
+  # Then set tools.browser.cdp_url to ws://browser:3000 in the admin UI.
+  browser:
+    image: browserless/chrome:latest
+    container_name: humux-browser
+    restart: unless-stopped
+    profiles: ["browser"]
+    environment:
+      - MAX_CONCURRENT_SESSIONS=2
 
   # Optional Kokoro TTS sidecar — OpenAI-compatible TTS on port 8880.
   # Start with:  docker compose --profile kokoro up
