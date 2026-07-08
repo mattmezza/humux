@@ -214,6 +214,7 @@ class VoiceConfig(BaseModel):
     tts_enabled: bool = True
     backend: str = "edge-tts"  # "edge-tts" | "kokoro"
     tts_api_base_url: str = ""  # OpenAI-compatible TTS endpoint, e.g. http://kokoro:8880/v1
+    stt_api_base_url: str = ""  # OpenAI-compatible STT endpoint, e.g. http://whisper:8000/v1
     kokoro: KokoroConfig = KokoroConfig()
 
 

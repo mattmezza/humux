@@ -121,6 +121,7 @@ async def _start_agent(config_store: ConfigStore):
             kokoro_voices_path=config.voice.kokoro.voices_path,
             kokoro_default_voice=config.voice.kokoro.default_voice,
             tts_api_base_url=config.voice.tts_api_base_url,
+            stt_api_base_url=config.voice.stt_api_base_url,
         )
         agent.voice = voice
 

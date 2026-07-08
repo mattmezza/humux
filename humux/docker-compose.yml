@@ -36,6 +36,16 @@ services:
     command: v2 --model-id BAAI/bge-small-en-v1.5 --port 7997
     container_name: humux-embeddings
     restart: unless-stopped
+    profiles: ["embeddings"]
+
+  # Optional Whisper STT sidecar — OpenAI-compatible transcription endpoint.
+  # Start with:  docker compose --profile whisper up
+  # Then set voice.stt_api_base_url to http://whisper:8000/v1 in the admin UI.
+  whisper:
+    image: fedirz/faster-whisper-server:latest-cpu
+    container_name: humux-whisper
+    restart: unless-stopped
+    profiles: ["whisper"]
 
   # Optional Kokoro TTS sidecar — OpenAI-compatible TTS on port 8880.
   # Start with:  docker compose --profile kokoro up

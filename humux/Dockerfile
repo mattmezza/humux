@@ -54,6 +54,14 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 COPY pyproject.toml uv.lock ./
 RUN uv sync --no-dev --no-install-project
 
+# Local on-device STT (faster-whisper + ctranslate2, ~350MB). ON by default;
+# opt out with: docker build --build-arg INSTALL_WHISPER=false
+# When off, set voice.stt_api_base_url to a sidecar (see docker-compose.yml).
+ARG INSTALL_WHISPER=false
+RUN if [ "$INSTALL_WHISPER" = "true" ]; then \
+      uv sync --no-dev --no-install-project --extra whisper; \
+    fi
+
 # Local on-device embeddings (fastembed + onnxruntime, ~200MB). OFF by default:
 # the infinity sidecar serves embeddings instead (docker-compose.yml `embeddings`
 # service — the config default points at it). Opt IN for a self-contained image:
@@ -68,7 +76,7 @@ RUN if [ "$INSTALL_FASTEMBED" = "true" ]; then \
 # backend to "kokoro" works out of the box (edge-tts stays the default backend).
 # The extra pulls onnxruntime (~200MB) plus the model later (~325MB); opt out for
 # a leaner edge-tts-only image with: docker build --build-arg INSTALL_KOKORO=false .
-ARG INSTALL_KOKORO=true
+ARG INSTALL_KOKORO=false
 RUN if [ "$INSTALL_KOKORO" = "true" ]; then \
       uv sync --no-dev --no-install-project --extra kokoro; \
     fi

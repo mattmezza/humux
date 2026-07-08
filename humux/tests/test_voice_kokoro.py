@@ -59,7 +59,9 @@ def _bare_pipeline():
     p.tts_voice = "en-US-AvaNeural"
     p.kokoro_default_voice = "af_bella"
     p.tts_api_base_url = ""
+    p.stt_api_base_url = ""
     p._kokoro = None
+    p._whisper = None
     return p
 
 
@@ -344,3 +346,58 @@ def test_remote_skipped_for_unsupported_lang(monkeypatch):
     out = asyncio.run(p.synthesize("Hallo Welt", voice="af_bella", lang="de"))
     assert out == b"EDGE"
     assert remote_calls == []  # remote skipped for unsupported lang
+
+
+# -- Remote STT API (#254) ---------------------------------------------------
+
+
+def test_remote_stt_takes_priority(monkeypatch):
+    """When stt_api_base_url is set, remote is tried before local Whisper."""
+    p = _bare_pipeline()
+    p.stt_api_base_url = "http://whisper:8000/v1"
+    seen = {}
+
+    async def fake_remote(audio):
+        seen["audio"] = audio
+        return "hello world"
+
+    monkeypatch.setattr(p, "_transcribe_remote", fake_remote)
+    out = asyncio.run(p.transcribe(b"AUDIO"))
+    assert out == "hello world"
+    assert seen["audio"] == b"AUDIO"
+
+
+def test_remote_stt_fallback_to_local(monkeypatch):
+    """Remote STT failure falls back to local Whisper."""
+    p = _bare_pipeline()
+    p.stt_api_base_url = "http://whisper:8000/v1"
+    seen = {}
+
+    class FakeWhisper:
+        def transcribe(self, buf):
+            seen["used"] = True
+
+            class Seg:
+                text = "local result"
+
+            class Info:
+                language = "en"
+
+            return [Seg()], Info()
+
+    p._whisper = FakeWhisper()
+
+    async def failing_remote(audio):
+        raise ConnectionError("unreachable")
+
+    monkeypatch.setattr(p, "_transcribe_remote", failing_remote)
+    out = asyncio.run(p.transcribe(b"AUDIO"))
+    assert out == "local result"
+    assert seen["used"]
+
+
+def test_no_stt_backend_raises():
+    """No remote URL and no local whisper → RuntimeError."""
+    p = _bare_pipeline()
+    with pytest.raises(RuntimeError, match="No STT backend"):
+        asyncio.run(p.transcribe(b"AUDIO"))
