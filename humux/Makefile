@@ -1,4 +1,4 @@
-.PHONY: help setup setup-hooks install install-dev sync lock lint format test run cli dev dev-agent dev-css dev-wa kokoro clean release css
+.PHONY: help setup setup-hooks install install-dev sync lock lint format test run cli dev dev-agent dev-css dev-wa kokoro clean release css sidecars sidecar-embeddings sidecar-browser sidecar-whisper sidecar-kokoro sidecar-searxng sidecar-stop
 
 PORT := 8001
 PYTHON := uv run python
@@ -47,7 +47,18 @@ help:
 	@echo "  Build & Deploy:"
 	@echo "    make run          Run the agent (production)"
 	@echo "    make css          Build minified CSS"
-
+	@echo ""
+	@echo "  Docker Sidecars (agent on host, deps in containers):"
+	@echo "    make sidecars         Start all dep containers"
+	@echo "    make sidecar-stop     Stop and remove all sidecar containers"
+	@echo ""
+	@echo "    make sidecar-embeddings   Infinity embedding API (port 7997)"
+	@echo "    make sidecar-browser       Browserless/chrome (port 3000)"
+	@echo "    make sidecar-whisper       Faster-Whisper STT (port 8000)"
+	@echo "    make sidecar-kokoro        Kokoro TTS (port 8880)"
+	@echo "    make sidecar-searxng       SearXNG search (port 8080)"
+	@echo ""
+	@echo "  Clean:"
 	@echo "    make clean        Remove venv and caches"
 	@echo ""
 	@echo "  Release:"
@@ -130,6 +141,87 @@ dev-agent:
 # Dev: Tailwind CSS watcher
 dev-css:
 	$(TAILWIND) --input $(CSS_IN) --output $(CSS_OUT) --watch
+
+# ──────────────────────────────────────────────
+# Docker sidecars — run deps in Docker, agent locally
+# Simulates prod: deps in containers, agent on bare metal
+# ──────────────────────────────────────────────
+
+# Container network shared by all sidecars
+SIDECAR_NET := humux-sidecars
+
+# Port mappings (host:container)
+EMBED_PORT   := 7997
+BROWSER_PORT := 3000
+WHISPER_PORT := 8000
+KOKORO_PORT  := 8880
+SEARXNG_PORT := 8080
+
+# Start all sidecars
+sidecars: $(SIDECAR_NET) sidecar-embeddings sidecar-browser sidecar-whisper sidecar-kokoro sidecar-searxng
+	@echo ""
+	@echo "All sidecars running. Update config.yml to point localhost:"
+	@echo "  memory.embedding.base_url: http://localhost:$(EMBED_PORT)/v1"
+	@echo "  search.searxng_url:        http://localhost:$(SEARXNG_PORT)"
+	@echo "  voice.stt_api_base_url:    http://localhost:$(WHISPER_PORT)/v1"
+	@echo "  voice.tts_api_base_url:    http://localhost:$(KOKORO_PORT)/v1"
+	@echo "  tools.browser.cdp_url:     ws://localhost:$(BROWSER_PORT)"
+	@echo ""
+	@echo "Stop all:  make sidecar-stop"
+
+$(SIDECAR_NET):
+	docker network create $(SIDECAR_NET) 2>/dev/null || true
+
+sidecar-embeddings: $(SIDECAR_NET)
+	docker run -d --name humux-embeddings \
+		--network $(SIDECAR_NET) \
+		-p $(EMBED_PORT):7997 \
+		--restart unless-stopped \
+		michaelf34/infinity:latest \
+		v2 --model-id BAAI/bge-small-en-v1.5 --port 7997
+	@echo "embeddings → http://localhost:$(EMBED_PORT)/v1"
+
+sidecar-browser: $(SIDECAR_NET)
+	docker run -d --name humux-browser \
+		--network $(SIDECAR_NET) \
+		-p $(BROWSER_PORT):3000 \
+		-e MAX_CONCURRENT_SESSIONS=2 \
+		--restart unless-stopped \
+		browserless/chrome:latest
+	@echo "browser → ws://localhost:$(BROWSER_PORT)"
+
+sidecar-whisper: $(SIDECAR_NET)
+	docker run -d --name humux-whisper \
+		--network $(SIDECAR_NET) \
+		-p $(WHISPER_PORT):8000 \
+		--restart unless-stopped \
+		fedirz/faster-whisper-server:latest-cpu
+	@echo "whisper → http://localhost:$(WHISPER_PORT)/v1"
+
+sidecar-kokoro: $(SIDECAR_NET)
+	docker run -d --name humux-kokoro \
+		--network $(SIDECAR_NET) \
+		-p $(KOKORO_PORT):8880 \
+		--restart unless-stopped \
+		ghcr.io/remsky/kokoro-fastapi-cpu:latest
+	@echo "kokoro → http://localhost:$(KOKORO_PORT)/v1"
+
+sidecar-searxng: $(SIDECAR_NET)
+	docker run -d --name humux-searxng \
+		--network $(SIDECAR_NET) \
+		-p $(SEARXNG_PORT):8080 \
+		-v $(PWD)/searxng:/etc/searxng:rw \
+		-e SEARXNG_BASE_URL=http://localhost:$(SEARXNG_PORT)/ \
+		--restart unless-stopped \
+		searxng/searxng:latest
+	@echo "searxng → http://localhost:$(SEARXNG_PORT)"
+
+sidecar-stop:
+	@echo "Stopping all sidecars..."
+	-docker stop humux-embeddings humux-browser humux-whisper humux-kokoro humux-searxng 2>/dev/null
+	-docker rm humux-embeddings humux-browser humux-whisper humux-kokoro humux-searxng 2>/dev/null
+	-docker network rm $(SIDECAR_NET) 2>/dev/null || true
+	@echo "Done."
 
 # Dev: WhatsApp (wacli) — install the pinned upstream binary into $GOBIN/~/go/bin.
 # Needs Go + a C toolchain (CGO, sqlite_fts5). Override WACLI_BIN to point the
