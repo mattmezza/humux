@@ -80,7 +80,7 @@
 
     <div class="flex justify-end mt-3">
       <button class="btn-primary btn-sm"
-              @click="saveCfg({'memory.long_term_limit': String(longTermLimit)}, 'Memory settings saved', 'cfgOk', 'cfgResult')">
+              @click="withLoading($el, () => saveCfg({'memory.long_term_limit': String(longTermLimit)}, 'Memory settings saved', 'cfgOk', 'cfgResult'))">
         Save settings
       </button>
     </div>
@@ -167,14 +167,14 @@
 
     <div class="flex items-center gap-2 mt-4 flex-wrap">
       <button class="btn-primary btn-sm"
-              @click="saveCfg({
+              @click="withLoading($el, () => saveCfg({
                 'memory.embedding.enabled': embEnabled ? 'true' : 'false',
                 'memory.embedding.provider': embProvider,
                 'memory.embedding.model': embModel,
                 'memory.embedding.base_url': embBaseUrl,
                 'memory.embedding.injection_top_k': String(embTopK),
                 'memory.embedding.recall_top_k': String(embRecallTopK)
-              }, 'Embedding settings saved', 'embOk', 'embResult').then(loadEmbStatus)">
+              }, 'Embedding settings saved', 'embOk', 'embResult').then(loadEmbStatus))">
         Save embedding settings
       </button>
       <button class="btn btn-sm" type="button" x-show="isLocal" :disabled="embBusy" @click="downloadModel()">
@@ -242,14 +242,14 @@
 
     <div class="flex justify-end mt-4">
       <button class="btn-primary btn-sm"
-              @click="saveCfg({
+              @click="withLoading($el, () => saveCfg({
                 'memory.default_importance': String(defaultImportance),
                 'memory.archive_after_days': String(archiveAfterDays),
                 'memory.archive_max_importance': String(archiveMaxImportance),
                 'memory.archive_min_idle_days': String(archiveMinIdleDays),
                 'memory.hygiene_enabled': hygieneEnabled ? 'true' : 'false',
                 'memory.hygiene_similarity_threshold': String(hygieneThreshold)
-              }, 'Lifecycle settings saved', 'lifeOk', 'lifeResult')">
+              }, 'Lifecycle settings saved', 'lifeOk', 'lifeResult'))">
         Save lifecycle settings
       </button>
     </div>

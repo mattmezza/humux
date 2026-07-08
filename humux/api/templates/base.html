@@ -120,7 +120,36 @@
       }
     });
 
+    // Skeleton placeholder for loading states (#247)
+    function showSkeleton(selector, variant) {
+      const el = typeof selector === 'string' ? document.querySelector(selector) : selector;
+      if (!el) return;
+      if (variant === 'rows') {
+        el.innerHTML = '<div><div class="skeleton skeleton-row"></div><div class="skeleton skeleton-row"></div><div class="skeleton skeleton-row"></div><div class="skeleton skeleton-row"></div></div>';
+      } else {
+        el.innerHTML = '<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"><div class="skeleton skeleton-card"></div><div class="skeleton skeleton-card"></div><div class="skeleton skeleton-card"></div></div>';
+      }
+    }
+    window.showSkeleton = showSkeleton;
+
+    // Wrap a button click to show loading state (#247). Use in Alpine: @click="withLoading($el, () => save())"
+    function withLoading(btn, fn) {
+      if (!btn || btn.disabled) return;
+      btn.classList.add('is-loading');
+      btn.disabled = true;
+      const cleanup = () => { btn.classList.remove('is-loading'); btn.disabled = false; };
+      try {
+        const p = fn();
+        // ponytail: if fn returns a promise, wait for it; otherwise 2s fallback
+        if (p && typeof p.finally === 'function') { p.catch(() => {}).finally(cleanup); }
+        else { setTimeout(cleanup, 2000); }
+      } catch (e) { cleanup(); }
+    }
+    window.withLoading = withLoading;
+
     function showToast(message, ok = true) {
+      // Clear any loading buttons when feedback arrives (#247)
+      document.querySelectorAll('.is-loading').forEach(b => { b.classList.remove('is-loading'); b.disabled = false; });
       const toast = document.getElementById('toast');
       if (!toast) return;
       toast.textContent = message;
@@ -650,7 +679,7 @@
             'search.searxng_url': this.searxngUrl,
             'search.max_results': String(this.maxResults)
           };
-          fetch('/config', {
+          return fetch('/config', {
             method: 'PATCH',
             headers: {
               'Content-Type': 'application/json',
@@ -1265,6 +1294,7 @@
           } catch (e) {}
         },
         _load(name) {
+          showSkeleton(opts.container);
           if (window.htmx) { htmx.ajax('GET', opts.subs[name], {target: opts.container, swap: 'innerHTML'}); }
         }
       };

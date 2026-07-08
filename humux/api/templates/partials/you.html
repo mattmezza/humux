@@ -26,7 +26,7 @@
 
     <div class="flex justify-end mt-3">
       <button class="btn-primary btn-sm"
-              @click="
+              @click="withLoading($el, () =>
                 fetch('/config', {
                   method: 'PATCH',
                   headers: {
@@ -42,7 +42,7 @@
                   if (ok && window.updateAdminGreeting) { window.updateAdminGreeting(ownerName, ''); }
                 })
                 .catch(e => { ok = false; result = e.message; })
-              ">
+              )">
         Save
       </button>
     </div>
@@ -70,7 +70,7 @@
     </div>
     <div class="flex justify-end mt-3">
       <button class="btn-primary btn-sm"
-              @click="
+              @click="withLoading($el, () =>
                 fetch('/config/you-personalia', {
                   method: 'POST',
                   headers: {
@@ -85,7 +85,7 @@
                   if (persOk && window.showToast) { window.showToast('Personalia saved'); }
                 })
                 .catch(e => { persOk = false; persResult = e.message; })
-              ">
+              )">
         Save personalia
       </button>
     </div>

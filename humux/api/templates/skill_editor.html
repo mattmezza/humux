@@ -62,7 +62,7 @@ Edge cases, pitfalls, safety constraints."
         </div>
         <div class="flex items-center gap-2">
           {% if not skill_origin %}
-          <button class="btn btn-sm" type="button" onclick="saveSkill()">Save</button>
+          <button class="btn btn-sm" type="button" onclick="withLoading(this, () => saveSkill())">Save</button>
           {% endif %}
         </div>
         <div id="save-result" class="mt-2 text-xs"></div>

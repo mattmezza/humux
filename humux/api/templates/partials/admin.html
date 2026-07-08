@@ -23,25 +23,27 @@
             @click="
               if (!current || !next || !confirm) { ok = false; result = 'All fields are required.'; return; }
               if (next !== confirm) { ok = false; result = 'New passwords do not match.'; return; }
-              fetch('/admin/password', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': 'Bearer ' + (localStorage.getItem('admin_api_key') || '')
-                },
-                body: JSON.stringify({current_password: current, new_password: next})
-              })
-              .then(r => r.json())
-              .then(d => {
-                if (d.ok) {
-                  ok = true; result = 'Password updated.';
-                  current = ''; next = ''; confirm = '';
-                  localStorage.setItem('admin_api_key', d.token || '');
-                } else {
-                  ok = false; result = d.error || 'Update failed.';
-                }
-              })
-              .catch(e => { ok = false; result = e.message; })
+              withLoading($el, () =>
+                fetch('/admin/password', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + (localStorage.getItem('admin_api_key') || '')
+                  },
+                  body: JSON.stringify({current_password: current, new_password: next})
+                })
+                .then(r => r.json())
+                .then(d => {
+                  if (d.ok) {
+                    ok = true; result = 'Password updated.';
+                    current = ''; next = ''; confirm = '';
+                    localStorage.setItem('admin_api_key', d.token || '');
+                  } else {
+                    ok = false; result = d.error || 'Update failed.';
+                  }
+                })
+                .catch(e => { ok = false; result = e.message; })
+              )
             ">
       Update password
     </button>

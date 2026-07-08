@@ -562,7 +562,7 @@
   </div>
 
   <div class="flex items-center gap-2 mt-3">
-    <button class="btn-primary btn-sm" @click="save()">Save</button>
+    <button class="btn-primary btn-sm" @click="withLoading($el, () => save())">Save</button>
     <span class="text-xs" :class="ok ? 'text-accent' : 'text-warn'" x-text="result"></span>
   </div>
 </div>
@@ -899,7 +899,7 @@
               llm: this.buildLlm(),
               cot_feedback: this.cotFeedback,
             };
-        fetch('/agents', { method: 'POST', headers: this._headers(), body: JSON.stringify(body) })
+        return fetch('/agents', { method: 'POST', headers: this._headers(), body: JSON.stringify(body) })
           .then(r => { this.ok = r.ok; return r.text().then(t => ({ ok: r.ok, t })); })
           .then(({ ok, t }) => {
             this.result = ok ? 'Saved.' : ('Error: ' + t.slice(0, 200));
@@ -917,7 +917,7 @@
         // Existing agent whose slug changed: rename first (cascades bindings,
         // memories, jobs), then save the rest of the fields under the new slug.
         if (!this.isNew && this.originalName && name !== this.originalName) {
-          fetch('/agents/rename', {
+          return fetch('/agents/rename', {
             method: 'POST',
             headers: this._headers(),
             body: JSON.stringify({ old: this.originalName, new: name }),
@@ -931,7 +931,7 @@
           .catch(e => { this.ok = false; this.result = e.message; });
           return;
         }
-        this._upsert(name);
+        return this._upsert(name);
       },
     };
   }

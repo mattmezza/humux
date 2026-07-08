@@ -207,4 +207,71 @@
   .spinner {
     @apply inline-block w-4 h-4 border-2 border-muted/30 border-t-accent rounded-full animate-spin;
   }
+
+  .spinner-sm {
+    @apply w-3 h-3;
+  }
+
+  .spinner-lg {
+    @apply w-6 h-6;
+  }
+
+  /* Auto-spinner on htmx-triggered buttons (#247) */
+  .btn.htmx-request,
+  .btn-primary.htmx-request,
+  .btn-danger.htmx-request,
+  .btn-ghost.htmx-request,
+  .btn.is-loading,
+  .btn-primary.is-loading,
+  .btn-danger.is-loading,
+  .btn-ghost.is-loading {
+    @apply pointer-events-none opacity-60;
+  }
+
+  .btn.htmx-request::after,
+  .btn-primary.htmx-request::after,
+  .btn-danger.htmx-request::after,
+  .btn-ghost.htmx-request::after,
+  .btn.is-loading::after,
+  .btn-primary.is-loading::after,
+  .btn-danger.is-loading::after,
+  .btn-ghost.is-loading::after {
+    content: '';
+    @apply inline-block w-3 h-3 border-2 border-current/30 border-t-current rounded-full animate-spin ml-1 shrink-0;
+  }
+
+  /* Skeleton shimmer (#247) */
+  .skeleton {
+    @apply rounded-md;
+    background: linear-gradient(90deg, var(--color-surface) 25%, var(--color-surface-hover) 50%, var(--color-surface) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+
+  .skeleton-card {
+    @apply border border-border rounded-lg p-5 h-36;
+  }
+
+  .skeleton-row {
+    @apply h-10 mb-2;
+  }
+
+  .skeleton-text {
+    @apply h-3 mb-2;
+  }
+
+  .skeleton-text-sm {
+    @apply h-2.5 mb-1.5 w-2/3;
+  }
+
+  @keyframes shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+
+  /* Tab content loading state (#247) */
+  #tab-content.htmx-request > * {
+    @apply opacity-30 pointer-events-none;
+    transition: opacity 0.15s;
+  }
 }
