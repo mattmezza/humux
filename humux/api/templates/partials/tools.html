@@ -259,7 +259,7 @@
       <button class="btn-primary btn-sm" @click="withLoading($el, () => save())">Save</button>
       <button class="btn btn-sm" :disabled="testing" @click="test()">
         <span x-show="!testing">Test (generate sample)</span>
-        <span x-show="testing">Generating…</span>
+        <span x-show="testing"><span class="spinner-sm mr-1"></span>Generating…</span>
       </button>
     </div>
 
@@ -330,7 +330,7 @@
       <button class="btn-primary btn-sm" @click="withLoading($el, () => save())">Save</button>
       <button class="btn btn-sm" :disabled="testing || (provider === 'searxng' ? !searxngUrl : !apiKey)" x-show="enabled === 'true' || enabled === true" @click="test()">
         <span x-show="!testing">Test connection</span>
-        <span x-show="testing">Testing…</span>
+        <span x-show="testing"><span class="spinner-sm mr-1"></span>Testing…</span>
       </button>
     </div>
 
@@ -493,7 +493,7 @@
       <button class="btn-primary btn-sm" @click="withLoading($el, () => saveGh())">Save</button>
       <button class="btn btn-sm" :disabled="testing" @click="testGh()">
         <span x-show="!testing">Test connection</span>
-        <span x-show="testing">Testing...</span>
+        <span x-show="testing"><span class="spinner-sm mr-1"></span>Testing...</span>
       </button>
     </div>
 
@@ -581,7 +581,7 @@
         </div>
         <button class="btn btn-sm" :disabled="testing" @click="test()">
           <span x-show="!testing">Load page</span>
-          <span x-show="testing">Loading…</span>
+          <span x-show="testing"><span class="spinner-sm mr-1"></span>Loading…</span>
         </button>
       </div>
       <template x-if="testResult">
