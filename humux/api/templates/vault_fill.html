@@ -10,8 +10,8 @@
 
     <template x-if="needsLogin">
       <div class="space-y-2 mb-4">
-        <label class="label">Admin password</label>
-        <input type="password" class="input" x-model="password" placeholder="admin password"
+        <label class="label" for="vault-admin-pw">Admin password</label>
+        <input type="password" class="input" x-model="password" placeholder="admin password" id="vault-admin-pw"
                @keydown.enter="saveKeyAndLoad()">
         <button class="btn-primary btn-sm" @click="saveKeyAndLoad()">Unlock</button>
         <div class="alert-error" x-show="error" x-text="error"></div>
@@ -26,8 +26,8 @@
         </div>
 
         <div>
-          <label class="label">Password / value</label>
-          <input type="password" class="input" x-model="password_val" autocomplete="new-password">
+          <label class="label" for="vault-fill-value">Password / value</label>
+          <input type="password" class="input" x-model="password_val" autocomplete="new-password" id="vault-fill-value">
         </div>
         <details>
           <summary class="text-muted text-xs cursor-pointer">Login fields (optional)</summary>
@@ -39,8 +39,8 @@
         </details>
 
         <div>
-          <label class="label">Who can use it</label>
-          <select class="input-sm" x-model="scope">
+          <label class="label" for="vault-fill-scope">Who can use it</label>
+          <select class="input-sm" x-model="scope" id="vault-fill-scope">
             <option value="this">This agent only</option>
             <option value="agents">Specific agent(s)</option>
             <option value="all">All agents</option>
@@ -50,8 +50,8 @@
         </div>
 
         <div>
-          <label class="label">For how long</label>
-          <select class="input-sm" x-model="duration">
+          <label class="label" for="vault-fill-duration">For how long</label>
+          <select class="input-sm" x-model="duration" id="vault-fill-duration">
             <option value="forever">Forever</option>
             <option value="until">Until a date</option>
             <option value="once">Once (single use)</option>

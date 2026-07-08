@@ -15,7 +15,7 @@
   <div class="flex flex-col lg:flex-row gap-3">
     {# Master — context list, newest-active first #}
     <div class="lg:w-80 lg:shrink-0 flex flex-col gap-2">
-      <input type="text" class="input-sm" placeholder="Filter contexts..." x-model="filter">
+      <input type="text" class="input-sm" placeholder="Filter contexts..." x-model="filter" id="filter-contexts" aria-label="Filter contexts">
       <span class="text-muted text-xs">{{ chats|length }} context{{ '' if chats|length == 1 else 's' }}</span>
       <div class="flex flex-col gap-1 overflow-y-auto" style="max-height: 32rem">
         {% for c in chats %}

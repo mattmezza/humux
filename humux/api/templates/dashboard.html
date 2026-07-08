@@ -59,7 +59,7 @@
   </div>
 
   {# Tab navigation #}
-  <div class="flex border-b border-border mb-4 overflow-x-auto" x-data="adminTabs()" x-init="init()" @switch-tab.window="select($event.detail)">
+  <div class="flex border-b border-border mb-4 overflow-x-auto scrollbar-hide" x-data="adminTabs()" x-init="init()" @switch-tab.window="select($event.detail)">
     <button class="tab-link" :class="tab === 'overview' && 'tab-link-active'"
             @click="select('overview')">
       Overview
@@ -124,7 +124,11 @@
 
   {# Tab content — initially loads config #}
   <div id="tab-content">
-    <span class="text-muted text-xs">Loading...</span>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+      <div class="skeleton skeleton-card"></div>
+      <div class="skeleton skeleton-card"></div>
+      <div class="skeleton skeleton-card"></div>
+    </div>
   </div>
 </div>
 {% endblock %}
@@ -594,6 +598,7 @@
           return;
         }
         this.tab = name;
+        showSkeleton('#tab-content');
         htmx.ajax('GET', tabs[name], {target: '#tab-content', swap: 'innerHTML'});
         if (updateUrl) {
           const url = new URL(window.location.href);
