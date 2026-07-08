@@ -708,7 +708,6 @@ dependencies = [
     { name = "cryptography" },
     { name = "edge-tts" },
     { name = "fastapi" },
-    { name = "fastembed" },
     { name = "faster-whisper" },
     { name = "httpx" },
     { name = "jinja2" },
@@ -727,6 +726,9 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+fastembed = [
+    { name = "fastembed" },
+]
 kokoro = [
     { name = "kokoro-onnx" },
 ]
@@ -748,7 +750,7 @@ requires-dist = [
     { name = "cryptography" },
     { name = "edge-tts" },
     { name = "fastapi" },
-    { name = "fastembed" },
+    { name = "fastembed", marker = "extra == 'fastembed'" },
     { name = "faster-whisper" },
     { name = "httpx" },
     { name = "jinja2" },
@@ -766,7 +768,7 @@ requires-dist = [
     { name = "uvicorn", extras = ["standard"] },
     { name = "vobject", specifier = ">=0.9.9" },
 ]
-provides-extras = ["kokoro"]
+provides-extras = ["kokoro", "fastembed"]
 
 [package.metadata.requires-dev]
 dev = [
