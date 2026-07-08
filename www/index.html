@@ -303,8 +303,8 @@
           </div>
           <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Voice</h3>
           <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">
-            Speech-to-text via faster-whisper. Text-to-speech via edge-tts or
-            fully offline Kokoro 82M. Multilingual, on-device.
+            Local or remote — your choice. faster-whisper or any OpenAI-compatible STT.
+            edge-tts, Kokoro, or remote TTS. Toggle per-engine in the admin UI.
           </p>
         </div>
 
@@ -358,7 +358,7 @@
             </div>
             <div class="flex items-center gap-3 rounded-md px-3 py-2 text-xs" style="background: var(--color-elevated);">
               <span class="font-mono font-semibold" style="color: var(--color-accent);">Voice</span>
-              <span style="color: var(--color-muted);">faster-whisper (STT) + edge-tts / Kokoro (TTS)</span>
+              <span style="color: var(--color-muted);">faster-whisper or remote STT + edge-tts / Kokoro / remote TTS</span>
             </div>
             <div class="flex items-center gap-3 rounded-md px-3 py-2 text-xs" style="background: var(--color-elevated);">
               <span class="font-mono font-semibold" style="color: var(--color-accent);">Storage</span>
@@ -380,7 +380,7 @@
             </li>
             <li class="flex gap-2">
               <span style="color: var(--color-accent);">✔</span>
-              No Kubernetes, no sidecars, no external databases
+              No Kubernetes, no external databases. Optional sidecars for heavy workloads
             </li>
             <li class="flex gap-2">
               <span style="color: var(--color-accent);">✔</span>

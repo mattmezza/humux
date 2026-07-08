@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Release Notes: v0.29 – v0.30 — humux blog</title>
+  <meta name="description" content="Two releases: sidecar architecture for slimmer deployments, remote STT and TTS via OpenAI-compatible APIs, voice mode toggles, multilingual embeddings, and an accessibility sweep.">
+  <link rel="canonical" href="https://humux.dev/blog/release-notes-v029-v030">
+
+  <meta property="og:title" content="Release Notes: v0.29 – v0.30">
+  <meta property="og:description" content="Sidecar architecture, remote voice backends, multilingual embeddings, and a slimmer Docker image.">
+  <meta property="og:url" content="https://humux.dev/blog/release-notes-v029-v030">
+  <meta property="og:type" content="article">
+  <meta property="og:image" content="https://humux.dev/assets/images/og-image.png">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Release Notes: v0.29 – v0.30">
+  <meta name="twitter:description" content="Sidecar architecture, remote voice backends, multilingual embeddings, and a slimmer Docker image.">
+  <meta name="twitter:image" content="https://humux.dev/assets/images/og-image.png">
+  <meta name="twitter:site" content="@_mattmezza_">
+  <meta name="twitter:creator" content="@_mattmezza_">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "headline": "Release Notes: v0.29 – v0.30",
+    "description": "Two releases: sidecar architecture for slimmer deployments, remote STT and TTS via OpenAI-compatible APIs, voice mode toggles, multilingual embeddings, and an accessibility sweep.",
+    "datePublished": "2026-07-08",
+    "author": { "@type": "Person", "name": "Matteo Merola" },
+    "publisher": { "@type": "Organization", "name": "humux" },
+    "url": "https://humux.dev/blog/release-notes-v029-v030"
+  }
+  </script>
+
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://humux.dev/"},{"@type":"ListItem","position":2,"name":"Blog","item":"https://humux.dev/blog/"},{"@type":"ListItem","position":3,"name":"Release Notes: v0.29 – v0.30","item":"https://humux.dev/blog/release-notes-v029-v030.html"}]}
+  </script>
+
+  <link rel="alternate" type="application/rss+xml" title="humux blog" href="/blog/feed.xml">
+
+  <link rel="icon" type="image/svg+xml" href="/assets/images/favicon-32.svg">
+  <link rel="alternate icon" type="image/png" sizes="32x32" href="/assets/images/favicon-32.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/images/apple-touch-icon.png">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="/assets/css/style.css">
+
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script defer src="https://analytics.casa.merola.co/script.js" data-website-id="b395aaa1-97a5-494e-9ad8-15b3ba20318e"></script>
+</head>
+<body>
+
+  <!-- Nav -->
+  <nav x-data="{ open: false }" class="sticky top-0 z-50 border-b border-[var(--color-border)]" style="background: rgba(6,6,6,0.85); backdrop-filter: blur(12px);">
+    <div class="mx-auto flex max-w-6xl items-center justify-between px-5 py-3">
+      <a href="/" class="flex items-center gap-2 no-underline">
+        <span class="text-sm font-semibold tracking-wider" style="color: var(--color-accent);">humux</span>
+        <span class="hidden sm:inline text-xs" style="color: var(--color-muted);">/ˈhjuːmʌks/</span>
+      </a>
+      <div class="hidden md:flex items-center gap-5 text-xs">
+        <a href="/" class="no-underline transition-colors" style="color: var(--color-secondary);">Home</a>
+        <a href="/features.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Features</a>
+        <a href="/use-cases.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Use Cases</a>
+        <a href="/comparison.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Comparison</a>
+        <a href="/blog/" class="font-medium no-underline" style="color: var(--color-accent);">Blog</a>
+        <a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="no-underline transition-colors" style="color: var(--color-secondary);">
+          <svg class="inline-block h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        </a>
+        <a href="https://docs.humux.dev" target="_blank" rel="noopener" class="no-underline transition-colors" style="color: var(--color-secondary);">Docs</a>
+      </div>
+      <button @click="open = !open" class="md:hidden p-2" style="color: var(--color-secondary);" aria-label="Menu">
+        <svg x-show="!open" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        <svg x-show="open" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div x-show="open" @click.outside="open = false" x-cloak class="md:hidden border-t border-[var(--color-border)] px-5 py-4 space-y-3 text-sm" style="background: rgba(6,6,6,0.95);">
+      <a href="/" class="block no-underline transition-colors" style="color: var(--color-secondary);">Home</a>
+      <a href="/features.html" class="block no-underline transition-colors" style="color: var(--color-secondary);">Features</a>
+      <a href="/use-cases.html" class="block no-underline transition-colors" style="color: var(--color-secondary);">Use Cases</a>
+      <a href="/comparison.html" class="block no-underline transition-colors" style="color: var(--color-secondary);">Comparison</a>
+      <a href="/blog/" class="block font-medium no-underline" style="color: var(--color-accent);">Blog</a>
+      <a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="block no-underline transition-colors" style="color: var(--color-secondary);">GitHub</a>
+      <a href="https://docs.humux.dev" target="_blank" rel="noopener" class="block no-underline transition-colors" style="color: var(--color-secondary);">Docs</a>
+    </div>
+  </nav>
+
+  <!-- Article -->
+  <article class="mx-auto max-w-3xl px-5 py-16">
+    <header class="mb-12">
+      <p class="text-xs font-mono mb-3" style="color: var(--color-muted);">July 8, 2026 &mdash; Matteo Merola</p>
+      <h1 class="text-3xl sm:text-4xl font-bold leading-tight mb-4" style="color: #eee;">Release Notes: v0.29 &ndash; v0.30</h1>
+      <p class="text-lg leading-relaxed" style="color: var(--color-secondary);">Sidecar architecture for slimmer deployments, remote voice backends, multilingual embeddings, and an accessibility overhaul.</p>
+    </header>
+
+    <div class="space-y-6">
+
+      <!-- v0.29 -->
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">v0.29 &mdash; Webhook Workflows + YOLO Mode</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        v0.29 polishes the GitHub webhook integration from v0.25&ndash;v0.26 and flips a major default: new agent conversations now start with tool approvals pre-granted. If you want guardrails, you still have them &mdash; but the out-of-the-box experience is frictionless.
+      </p>
+
+      <h3 class="text-xl font-semibold mt-8 mb-3" style="color: #eee;">Multi-agent webhook workflows</h3>
+
+      <ul class="list-disc pl-6 space-y-2 text-base leading-relaxed" style="color: var(--color-secondary);">
+        <li><strong style="color: #eee;">Multi-agent routing</strong> &mdash; a single GitHub App can now route events to multiple agents based on mention gates and author filters. Each agent gets its own isolated conversation thread per event.</li>
+        <li><strong style="color: #eee;">Acknowledgement reaction</strong> &mdash; when an agent starts processing a webhook event, it reacts with <code class="inline-code">&#128064;</code> in the ping chat so you know the event was picked up.</li>
+        <li><strong style="color: #eee;">Bot identity in tasks</strong> &mdash; background webhook tasks now state which bot is handling the event, replacing the generic delivery notification.</li>
+      </ul>
+
+      <h3 class="text-xl font-semibold mt-8 mb-3" style="color: #eee;">YOLO mode on by default</h3>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        Previously, every tool call required explicit approval via Telegram inline buttons unless you configured ALWAYS rules. Starting in v0.29, new conversations default to auto-approve. The permission system is still there &mdash; ASK and NEVER rules override YOLO &mdash; but the default path is now "trust the agent, intervene when needed." This matches how most users were already configuring humux after the first week.
+      </p>
+
+      <h3 class="text-xl font-semibold mt-8 mb-3" style="color: #eee;">Other changes in v0.29</h3>
+
+      <ul class="list-disc pl-6 space-y-2 text-base leading-relaxed" style="color: var(--color-secondary);">
+        <li><strong style="color: #eee;">Max tokens + tool rounds config</strong> &mdash; set <code class="inline-code">max_tokens</code> and <code class="inline-code">max_tool_rounds</code> per agent in the admin UI. Prevents runaway turns and gives you control over response length.</li>
+        <li><strong style="color: #eee;">Scheduler job isolation</strong> &mdash; each scheduled job now gets its own conversation context, preventing state bleed between cron runs of the same agent.</li>
+        <li><strong style="color: #eee;">Per-agent tool env</strong> &mdash; agents seed their executor with per-agent environment variables instead of the system-level env, so tool commands inherit the right credentials.</li>
+      </ul>
+
+      <!-- v0.30 -->
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">v0.30 &mdash; Sidecars, Remote Voice, Slim Image</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        The biggest architectural change since the project started. Heavy dependencies &mdash; Whisper, fastembed, Kokoro, and Chromium &mdash; are now optional. Run them inside the main container, offload them to Docker sidecars, or point at a remote API. The core image drops from over 4 GB to under 1 GB when you disable all optional extras.
+      </p>
+
+      <h3 class="text-xl font-semibold mt-8 mb-3" style="color: #eee;">Sidecar architecture</h3>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        Four heavy dependencies are now gated behind build args and have companion Docker sidecar services:
+      </p>
+
+      <div class="terminal-window mt-6 mb-6">
+        <div class="terminal-header">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+          <span class="ml-2 text-xs" style="color: var(--color-muted);">docker-compose.yml</span>
+        </div>
+        <div class="terminal-body">
+<pre>services:
+  humux:
+    image: ghcr.io/mattmezza/humux:latest
+    # Core image — no Whisper, no fastembed, no Kokoro, no Chromium
+
+  whisper:        # Optional: local STT
+    image: fedirz/faster-whisper-server
+    deploy:
+      resources:
+        reservations:
+          devices: [{ capabilities: [gpu] }]
+
+  embeddings:     # Optional: local embeddings
+    image: michaelf34/infinity
+    command: v2 --model-id intfloat/multilingual-e5-small
+
+  kokoro:         # Optional: local TTS
+    image: ghcr.io/remsky/kokoro-fastapi
+    deploy:
+      resources:
+        reservations:
+          devices: [{ capabilities: [gpu] }]
+
+  browser:        # Optional: headless browser
+    image: browserless/chrome</pre>
+        </div>
+      </div>
+
+      <ul class="list-disc pl-6 space-y-2 text-base leading-relaxed" style="color: var(--color-secondary);">
+        <li><strong style="color: #eee;">Build args</strong> &mdash; <code class="inline-code">INSTALL_WHISPER</code>, <code class="inline-code">INSTALL_FASTEMBED</code>, <code class="inline-code">INSTALL_NODE</code>, and <code class="inline-code">INSTALL_BROWSER</code> control what gets baked into the image. All default to <code class="inline-code">false</code> for the published image.</li>
+        <li><strong style="color: #eee;">Multi-stage Dockerfile</strong> &mdash; Go toolchain (used for building wacli) is dropped from the runtime image via a multi-stage build. The final layer only contains Python and the compiled binaries.</li>
+        <li><strong style="color: #eee;">Idempotent sidecar management</strong> &mdash; the <code class="inline-code">make sidecar-*</code> targets clean up stale containers before starting new ones, so restarts are always clean.</li>
+      </ul>
+
+      <h3 class="text-xl font-semibold mt-8 mb-3" style="color: #eee;">Remote voice backends</h3>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        Both STT and TTS now support remote backends via OpenAI-compatible APIs. Point humux at any service that speaks the <code class="inline-code">/v1/audio/transcriptions</code> or <code class="inline-code">/v1/audio/speech</code> protocol &mdash; your own Whisper server, a cloud provider, or the bundled sidecar.
+      </p>
+
+      <ul class="list-disc pl-6 space-y-2 text-base leading-relaxed" style="color: var(--color-secondary);">
+        <li><strong style="color: #eee;">Remote STT</strong> &mdash; set <code class="inline-code">stt_api_base_url</code> in voice config. Priority: remote API first, local faster-whisper as fallback. If both are unavailable, the voice message is skipped with a user-facing error.</li>
+        <li><strong style="color: #eee;">Remote TTS</strong> &mdash; set <code class="inline-code">tts_api_base_url</code> in voice config. Same priority pattern: remote first, local fallback. Preview failures on remote TTS gracefully degrade to text-only responses.</li>
+        <li><strong style="color: #eee;">Mode toggles</strong> &mdash; the admin Voice tab now has local/remote radio buttons for both STT and TTS. Switch without editing config files.</li>
+      </ul>
+
+      <h3 class="text-xl font-semibold mt-8 mb-3" style="color: #eee;">Multilingual embeddings</h3>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        The default embedding model has switched from <code class="inline-code">BAAI/bge-small-en-v1.5</code> to <code class="inline-code">intfloat/multilingual-e5-small</code>. If you have existing memory, use the new <code class="inline-code">reindex</code> CLI command to rebuild your embeddings with the new model. The sidecar embedding service uses the same model by default.
+      </p>
+
+      <h3 class="text-xl font-semibold mt-8 mb-3" style="color: #eee;">Accessibility and UI polish</h3>
+
+      <ul class="list-disc pl-6 space-y-2 text-base leading-relaxed" style="color: var(--color-secondary);">
+        <li><strong style="color: #eee;">Accessibility sweep</strong> &mdash; every form field across the admin UI now has proper <code class="inline-code">for</code>/<code class="inline-code">id</code> pairs, <code class="inline-code">autocomplete</code> attributes, and accessible labels. Radio groups use proper <code class="inline-code">fieldset</code>/<code class="inline-code">legend</code> patterns.</li>
+        <li><strong style="color: #eee;">Loading states</strong> &mdash; all save buttons show spinners during submission. Sub-tabs show skeleton placeholders on initial load instead of a blank flash.</li>
+        <li><strong style="color: #eee;">Dark scrollbars</strong> &mdash; scrollbars now match the dark theme instead of rendering as bright system defaults.</li>
+        <li><strong style="color: #eee;">Webhook knobs UI</strong> &mdash; the multi-agent webhook configuration (author gates, mention filters, ping chat) is now editable in the agent editor instead of config files only.</li>
+      </ul>
+
+      <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">Upgrading</h2>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        Both releases are backwards-compatible. The default image is now slimmer &mdash; if you were relying on bundled Whisper or fastembed, you have two options: add the sidecar services to your compose file, or rebuild the image with the corresponding <code class="inline-code">INSTALL_*</code> build args set to <code class="inline-code">true</code>.
+      </p>
+
+      <div class="terminal-window mt-6 mb-6">
+        <div class="terminal-header">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+          <span class="ml-2 text-xs" style="color: var(--color-muted);">bash</span>
+        </div>
+        <div class="terminal-body">
+<pre># Pull the new slim image + start sidecars
+docker compose pull && docker compose up -d
+
+# If you switched embedding models, rebuild the index
+docker compose exec humux uv run python -m core.memory reindex</pre>
+        </div>
+      </div>
+
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        The remote voice backends are opt-in: configure <code class="inline-code">stt_api_base_url</code> or <code class="inline-code">tts_api_base_url</code> in the Voice tab, or leave them blank to use local models. YOLO mode applies to new conversations only &mdash; existing permission rules are unchanged.
+      </p>
+    </div>
+
+    <!-- CTA -->
+    <div class="mt-16 pt-8 border-t" style="border-color: var(--color-border);">
+      <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+        Full changelogs for each release are on <a href="https://github.com/mattmezza/humux/releases" target="_blank" rel="noopener" class="no-underline font-medium" style="color: var(--color-accent);">GitHub Releases</a>.
+      </p>
+    </div>
+  </article>
+
+  <!-- Footer -->
+  <footer class="border-t px-5 py-12" style="border-color: var(--color-border); background: var(--color-surface);">
+    <div class="mx-auto max-w-6xl">
+      <div class="flex flex-wrap items-start justify-between gap-8">
+        <div>
+          <span class="text-sm font-semibold" style="color: var(--color-accent);">humux</span>
+          <p class="mt-1 text-xs" style="color: var(--color-muted);">Human Multiplexer &mdash; /ˈhjuːmʌks/</p>
+          <p class="mt-0.5 text-xs" style="color: var(--color-muted);">Your self-hosted personal AI agent.</p>
+        </div>
+        <div class="flex flex-wrap gap-10">
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Site</span>
+            <ul class="mt-2 space-y-1 text-xs" style="color: var(--color-muted);">
+              <li><a href="/" class="no-underline">Home</a></li>
+              <li><a href="/features.html" class="no-underline">Features</a></li>
+              <li><a href="/use-cases.html" class="no-underline">Use Cases</a></li>
+              <li><a href="/comparison.html" class="no-underline">Comparison</a></li>
+              <li><a href="/blog/" class="no-underline">Blog</a></li>
+            </ul>
+          </div>
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Resources</span>
+            <ul class="mt-2 space-y-1 text-xs" style="color: var(--color-muted);">
+              <li><a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="no-underline">GitHub</a></li>
+              <li><a href="https://docs.humux.dev" target="_blank" rel="noopener" class="no-underline">Documentation</a></li>
+              <li><a href="https://github.com/mattmezza/humux/releases" target="_blank" rel="noopener" class="no-underline">Releases</a></li>
+            </ul>
+          </div>
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Author</span>
+            <ul class="mt-2 space-y-1 text-xs" style="color: var(--color-muted);">
+              <li><a href="https://x.com/_mattmezza_" target="_blank" rel="noopener" class="no-underline">@_mattmezza_</a></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div class="mt-10 border-t pt-6 text-center text-xs" style="border-color: var(--color-border); color: var(--color-muted);">
+        &copy; 2026 Merola Software &amp; Services. MIT License.
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

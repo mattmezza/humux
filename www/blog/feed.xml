@@ -8,6 +8,13 @@
     <atom:link href="https://humux.dev/blog/feed.xml" rel="self" type="application/rss+xml"/>
 
     <item>
+      <title>Release Notes: v0.29 – v0.30</title>
+      <link>https://humux.dev/blog/release-notes-v029-v030.html</link>
+      <guid>https://humux.dev/blog/release-notes-v029-v030.html</guid>
+      <pubDate>Wed, 08 Jul 2026 00:00:00 +0000</pubDate>
+      <description>Sidecar architecture for slimmer deployments, remote voice backends, multilingual embeddings, and an accessibility overhaul.</description>
+    </item>
+    <item>
       <title>Release Notes: v0.25 – v0.28</title>
       <link>https://humux.dev/blog/release-notes-v025-v028.html</link>
       <guid>https://humux.dev/blog/release-notes-v025-v028.html</guid>
