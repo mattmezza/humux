@@ -15,22 +15,12 @@
   previewLang: '',
   voiceResult: '',
   voiceOk: false,
-  get sttMode() {
-    return this.sttApiBaseUrl ? 'remote' : 'local';
-  },
-  set sttMode(val) {
-    if (val === 'local') this.sttApiBaseUrl = '';
-  },
-  get ttsMode() {
-    if (this.ttsApiBaseUrl) return 'remote';
-    if (this.backend === 'kokoro') return 'kokoro';
-    return 'edge-tts';
-  },
-  set ttsMode(val) {
-    if (val === 'remote') { this.backend = 'kokoro'; }
-    else if (val === 'kokoro') { this.backend = 'kokoro'; this.ttsApiBaseUrl = ''; }
-    else { this.backend = 'edge-tts'; this.ttsApiBaseUrl = ''; }
-  }
+  _sttMode: {{ 'remote' if stt_api_base_url else 'local' }},
+  _ttsMode: {{ 'remote' if tts_api_base_url else ('kokoro' if backend == 'kokoro' else 'edge-tts') }},
+  get sttMode() { return this._sttMode; },
+  set sttMode(val) { this._sttMode = val; },
+  get ttsMode() { return this._ttsMode; },
+  set ttsMode(val) { this._ttsMode = val; }
 }">
   <h2 class="text-base mb-1">Voice</h2>
   <p class="text-muted text-xs mb-3">Configure speech-to-text (STT) and text-to-speech (TTS) used for voice messages.</p>
@@ -44,14 +34,14 @@
 
     {# ── STT ── #}
     <div>
-      <label class="label">STT engine</label>
-      <div class="flex gap-1 flex-wrap">
+      <label class="label" id="stt-engine-label">STT engine</label>
+      <div class="flex gap-1 flex-wrap" role="radiogroup" aria-labelledby="stt-engine-label">
         <template x-if="sttLocalAvail">
           <button class="btn btn-sm" :class="sttMode === 'local' ? 'btn-primary' : 'btn-ghost'"
-                  @click="sttMode = 'local'">Local (Whisper)</button>
+                  @click="sttMode = 'local'" role="radio" :aria-checked="sttMode === 'local'">Local (Whisper)</button>
         </template>
         <button class="btn btn-sm" :class="sttMode === 'remote' ? 'btn-primary' : 'btn-ghost'"
-                @click="sttMode = 'remote'">Remote (sidecar / API)</button>
+                @click="sttMode = 'remote'" role="radio" :aria-checked="sttMode === 'remote'">Remote (sidecar / API)</button>
       </div>
     </div>
 
@@ -67,24 +57,24 @@
     </div>
 
     <div x-show="sttMode === 'remote'">
-      <label class="label">Remote STT URL</label>
+      <label class="label" for="voice-stt-url">Remote STT URL</label>
       <input type="text" class="input-sm" style="max-width:360px" x-model="sttApiBaseUrl"
-             placeholder="http://whisper:8000/v1">
+             placeholder="http://whisper:8000/v1" id="voice-stt-url">
       <p class="text-muted text-xs mt-1">OpenAI-compatible STT endpoint (e.g. whisper sidecar, OpenAI, Groq). The model is chosen by the remote service.</p>
     </div>
 
     {# ── TTS ── #}
     <div>
-      <label class="label">TTS engine</label>
-      <div class="flex gap-1 flex-wrap">
+      <label class="label" id="tts-engine-label">TTS engine</label>
+      <div class="flex gap-1 flex-wrap" role="radiogroup" aria-labelledby="tts-engine-label">
         <button class="btn btn-sm" :class="ttsMode === 'edge-tts' ? 'btn-primary' : 'btn-ghost'"
-                @click="ttsMode = 'edge-tts'">Edge TTS (cloud)</button>
+                @click="ttsMode = 'edge-tts'" role="radio" :aria-checked="ttsMode === 'edge-tts'">Edge TTS (cloud)</button>
         <template x-if="kokoroLocalAvail">
           <button class="btn btn-sm" :class="ttsMode === 'kokoro' ? 'btn-primary' : 'btn-ghost'"
-                  @click="ttsMode = 'kokoro'">Kokoro 82M (local)</button>
+                  @click="ttsMode = 'kokoro'" role="radio" :aria-checked="ttsMode === 'kokoro'">Kokoro 82M (local)</button>
         </template>
         <button class="btn btn-sm" :class="ttsMode === 'remote' ? 'btn-primary' : 'btn-ghost'"
-                @click="ttsMode = 'remote'">Remote (sidecar / API)</button>
+                @click="ttsMode = 'remote'" role="radio" :aria-checked="ttsMode === 'remote'">Remote (sidecar / API)</button>
       </div>
     </div>
 
@@ -108,9 +98,9 @@
 
     {# Remote TTS URL + voice #}
     <div x-show="ttsMode === 'remote'">
-      <label class="label">Remote TTS URL</label>
+      <label class="label" for="voice-tts-url">Remote TTS URL</label>
       <input type="text" class="input-sm" style="max-width:360px" x-model="ttsApiBaseUrl"
-             placeholder="http://kokoro:8880/v1">
+             placeholder="http://kokoro:8880/v1" id="voice-tts-url">
       <p class="text-muted text-xs mt-1">OpenAI-compatible TTS endpoint (e.g. kokoro sidecar, ElevenLabs, OpenAI).</p>
       <div class="mt-2">
         <label class="label" for="voice-remote-tts-voice">Voice</label>
@@ -153,13 +143,27 @@
             @click="withLoading($el, () => {
               const vals = {
                 'voice.tts_enabled': String(ttsEnabled === true || ttsEnabled === 'true'),
-                'voice.stt_model': sttModel,
-                'voice.backend': backend,
-                'voice.tts_voice': ttsVoice,
-                'voice.tts_api_base_url': ttsApiBaseUrl,
-                'voice.stt_api_base_url': sttApiBaseUrl,
-                'voice.kokoro.default_voice': kokoroVoice
+                'voice.stt_model': sttModel
               };
+              if (sttMode === 'remote') {
+                vals['voice.stt_api_base_url'] = sttApiBaseUrl;
+              } else {
+                vals['voice.stt_api_base_url'] = '';
+              }
+              if (ttsMode === 'edge-tts') {
+                vals['voice.backend'] = 'edge-tts';
+                vals['voice.tts_voice'] = ttsVoice;
+                vals['voice.tts_api_base_url'] = '';
+                vals['voice.kokoro.default_voice'] = '';
+              } else if (ttsMode === 'kokoro') {
+                vals['voice.backend'] = 'kokoro';
+                vals['voice.tts_api_base_url'] = '';
+                vals['voice.kokoro.default_voice'] = kokoroVoice;
+              } else {
+                vals['voice.backend'] = 'kokoro';
+                vals['voice.tts_api_base_url'] = ttsApiBaseUrl;
+                vals['voice.kokoro.default_voice'] = kokoroVoice;
+              }
               return fetch('/config', {
                 method: 'PATCH',
                 headers: {
