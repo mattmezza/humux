@@ -33,7 +33,7 @@ services:
   # with INSTALL_FASTEMBED=true and set memory.embedding.provider to "local".
   embeddings:
     image: michaelf34/infinity:latest
-    command: v2 --model-id BAAI/bge-small-en-v1.5 --port 7997
+    command: v2 --model-id intfloat/multilingual-e5-small --port 7997
     container_name: humux-embeddings
     restart: unless-stopped
     profiles: ["embeddings"]

@@ -61,7 +61,7 @@ class TestLocalEmbeddingClient:
 
     async def test_defaults(self):
         client = LocalEmbeddingClient()
-        assert client.model == "BAAI/bge-small-en-v1.5"
+        assert client.model == "intfloat/multilingual-e5-small"
         assert client.cache_dir == "models"
 
 

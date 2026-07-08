@@ -180,7 +180,7 @@ endef
 sidecar-embeddings: $(SIDECAR_NET)
 	$(call _SIDECAR_RUN,humux-embeddings,\
 		-p $(EMBED_PORT):7997,\
-		michaelf34/infinity:latest v2 --model-id BAAI/bge-small-en-v1.5 --port 7997)
+		michaelf34/infinity:latest v2 --model-id intfloat/multilingual-e5-small --port 7997)
 	@echo "embeddings → http://localhost:$(EMBED_PORT)/v1"
 
 sidecar-browser: $(SIDECAR_NET)

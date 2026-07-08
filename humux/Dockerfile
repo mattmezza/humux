@@ -118,7 +118,7 @@ COPY api/ api/
 # in the image — no runtime download, works offline. Stored in /app/models,
 # OUTSIDE the /app/data volume so the mounted volume cannot shadow it. Keep the
 # default in sync with EmbeddingConfig (core/config.py).
-ARG EMBED_MODEL=BAAI/bge-small-en-v1.5
+ARG EMBED_MODEL=intfloat/multilingual-e5-small
 RUN if [ "$INSTALL_FASTEMBED" = "true" ]; then \
       uv run python -m core.embeddings prefetch "${EMBED_MODEL}" /app/models; \
     fi

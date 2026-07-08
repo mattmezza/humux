@@ -2400,7 +2400,7 @@ def create_admin_app(
             "memory_long_term_limit": await _cfg("memory.long_term_limit", "50"),
             "emb_enabled": await _bool("memory.embedding.enabled", "true"),
             "emb_provider": await _cfg("memory.embedding.provider", "sidecar"),
-            "emb_model": await _cfg("memory.embedding.model", "BAAI/bge-small-en-v1.5"),
+            "emb_model": await _cfg("memory.embedding.model", "intfloat/multilingual-e5-small"),
             "emb_base_url": await _cfg("memory.embedding.base_url", ""),
             "emb_top_k": await _cfg("memory.embedding.injection_top_k", "12"),
             "emb_recall_top_k": await _cfg("memory.embedding.recall_top_k", "10"),

@@ -32,7 +32,7 @@ dependencies = [
 # needed when voice.backend = "kokoro". Install with `uv sync --extra kokoro`.
 kokoro = ["kokoro-onnx>=0.4"]
 # Local on-device embeddings (semantic memory, Tier 2). Pulls onnxruntime (~200MB)
-# + BAAI/bge-small-en-v1.5 model (~130MB). Use a sidecar instead for a leaner
+# + intfloat/multilingual-e5-small model (~470MB). Use a sidecar instead for a leaner
 # image — see docker-compose.yml embeddings service.
 fastembed = ["fastembed"]
 # Local on-device STT. Pulls faster-whisper + ctranslate2 (~350MB).

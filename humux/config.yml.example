@@ -145,7 +145,7 @@ memory:
   embedding:
     enabled: true
     provider: "local"                # "local" (on-device) | "openai" | "google"
-    model: "BAAI/bge-small-en-v1.5"  # local model id; for API e.g. text-embedding-3-small
+    model: "intfloat/multilingual-e5-small"  # local model id; for API e.g. text-embedding-3-small
     cache_dir: "models"              # where local models live (bundled in the image)
     api_key: ""                      # API providers only; falls back to the agent provider key
     base_url: ""                     # API providers only; falls back to the agent provider base URL

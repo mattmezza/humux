@@ -82,7 +82,7 @@ def test_embedding_prefetch_invokes_helper(monkeypatch) -> None:
     data = resp.json()
     assert data["ok"] is True
     assert data["dimensions"] == 384
-    assert seen["model"] == "BAAI/bge-small-en-v1.5"
+    assert seen["model"] == "intfloat/multilingual-e5-small"
 
 
 def test_embedding_prefetch_rejects_remote(monkeypatch) -> None:

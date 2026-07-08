@@ -17,9 +17,9 @@ import numpy as np
 
 log = logging.getLogger(__name__)
 
-# Default local model: small, CPU-friendly, 384-dim (~130MB ONNX). Good balance
-# of quality and speed on modest self-hosted hardware.
-DEFAULT_LOCAL_MODEL = "BAAI/bge-small-en-v1.5"
+# Default local model: multilingual, CPU-friendly, 384-dim (~470MB ONNX).
+# Good quality across languages on modest self-hosted hardware.
+DEFAULT_LOCAL_MODEL = "intfloat/multilingual-e5-small"
 DEFAULT_LOCAL_CACHE = "models"
 
 # Provider names that mean "run the model locally" rather than call an API.
@@ -187,6 +187,32 @@ def prefetch_local_model(
     return dim
 
 
+async def reindex(db_path: str, embedder: EmbeddingClient | LocalEmbeddingClient) -> int:
+    """Re-embed every long_term memory row. Returns count of updated rows."""
+    import aiosqlite
+
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        rows = [
+            dict(r)
+            for r in await (
+                await db.execute("SELECT id, subject, content FROM long_term")
+            ).fetchall()
+        ]
+        if not rows:
+            return 0
+        texts = [f"{r['subject']}: {r['content']}" for r in rows]
+        # batch embed (both clients accept a list)
+        vectors = await embedder.embed(texts)
+        for row, vec in zip(rows, vectors):
+            await db.execute(
+                "UPDATE long_term SET embedding = ? WHERE id = ?",
+                (pack_vector(vec), row["id"]),
+            )
+        await db.commit()
+    return len(rows)
+
+
 if __name__ == "__main__":  # pragma: no cover - build-time / CLI use
     import sys
 
@@ -196,5 +222,15 @@ if __name__ == "__main__":  # pragma: no cover - build-time / CLI use
         _cache = _args[2] if len(_args) > 2 else DEFAULT_LOCAL_CACHE
         _dim = prefetch_local_model(_model, _cache)
         print(f"prefetched {_model} (dim={_dim}) -> {_cache}")
+    elif _args and _args[0] == "reindex":
+        _db = _args[1] if len(_args) > 1 else "data/memory.db"
+        _base = _args[2] if len(_args) > 2 else "http://localhost:7997"
+        _model = _args[3] if len(_args) > 3 else DEFAULT_LOCAL_MODEL
+        _embedder = EmbeddingClient(
+            provider="sidecar", api_key="none", model=_model, base_url=_base
+        )
+        _n = asyncio.run(reindex(_db, _embedder))
+        print(f"re-embedded {_n} memories in {_db} via {_base}")
     else:
         print("usage: python -m core.embeddings prefetch [MODEL] [CACHE_DIR]")
+        print("       python -m core.embeddings reindex [DB_PATH] [BASE_URL] [MODEL]")

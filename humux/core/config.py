@@ -262,7 +262,7 @@ class EmbeddingConfig(BaseModel):
     # API name ("openai", "google", …) with its base_url/api_key.
     provider: str = "sidecar"
     # local/sidecar model id; for API use e.g. text-embedding-3-small
-    model: str = "BAAI/bge-small-en-v1.5"
+    model: str = "intfloat/multilingual-e5-small"
     cache_dir: str = "models"  # where local models are stored (bundled in the Docker image)
     api_key: str = ""  # falls back to the agent provider key; blank on a keyless sidecar is fine
     base_url: str = "http://embeddings:7997"  # OpenAI-compatible /embeddings endpoint (infinity)

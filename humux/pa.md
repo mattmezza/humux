@@ -1096,7 +1096,7 @@ Each long-term memory gets a vector embedding, stored as a packed float32 blob i
 
 **Backends** (`memory.embedding.provider`):
 
-- `local` (default) — runs a small on-device model via `fastembed` (`BAAI/bge-small-en-v1.5`, 384-dim, ~130MB ONNX/CPU). Private (memory never leaves the box), no API key, free. The model is **prefetched at Docker build** into `/app/models` (outside the data volume) so the first call has no download latency and the container works offline. The model loads lazily on first use, in a worker thread. A "Download model" button in the admin Memory tab (and `python -m core.embeddings prefetch`) fetches it on demand.
+- `local` (default) — runs a multilingual on-device model via `fastembed` (`intfloat/multilingual-e5-small`, 384-dim, ~470MB ONNX/CPU). Private (memory never leaves the box), no API key, free. The model is **prefetched at Docker build** into `/app/models` (outside the data volume) so the first call has no download latency and the container works offline. The model loads lazily on first use, in a worker thread. A "Download model" button in the admin Memory tab (and `python -m core.embeddings prefetch`) fetches it on demand.
 - `openai` / `google` (or any OpenAI-compatible `/embeddings` endpoint via `base_url`) — calls a remote API. Needs a key (falls back to the matching agent provider key); a few cents/year at typical volume, but memory text is sent to the provider. Note: DeepSeek has no embeddings endpoint.
 
 Set `memory.embedding.enabled: false` to fall back to Tier-1 lexical (word-overlap) retrieval — still works, no model needed. All of this is configurable from the **admin Memory tab** (enable toggle, backend, model, top-k, download/test buttons) and applies live to the running agent.
@@ -1121,7 +1121,7 @@ memory:
   embedding:
     enabled: true
     provider: "local"                # "local" | "openai" | "google"
-    model: "BAAI/bge-small-en-v1.5"  # local model; API e.g. text-embedding-3-small
+    model: "intfloat/multilingual-e5-small"  # local model; API e.g. text-embedding-3-small
     cache_dir: "models"              # local model store (bundled in the image)
     injection_top_k: 12
   default_importance: 5.0
