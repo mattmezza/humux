@@ -14,20 +14,22 @@
 
     <div class="grid gap-3 mb-3" style="grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));">
       <div>
-        <label class="label">OAuth Client ID</label>
-        <input type="text" class="input-sm" x-model="oauthClientId" placeholder="123456789-abc.apps.googleusercontent.com">
+        <label class="label" for="cal-oauth-client-id">OAuth Client ID</label>
+        <input type="text" class="input-sm" x-model="oauthClientId" placeholder="123456789-abc.apps.googleusercontent.com"
+               id="cal-oauth-client-id">
         <p class="text-muted text-xs mt-1">From <a href="https://console.cloud.google.com/apis/credentials" target="_blank" style="text-decoration:underline">Google Cloud Console</a> &gt; Credentials &gt; OAuth 2.0 Client ID.</p>
       </div>
       <div>
-        <label class="label">OAuth Client Secret</label>
-        <input type="password" class="input-sm" x-model="oauthClientSecret" placeholder="GOCSPX-..." autocomplete="new-password">
+        <label class="label" for="cal-oauth-client-secret">OAuth Client Secret</label>
+        <input type="password" class="input-sm" x-model="oauthClientSecret" placeholder="GOCSPX-..." autocomplete="new-password"
+               id="cal-oauth-client-secret">
         <p class="text-muted text-xs mt-1">The client secret paired with the Client ID above.</p>
       </div>
     </div>
 
     <div class="flex items-center gap-2 flex-wrap">
       <button class="btn btn-sm" type="button"
-              @click="saveOAuthCreds()"
+              @click="withLoading($el, () => saveOAuthCreds())"
               :disabled="!oauthClientId.trim() || !oauthClientSecret.trim()">
         Save credentials
       </button>
@@ -74,23 +76,27 @@
 
         <div class="grid gap-3" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));">
           <div>
-            <label class="label">Name</label>
-            <input type="text" class="input-sm" x-model="provider.name" placeholder="icloud">
+            <label class="label" :for="'cal-name-' + idx">Name</label>
+            <input type="text" class="input-sm" x-model="provider.name" placeholder="icloud"
+                   :id="'cal-name-' + idx">
             <p class="text-muted text-xs mt-1">Used in prompts and tooling to pick the calendar.</p>
           </div>
           <div>
-            <label class="label">CalDAV URL</label>
-            <input type="text" class="input-sm" x-model="provider.url" placeholder="https://.../caldav/.../events">
+            <label class="label" :for="'cal-url-' + idx">CalDAV URL</label>
+            <input type="text" class="input-sm" x-model="provider.url" placeholder="https://.../caldav/.../events"
+                   :id="'cal-url-' + idx">
             <p class="text-muted text-xs mt-1">Find this in your provider's CalDAV settings.</p>
           </div>
           <div>
-            <label class="label">Username / email</label>
-            <input type="text" class="input-sm" x-model="provider.username" placeholder="you@example.com">
+            <label class="label" :for="'cal-username-' + idx">Username / email</label>
+            <input type="text" class="input-sm" x-model="provider.username" placeholder="you@example.com"
+                   :id="'cal-username-' + idx">
             <p class="text-muted text-xs mt-1">Often your email address.</p>
           </div>
           <div>
-            <label class="label">App password</label>
-            <input type="password" class="input-sm" x-model="provider.password" placeholder="xxxx xxxx xxxx xxxx" autocomplete="new-password">
+            <label class="label" :for="'cal-password-' + idx">App password</label>
+            <input type="password" class="input-sm" x-model="provider.password" placeholder="xxxx xxxx xxxx xxxx" autocomplete="new-password"
+                   :id="'cal-password-' + idx">
             <p class="text-muted text-xs mt-1">Use an app password, not your main login password.</p>
           </div>
         </div>
@@ -107,7 +113,7 @@
         <div class="flex items-center gap-2 mt-3 flex-wrap">
           <button class="btn btn-sm" type="button" @click="testProvider(provider)" :disabled="provider.testing">
             <span x-show="!provider.testing">Test connection</span>
-            <span x-show="provider.testing">Testing…</span>
+            <span x-show="provider.testing"><span class="spinner-sm mr-1"></span>Testing…</span>
           </button>
           <span class="text-xs" :class="provider.testOk ? 'text-accent' : 'text-warn'" x-text="provider.testResult"></span>
         </div>
@@ -119,7 +125,7 @@
   </div>
 
   <div class="flex items-center gap-2 mt-4">
-    <button class="btn-primary btn-sm" type="button" @click="saveProviders()">Save calendars</button>
+    <button class="btn-primary btn-sm" type="button" @click="withLoading($el, () => saveProviders())">Save calendars</button>
     <span class="text-xs text-muted" x-text="status"></span>
   </div>
   <template x-if="result">

@@ -1,14 +1,51 @@
 {# Permissions tab partial #}
-<div>
+<div x-data="{
+  page: 1,
+  perPage: 10,
+  search: '',
+  showForm: false,
+  get filteredRows() {
+    const rows = [...(this.$refs.tbody?.querySelectorAll('tr[data-rule]') || [])];
+    if (!this.search) return rows;
+    const q = this.search.toLowerCase();
+    return rows.filter(r => r.dataset.pattern.toLowerCase().includes(q));
+  },
+  get totalRules() { return this.filteredRows.length; },
+  get totalPages() { return Math.max(1, Math.ceil(this.totalRules / (this.perPage || this.totalRules))); },
+  paginate() {
+    const allRows = this.$refs.tbody?.querySelectorAll('tr[data-rule]') || [];
+    const visible = new Set(this.filteredRows);
+    const start = (this.page - 1) * (this.perPage || this.totalRules);
+    const end = this.perPage ? start + this.perPage : this.totalRules;
+    let visIdx = 0;
+    allRows.forEach(r => {
+      if (!visible.has(r)) { r.style.display = 'none'; return; }
+      r.style.display = (visIdx >= start && visIdx < end) ? '' : 'none';
+      visIdx++;
+    });
+  },
+  setPerPage(v) {
+    this.perPage = v === 'all' ? 0 : parseInt(v);
+    this.page = 1;
+    this.$nextTick(() => this.paginate());
+  },
+  setPage(p) {
+    this.page = Math.max(1, Math.min(p, this.totalPages));
+    this.$nextTick(() => this.paginate());
+  }
+}" x-init="$nextTick(() => paginate()); $watch('search', () => { page = 1; $nextTick(() => paginate()); })">
   <div class="flex items-center gap-2 mb-4 flex-wrap">
     <button class="btn btn-sm" hx-get="/partials/permissions" hx-target="#tab-content" hx-swap="innerHTML"
             hx-vals='{"scope": {{ scope|tojson }} }'>
       Refresh
     </button>
+    <span class="text-muted text-xs">{{ rules|length }} rule{{ 's' if rules|length != 1 else '' }}</span>
+    <input type="text" class="input-sm flex-1" style="max-width:260px" x-model="search"
+           id="perm-search" placeholder="Search rules…" aria-label="Search rules">
     {# Per-agent scope picker (#100). "" = the default ruleset every agent inherits. #}
     <div class="flex items-center gap-1.5 ml-auto">
-      <label class="label mb-0">Editing rules for</label>
-      <select class="select" name="scope" style="padding: 0.375rem 2rem 0.375rem 0.5rem; font-size: 0.75rem;"
+      <label class="label mb-0" for="perm-scope">Editing rules for</label>
+      <select class="select" name="scope" id="perm-scope" style="padding: 0.375rem 2rem 0.375rem 0.5rem; font-size: 0.75rem;"
               hx-get="/partials/permissions" hx-target="#tab-content" hx-swap="innerHTML" hx-trigger="change">
         <option value="" {% if not scope %}selected{% endif %}>Default (all agents)</option>
         {% for p in agents %}
@@ -25,30 +62,8 @@
   </p>
   {% endif %}
 
-  {# Add / update rule #}
-  <h3 class="text-xs text-muted uppercase tracking-wider mt-5 mb-2">Add / update rule</h3>
-  <form hx-post="/permissions" hx-target="#tab-content" hx-swap="innerHTML">
-    <input type="hidden" name="scope" value="{{ scope }}">
-    <div class="flex gap-2 items-end flex-wrap">
-      <div class="flex-[2] min-w-[200px]">
-        <label class="label">Pattern</label>
-        <input type="text" class="input-sm" name="pattern" id="perm-pattern"
-               placeholder="run_command:himalaya*send*">
-      </div>
-      <div class="flex-1 min-w-[100px]">
-        <label class="label">Level</label>
-        <select class="select" name="level" id="perm-level" style="padding: 0.375rem 2rem 0.375rem 0.5rem; font-size: 0.75rem;">
-          <option>ALWAYS</option>
-          <option selected>ASK</option>
-          <option>NEVER</option>
-        </select>
-      </div>
-      <button type="submit" class="btn btn-sm">Save</button>
-    </div>
-  </form>
-
   {# Rules table #}
-  <div class="overflow-x-auto mt-5">
+  <div class="overflow-x-auto">
     <table class="table">
       <thead>
         <tr>
@@ -57,9 +72,9 @@
           <th class="w-20"></th>
         </tr>
       </thead>
-      <tbody>
+      <tbody x-ref="tbody">
         {% for pattern, level in rules.items() %}
-        <tr>
+        <tr data-rule data-pattern="{{ pattern }}">
           <td class="text-xs break-all">{{ pattern }}</td>
           <td>
             <span class="{% if level == 'ALWAYS' %}badge-ok{% elif level == 'NEVER' %}badge-off{% else %}badge-warn{% endif %}">
@@ -69,8 +84,11 @@
           <td class="whitespace-nowrap">
             <button class="btn btn-sm"
                     @click="
-                      document.getElementById('perm-pattern').value = {{ pattern|tojson|forceescape }};
-                      document.getElementById('perm-level').value = {{ level|tojson|forceescape }};
+                      showForm = true;
+                      $nextTick(() => {
+                        document.getElementById('perm-pattern').value = {{ pattern|tojson|forceescape }};
+                        document.getElementById('perm-level').value = {{ level|tojson|forceescape }};
+                      });
                     ">
               edit
             </button>
@@ -90,5 +108,59 @@
         {% endif %}
       </tbody>
     </table>
+  </div>
+
+  {# Pagination controls #}
+  <div class="flex items-center justify-between gap-3 mt-3 flex-wrap" x-show="totalRules > 0">
+    <div class="flex items-center gap-2">
+      <label class="label mb-0 shrink-0" for="perm-per-page">Per page</label>
+      <select class="input-sm" style="max-width:80px" id="perm-per-page"
+              @change="setPerPage($event.target.value)">
+        <option value="10" selected>10</option>
+        <option value="25">25</option>
+        <option value="50">50</option>
+        <option value="all">All</option>
+      </select>
+    </div>
+    <span class="text-xs text-muted" x-show="perPage > 0"
+          x-text="'Showing ' + ((page - 1) * perPage + 1) + '–' + Math.min(page * perPage, totalRules) + ' of ' + totalRules"></span>
+    <div class="flex items-center gap-1" x-show="perPage > 0 && totalPages > 1">
+      <button class="btn btn-sm" :disabled="page <= 1" @click="setPage(page - 1)">‹ Prev</button>
+      <span class="text-xs text-muted px-2" x-text="page + ' / ' + totalPages"></span>
+      <button class="btn btn-sm" :disabled="page >= totalPages" @click="setPage(page + 1)">Next ›</button>
+    </div>
+  </div>
+
+  {# Collapsible add / update rule form #}
+  <div class="mt-5">
+    <button class="btn btn-sm" type="button" x-show="!showForm" @click="showForm = true">
+      + Add rule
+    </button>
+
+    <div x-show="showForm" x-transition>
+      <div class="flex items-center justify-between mb-2">
+        <h3 class="text-xs text-muted uppercase tracking-wider">Add / update rule</h3>
+        <button class="btn btn-sm" type="button" @click="showForm = false">Cancel</button>
+      </div>
+      <form hx-post="/permissions" hx-target="#tab-content" hx-swap="innerHTML">
+        <input type="hidden" name="scope" value="{{ scope }}">
+        <div class="flex gap-2 items-end flex-wrap">
+          <div class="flex-[2] min-w-[200px]">
+            <label class="label" for="perm-pattern">Pattern</label>
+            <input type="text" class="input-sm" name="pattern" id="perm-pattern"
+                   placeholder="run_command:himalaya*send*">
+          </div>
+          <div class="flex-1 min-w-[100px]">
+            <label class="label" for="perm-level">Level</label>
+            <select class="select" name="level" id="perm-level" style="padding: 0.375rem 2rem 0.375rem 0.5rem; font-size: 0.75rem;">
+              <option>ALWAYS</option>
+              <option selected>ASK</option>
+              <option>NEVER</option>
+            </select>
+          </div>
+          <button type="submit" class="btn btn-sm">Save</button>
+        </div>
+      </form>
+    </div>
   </div>
 </div>

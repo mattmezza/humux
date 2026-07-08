@@ -71,16 +71,16 @@
 
     <div class="space-y-3">
       <div>
-        <label class="label">Long-term limit</label>
+        <label class="label" for="mem-long-term-limit">Long-term limit</label>
         <input type="number" class="input-sm" style="max-width:120px"
-               x-model="longTermLimit" min="1" max="500">
+               x-model="longTermLimit" min="1" max="500" id="mem-long-term-limit">
         <p class="text-muted text-xs mt-1">Maximum number of long-term memories before consolidation triggers cleanup.</p>
       </div>
     </div>
 
     <div class="flex justify-end mt-3">
       <button class="btn-primary btn-sm"
-              @click="saveCfg({'memory.long_term_limit': String(longTermLimit)}, 'Memory settings saved', 'cfgOk', 'cfgResult')">
+              @click="withLoading($el, () => saveCfg({'memory.long_term_limit': String(longTermLimit)}, 'Memory settings saved', 'cfgOk', 'cfgResult'))">
         Save settings
       </button>
     </div>
@@ -113,14 +113,14 @@
 
     <div class="space-y-3">
       <div class="flex items-center gap-2">
-        <label class="label mb-0">Enabled</label>
-        <input type="checkbox" x-model="embEnabled" class="rounded border-border">
+        <label class="label mb-0" for="mem-emb-enabled">Enabled</label>
+        <input type="checkbox" x-model="embEnabled" class="rounded border-border" id="mem-emb-enabled">
         <span class="text-muted text-xs">Off → lexical (word-overlap) retrieval, no model needed.</span>
       </div>
 
       <div>
-        <label class="label">Backend</label>
-        <select class="input-sm" style="max-width:320px" x-model="embProvider" :disabled="!embEnabled">
+        <label class="label" for="mem-emb-backend">Backend</label>
+        <select class="input-sm" style="max-width:320px" x-model="embProvider" :disabled="!embEnabled" id="mem-emb-backend">
           <option value="local">Local (on-device, private, no key)</option>
           <option value="openai">OpenAI API</option>
           <option value="google">Google API</option>
@@ -133,28 +133,28 @@
       </div>
 
       <div>
-        <label class="label">Model</label>
+        <label class="label" for="mem-emb-model">Model</label>
         <input type="text" class="input-sm" style="max-width:420px" x-model="embModel" :disabled="!embEnabled"
-               placeholder="BAAI/bge-small-en-v1.5">
+               placeholder="BAAI/bge-small-en-v1.5" id="mem-emb-model">
         <p class="text-muted text-xs mt-1" x-show="isLocal">Small CPU model (384-dim, ~130MB). Bundled in Docker; use “Download model” if missing.</p>
         <p class="text-muted text-xs mt-1" x-show="!isLocal">e.g. <code>text-embedding-3-small</code> (OpenAI) or <code>text-embedding-004</code> (Google).</p>
       </div>
 
       <div x-show="!isLocal">
-        <label class="label">Base URL (optional)</label>
+        <label class="label" for="mem-emb-base-url">Base URL (optional)</label>
         <input type="text" class="input-sm" style="max-width:420px" x-model="embBaseUrl" :disabled="!embEnabled"
-               placeholder="https://… (OpenAI-compatible /embeddings)">
+               placeholder="https://… (OpenAI-compatible /embeddings)" id="mem-emb-base-url">
       </div>
 
       <div>
-        <label class="label">Injected memories per turn (top-k)</label>
-        <input type="number" class="input-sm" style="max-width:120px" x-model="embTopK" :disabled="!embEnabled" min="1" max="100">
+        <label class="label" for="mem-emb-top-k">Injected memories per turn (top-k)</label>
+        <input type="number" class="input-sm" style="max-width:120px" x-model="embTopK" :disabled="!embEnabled" min="1" max="100" id="mem-emb-top-k">
         <p class="text-muted text-xs mt-1">How many of the most relevant long-term memories to put in the prompt each message.</p>
       </div>
 
       <div>
-        <label class="label">Recall results (recall_memory tool)</label>
-        <input type="number" class="input-sm" style="max-width:120px" x-model="embRecallTopK" :disabled="!embEnabled" min="1" max="25">
+        <label class="label" for="mem-emb-recall-top-k">Recall results (recall_memory tool)</label>
+        <input type="number" class="input-sm" style="max-width:120px" x-model="embRecallTopK" :disabled="!embEnabled" min="1" max="25" id="mem-emb-recall-top-k">
         <p class="text-muted text-xs mt-1">Default number of memories the recall_memory tool returns when the agent searches its full long-term store on demand (the agent may request fewer/more per call, capped at 25).</p>
       </div>
 
@@ -167,14 +167,14 @@
 
     <div class="flex items-center gap-2 mt-4 flex-wrap">
       <button class="btn-primary btn-sm"
-              @click="saveCfg({
+              @click="withLoading($el, () => saveCfg({
                 'memory.embedding.enabled': embEnabled ? 'true' : 'false',
                 'memory.embedding.provider': embProvider,
                 'memory.embedding.model': embModel,
                 'memory.embedding.base_url': embBaseUrl,
                 'memory.embedding.injection_top_k': String(embTopK),
                 'memory.embedding.recall_top_k': String(embRecallTopK)
-              }, 'Embedding settings saved', 'embOk', 'embResult').then(loadEmbStatus)">
+              }, 'Embedding settings saved', 'embOk', 'embResult').then(loadEmbStatus))">
         Save embedding settings
       </button>
       <button class="btn btn-sm" type="button" x-show="isLocal" :disabled="embBusy" @click="downloadModel()">
@@ -208,48 +208,48 @@
 
     <div class="space-y-3">
       <div>
-        <label class="label">Default importance (1–10)</label>
-        <input type="number" step="0.5" class="input-sm" style="max-width:120px" x-model="defaultImportance" min="1" max="10">
+        <label class="label" for="mem-default-importance">Default importance (1–10)</label>
+        <input type="number" step="0.5" class="input-sm" style="max-width:120px" x-model="defaultImportance" min="1" max="10" id="mem-default-importance">
         <p class="text-muted text-xs mt-1">Starting importance for a new memory.</p>
       </div>
       <div>
-        <label class="label">Archive after (days old)</label>
-        <input type="number" class="input-sm" style="max-width:120px" x-model="archiveAfterDays" min="1">
+        <label class="label" for="mem-archive-days">Archive after (days old)</label>
+        <input type="number" class="input-sm" style="max-width:120px" x-model="archiveAfterDays" min="1" id="mem-archive-days">
         <p class="text-muted text-xs mt-1">A memory must be at least this old before it can be archived.</p>
       </div>
       <div>
-        <label class="label">Archive only if importance ≤</label>
-        <input type="number" step="0.5" class="input-sm" style="max-width:120px" x-model="archiveMaxImportance" min="1" max="10">
+        <label class="label" for="mem-archive-max-imp">Archive only if importance ≤</label>
+        <input type="number" step="0.5" class="input-sm" style="max-width:120px" x-model="archiveMaxImportance" min="1" max="10" id="mem-archive-max-imp">
         <p class="text-muted text-xs mt-1">Important memories are never auto-archived.</p>
       </div>
       <div>
-        <label class="label">Archive only if idle (days)</label>
-        <input type="number" class="input-sm" style="max-width:120px" x-model="archiveMinIdleDays" min="1">
+        <label class="label" for="mem-archive-idle-days">Archive only if idle (days)</label>
+        <input type="number" class="input-sm" style="max-width:120px" x-model="archiveMinIdleDays" min="1" id="mem-archive-idle-days">
         <p class="text-muted text-xs mt-1">Require this long since last access/creation before archiving.</p>
       </div>
       <hr class="border-border">
       <div class="flex items-center gap-2">
-        <label class="label mb-0">Hygiene pass enabled</label>
-        <input type="checkbox" x-model="hygieneEnabled" class="rounded border-border">
+        <label class="label mb-0" for="mem-hygiene-enabled">Hygiene pass enabled</label>
+        <input type="checkbox" x-model="hygieneEnabled" class="rounded border-border" id="mem-hygiene-enabled">
         <span class="text-muted text-xs">Cluster &amp; merge near-duplicates during consolidation.</span>
       </div>
       <div>
-        <label class="label">Hygiene similarity threshold</label>
-        <input type="number" step="0.05" class="input-sm" style="max-width:120px" x-model="hygieneThreshold" min="0" max="1" :disabled="!hygieneEnabled">
+        <label class="label" for="mem-hygiene-threshold">Hygiene similarity threshold</label>
+        <input type="number" step="0.05" class="input-sm" style="max-width:120px" x-model="hygieneThreshold" min="0" max="1" :disabled="!hygieneEnabled" id="mem-hygiene-threshold">
         <p class="text-muted text-xs mt-1">Higher = stricter (only very-similar memories merge). 0.45 is a sensible default.</p>
       </div>
     </div>
 
     <div class="flex justify-end mt-4">
       <button class="btn-primary btn-sm"
-              @click="saveCfg({
+              @click="withLoading($el, () => saveCfg({
                 'memory.default_importance': String(defaultImportance),
                 'memory.archive_after_days': String(archiveAfterDays),
                 'memory.archive_max_importance': String(archiveMaxImportance),
                 'memory.archive_min_idle_days': String(archiveMinIdleDays),
                 'memory.hygiene_enabled': hygieneEnabled ? 'true' : 'false',
                 'memory.hygiene_similarity_threshold': String(hygieneThreshold)
-              }, 'Lifecycle settings saved', 'lifeOk', 'lifeResult')">
+              }, 'Lifecycle settings saved', 'lifeOk', 'lifeResult'))">
         Save lifecycle settings
       </button>
     </div>
@@ -290,22 +290,22 @@
           <td class="text-xs">{{ m.id }}</td>
           <td class="text-xs">
             <span x-show="!editing">{{ m.category }}</span>
-            <select name="category" class="input-sm" x-show="editing">
+            <select name="category" class="input-sm" x-show="editing" aria-label="Category">
               {% if m.category not in categories %}<option value="{{ m.category }}" selected>{{ m.category }}</option>{% endif %}
               {% for c in categories %}<option value="{{ c }}" {% if m.category == c %}selected{% endif %}>{{ c }}</option>{% endfor %}
             </select>
           </td>
           <td class="text-xs">
             <span x-show="!editing">{{ m.subject }}</span>
-            <input name="subject" class="input-sm" value="{{ m.subject }}" x-show="editing">
+            <input name="subject" class="input-sm" value="{{ m.subject }}" x-show="editing" aria-label="Subject">
           </td>
           <td class="text-xs break-all">
             <span x-show="!editing">{{ m.content }}</span>
-            <textarea name="content" class="input-sm w-full" rows="2" x-show="editing">{{ m.content }}</textarea>
+            <textarea name="content" class="input-sm w-full" rows="2" x-show="editing" aria-label="Content">{{ m.content }}</textarea>
           </td>
           <td class="text-xs">
             <span x-show="!editing">{% if m.scope %}{{ m.scope }}{% else %}<span class="text-muted">shared</span>{% endif %}</span>
-            <select name="scope" class="input-sm" x-show="editing">
+            <select name="scope" class="input-sm" x-show="editing" aria-label="Scope">
               <option value="" {% if not m.scope %}selected{% endif %}>shared</option>
               {% if m.scope and m.scope not in agent_slugs %}<option value="{{ m.scope }}" selected>{{ m.scope }} (no agent)</option>{% endif %}
               {% for s in agent_slugs %}<option value="{{ s }}" {% if m.scope == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
@@ -353,11 +353,11 @@
           <td class="text-xs">{{ m.id }}</td>
           <td class="text-xs break-all">
             <span x-show="!editing">{{ m.content }}</span>
-            <input name="content" class="input-sm w-full" value="{{ m.content }}" x-show="editing">
+            <input name="content" class="input-sm w-full" value="{{ m.content }}" x-show="editing" aria-label="Content">
           </td>
           <td class="text-xs">
             <span x-show="!editing">{% if m.scope %}{{ m.scope }}{% else %}<span class="text-muted">shared</span>{% endif %}</span>
-            <select name="scope" class="input-sm" x-show="editing">
+            <select name="scope" class="input-sm" x-show="editing" aria-label="Scope">
               <option value="" {% if not m.scope %}selected{% endif %}>shared</option>
               {% if m.scope and m.scope not in agent_slugs %}<option value="{{ m.scope }}" selected>{{ m.scope }} (no agent)</option>{% endif %}
               {% for s in agent_slugs %}<option value="{{ s }}" {% if m.scope == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
@@ -366,7 +366,7 @@
           <td class="text-xs">
             <span x-show="!editing">{{ m.expires_at }}</span>
             <input type="datetime-local" name="expires_at" step="1" class="input-sm"
-                   value="{{ m.expires_at[:19]|replace(' ','T') }}" x-show="editing">
+                   value="{{ m.expires_at[:19]|replace(' ','T') }}" x-show="editing" aria-label="Expires at">
           </td>
           <td class="whitespace-nowrap">
             <button class="btn btn-sm" x-show="!editing" @click="editing=true">edit</button>
