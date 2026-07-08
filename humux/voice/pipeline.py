@@ -401,7 +401,10 @@ class VoicePipeline:
         text = clean_for_speech(text) or text
         if _is_kokoro_voice(voice):
             if self.tts_api_base_url:
-                return await self._synthesize_remote(text, voice), "audio/ogg"
+                try:
+                    return await self._synthesize_remote(text, voice), "audio/ogg"
+                except Exception:
+                    log.exception("Remote TTS preview failed, falling back")
             if self._kokoro is None:
                 raise RuntimeError(
                     "Kokoro model isn't loaded — switch the TTS backend to "
