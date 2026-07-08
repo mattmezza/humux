@@ -171,7 +171,7 @@
       <div class="sm:col-span-2">
         <label class="label" for="job-task" x-text="form.type === 'system' ? 'Command' : 'Task'">Task</label>
         <textarea class="textarea text-xs" name="task" id="job-task" x-model="form.task" rows="2"
-                  :placeholder="form.type === 'system' ? 'sqlite3 /app/data/memory.db \"VACUUM;\"' : 'Check my calendar and send me a morning briefing'"
+                  :placeholder="form.type === 'system' ? 'sqlite3 /app/data/memory.db \'VACUUM;\'' : 'Check my calendar and send me a morning briefing'"
                   :required="form.type !== 'memory_consolidation'"></textarea>
         <span class="hint" x-show="form.type === 'agent'">Natural language instruction for the agent</span>
         <span class="hint" x-show="form.type === 'agent_silent'">Only sends when there are updates; otherwise stays quiet</span>
