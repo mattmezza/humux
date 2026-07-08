@@ -161,6 +161,7 @@ Secrets are referenced as `${vault:NAME}` in config and `{{secret:NAME}}` in com
 <summary><strong>Browser automation</strong> — The agent can browse the web</summary>
 
 - Optional headless Chromium (Playwright) for JS-heavy pages
+- Chromium can run as a **sidecar container** via CDP (`docker compose --profile browser up`)
 - **Self-driving explore mode** — an inner LLM loop navigates sites, fills forms, clicks buttons until done
 - Persistent logged-in profiles (cookies survive between calls)
 - Per-domain action rules (Allow / Ask / Block)
