@@ -7,6 +7,7 @@
   ttsVoice: {{ tts_voice|default('en-US-AvaNeural', true)|tojson|forceescape }},
   backend: {{ backend|default('edge-tts', true)|tojson|forceescape }},
   ttsApiBaseUrl: {{ tts_api_base_url|default('', true)|tojson|forceescape }},
+  sttApiBaseUrl: {{ stt_api_base_url|default('', true)|tojson|forceescape }},
   kokoroVoice: {{ kokoro_voice|default('af_bella', true)|tojson|forceescape }},
   previewText: '',
   previewLang: '',
@@ -32,6 +33,13 @@
         <option value="large">Whisper Large</option>
       </select>
       <p class="text-muted text-xs mt-1">Larger models are more accurate but slower.</p>
+    </div>
+
+    <div>
+      <label class="label">Remote STT API URL</label>
+      <input type="text" class="input-sm" style="max-width:360px" x-model="sttApiBaseUrl"
+             placeholder="http://whisper:8000/v1">
+      <p class="text-muted text-xs mt-1">OpenAI-compatible STT endpoint. When set, audio is sent to this URL instead of local Whisper. Leave empty for local.</p>
     </div>
 
     <div>
@@ -103,6 +111,7 @@
                 'voice.backend': backend,
                 'voice.tts_voice': ttsVoice,
                 'voice.tts_api_base_url': ttsApiBaseUrl,
+                'voice.stt_api_base_url': sttApiBaseUrl,
                 'voice.kokoro.default_voice': kokoroVoice
               };
               fetch('/config', {

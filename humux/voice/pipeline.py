@@ -12,7 +12,11 @@ from functools import partial
 from typing import TYPE_CHECKING
 
 import edge_tts
-from faster_whisper import WhisperModel
+
+try:
+    from faster_whisper import WhisperModel
+except ImportError:
+    WhisperModel = None  # remote-only STT when faster-whisper not installed
 
 if TYPE_CHECKING:
     import asyncio
@@ -221,17 +225,23 @@ class VoicePipeline:
         kokoro_voices_path: str = "models/kokoro/voices-v1.0.bin",
         kokoro_default_voice: str = "af_bella",
         tts_api_base_url: str = "",
+        stt_api_base_url: str = "",
     ):
         self.tts_voice = tts_voice
         self.tts_enabled = tts_enabled
         self.backend = backend
         self.kokoro_default_voice = kokoro_default_voice
         self.tts_api_base_url = tts_api_base_url.rstrip("/") if tts_api_base_url else ""
+        self.stt_api_base_url = stt_api_base_url.rstrip("/") if stt_api_base_url else ""
         self._kokoro = None
+        self._whisper = None
 
-        log.info("Loading Whisper model '%s' …", stt_model)
-        self._whisper = WhisperModel(stt_model, compute_type="int8")
-        log.info("Whisper model loaded.")
+        if WhisperModel is not None:
+            log.info("Loading Whisper model '%s' …", stt_model)
+            self._whisper = WhisperModel(stt_model, compute_type="int8")
+            log.info("Whisper model loaded.")
+        elif not self.stt_api_base_url:
+            log.warning("faster-whisper not installed and no stt_api_base_url — STT unavailable")
 
         if backend == "kokoro":
             # Load eagerly so a bad path/missing model degrades to edge-tts at
@@ -253,13 +263,39 @@ class VoicePipeline:
     ) -> str:
         """Transcribe audio bytes (OGG/WAV/MP3) to text.
 
-        faster-whisper is synchronous and CPU-bound, so we run it in the
+        Remote STT API takes priority when configured; falls back to local
+        faster-whisper.  Local path is synchronous and CPU-bound — runs in the
         default executor to avoid blocking the event loop.
         """
+        if self.stt_api_base_url:
+            try:
+                return await self._transcribe_remote(audio_bytes)
+            except Exception:
+                log.exception("Remote STT failed, falling back to local")
+        if self._whisper is None:
+            raise RuntimeError(
+                "No STT backend available — install faster-whisper or set stt_api_base_url"
+            )
         import asyncio as _asyncio
 
         _loop = loop or _asyncio.get_running_loop()
         return await _loop.run_in_executor(None, partial(self._transcribe_sync, audio_bytes))
+
+    async def _transcribe_remote(self, audio_bytes: bytes) -> str:
+        """Call an OpenAI-compatible STT endpoint (e.g. faster-whisper-server)."""
+        import httpx
+
+        url = f"{self.stt_api_base_url}/audio/transcriptions"
+        async with httpx.AsyncClient(timeout=30) as client:
+            r = await client.post(
+                url,
+                data={"model": "whisper-1"},
+                files={"file": ("audio.ogg", audio_bytes, "audio/ogg")},
+            )
+            r.raise_for_status()
+        text = r.json().get("text", "")
+        log.info("Transcribed %d bytes → %d chars (remote-stt)", len(audio_bytes), len(text))
+        return text
 
     def _transcribe_sync(self, audio_bytes: bytes) -> str:
         segments, info = self._whisper.transcribe(io.BytesIO(audio_bytes))
