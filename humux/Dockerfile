@@ -54,10 +54,12 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 COPY pyproject.toml uv.lock ./
 RUN uv sync --no-dev --no-install-project
 
-# Local on-device embeddings (fastembed + onnxruntime, ~200MB). ON by default;
-# opt out with: docker build --build-arg INSTALL_FASTEMBED=false
-# When off, set embedding.provider + base_url to a sidecar (see docker-compose.yml).
-ARG INSTALL_FASTEMBED=true
+# Local on-device embeddings (fastembed + onnxruntime, ~200MB). OFF by default:
+# the infinity sidecar serves embeddings instead (docker-compose.yml `embeddings`
+# service — the config default points at it). Opt IN for a self-contained image:
+#   docker build --build-arg INSTALL_FASTEMBED=true .
+# (then set memory.embedding.provider to "local" in the admin UI).
+ARG INSTALL_FASTEMBED=false
 RUN if [ "$INSTALL_FASTEMBED" = "true" ]; then \
       uv sync --no-dev --no-install-project --extra fastembed; \
     fi
