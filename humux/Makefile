@@ -161,7 +161,7 @@ SEARXNG_PORT := 8080
 sidecars: $(SIDECAR_NET) sidecar-embeddings sidecar-browser sidecar-whisper sidecar-kokoro sidecar-searxng
 	@echo ""
 	@echo "All sidecars running. Update config.yml to point localhost:"
-	@echo "  memory.embedding.base_url: http://localhost:$(EMBED_PORT)/v1"
+	@echo "  memory.embedding.base_url: http://localhost:$(EMBED_PORT)"
 	@echo "  search.searxng_url:        http://localhost:$(SEARXNG_PORT)"
 	@echo "  voice.stt_api_base_url:    http://localhost:$(WHISPER_PORT)/v1"
 	@echo "  voice.tts_api_base_url:    http://localhost:$(KOKORO_PORT)/v1"

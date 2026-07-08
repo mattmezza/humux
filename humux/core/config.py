@@ -265,7 +265,7 @@ class EmbeddingConfig(BaseModel):
     model: str = "BAAI/bge-small-en-v1.5"
     cache_dir: str = "models"  # where local models are stored (bundled in the Docker image)
     api_key: str = ""  # falls back to the agent provider key; blank on a keyless sidecar is fine
-    base_url: str = "http://embeddings:7997/v1"  # OpenAI-compatible /embeddings endpoint
+    base_url: str = "http://embeddings:7997"  # OpenAI-compatible /embeddings endpoint (infinity)
     dimensions: int = 0  # 0 = provider default (API providers only)
     injection_top_k: int = 12  # relevance-ranked memories injected per turn
     recall_top_k: int = 10  # max memories returned by the recall_memory tool (full-store lookup)
