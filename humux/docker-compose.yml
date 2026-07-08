@@ -55,3 +55,22 @@ services:
     container_name: humux-kokoro
     restart: unless-stopped
     profiles: ["kokoro"]
+
+  # SearXNG search backend — self-hosted, zero-cost alternative to Tavily.
+  # Start with:  docker compose --profile searxng up
+  # Then in admin UI (Tools -> Web search), pick provider "SearXNG" and set
+  # instance URL to http://searxng:8080. JSON API pre-enabled via
+  # ./searxng/settings.yml — no manual config needed.
+  searxng:
+    image: searxng/searxng:latest
+    container_name: humux-searxng
+    restart: unless-stopped
+    profiles: ["searxng"]
+    ports:
+      # Optional: exposes browsable UI on host. Drop to keep SearXNG
+      # reachable only from agent on internal compose network.
+      - "8080:8080"
+    volumes:
+      - ./searxng:/etc/searxng:rw
+    environment:
+      - SEARXNG_BASE_URL=http://localhost:8080/
