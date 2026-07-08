@@ -3,18 +3,18 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Release Notes: v0.29 – v0.30 — humux blog</title>
+  <title>Release Notes: v0.29 – v0.31 — humux blog</title>
   <meta name="description" content="Two releases: sidecar architecture for slimmer deployments, remote STT and TTS via OpenAI-compatible APIs, voice mode toggles, multilingual embeddings, and an accessibility sweep.">
-  <link rel="canonical" href="https://humux.dev/blog/release-notes-v029-v030">
+  <link rel="canonical" href="https://humux.dev/blog/release-notes-v029-v031">
 
-  <meta property="og:title" content="Release Notes: v0.29 – v0.30">
+  <meta property="og:title" content="Release Notes: v0.29 – v0.31">
   <meta property="og:description" content="Sidecar architecture, remote voice backends, multilingual embeddings, and a slimmer Docker image.">
-  <meta property="og:url" content="https://humux.dev/blog/release-notes-v029-v030">
+  <meta property="og:url" content="https://humux.dev/blog/release-notes-v029-v031">
   <meta property="og:type" content="article">
   <meta property="og:image" content="https://humux.dev/assets/images/og-image.png">
 
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="Release Notes: v0.29 – v0.30">
+  <meta name="twitter:title" content="Release Notes: v0.29 – v0.31">
   <meta name="twitter:description" content="Sidecar architecture, remote voice backends, multilingual embeddings, and a slimmer Docker image.">
   <meta name="twitter:image" content="https://humux.dev/assets/images/og-image.png">
   <meta name="twitter:site" content="@_mattmezza_">
@@ -24,17 +24,17 @@
   {
     "@context": "https://schema.org",
     "@type": "Article",
-    "headline": "Release Notes: v0.29 – v0.30",
+    "headline": "Release Notes: v0.29 – v0.31",
     "description": "Two releases: sidecar architecture for slimmer deployments, remote STT and TTS via OpenAI-compatible APIs, voice mode toggles, multilingual embeddings, and an accessibility sweep.",
     "datePublished": "2026-07-08",
     "author": { "@type": "Person", "name": "Matteo Merola" },
     "publisher": { "@type": "Organization", "name": "humux" },
-    "url": "https://humux.dev/blog/release-notes-v029-v030"
+    "url": "https://humux.dev/blog/release-notes-v029-v031"
   }
   </script>
 
   <script type="application/ld+json">
-  {"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://humux.dev/"},{"@type":"ListItem","position":2,"name":"Blog","item":"https://humux.dev/blog/"},{"@type":"ListItem","position":3,"name":"Release Notes: v0.29 – v0.30","item":"https://humux.dev/blog/release-notes-v029-v030.html"}]}
+  {"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://humux.dev/"},{"@type":"ListItem","position":2,"name":"Blog","item":"https://humux.dev/blog/"},{"@type":"ListItem","position":3,"name":"Release Notes: v0.29 – v0.31","item":"https://humux.dev/blog/release-notes-v029-v031.html"}]}
   </script>
 
   <link rel="alternate" type="application/rss+xml" title="humux blog" href="/blog/feed.xml">
@@ -92,7 +92,7 @@
   <article class="mx-auto max-w-3xl px-5 py-16">
     <header class="mb-12">
       <p class="text-xs font-mono mb-3" style="color: var(--color-muted);">July 8, 2026 &mdash; Matteo Merola</p>
-      <h1 class="text-3xl sm:text-4xl font-bold leading-tight mb-4" style="color: #eee;">Release Notes: v0.29 &ndash; v0.30</h1>
+      <h1 class="text-3xl sm:text-4xl font-bold leading-tight mb-4" style="color: #eee;">Release Notes: v0.29 &ndash; v0.31</h1>
       <p class="text-lg leading-relaxed" style="color: var(--color-secondary);">Sidecar architecture for slimmer deployments, remote voice backends, multilingual embeddings, and an accessibility overhaul.</p>
     </header>
 
@@ -235,6 +235,18 @@ docker compose exec humux uv run python -m core.memory reindex</pre>
         The remote voice backends are opt-in: configure <code class="inline-code">stt_api_base_url</code> or <code class="inline-code">tts_api_base_url</code> in the Voice tab, or leave them blank to use local models. YOLO mode applies to new conversations only &mdash; existing permission rules are unchanged.
       </p>
     </div>
+
+    <!-- v0.31 -->
+    <h2 class="text-2xl font-bold mt-12 mb-4" style="color: #eee;">v0.31 &mdash; Bug Fixes</h2>
+
+    <p class="text-base leading-relaxed" style="color: var(--color-secondary);">
+      Patch release fixing CI test failures introduced in v0.30.
+    </p>
+
+    <ul class="list-disc pl-6 mt-4 space-y-2 text-base leading-relaxed" style="color: var(--color-secondary);">
+      <li>Fix voice settings test after the TTS backend selector was renamed to &ldquo;TTS engine&rdquo;.</li>
+      <li>Harden git-based skill install tests against CI runner configuration (GPG signing, hooks).</li>
+    </ul>
 
     <!-- CTA -->
     <div class="mt-16 pt-8 border-t" style="border-color: var(--color-border);">

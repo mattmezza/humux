@@ -225,7 +225,7 @@ class TestPartialRoutes:
         client = _client(setup_complete=True)
         resp = client.get("/partials/identity", headers=AUTH)
         assert resp.status_code == 200
-        assert "TTS backend" in resp.text
+        assert "TTS engine" in resp.text
         assert "kokoro" in resp.text.lower()
         assert "af_bella" in resp.text
         assert "previewVoice" in resp.text

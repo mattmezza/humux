@@ -340,12 +340,11 @@ async def test_install_from_git_and_update(tmp_path) -> None:
 
     repo = tmp_path / "repo"
     _spec_skill_dir(repo / "document-skills")
-    subprocess.run(["git", "init", "-q", str(repo)], check=True)
-    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
-    subprocess.run(
-        ["git", "-C", str(repo), "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "x"],
-        check=True,
-    )
+    _gc = ["-c", "user.email=t@t", "-c", "user.name=t", "-c", "commit.gpgsign=false"]
+    git = ["git", "-C", str(repo), *_gc]
+    subprocess.run(["git", "init", "-q", "-b", "main", str(repo)], check=True)
+    subprocess.run([*git, "add", "-A"], check=True)
+    subprocess.run([*git, "commit", "--no-verify", "-qm", "x"], check=True)
     store = SkillsStore(
         db_path=str(tmp_path / "s.db"),
         seed_dir=tmp_path / "seed",
@@ -369,12 +368,11 @@ async def test_install_rejects_missing_skill_md(tmp_path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / "README.md").write_text("nope")
-    subprocess.run(["git", "init", "-q", str(repo)], check=True)
-    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
-    subprocess.run(
-        ["git", "-C", str(repo), "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "x"],
-        check=True,
-    )
+    _gc = ["-c", "user.email=t@t", "-c", "user.name=t", "-c", "commit.gpgsign=false"]
+    git = ["git", "-C", str(repo), *_gc]
+    subprocess.run(["git", "init", "-q", "-b", "main", str(repo)], check=True)
+    subprocess.run([*git, "add", "-A"], check=True)
+    subprocess.run([*git, "commit", "--no-verify", "-qm", "x"], check=True)
     store = SkillsStore(
         db_path=str(tmp_path / "s.db"),
         seed_dir=tmp_path / "seed",
