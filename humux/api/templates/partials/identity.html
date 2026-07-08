@@ -87,7 +87,7 @@
 
   <div class="flex justify-end mt-3">
     <button class="btn-primary btn-sm"
-            @click="
+            @click="withLoading($el, () => {
               const vals = {
                 'voice.tts_enabled': String(ttsEnabled === true || ttsEnabled === 'true'),
                 'voice.stt_model': sttModel,
@@ -95,7 +95,7 @@
                 'voice.tts_voice': ttsVoice,
                 'voice.kokoro.default_voice': kokoroVoice
               };
-              fetch('/config', {
+              return fetch('/config', {
                 method: 'PATCH',
                 headers: {
                   'Content-Type': 'application/json',
@@ -110,7 +110,7 @@
                 if (voiceOk && d.restart_required && window.notifyRestartRequired) { notifyRestartRequired(); }
               })
               .catch(e => { voiceOk = false; voiceResult = e.message; })
-            ">
+            })">
       Save voice
     </button>
   </div>

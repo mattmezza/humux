@@ -25,7 +25,7 @@
       const vals = {
         'artifacts.enabled': String(this.enabled === true || this.enabled === 'true')
       };
-      fetch('/config', {
+      return fetch('/config', {
         method: 'PATCH',
         headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('admin_api_key') || '')},
         body: JSON.stringify({values: vals})
@@ -54,7 +54,7 @@
       so don't publish secrets.
     </p>
     <div class="flex items-center gap-2 mt-4">
-      <button class="btn-primary btn-sm" @click="save()">Save</button>
+      <button class="btn-primary btn-sm" @click="withLoading($el, () => save())">Save</button>
     </div>
     <template x-if="result">
       <div :class="resultOk ? 'alert-success' : 'alert-error'" class="mt-2" x-text="result"></div>
@@ -85,7 +85,7 @@
         'subagent_summary.model': String(this.summaryModel || 'deepseek-v4-flash').trim(),
         'subagent_summary.thinking_level': String(this.summaryThinking || '').trim()
       };
-      fetch('/config', {
+      return fetch('/config', {
         method: 'PATCH',
         headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('admin_api_key') || '')},
         body: JSON.stringify({values: vals})
@@ -168,7 +168,7 @@
       </div>
     </div>
     <div class="flex items-center gap-2 mt-4">
-      <button class="btn-primary btn-sm" @click="save()">Save</button>
+      <button class="btn-primary btn-sm" @click="withLoading($el, () => save())">Save</button>
     </div>
     <template x-if="result">
       <div :class="resultOk ? 'alert-success' : 'alert-error'" class="mt-2" x-text="result"></div>
@@ -256,10 +256,10 @@
     </div>
 
     <div class="flex items-center gap-2 mt-4">
-      <button class="btn-primary btn-sm" @click="save()">Save</button>
+      <button class="btn-primary btn-sm" @click="withLoading($el, () => save())">Save</button>
       <button class="btn btn-sm" :disabled="testing" @click="test()">
         <span x-show="!testing">Test (generate sample)</span>
-        <span x-show="testing">Generating…</span>
+        <span x-show="testing"><span class="spinner-sm mr-1"></span>Generating…</span>
       </button>
     </div>
 
@@ -327,10 +327,10 @@
     </div>
 
     <div class="flex items-center gap-2 mt-4">
-      <button class="btn-primary btn-sm" @click="save()">Save</button>
+      <button class="btn-primary btn-sm" @click="withLoading($el, () => save())">Save</button>
       <button class="btn btn-sm" :disabled="testing || (provider === 'searxng' ? !searxngUrl : !apiKey)" x-show="enabled === 'true' || enabled === true" @click="test()">
         <span x-show="!testing">Test connection</span>
-        <span x-show="testing">Testing…</span>
+        <span x-show="testing"><span class="spinner-sm mr-1"></span>Testing…</span>
       </button>
     </div>
 
@@ -377,7 +377,7 @@
     </div>
 
     <div class="flex flex-wrap items-center gap-2 mt-4">
-      <button class="btn-primary btn-sm" @click="save()">Save</button>
+      <button class="btn-primary btn-sm" @click="withLoading($el, () => save())">Save</button>
       <button class="btn btn-sm" type="button" onclick="testWhatsApp()">Test wacli</button>
       <button class="btn btn-sm" type="button" onclick="syncWhatsApp()">Sync</button>
       <button class="btn btn-sm" type="button" onclick="startWhatsAppBridge()">Link (scan QR)</button>
@@ -490,10 +490,10 @@
     </div>
 
     <div class="flex flex-wrap items-center gap-2 mt-4">
-      <button class="btn-primary btn-sm" @click="saveGh()">Save</button>
+      <button class="btn-primary btn-sm" @click="withLoading($el, () => saveGh())">Save</button>
       <button class="btn btn-sm" :disabled="testing" @click="testGh()">
         <span x-show="!testing">Test connection</span>
-        <span x-show="testing">Testing...</span>
+        <span x-show="testing"><span class="spinner-sm mr-1"></span>Testing...</span>
       </button>
     </div>
 
@@ -559,7 +559,7 @@
       </div>
     </div>
     <div class="flex items-center gap-2 mt-4">
-      <button class="btn-primary btn-sm" @click="save()">Save</button>
+      <button class="btn-primary btn-sm" @click="withLoading($el, () => save())">Save</button>
     </div>
     <template x-if="result">
       <div :class="resultOk ? 'alert-success' : 'alert-error'" class="mt-2" x-text="result"></div>
@@ -581,7 +581,7 @@
         </div>
         <button class="btn btn-sm" :disabled="testing" @click="test()">
           <span x-show="!testing">Load page</span>
-          <span x-show="testing">Loading…</span>
+          <span x-show="testing"><span class="spinner-sm mr-1"></span>Loading…</span>
         </button>
       </div>
       <template x-if="testResult">
@@ -693,7 +693,7 @@
         } else {
           vals['tools.gh.token'] = this.ghToken;
         }
-        fetch('/config', {
+        return fetch('/config', {
           method: 'PATCH',
           headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('admin_api_key') || '')},
           body: JSON.stringify({values: vals})
@@ -742,7 +742,7 @@
           'tools.whatsapp.enabled': String(this.enabled === true || this.enabled === 'true'),
           'tools.whatsapp.device_label': this.deviceLabel.trim()
         };
-        fetch('/config', {
+        return fetch('/config', {
           method: 'PATCH',
           headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('admin_api_key') || '')},
           body: JSON.stringify({values: vals})
@@ -792,7 +792,7 @@
           'tools.imagegen.monthly_budget': String(parseInt(this.monthly) || 0)
         };
         if (!this.keyVaulted) { vals['tools.imagegen.api_key'] = this.apiKey; }
-        fetch('/config', { method: 'PATCH', headers: this._hdr(), body: JSON.stringify({values: vals}) })
+        return fetch('/config', { method: 'PATCH', headers: this._hdr(), body: JSON.stringify({values: vals}) })
           .then(r => { this.resultOk = r.ok; return r.json(); })
           .then(d => {
             this.result = this.resultOk ? 'Image generation settings saved' : (d.detail || 'Error');
@@ -842,7 +842,7 @@
           'tools.browser.cdp_url': this.cdp,
           'tools.browser.user_agent': this.userAgent
         };
-        fetch('/config', { method: 'PATCH', headers: this._hdr(), body: JSON.stringify({values: vals}) })
+        return fetch('/config', { method: 'PATCH', headers: this._hdr(), body: JSON.stringify({values: vals}) })
           .then(r => { this.resultOk = r.ok; return r.json(); })
           .then(d => {
             this.result = this.resultOk ? 'Browser settings saved' : (d.detail || 'Error');

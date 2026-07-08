@@ -16,7 +16,7 @@
           <button type="button" class="btn-secondary btn-sm" x-show="{{ prov }} === 'anthropic'"
                   @click="fetchThinkingLevels({{ prov }}, {{ model }})" :disabled="fetchingLevels[{{ prov }}]">
             <span x-show="!fetchingLevels[{{ prov }}]">Fetch levels</span>
-            <span x-show="fetchingLevels[{{ prov }}]">…</span>
+            <span x-show="fetchingLevels[{{ prov }}]"><span class="spinner-sm mr-1"></span>…</span>
           </button>
           <a class="text-xs text-muted underline" x-show="{{ prov }} !== 'anthropic'"
              :href="providerDocsUrl({{ prov }})" target="_blank" rel="noopener">effort docs ↗</a>
@@ -149,7 +149,7 @@
 
     <div class="flex items-center gap-2 mt-4">
       <button class="btn-primary btn-sm"
-              @click="
+              @click="withLoading($el, () =>
                 fetch('/config', {
                   method: 'PATCH',
                   headers: {
@@ -171,7 +171,7 @@
                   if (resultOk && window.showToast) { window.showToast('LLM settings saved'); }
                 })
                 .catch(e => { resultOk = false; result = e.message; })
-              ">
+              )">
         Save
       </button>
     </div>
@@ -233,7 +233,7 @@
 
     <div class="flex items-center gap-2 mt-4">
       <button class="btn-primary btn-sm"
-              @click="
+              @click="withLoading($el, () =>
                 fetch('/config', {
                   method: 'PATCH',
                   headers: {
@@ -255,7 +255,7 @@
                   if (memoryResultOk && window.showToast) { window.showToast('Memory model settings saved'); }
                 })
                 .catch(e => { memoryResultOk = false; memoryResult = e.message; })
-              ">
+              )">
         Save memory models
       </button>
     </div>
@@ -298,7 +298,7 @@
 
     <div class="flex items-center gap-2 mt-4">
       <button class="btn-primary btn-sm"
-              @click="
+              @click="withLoading($el, () =>
                 fetch('/config', {
                   method: 'PATCH',
                   headers: {
@@ -318,7 +318,7 @@
                   if (gdResultOk && window.showToast) { window.showToast('Goal decomposition settings saved'); }
                 })
                 .catch(e => { gdResultOk = false; gdResult = e.message; })
-              ">
+              )">
         Save goal decomposition
       </button>
     </div>
@@ -366,7 +366,7 @@
 
     <div class="flex items-center gap-2 mt-4">
       <button class="btn-primary btn-sm"
-              @click="
+              @click="withLoading($el, () =>
                 fetch('/config', {
                   method: 'PATCH',
                   headers: {
@@ -387,7 +387,7 @@
                   if (trResultOk && window.showToast) { window.showToast('Task reflection settings saved'); }
                 })
                 .catch(e => { trResultOk = false; trResult = e.message; })
-              ">
+              )">
         Save task reflection
       </button>
     </div>
@@ -447,7 +447,7 @@
 
     <div class="flex items-center gap-2 mt-4">
       <button class="btn-primary btn-sm"
-              @click="
+              @click="withLoading($el, () =>
                 fetch('/config', {
                   method: 'PATCH',
                   headers: {
@@ -470,7 +470,7 @@
                   if (rdResultOk && window.showToast) { window.showToast('Reply decision settings saved'); }
                 })
                 .catch(e => { rdResultOk = false; rdResult = e.message; })
-              ">
+              )">
         Save reply decision
       </button>
     </div>
@@ -508,7 +508,7 @@
 
     <div class="flex items-center gap-2 mt-4">
       <button class="btn-primary btn-sm"
-              @click="
+              @click="withLoading($el, () =>
                 fetch('/config', {
                   method: 'PATCH',
                   headers: {
@@ -527,7 +527,7 @@
                   if (compactionResultOk && window.showToast) { window.showToast('Compaction model saved'); }
                 })
                 .catch(e => { compactionResultOk = false; compactionResult = e.message; })
-              ">
+              )">
         Save compaction model
       </button>
     </div>
@@ -571,7 +571,7 @@
     </form>
 
     <div class="flex items-center gap-2 mt-4">
-      <button class="btn-primary btn-sm" @click="saveVision()">Save vision fallback</button>
+      <button class="btn-primary btn-sm" @click="withLoading($el, () => saveVision())">Save vision fallback</button>
     </div>
     <template x-if="visionResult">
       <div :class="visionResultOk ? 'alert-success' : 'alert-error'" class="mt-2" x-text="visionResult"></div>
@@ -603,12 +603,12 @@
           <button class="btn btn-sm" type="button" :disabled="testing.anthropic || !apiKey"
                   @click="testProvider('anthropic')">
             <span x-show="!testing.anthropic">Test connection</span>
-            <span x-show="testing.anthropic">Testing...</span>
+            <span x-show="testing.anthropic"><span class="spinner-sm mr-1"></span>Testing...</span>
           </button>
           <button class="btn btn-sm" type="button" :disabled="fetchingModels.anthropic || !apiKey"
                   @click="fetchModels('anthropic')">
             <span x-show="!fetchingModels.anthropic">Fetch models</span>
-            <span x-show="fetchingModels.anthropic">Fetching...</span>
+            <span x-show="fetchingModels.anthropic"><span class="spinner-sm mr-1"></span>Fetching...</span>
           </button>
           <button class="btn btn-sm" type="button" @click="copyModels('anthropic')">Copy list</button>
         </div>
@@ -622,7 +622,7 @@
     </form>
     <div class="flex items-center gap-2 mt-4">
       <button class="btn btn-sm"
-              @click="
+              @click="withLoading($el, () =>
                 fetch('/config', {
                   method: 'PATCH',
                   headers: {
@@ -640,7 +640,7 @@
                   if (resultOk) { reloadLlmPartial(); }
                 })
                 .catch(e => { resultOk = false; result = e.message; })
-              ">
+              )">
         Save Anthropic
       </button>
     </div>
@@ -669,12 +669,12 @@
           <button class="btn btn-sm" type="button" :disabled="testing.openai || !openaiKey"
                   @click="testProvider('openai')">
             <span x-show="!testing.openai">Test connection</span>
-            <span x-show="testing.openai">Testing...</span>
+            <span x-show="testing.openai"><span class="spinner-sm mr-1"></span>Testing...</span>
           </button>
           <button class="btn btn-sm" type="button" :disabled="fetchingModels.openai || !openaiKey"
                   @click="fetchModels('openai')">
             <span x-show="!fetchingModels.openai">Fetch models</span>
-            <span x-show="fetchingModels.openai">Fetching...</span>
+            <span x-show="fetchingModels.openai"><span class="spinner-sm mr-1"></span>Fetching...</span>
           </button>
           <button class="btn btn-sm" type="button" @click="copyModels('openai')">Copy list</button>
         </div>
@@ -688,7 +688,7 @@
     </form>
     <div class="flex items-center gap-2 mt-4">
       <button class="btn btn-sm"
-              @click="
+              @click="withLoading($el, () =>
                 fetch('/config', {
                   method: 'PATCH',
                   headers: {
@@ -707,7 +707,7 @@
                   if (resultOk) { reloadLlmPartial(); }
                 })
                 .catch(e => { resultOk = false; result = e.message; })
-              ">
+              )">
         Save OpenAI
       </button>
     </div>
@@ -736,12 +736,12 @@
           <button class="btn btn-sm" type="button" :disabled="testing.google || !googleKey"
                   @click="testProvider('google')">
             <span x-show="!testing.google">Test connection</span>
-            <span x-show="testing.google">Testing...</span>
+            <span x-show="testing.google"><span class="spinner-sm mr-1"></span>Testing...</span>
           </button>
           <button class="btn btn-sm" type="button" :disabled="fetchingModels.google || !googleKey"
                   @click="fetchModels('google')">
             <span x-show="!fetchingModels.google">Fetch models</span>
-            <span x-show="fetchingModels.google">Fetching...</span>
+            <span x-show="fetchingModels.google"><span class="spinner-sm mr-1"></span>Fetching...</span>
           </button>
           <button class="btn btn-sm" type="button" @click="copyModels('google')">Copy list</button>
         </div>
@@ -755,7 +755,7 @@
     </form>
     <div class="flex items-center gap-2 mt-4">
       <button class="btn btn-sm"
-              @click="
+              @click="withLoading($el, () =>
                 fetch('/config', {
                   method: 'PATCH',
                   headers: {
@@ -774,7 +774,7 @@
                   if (resultOk) { reloadLlmPartial(); }
                 })
                 .catch(e => { resultOk = false; result = e.message; })
-              ">
+              )">
         Save Google
       </button>
     </div>
@@ -803,12 +803,12 @@
           <button class="btn btn-sm" type="button" :disabled="testing.grok || !grokKey"
                   @click="testProvider('grok')">
             <span x-show="!testing.grok">Test connection</span>
-            <span x-show="testing.grok">Testing...</span>
+            <span x-show="testing.grok"><span class="spinner-sm mr-1"></span>Testing...</span>
           </button>
           <button class="btn btn-sm" type="button" :disabled="fetchingModels.grok || !grokKey"
                   @click="fetchModels('grok')">
             <span x-show="!fetchingModels.grok">Fetch models</span>
-            <span x-show="fetchingModels.grok">Fetching...</span>
+            <span x-show="fetchingModels.grok"><span class="spinner-sm mr-1"></span>Fetching...</span>
           </button>
           <button class="btn btn-sm" type="button" @click="copyModels('grok')">Copy list</button>
         </div>
@@ -822,7 +822,7 @@
     </form>
     <div class="flex items-center gap-2 mt-4">
       <button class="btn btn-sm"
-              @click="
+              @click="withLoading($el, () =>
                 fetch('/config', {
                   method: 'PATCH',
                   headers: {
@@ -841,7 +841,7 @@
                   if (resultOk) { reloadLlmPartial(); }
                 })
                 .catch(e => { resultOk = false; result = e.message; })
-              ">
+              )">
         Save Grok
       </button>
     </div>
@@ -870,12 +870,12 @@
           <button class="btn btn-sm" type="button" :disabled="testing.deepseek || !deepseekKey"
                   @click="testProvider('deepseek')">
             <span x-show="!testing.deepseek">Test connection</span>
-            <span x-show="testing.deepseek">Testing...</span>
+            <span x-show="testing.deepseek"><span class="spinner-sm mr-1"></span>Testing...</span>
           </button>
           <button class="btn btn-sm" type="button" :disabled="fetchingModels.deepseek || !deepseekKey"
                   @click="fetchModels('deepseek')">
             <span x-show="!fetchingModels.deepseek">Fetch models</span>
-            <span x-show="fetchingModels.deepseek">Fetching...</span>
+            <span x-show="fetchingModels.deepseek"><span class="spinner-sm mr-1"></span>Fetching...</span>
           </button>
           <button class="btn btn-sm" type="button" @click="copyModels('deepseek')">Copy list</button>
         </div>
@@ -889,7 +889,7 @@
     </form>
     <div class="flex items-center gap-2 mt-4">
       <button class="btn btn-sm"
-              @click="
+              @click="withLoading($el, () =>
                 fetch('/config', {
                   method: 'PATCH',
                   headers: {
@@ -908,7 +908,7 @@
                   if (resultOk) { reloadLlmPartial(); }
                 })
                 .catch(e => { resultOk = false; result = e.message; })
-              ">
+              )">
         Save DeepSeek
       </button>
     </div>
@@ -938,12 +938,12 @@
           <button class="btn btn-sm" type="button" :disabled="testing.openrouter || !openrouterKey"
                   @click="testProvider('openrouter')">
             <span x-show="!testing.openrouter">Test connection</span>
-            <span x-show="testing.openrouter">Testing...</span>
+            <span x-show="testing.openrouter"><span class="spinner-sm mr-1"></span>Testing...</span>
           </button>
           <button class="btn btn-sm" type="button" :disabled="fetchingModels.openrouter || !openrouterKey"
                   @click="fetchModels('openrouter')">
             <span x-show="!fetchingModels.openrouter">Fetch models</span>
-            <span x-show="fetchingModels.openrouter">Fetching...</span>
+            <span x-show="fetchingModels.openrouter"><span class="spinner-sm mr-1"></span>Fetching...</span>
           </button>
           <button class="btn btn-sm" type="button" @click="copyModels('openrouter')">Copy list</button>
         </div>
@@ -957,7 +957,7 @@
     </form>
     <div class="flex items-center gap-2 mt-4">
       <button class="btn btn-sm"
-              @click="
+              @click="withLoading($el, () =>
                 fetch('/config', {
                   method: 'PATCH',
                   headers: {
@@ -976,7 +976,7 @@
                   if (resultOk) { reloadLlmPartial(); }
                 })
                 .catch(e => { resultOk = false; result = e.message; })
-              ">
+              )">
         Save OpenRouter
       </button>
     </div>

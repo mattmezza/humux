@@ -82,7 +82,7 @@
         <div class="flex items-center gap-2 mt-3 flex-wrap">
           <button class="btn btn-sm" type="button" @click="testProvider(provider)" :disabled="provider.testing">
             <span x-show="!provider.testing">Test connection</span>
-            <span x-show="provider.testing">Testing…</span>
+            <span x-show="provider.testing"><span class="spinner-sm mr-1"></span>Testing…</span>
           </button>
           <span class="text-xs" :class="provider.testOk ? 'text-accent' : 'text-warn'" x-text="provider.testResult"></span>
         </div>
@@ -96,7 +96,7 @@
   </div>
 
   <div class="flex items-center gap-2 mt-4">
-    <button class="btn-primary btn-sm" type="button" @click="saveProviders()">Save email accounts</button>
+    <button class="btn-primary btn-sm" type="button" @click="withLoading($el, () => saveProviders())">Save email accounts</button>
     <span class="text-xs text-muted" x-text="status"></span>
   </div>
   <template x-if="result">
