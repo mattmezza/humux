@@ -6,6 +6,7 @@
   sttModel: {{ stt_model|default('base', true)|tojson|forceescape }},
   ttsVoice: {{ tts_voice|default('en-US-AvaNeural', true)|tojson|forceescape }},
   backend: {{ backend|default('edge-tts', true)|tojson|forceescape }},
+  ttsApiBaseUrl: {{ tts_api_base_url|default('', true)|tojson|forceescape }},
   kokoroVoice: {{ kokoro_voice|default('af_bella', true)|tojson|forceescape }},
   previewText: '',
   previewLang: '',
@@ -40,6 +41,14 @@
         <option value="kokoro">Kokoro 82M (offline, multilingual)</option>
       </select>
       <p class="text-muted text-xs mt-1">Kokoro runs on-device (model bundled by default); it falls back to Edge TTS if the model isn't available. Restart after changing.</p>
+    </div>
+
+    {# Remote TTS API — Kokoro sidecar or any OpenAI-compatible TTS endpoint #}
+    <div x-show="backend === 'kokoro'">
+      <label class="label">Remote TTS API URL</label>
+      <input type="text" class="input-sm" style="max-width:360px" x-model="ttsApiBaseUrl"
+             placeholder="http://kokoro:8880/v1">
+      <p class="text-muted text-xs mt-1">OpenAI-compatible TTS endpoint. When set, Kokoro runs as a sidecar container instead of bundled in the main image. Leave empty for local Kokoro.</p>
     </div>
 
     {# Edge voice #}
@@ -93,6 +102,7 @@
                 'voice.stt_model': sttModel,
                 'voice.backend': backend,
                 'voice.tts_voice': ttsVoice,
+                'voice.tts_api_base_url': ttsApiBaseUrl,
                 'voice.kokoro.default_voice': kokoroVoice
               };
               fetch('/config', {
