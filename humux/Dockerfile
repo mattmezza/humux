@@ -38,10 +38,14 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
 # Node.js LTS (node/npm/npx) for JS/TS builds in the coding workspace — these
 # run through the coding-harness bash (permissions.py rules); they are NOT in
 # the run_command prefix allowlist (`npm run` = arbitrary execution).
-RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
-    && apt-get install -y --no-install-recommends nodejs \
-    && rm -rf /var/lib/apt/lists/* \
-    && node --version && npm --version
+# Opt out with: docker build --build-arg INSTALL_NODE=false
+ARG INSTALL_NODE=true
+RUN if [ "$INSTALL_NODE" = "true" ]; then \
+      curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+      && apt-get install -y --no-install-recommends nodejs \
+      && rm -rf /var/lib/apt/lists/* \
+      && node --version && npm --version; \
+    fi
 
 # wacli binary from the builder stage — no Go toolchain in the final image.
 COPY --from=wacli-builder /out/wacli /usr/local/bin/wacli
