@@ -54,6 +54,14 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 COPY pyproject.toml uv.lock ./
 RUN uv sync --no-dev --no-install-project
 
+# Local on-device STT (faster-whisper + ctranslate2, ~350MB). ON by default;
+# opt out with: docker build --build-arg INSTALL_WHISPER=false
+# When off, set voice.stt_api_base_url to a sidecar (see docker-compose.yml).
+ARG INSTALL_WHISPER=true
+RUN if [ "$INSTALL_WHISPER" = "true" ]; then \
+      uv sync --no-dev --no-install-project --extra whisper; \
+    fi
+
 # Local on-device embeddings (fastembed + onnxruntime, ~200MB). ON by default;
 # opt out with: docker build --build-arg INSTALL_FASTEMBED=false
 # When off, set embedding.provider + base_url to a sidecar (see docker-compose.yml).
