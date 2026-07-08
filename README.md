@@ -91,7 +91,7 @@ No cloud dependency. No data leaving your server. One `docker compose up` and yo
 | Tier | What | How |
 |------|------|-----|
 | **T1 Lexical** | Word-overlap retrieval | Always-on, zero deps |
-| **T2 Semantic** | Embedding vectors (fastembed, on-device) | Relevance-ranked injection |
+| **T2 Semantic** | Embedding vectors (infinity sidecar by default, or fastembed on-device) | Relevance-ranked injection |
 | **T3 Forgetting** | Importance score + access recency | Cold memories archive automatically |
 | **T4 Hygiene** | Cluster + merge near-duplicates | Self-healing compaction |
 
@@ -326,7 +326,7 @@ humux/
 │   ├── job_store.py      Scheduled job persistence
 │   ├── log_streams.py    Per-agent structured log streaming
 │   ├── agents.py         Agent definitions, CRUD, markdown parsing
-│   ├── embeddings.py     Local (fastembed) + remote embeddings
+│   ├── embeddings.py     Local (fastembed) + remote/sidecar embeddings
 │   ├── goal_decomposition.py  Task breakdown for complex requests
 │   ├── task_reflection.py     Post-task reflection store
 │   └── reply_decision.py      Group-chat reply gate

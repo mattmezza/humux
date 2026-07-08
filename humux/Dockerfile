@@ -54,6 +54,16 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 COPY pyproject.toml uv.lock ./
 RUN uv sync --no-dev --no-install-project
 
+# Local on-device embeddings (fastembed + onnxruntime, ~200MB). OFF by default:
+# the infinity sidecar serves embeddings instead (docker-compose.yml `embeddings`
+# service — the config default points at it). Opt IN for a self-contained image:
+#   docker build --build-arg INSTALL_FASTEMBED=true .
+# (then set memory.embedding.provider to "local" in the admin UI).
+ARG INSTALL_FASTEMBED=false
+RUN if [ "$INSTALL_FASTEMBED" = "true" ]; then \
+      uv sync --no-dev --no-install-project --extra fastembed; \
+    fi
+
 # Offline on-device TTS (Kokoro, issue #84). ON by default so switching the TTS
 # backend to "kokoro" works out of the box (edge-tts stays the default backend).
 # The extra pulls onnxruntime (~200MB) plus the model later (~325MB); opt out for
@@ -97,7 +107,9 @@ COPY api/ api/
 # OUTSIDE the /app/data volume so the mounted volume cannot shadow it. Keep the
 # default in sync with EmbeddingConfig (core/config.py).
 ARG EMBED_MODEL=BAAI/bge-small-en-v1.5
-RUN uv run python -m core.embeddings prefetch "${EMBED_MODEL}" /app/models
+RUN if [ "$INSTALL_FASTEMBED" = "true" ]; then \
+      uv run python -m core.embeddings prefetch "${EMBED_MODEL}" /app/models; \
+    fi
 
 # Prefetch Kokoro TTS model + voices when the kokoro backend is enabled (#84),
 # mirroring the Whisper/embedding prefetch so the container runs fully offline.

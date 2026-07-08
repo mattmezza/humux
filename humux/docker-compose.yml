@@ -27,6 +27,16 @@ services:
     environment:
       - MAX_CONCURRENT_SESSIONS=2
 
+  # Embedding sidecar — the DEFAULT semantic-memory backend (keeps fastembed +
+  # onnxruntime out of the main image; the config default already points at
+  # http://embeddings:7997/v1). To run on-device instead: build the main image
+  # with INSTALL_FASTEMBED=true and set memory.embedding.provider to "local".
+  embeddings:
+    image: michaelf34/infinity:latest
+    command: v2 --model-id BAAI/bge-small-en-v1.5 --port 7997
+    container_name: humux-embeddings
+    restart: unless-stopped
+
   # Optional Kokoro TTS sidecar — OpenAI-compatible TTS on port 8880.
   # Start with:  docker compose --profile kokoro up
   # Then set voice.tts_api_base_url to http://kokoro:8880/v1 in the admin UI.

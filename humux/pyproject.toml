@@ -23,7 +23,6 @@ dependencies = [
     "jinja2",
     "python-multipart>=0.0.22",
     "vobject>=0.9.9",
-    "fastembed",
     "numpy",
     "playwright",
     "cryptography",
@@ -33,6 +32,10 @@ dependencies = [
 # Offline on-device TTS (issue #84). Optional: pulls onnxruntime (~200MB), only
 # needed when voice.backend = "kokoro". Install with `uv sync --extra kokoro`.
 kokoro = ["kokoro-onnx>=0.4"]
+# Local on-device embeddings (semantic memory, Tier 2). Pulls onnxruntime (~200MB)
+# + BAAI/bge-small-en-v1.5 model (~130MB). Use a sidecar instead for a leaner
+# image — see docker-compose.yml embeddings service.
+fastembed = ["fastembed"]
 
 [dependency-groups]
 dev = [
