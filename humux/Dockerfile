@@ -1,16 +1,25 @@
+# ---------- builder: compile wacli (Go + CGO) ----------
+FROM golang:1.24-bookworm AS wacli-builder
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+ARG WACLI_VERSION=v0.11.0
+RUN CGO_ENABLED=1 CGO_CFLAGS="-Wno-error=missing-braces" \
+    GOBIN=/out \
+    go install -tags sqlite_fts5 github.com/openclaw/wacli/cmd/wacli@${WACLI_VERSION}
+
+# ---------- runtime ----------
 FROM python:3.14-slim
 
 WORKDIR /app
 
 # System deps (ffmpeg for voice pipeline, curl for health checks, sqlite3 for memory)
-# golang + build-essential build wacli (CGO, sqlite_fts5) from the pinned upstream tag.
 # The bash-tool allowlist (core/executor.py ALLOWED_PREFIXES) promises these CLIs
 # exist — keep this list in sync with it: git (coding harness clone/commit),
 # ripgrep (rg), w3m, pandoc, poppler-utils (pdftotext, pdftoppm), yt-dlp, ncal (cal).
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg curl ca-certificates jq sqlite3 \
     bash tar gzip xz-utils \
-    golang build-essential pkg-config \
     git ripgrep w3m pandoc poppler-utils yt-dlp ncal \
     && rm -rf /var/lib/apt/lists/*
 
@@ -34,13 +43,9 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && rm -rf /var/lib/apt/lists/* \
     && node --version && npm --version
 
-# Install wacli from pinned upstream tag (github.com/openclaw/wacli).
-# Bump WACLI_VERSION to cross WhatsApp protocol breaks (e.g. 405 Client Outdated).
-ARG WACLI_VERSION=v0.11.0
-RUN CGO_ENABLED=1 CGO_CFLAGS="-Wno-error=missing-braces" \
-    GOBIN=/usr/local/bin \
-    go install -tags sqlite_fts5 github.com/openclaw/wacli/cmd/wacli@${WACLI_VERSION} \
-    && wacli version
+# wacli binary from the builder stage — no Go toolchain in the final image.
+COPY --from=wacli-builder /out/wacli /usr/local/bin/wacli
+RUN wacli version
 
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
@@ -59,15 +64,15 @@ RUN if [ "$INSTALL_KOKORO" = "true" ]; then \
     fi
 
 # Bundle full Chromium for the browser tool (Tools tab: browser, issue #16).
-# ON by default: a self-contained image avoids the runtime `playwright install`
-# fetch, which flakes on remote hosts with spotty networking. Adds ~500-700MB.
+# OFF by default: use the browserless/chrome sidecar instead (see docker-compose.yml,
+# `--profile browser`).  Set tools.browser.cdp_url to ws://browser:3000.
+# Opt IN for a self-contained image:  docker build --build-arg INSTALL_BROWSER=true .
 # We install the FULL chromium (not chromium-headless-shell): its "new headless"
 # mode renders more faithfully and is far less bot-detectable than the old
 # headless shell — important since the browser/vision tooling targets exactly the
 # janky, JS-heavy, sometimes bot-protected sites where the shell gets served
-# degraded content. Opt out for a lean/sidecar deploy (point tools.browser.cdp_url
-# at a remote Chromium):  docker build --build-arg INSTALL_BROWSER=false .
-ARG INSTALL_BROWSER=true
+# degraded content.
+ARG INSTALL_BROWSER=false
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 RUN if [ "$INSTALL_BROWSER" = "true" ]; then \
       uv run playwright install --with-deps chromium && \
@@ -125,7 +130,7 @@ ENV WACLI_DEVICE_LABEL=humux
 
 EXPOSE 8000
 
-# Health check \u2014 orchestrators (Docker Compose, Swarm, K8s) can detect a hung
+# Health check — orchestrators (Docker Compose, Swarm, K8s) can detect a hung
 # or failed process.  Curl is pre-installed (see system-deps apt-get above).
 # The start period is generous: the first boot runs the setup wizard and may
 # take a while before the /health route responds 200.
