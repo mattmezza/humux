@@ -1686,6 +1686,7 @@ def create_admin_app(
             "tts_voice": await config_store.get("voice.tts_voice") or "en-US-AvaNeural",
             "tts_enabled": await config_store.get("voice.tts_enabled") or "true",
             "backend": await config_store.get("voice.backend") or "edge-tts",
+            "tts_api_base_url": await config_store.get("voice.tts_api_base_url") or "",
             "kokoro_voice": await config_store.get("voice.kokoro.default_voice") or "af_bella",
             "kokoro_voices": KOKORO_VOICES,
             "kokoro_languages": KOKORO_LANGUAGES,

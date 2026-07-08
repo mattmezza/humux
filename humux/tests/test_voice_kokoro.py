@@ -58,6 +58,7 @@ def _bare_pipeline():
     p.tts_enabled = True
     p.tts_voice = "en-US-AvaNeural"
     p.kokoro_default_voice = "af_bella"
+    p.tts_api_base_url = ""
     p._kokoro = None
     return p
 
@@ -251,3 +252,95 @@ def test_edge_keeps_voice_when_lang_matches(monkeypatch):
     monkeypatch.setattr(p, "_synthesize_edge", fake_edge)
     asyncio.run(p.synthesize("Ciao", voice="it-IT-DiegoNeural", lang="it"))
     assert seen["voice"] == "it-IT-DiegoNeural"  # already Italian, kept
+
+
+# -- Remote TTS API (#246) ---------------------------------------------------
+
+
+def test_remote_tts_takes_priority_over_local(monkeypatch):
+    """When tts_api_base_url is set, remote is tried before local Kokoro."""
+    p = _bare_pipeline()
+    p.tts_api_base_url = "http://kokoro:8880/v1"
+    p._kokoro = _FakeKokoro()
+    seen = {}
+
+    async def fake_remote(text, voice):
+        seen["text"] = text
+        seen["voice"] = voice
+        return b"REMOTE-AUDIO"
+
+    monkeypatch.setattr(p, "_synthesize_remote", fake_remote)
+    out = asyncio.run(p.synthesize("hello", voice="af_bella"))
+    assert out == b"REMOTE-AUDIO"
+    assert seen["text"] == "hello"
+    assert p._kokoro.calls == []  # local Kokoro not used
+
+
+def test_remote_tts_fallback_to_local_on_error(monkeypatch):
+    """Remote failure falls back to local Kokoro, then edge-tts."""
+    monkeypatch.setattr("voice.pipeline._wav_to_ogg", lambda wav: b"OGG:LOCAL")
+    p = _bare_pipeline()
+    p.tts_api_base_url = "http://kokoro:8880/v1"
+    p._kokoro = _FakeKokoro()
+
+    async def failing_remote(text, voice):
+        raise ConnectionError("unreachable")
+
+    monkeypatch.setattr(p, "_synthesize_remote", failing_remote)
+    out = asyncio.run(p.synthesize("hello"))
+    assert out == b"OGG:LOCAL"  # fell through to local Kokoro
+    assert len(p._kokoro.calls) == 1
+
+
+def test_remote_tts_fallback_to_edge_when_no_local(monkeypatch):
+    """Remote failure + no local Kokoro → edge-tts."""
+    p = _bare_pipeline()
+    p.tts_api_base_url = "http://kokoro:8880/v1"
+    seen = {}
+
+    async def failing_remote(text, voice):
+        raise ConnectionError("unreachable")
+
+    async def fake_edge(text, voice):
+        seen["used"] = True
+        return b"EDGE"
+
+    monkeypatch.setattr(p, "_synthesize_remote", failing_remote)
+    monkeypatch.setattr(p, "_synthesize_edge", fake_edge)
+    out = asyncio.run(p.synthesize("hello"))
+    assert out == b"EDGE"
+    assert seen["used"]
+
+
+def test_preview_uses_remote_for_kokoro_voice(monkeypatch):
+    """Preview routes through remote when tts_api_base_url is set."""
+    p = _bare_pipeline()
+    p.tts_api_base_url = "http://kokoro:8880/v1"
+
+    async def fake_remote(text, voice):
+        return b"REMOTE-PREVIEW"
+
+    monkeypatch.setattr(p, "_synthesize_remote", fake_remote)
+    audio, mime = asyncio.run(p.preview("test", "af_bella"))
+    assert audio == b"REMOTE-PREVIEW"
+    assert mime == "audio/ogg"
+
+
+def test_remote_skipped_for_unsupported_lang(monkeypatch):
+    """German (Kokoro can't phonemize) must skip remote Kokoro too."""
+    p = _bare_pipeline()
+    p.tts_api_base_url = "http://kokoro:8880/v1"
+    remote_calls = []
+
+    async def fake_remote(text, voice):
+        remote_calls.append(1)
+        return b"REMOTE"
+
+    async def fake_edge(text, voice):
+        return b"EDGE"
+
+    monkeypatch.setattr(p, "_synthesize_remote", fake_remote)
+    monkeypatch.setattr(p, "_synthesize_edge", fake_edge)
+    out = asyncio.run(p.synthesize("Hallo Welt", voice="af_bella", lang="de"))
+    assert out == b"EDGE"
+    assert remote_calls == []  # remote skipped for unsupported lang
