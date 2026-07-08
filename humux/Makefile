@@ -194,6 +194,7 @@ sidecar-whisper: $(SIDECAR_NET)
 	docker run -d --name humux-whisper \
 		--network $(SIDECAR_NET) \
 		-p $(WHISPER_PORT):8000 \
+		--gpus all \
 		--restart unless-stopped \
 		fedirz/faster-whisper-server:latest-cpu
 	@echo "whisper → http://localhost:$(WHISPER_PORT)/v1"

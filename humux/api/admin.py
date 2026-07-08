@@ -1681,11 +1681,29 @@ def create_admin_app(
         identity/character/accounts now live on the default agent row (#115 flw)."""
         from voice.pipeline import KOKORO_LANGUAGES, KOKORO_VOICES
 
+        # Detect which local engines are importable (hidden when not installed)
+        _stt_local = False
+        _kokoro_local = False
+        try:
+            from faster_whisper import WhisperModel  # noqa: F401
+
+            _stt_local = True
+        except ImportError:
+            pass
+        try:
+            from kokoro_onnx import Kokoro  # noqa: F401
+
+            _kokoro_local = True
+        except ImportError:
+            pass
+
         return {
             "stt_model": await config_store.get("voice.stt_model") or "base",
+            "stt_local_available": _stt_local,
             "tts_voice": await config_store.get("voice.tts_voice") or "en-US-AvaNeural",
             "tts_enabled": await config_store.get("voice.tts_enabled") or "true",
             "backend": await config_store.get("voice.backend") or "edge-tts",
+            "kokoro_local_available": _kokoro_local,
             "tts_api_base_url": await config_store.get("voice.tts_api_base_url") or "",
             "stt_api_base_url": await config_store.get("voice.stt_api_base_url") or "",
             "kokoro_voice": await config_store.get("voice.kokoro.default_voice") or "af_bella",

@@ -9,10 +9,28 @@
   ttsApiBaseUrl: {{ tts_api_base_url|default('', true)|tojson|forceescape }},
   sttApiBaseUrl: {{ stt_api_base_url|default('', true)|tojson|forceescape }},
   kokoroVoice: {{ kokoro_voice|default('af_bella', true)|tojson|forceescape }},
+  sttLocalAvail: {{ stt_local_available|default(false, true)|tojson|forceescape }},
+  kokoroLocalAvail: {{ kokoro_local_available|default(false, true)|tojson|forceescape }},
   previewText: '',
   previewLang: '',
   voiceResult: '',
-  voiceOk: false
+  voiceOk: false,
+  get sttMode() {
+    return this.sttApiBaseUrl ? 'remote' : 'local';
+  },
+  set sttMode(val) {
+    if (val === 'local') this.sttApiBaseUrl = '';
+  },
+  get ttsMode() {
+    if (this.ttsApiBaseUrl) return 'remote';
+    if (this.backend === 'kokoro') return 'kokoro';
+    return 'edge-tts';
+  },
+  set ttsMode(val) {
+    if (val === 'remote') { this.backend = 'kokoro'; }
+    else if (val === 'kokoro') { this.backend = 'kokoro'; this.ttsApiBaseUrl = ''; }
+    else { this.backend = 'edge-tts'; this.ttsApiBaseUrl = ''; }
+  }
 }">
   <h2 class="text-base mb-1">Voice</h2>
   <p class="text-muted text-xs mb-3">Configure speech-to-text (STT) and text-to-speech (TTS) used for voice messages.</p>
@@ -24,66 +42,94 @@
              :checked="ttsEnabled === 'true' || ttsEnabled === true">
     </div>
 
+    {# ── STT ── #}
     <div>
-      <label class="label" for="voice-stt-model">STT model</label>
+      <label class="label">STT engine</label>
+      <div class="flex gap-1 flex-wrap">
+        <template x-if="sttLocalAvail">
+          <button class="btn btn-sm" :class="sttMode === 'local' ? 'btn-primary' : 'btn-ghost'"
+                  @click="sttMode = 'local'">Local (Whisper)</button>
+        </template>
+        <button class="btn btn-sm" :class="sttMode === 'remote' ? 'btn-primary' : 'btn-ghost'"
+                @click="sttMode = 'remote'">Remote (sidecar / API)</button>
+      </div>
+    </div>
+
+    <div x-show="sttMode === 'local'">
+      <label class="label" for="voice-stt-model">Whisper model</label>
       <select class="input-sm" style="max-width:240px" x-model="sttModel" id="voice-stt-model">
-        <option value="base">Whisper Base</option>
+        <option value="base">Whisper Base (fast)</option>
         <option value="small">Whisper Small</option>
         <option value="medium">Whisper Medium</option>
-        <option value="large">Whisper Large</option>
+        <option value="large">Whisper Large (accurate, ~3GB)</option>
       </select>
-      <p class="text-muted text-xs mt-1">Larger models are more accurate but slower.</p>
+      <p class="text-muted text-xs mt-1">Larger models are more accurate but slower and use more RAM. Restart after changing.</p>
     </div>
 
-    <div>
-      <label class="label">Remote STT API URL</label>
+    <div x-show="sttMode === 'remote'">
+      <label class="label">Remote STT URL</label>
       <input type="text" class="input-sm" style="max-width:360px" x-model="sttApiBaseUrl"
              placeholder="http://whisper:8000/v1">
-      <p class="text-muted text-xs mt-1">OpenAI-compatible STT endpoint. When set, audio is sent to this URL instead of local Whisper. Leave empty for local.</p>
+      <p class="text-muted text-xs mt-1">OpenAI-compatible STT endpoint (e.g. whisper sidecar, OpenAI, Groq). The model is chosen by the remote service.</p>
     </div>
 
+    {# ── TTS ── #}
     <div>
-      <label class="label" for="voice-tts-backend">TTS backend</label>
-      <select class="input-sm" style="max-width:240px" x-model="backend" id="voice-tts-backend">
-        <option value="edge-tts">Edge TTS (cloud)</option>
-        <option value="kokoro">Kokoro 82M (offline, multilingual)</option>
-      </select>
-      <p class="text-muted text-xs mt-1">Kokoro runs on-device (model bundled by default); it falls back to Edge TTS if the model isn't available. Restart after changing.</p>
+      <label class="label">TTS engine</label>
+      <div class="flex gap-1 flex-wrap">
+        <button class="btn btn-sm" :class="ttsMode === 'edge-tts' ? 'btn-primary' : 'btn-ghost'"
+                @click="ttsMode = 'edge-tts'">Edge TTS (cloud)</button>
+        <template x-if="kokoroLocalAvail">
+          <button class="btn btn-sm" :class="ttsMode === 'kokoro' ? 'btn-primary' : 'btn-ghost'"
+                  @click="ttsMode = 'kokoro'">Kokoro 82M (local)</button>
+        </template>
+        <button class="btn btn-sm" :class="ttsMode === 'remote' ? 'btn-primary' : 'btn-ghost'"
+                @click="ttsMode = 'remote'">Remote (sidecar / API)</button>
+      </div>
     </div>
 
-    {# Remote TTS API — Kokoro sidecar or any OpenAI-compatible TTS endpoint #}
-    <div x-show="backend === 'kokoro'">
-      <label class="label">Remote TTS API URL</label>
-      <input type="text" class="input-sm" style="max-width:360px" x-model="ttsApiBaseUrl"
-             placeholder="http://kokoro:8880/v1">
-      <p class="text-muted text-xs mt-1">OpenAI-compatible TTS endpoint. When set, Kokoro runs as a sidecar container instead of bundled in the main image. Leave empty for local Kokoro.</p>
-    </div>
-
-    {# Edge voice #}
-    <div x-show="backend === 'edge-tts'">
+    {# Edge TTS voice picker #}
+    <div x-show="ttsMode === 'edge-tts'">
       <label class="label" for="voice-tts-voice">TTS voice</label>
       <input type="text" class="input-sm" style="max-width:260px" x-model="ttsVoice" placeholder="en-US-AvaNeural" id="voice-tts-voice">
-      <p class="text-muted text-xs mt-1">Use Edge TTS voice names. Example: en-US-AvaNeural.</p>
+      <p class="text-muted text-xs mt-1">Microsoft Edge neural voices. Examples: en-US-AvaNeural, en-US-JennyNeural, en-GB-SoniaNeural.</p>
     </div>
 
-    {# Kokoro default voice #}
-    <div x-show="backend === 'kokoro'">
-      <label class="label" for="voice-kokoro-voice">Default Kokoro voice</label>
+    {# Kokoro voice picker #}
+    <div x-show="ttsMode === 'kokoro'">
+      <label class="label" for="voice-kokoro-voice">Kokoro voice</label>
       <select class="input-sm" style="max-width:260px" x-model="kokoroVoice" id="voice-kokoro-voice">
         {% for v in kokoro_voices %}
         <option value="{{ v }}">{{ v }}</option>
         {% endfor %}
       </select>
-      <p class="text-muted text-xs mt-1">Voice prefix sets the default language (af/am = English, ff = French, jf/jm = Japanese, …). Preview needs the Kokoro backend running.</p>
+      <p class="text-muted text-xs mt-1">Voice prefix sets language: af/am = English, ff = French, jf/jm = Japanese, if/im = Italian, etc.</p>
     </div>
 
-    {# Preview — type text, pick a language (Kokoro), hear the selected voice #}
+    {# Remote TTS URL + voice #}
+    <div x-show="ttsMode === 'remote'">
+      <label class="label">Remote TTS URL</label>
+      <input type="text" class="input-sm" style="max-width:360px" x-model="ttsApiBaseUrl"
+             placeholder="http://kokoro:8880/v1">
+      <p class="text-muted text-xs mt-1">OpenAI-compatible TTS endpoint (e.g. kokoro sidecar, ElevenLabs, OpenAI).</p>
+      <div class="mt-2">
+        <label class="label" for="voice-remote-tts-voice">Voice</label>
+        <select class="input-sm" style="max-width:260px" x-model="kokoroVoice" id="voice-remote-tts-voice">
+          {% for v in kokoro_voices %}
+          <option value="{{ v }}">{{ v }}</option>
+          {% endfor %}
+        </select>
+        <p class="text-muted text-xs mt-1">Voice name sent to the remote API. Kokoro sidecar uses Kokoro names; other APIs use their own.</p>
+      </div>
+    </div>
+
+    {# Preview — text input + play button #}
     <div>
       <label class="label" for="voice-preview-text">Preview</label>
       <div class="flex items-center gap-2 flex-wrap">
         <input type="text" class="input-sm" style="max-width:300px" x-model="previewText"
                placeholder="Type a few words to hear… (blank = sample)" id="voice-preview-text">
-        <select x-show="backend === 'kokoro'" class="input-sm" style="max-width:180px"
+        <select x-show="ttsMode === 'kokoro'" class="input-sm" style="max-width:180px"
                 x-model="previewLang" id="voice-preview-lang" title="Pronunciation language" aria-label="Pronunciation language">
           <option value="">Auto (match voice)</option>
           {% for code, label in kokoro_languages %}
@@ -92,12 +138,12 @@
         </select>
         <button type="button" class="btn btn-sm"
                 @click="previewVoice(
-                  backend === 'kokoro' ? kokoroVoice : ttsVoice,
+                  ttsMode === 'edge-tts' ? ttsVoice : kokoroVoice,
                   previewText,
-                  backend === 'kokoro' ? previewLang : '',
+                  ttsMode === 'kokoro' ? previewLang : '',
                   $event.currentTarget)">▶ Preview</button>
       </div>
-      <p class="text-muted text-xs mt-1" x-show="backend === 'kokoro'">Language sets pronunciation independently of the voice — e.g. an Italian voice can read English text.</p>
+      <p class="text-muted text-xs mt-1" x-show="ttsMode === 'kokoro'">Language sets pronunciation independently of the voice.</p>
     </div>
     {% include "partials/restart_note.html" %}
   </div>
