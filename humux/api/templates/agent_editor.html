@@ -512,6 +512,55 @@
                         identity are always dropped (self-reply loop guard).
                       </p>
                     </div>
+                    {# Wake matrix + webhook extras (#250) #}
+                    <div x-show="ghWebhookSecret">
+                      <label class="label">Wake on events</label>
+                      <table class="text-xs" style="max-width:460px">
+                        <thead>
+                          <tr class="text-muted">
+                            <th class="text-left font-normal pb-1">Event</th>
+                            <th class="font-normal pb-1 px-2">Wake</th>
+                            <th class="font-normal pb-1 px-2">No @-mention needed</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <template x-for="p in ghEventPairs" :key="'ghev-' + p.key">
+                            <tr>
+                              <td class="py-0.5" x-text="p.label"></td>
+                              <td class="text-center"><input type="checkbox" x-model="ghEvents[p.key].on"></td>
+                              <td class="text-center"><input type="checkbox" x-model="ghEvents[p.key].auto"
+                                     :disabled="!ghEvents[p.key].on || !ghWebhookMention.trim()"></td>
+                            </tr>
+                          </template>
+                        </tbody>
+                      </table>
+                      <p class="text-xs text-muted mt-1">
+                        Which event/action pairs wake this agent. The second column only
+                        matters with a mention gate: those events wake the agent even
+                        without an <code>@</code>-mention (role triggers — e.g. a reviewer
+                        must see every PR opened; CI results and submitted reviews carry
+                        no mention at all).
+                      </p>
+                    </div>
+                    <div x-show="ghWebhookSecret" class="flex items-end gap-4 flex-wrap">
+                      <div>
+                        <label class="label">Thread rate limit</label>
+                        <input type="number" class="input-sm" style="max-width:110px"
+                               x-model="ghRateLimit" placeholder="20" min="1">
+                      </div>
+                      <label class="flex items-center gap-2 text-sm pb-1">
+                        <input type="checkbox" x-model="ghDigest"> Thread digest
+                      </label>
+                      <label class="flex items-center gap-2 text-sm pb-1">
+                        <input type="checkbox" x-model="ghAck"> 👀 start-of-work reaction
+                      </label>
+                    </div>
+                    <p class="text-xs text-muted" x-show="ghWebhookSecret">
+                      Rate limit: max webhook turns per issue/PR thread per hour (blank =
+                      20) — the storm backstop between allowlisted bots. Digest: prepend
+                      the thread's live GitHub state to every turn. Reaction: 👀 on the
+                      triggering item as work starts.
+                    </p>
                   </div>
                 </template>
 
@@ -616,6 +665,24 @@
       ghWebhookUsers: '',
       ghWebhookUsersWasSet: false,
       ghWebhookMention: '',
+      // Multi-agent webhook knobs (#250): wake matrix + extras. ghEvents is
+      // seeded in init() (which runs before Alpine renders the bindings).
+      ghEventPairs: [
+        { key: 'issues.opened', label: 'Issue opened' },
+        { key: 'issues.reopened', label: 'Issue reopened' },
+        { key: 'issues.closed', label: 'Issue closed' },
+        { key: 'issue_comment.created', label: 'Issue / PR comment' },
+        { key: 'pull_request.opened', label: 'PR opened' },
+        { key: 'pull_request.reopened', label: 'PR reopened' },
+        { key: 'pull_request.synchronize', label: 'PR push (synchronize)' },
+        { key: 'pull_request_review.submitted', label: 'PR review submitted' },
+        { key: 'pull_request_review_comment.created', label: 'PR review comment' },
+        { key: 'workflow_run.completed', label: 'CI run completed' },
+      ],
+      ghEvents: {},
+      ghRateLimit: '',
+      ghDigest: true,
+      ghAck: true,
       infraAvailable: {{ infra_available|tojson }},
       infraNames: {{ infra_names|tojson }},
       modes: {},
@@ -680,6 +747,22 @@
         // save of an unrelated field doesn't silently flip it to "anyone".
         this.ghWebhookUsersWasSet = Array.isArray(g.webhook_users);
         this.ghWebhookMention = g.webhook_mention || '';
+        // Wake matrix (#250): stored webhook_events, absent = the default set.
+        // Auto entries match 'event.action' or a bare 'event'.
+        const ghDefaults = { issues: ['opened', 'reopened'], issue_comment: ['created'],
+          pull_request: ['opened', 'reopened'], pull_request_review_comment: ['created'] };
+        const evs = (g.webhook_events && typeof g.webhook_events === 'object')
+          ? g.webhook_events : ghDefaults;
+        const auto = Array.isArray(g.webhook_auto_events)
+          ? g.webhook_auto_events : (g.webhook_auto_events ? [g.webhook_auto_events] : []);
+        for (const p of this.ghEventPairs) {
+          const [ev, action] = p.key.split('.');
+          const on = Array.isArray(evs[ev]) && evs[ev].includes(action);
+          this.ghEvents[p.key] = { on, auto: on && (auto.includes(p.key) || auto.includes(ev)) };
+        }
+        this.ghRateLimit = g.webhook_rate_limit != null ? String(g.webhook_rate_limit) : '';
+        this.ghDigest = g.webhook_digest !== false;
+        this.ghAck = g.webhook_ack !== false;
         // Explicit stored mode wins; else infer from which fields are present.
         this.ghAuth = g.auth || ((g.app_id || g.private_key_secret) ? 'app' : 'pat');
 
@@ -824,17 +907,41 @@
             if (this.ghWebhookSecret && this.ghWebhookMention.trim()) {
               e.webhook_mention = this.ghWebhookMention.trim().replace(/^@/, '');
             }
+            if (this.ghWebhookSecret) {
+              // Wake matrix + extras (#250). webhook_events is omitted when it
+              // equals the built-in default set (pair order is fixed, so the
+              // JSON comparison is deterministic); defaults-off knobs are only
+              // written in their non-default state.
+              const events = {};
+              for (const p of this.ghEventPairs) {
+                if (!(this.ghEvents[p.key] || {}).on) continue;
+                const [ev, action] = p.key.split('.');
+                (events[ev] = events[ev] || []).push(action);
+              }
+              const dflt = JSON.stringify({ issues: ['opened', 'reopened'],
+                issue_comment: ['created'], pull_request: ['opened', 'reopened'],
+                pull_request_review_comment: ['created'] });
+              if (JSON.stringify(events) !== dflt) e.webhook_events = events;
+              const auto = this.ghEventPairs
+                .filter(p => (this.ghEvents[p.key] || {}).on && this.ghEvents[p.key].auto)
+                .map(p => p.key);
+              if (auto.length) e.webhook_auto_events = auto;
+              const rl = parseInt(this.ghRateLimit, 10);
+              if (rl > 0) e.webhook_rate_limit = rl;
+              if (!this.ghDigest) e.webhook_digest = false;
+              if (!this.ghAck) e.webhook_ack = false;
+            }
             // Per-agent repo allowlist. Blank = no restriction.
             const repos = this.ghRepos.split(',').map(s => s.trim()).filter(Boolean);
             if (repos.length) e.repos = repos;
-            // Config-only keys (webhook_events, webhook_auto_events,
-            // webhook_rate_limit, webhook_digest, … #237) have no form field —
-            // carry them through so a save from this editor can't drop them.
-            // webhook_chat_id stays "managed" though gone (#239): a save from
-            // this editor actively drops the retired key from stored config.
+            // Unknown gh keys are carried through so a save from this editor
+            // can't drop them. Managed keys are rebuilt from the form above —
+            // webhook_chat_id stays "managed" though gone (#239) so a save
+            // actively drops the retired key from stored config.
             const managed = new Set(['enabled', 'auth', 'app_id', 'installation_id',
               'private_key_secret', 'token_secret', 'webhook_secret', 'webhook_users',
-              'webhook_mention', 'webhook_chat_id', 'repos']);
+              'webhook_mention', 'webhook_chat_id', 'repos', 'webhook_events',
+              'webhook_auto_events', 'webhook_rate_limit', 'webhook_digest', 'webhook_ack']);
             for (const [key, val] of Object.entries(this.toolConfig.gh || {})) {
               if (!managed.has(key)) e[key] = val;
             }
