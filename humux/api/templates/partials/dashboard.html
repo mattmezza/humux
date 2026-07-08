@@ -46,7 +46,7 @@
         </template>
       </div>
     </div>
-    <div class="grid grid-cols-3 gap-3">
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
       {# Total tokens #}
       <div class="card px-4 py-3">
         <div class="text-xs text-muted mb-0.5">Total tokens</div>
@@ -109,7 +109,7 @@
       <h3 class="text-xs text-muted uppercase tracking-wider">Recent activity</h3>
     </div>
     {% if log_entries %}
-    <div class="space-y-1 max-h-[240px] overflow-y-auto overflow-x-hidden">
+    <div class="space-y-1 max-h-[240px] overflow-y-auto overflow-x-auto scrollbar-hide">
       {% for entry in log_entries[:20] %}
       {% set ts = entry.get('time', '') %}
       {% set msg = entry.get('message', '') %}

@@ -270,6 +270,15 @@
     100% { background-position: -200% 0; }
   }
 
+  /* Invisible scrollbar — scrolling works, bar hidden */
+  .scrollbar-hide {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
   /* Tab content loading state (#247) */
   #tab-content.htmx-request > * {
     @apply opacity-30 pointer-events-none;
