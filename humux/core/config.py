@@ -213,6 +213,7 @@ class VoiceConfig(BaseModel):
     tts_voice: str = "en-US-AvaNeural"
     tts_enabled: bool = True
     backend: str = "edge-tts"  # "edge-tts" | "kokoro"
+    tts_api_base_url: str = ""  # OpenAI-compatible TTS endpoint, e.g. http://kokoro:8880/v1
     kokoro: KokoroConfig = KokoroConfig()
 
 
