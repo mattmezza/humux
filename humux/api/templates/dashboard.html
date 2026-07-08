@@ -59,7 +59,7 @@
   </div>
 
   {# Tab navigation #}
-  <div class="flex border-b border-border mb-4 overflow-x-auto" x-data="adminTabs()" x-init="init()" @switch-tab.window="select($event.detail)">
+  <div class="flex border-b border-border mb-4 overflow-x-auto scrollbar-hide" x-data="adminTabs()" x-init="init()" @switch-tab.window="select($event.detail)">
     <button class="tab-link" :class="tab === 'overview' && 'tab-link-active'"
             @click="select('overview')">
       Overview

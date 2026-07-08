@@ -41,8 +41,8 @@
     <div class="flex items-center justify-between gap-3 mb-1">
       <h3 class="text-sm text-accent">Web artifacts</h3>
       <div class="flex items-center gap-2">
-        <label class="label mb-0">Enabled</label>
-        <input type="checkbox" x-model="enabled" :checked="enabled === 'true' || enabled === true">
+        <label class="label mb-0" for="tools-artifacts-enabled">Enabled</label>
+        <input type="checkbox" x-model="enabled" :checked="enabled === 'true' || enabled === true" id="tools-artifacts-enabled">
       </div>
     </div>
     <p class="text-muted text-xs mb-4">
@@ -101,8 +101,8 @@
     <div class="flex items-center justify-between gap-3 mb-1">
       <h3 class="text-sm text-accent">Subagents</h3>
       <div class="flex items-center gap-2">
-        <label class="label mb-0">Enabled</label>
-        <input type="checkbox" x-model="enabled" :checked="enabled === 'true' || enabled === true">
+        <label class="label mb-0" for="tools-subagents-enabled">Enabled</label>
+        <input type="checkbox" x-model="enabled" :checked="enabled === 'true' || enabled === true" id="tools-subagents-enabled">
       </div>
     </div>
     <p class="text-muted text-xs mb-4">
@@ -116,23 +116,23 @@
     </p>
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" x-show="enabled === 'true' || enabled === true">
       <div>
-        <label class="label">Recursion depth</label>
-        <input type="number" min="1" class="input-sm" style="max-width:200px" x-model="recursion">
+        <label class="label" for="tools-sub-recursion">Recursion depth</label>
+        <input type="number" min="1" class="input-sm" style="max-width:200px" x-model="recursion" id="tools-sub-recursion">
         <p class="text-muted text-xs mt-1">Max nesting; a top-level spawn is depth 1.</p>
       </div>
       <div>
-        <label class="label">Max steps</label>
-        <input type="number" min="1" class="input-sm" style="max-width:200px" x-model="steps">
+        <label class="label" for="tools-sub-steps">Max steps</label>
+        <input type="number" min="1" class="input-sm" style="max-width:200px" x-model="steps" id="tools-sub-steps">
         <p class="text-muted text-xs mt-1">Tool-call rounds per run — a hard stop.</p>
       </div>
       <div>
-        <label class="label">Token budget</label>
-        <input type="number" min="1" class="input-sm" style="max-width:200px" x-model="tokens">
+        <label class="label" for="tools-sub-tokens">Token budget</label>
+        <input type="number" min="1" class="input-sm" style="max-width:200px" x-model="tokens" id="tools-sub-tokens">
         <p class="text-muted text-xs mt-1">Approx token ceiling per run (best-effort).</p>
       </div>
       <div>
-        <label class="label">Max concurrent</label>
-        <input type="number" min="1" class="input-sm" style="max-width:200px" x-model="concurrent">
+        <label class="label" for="tools-sub-concurrent">Max concurrent</label>
+        <input type="number" min="1" class="input-sm" style="max-width:200px" x-model="concurrent" id="tools-sub-concurrent">
         <p class="text-muted text-xs mt-1">Background runs allowed at once.</p>
       </div>
     </div>
@@ -140,9 +140,9 @@
       <div class="flex items-center justify-between gap-3 mb-1">
         <h4 class="text-xs text-accent">Result summary</h4>
         <div class="flex items-center gap-2">
-          <label class="label mb-0">Enabled</label>
+          <label class="label mb-0" for="tools-sub-summary-enabled">Enabled</label>
           <input type="checkbox" x-model="summaryEnabled"
-                 :checked="summaryEnabled === 'true' || summaryEnabled === true">
+                 :checked="summaryEnabled === 'true' || summaryEnabled === true" id="tools-sub-summary-enabled">
         </div>
       </div>
       <p class="text-muted text-xs mb-3">
@@ -153,16 +153,16 @@
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-3"
            x-show="summaryEnabled === 'true' || summaryEnabled === true">
         <div>
-          <label class="label">Provider</label>
-          <input type="text" class="input-sm" x-model="summaryProvider" placeholder="deepseek">
+          <label class="label" for="tools-sub-summary-provider">Provider</label>
+          <input type="text" class="input-sm" x-model="summaryProvider" placeholder="deepseek" id="tools-sub-summary-provider">
         </div>
         <div>
-          <label class="label">Model</label>
-          <input type="text" class="input-sm" x-model="summaryModel" placeholder="deepseek-v4-flash">
+          <label class="label" for="tools-sub-summary-model">Model</label>
+          <input type="text" class="input-sm" x-model="summaryModel" placeholder="deepseek-v4-flash" id="tools-sub-summary-model">
         </div>
         <div>
-          <label class="label">Thinking level</label>
-          <input type="text" class="input-sm" x-model="summaryThinking" placeholder="off">
+          <label class="label" for="tools-sub-summary-thinking">Thinking level</label>
+          <input type="text" class="input-sm" x-model="summaryThinking" placeholder="off" id="tools-sub-summary-thinking">
           <p class="text-muted text-xs mt-1">Blank = off. low / medium / high for reasoning models.</p>
         </div>
       </div>
@@ -188,8 +188,8 @@
     <div class="flex items-center justify-between gap-3 mb-1">
       <h3 class="text-sm text-accent">Image generation</h3>
       <div class="flex items-center gap-2">
-        <label class="label mb-0">Enabled</label>
-        <input type="checkbox" x-model="enabled">
+        <label class="label mb-0" for="tools-imagegen-enabled">Enabled</label>
+        <input type="checkbox" x-model="enabled" id="tools-imagegen-enabled">
       </div>
     </div>
     <p class="text-muted text-xs mb-4">
@@ -203,16 +203,16 @@
     <div class="space-y-3" x-show="enabled">
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
-          <label class="label">Provider</label>
-          <select class="select input-sm" style="max-width:100%" x-model="provider">
+          <label class="label" for="tools-imagegen-provider">Provider</label>
+          <select class="select input-sm" style="max-width:100%" x-model="provider" id="tools-imagegen-provider">
             <option value="openrouter">OpenRouter (reuse LLM key)</option>
             <option value="fal">fal.ai (cheapest)</option>
             <option value="openai">OpenAI (reuse LLM key)</option>
           </select>
         </div>
         <div>
-          <label class="label">Model <span class="text-muted">(blank = default)</span></label>
-          <input type="text" class="input-sm" style="max-width:100%" x-model="model"
+          <label class="label" for="tools-imagegen-model">Model <span class="text-muted">(blank = default)</span></label>
+          <input type="text" class="input-sm" style="max-width:100%" x-model="model" id="tools-imagegen-model"
                  list="dl-imagegen-model" :placeholder="defaultModel()">
           <datalist id="dl-imagegen-model">
             <template x-for="m in modelHints()" :key="m">
@@ -223,16 +223,16 @@
       </div>
 
       <div>
-        <label class="label">API key</label>
+        {% if imagegen_key_vaulted %}<span class="label">API key</span>{% else %}<label class="label" for="tools-imagegen-key">API key</label>{% endif %}
         {% if imagegen_key_vaulted %}
         <div class="text-xs text-muted py-1" style="max-width:500px">
           🔒 Stored in the <strong>Secrets</strong> vault — manage it there.
         </div>
         {% else %}
-        <input type="text" class="input-sm" style="max-width:500px; display:none"
+        <input type="text" class="input-sm" name="imagegen-username-hint" style="max-width:500px; display:none"
                autocomplete="username" aria-hidden="true" tabindex="-1">
         <input type="password" class="input-sm" style="max-width:500px"
-               autocomplete="new-password" x-model="apiKey"
+               autocomplete="new-password" x-model="apiKey" id="tools-imagegen-key"
                placeholder="leave blank to reuse your OpenRouter/OpenAI LLM key">
         <p class="text-muted text-xs mt-1">
           Stored in the vault. For OpenRouter or OpenAI, leave blank to reuse the key
@@ -243,13 +243,13 @@
 
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
-          <label class="label">Daily budget <span class="text-muted">(0 = unlimited)</span></label>
-          <input type="number" min="0" class="input-sm" style="max-width:200px" x-model="daily">
+          <label class="label" for="tools-imagegen-daily">Daily budget <span class="text-muted">(0 = unlimited)</span></label>
+          <input type="number" min="0" class="input-sm" style="max-width:200px" x-model="daily" id="tools-imagegen-daily">
           <p class="text-muted text-xs mt-1">Max images per UTC day.</p>
         </div>
         <div>
-          <label class="label">Monthly budget <span class="text-muted">(0 = unlimited)</span></label>
-          <input type="number" min="0" class="input-sm" style="max-width:200px" x-model="monthly">
+          <label class="label" for="tools-imagegen-monthly">Monthly budget <span class="text-muted">(0 = unlimited)</span></label>
+          <input type="number" min="0" class="input-sm" style="max-width:200px" x-model="monthly" id="tools-imagegen-monthly">
           <p class="text-muted text-xs mt-1">Max images per UTC month.</p>
         </div>
       </div>
@@ -285,7 +285,7 @@
     <div class="flex items-center justify-between gap-3 mb-1">
       <h3 class="text-sm text-accent">Web search</h3>
       <label class="inline-flex items-center gap-2 text-xs">
-        <input type="checkbox" x-model="enabled" :checked="enabled === 'true' || enabled === true">
+        <input type="checkbox" x-model="enabled" :checked="enabled === 'true' || enabled === true" id="tools-search-enabled">
         Enabled
       </label>
     </div>
@@ -293,35 +293,35 @@
 
     <div class="space-y-3" x-show="enabled === 'true' || enabled === true">
       <div>
-        <label class="label">Provider</label>
-        <select class="input-sm" style="max-width:300px" x-model="provider">
+        <label class="label" for="tools-search-provider">Provider</label>
+        <select class="input-sm" style="max-width:300px" x-model="provider" id="tools-search-provider">
           <option value="tavily">Tavily</option>
           <option value="searxng">SearXNG (self-hosted)</option>
         </select>
       </div>
 
       <div x-show="provider === 'tavily'">
-        <label class="label">API Key</label>
+        {% if search_vaulted %}<span class="label">API Key</span>{% else %}<label class="label" for="tools-search-key">API Key</label>{% endif %}
         {% if search_vaulted %}
         <div class="text-xs text-muted py-1" style="max-width:500px">🔒 Stored in the vault as <code>${vault:TAVILY_API_KEY}</code> — manage it from the <button type="button" class="text-accent hover:underline" @click="$dispatch('switch-tab', 'secrets')">Vaults</button> tab.</div>
         {% else %}
-        <input type="text" class="input-sm" style="max-width:500px; display:none"
+        <input type="text" class="input-sm" name="search-username-hint" style="max-width:500px; display:none"
                autocomplete="username" aria-hidden="true" tabindex="-1">
         <input type="password" class="input-sm" style="max-width:500px"
-               autocomplete="new-password" x-model="apiKey" placeholder="tvly-...">
+               autocomplete="new-password" x-model="apiKey" placeholder="tvly-..." id="tools-search-key">
         {% endif %}
       </div>
 
       <div x-show="provider === 'searxng'">
-        <label class="label">Instance URL</label>
+        <label class="label" for="tools-search-searxng-url">Instance URL</label>
         <input type="text" class="input-sm" style="max-width:500px"
-               x-model="searxngUrl" placeholder="http://searxng:8080">
+               x-model="searxngUrl" placeholder="http://searxng:8080" id="tools-search-searxng-url">
         <p class="text-muted text-xs mt-1">Base URL of your SearXNG instance (JSON format must be enabled). The bundled <code>docker-compose.searxng.yml</code> exposes it at <code>http://searxng:8080</code>.</p>
       </div>
 
       <div>
-        <label class="label">Max results</label>
-        <input type="number" class="input-sm" style="max-width:120px" x-model="maxResults" min="1" max="20">
+        <label class="label" for="tools-search-max-results">Max results</label>
+        <input type="number" class="input-sm" style="max-width:120px" x-model="maxResults" min="1" max="20" id="tools-search-max-results">
         <p class="text-muted text-xs mt-1">Number of search results returned per query.</p>
       </div>
     </div>
@@ -357,8 +357,8 @@
         {% else %}
           <span class="badge-off">wacli missing</span>
         {% endif %}
-        <label class="label mb-0">Enabled</label>
-        <input type="checkbox" x-model="enabled" :checked="enabled === 'true' || enabled === true">
+        <label class="label mb-0" for="tools-whatsapp-enabled">Enabled</label>
+        <input type="checkbox" x-model="enabled" :checked="enabled === 'true' || enabled === true" id="tools-whatsapp-enabled">
       </div>
     </div>
     <p class="text-muted text-xs mb-4">
@@ -370,8 +370,8 @@
     </p>
 
     <div x-show="enabled === 'true' || enabled === true">
-      <label class="label">Device label <span class="text-muted">(optional)</span></label>
-      <input type="text" class="input-sm" style="max-width:300px" x-model="deviceLabel"
+      <label class="label" for="tools-whatsapp-device">Device label <span class="text-muted">(optional)</span></label>
+      <input type="text" class="input-sm" style="max-width:300px" x-model="deviceLabel" id="tools-whatsapp-device"
              placeholder="humux">
       <p class="text-muted text-xs mt-1">Shown in WhatsApp's linked-devices list. Blank = humux.</p>
     </div>
@@ -400,9 +400,9 @@
     <div class="flex items-center justify-between gap-3 mb-1">
       <h3 class="text-sm text-accent">GitHub CLI (gh)</h3>
       <div class="flex items-center gap-2">
-        <label class="label mb-0">Enabled</label>
+        <label class="label mb-0" for="tools-gh-enabled">Enabled</label>
         <input type="checkbox" x-model="ghEnabled"
-               :checked="ghEnabled === 'true' || ghEnabled === true">
+               :checked="ghEnabled === 'true' || ghEnabled === true" id="tools-gh-enabled">
       </div>
     </div>
     <p class="text-muted text-xs mb-4">
@@ -416,28 +416,28 @@
     {# Auth mode — PAT (simple) vs GitHub App (bot identity, fine-grained, own rate limit) #}
     <div class="flex flex-wrap items-center gap-4 mb-3">
       <label class="flex items-center gap-2 text-sm">
-        <input type="radio" value="pat" x-model="ghMode"> Personal Access Token
+        <input type="radio" value="pat" x-model="ghMode" id="tools-gh-mode-pat"> Personal Access Token
       </label>
       <label class="flex items-center gap-2 text-sm">
-        <input type="radio" value="app" x-model="ghMode"> GitHub App
+        <input type="radio" value="app" x-model="ghMode" id="tools-gh-mode-app"> GitHub App
       </label>
     </div>
 
     {# PAT mode #}
     <div class="space-y-3" x-show="ghMode === 'pat'">
       <div>
-        <label class="label">Personal Access Token</label>
+        {% if gh_token_vaulted %}<span class="label">Personal Access Token</span>{% else %}<label class="label" for="tools-gh-token">Personal Access Token</label>{% endif %}
         {% if gh_token_vaulted %}
         <div class="text-xs text-muted py-1" style="max-width:500px">
           🔒 Stored in the <strong>Secrets</strong> vault — manage it there.
           Injected as <code>GH_TOKEN</code> so <code>gh</code> stays authenticated.
         </div>
         {% else %}
-        <input type="text" class="input-sm" style="max-width:500px; display:none"
+        <input type="text" class="input-sm" name="gh-username-hint" style="max-width:500px; display:none"
                autocomplete="username" aria-hidden="true" tabindex="-1">
         <input type="password" class="input-sm" style="max-width:500px"
                autocomplete="new-password"
-               x-model="ghToken" placeholder="ghp_... or github_pat_...">
+               x-model="ghToken" placeholder="ghp_... or github_pat_..." id="tools-gh-token">
         <p class="text-muted text-xs mt-1">
           A GitHub
           <a class="link" href="https://github.com/settings/tokens" target="_blank" rel="noreferrer">Personal Access Token</a>.
@@ -460,24 +460,24 @@
       <div class="grid gap-3"
            style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); max-width:640px">
         <div>
-          <label class="label">App ID</label>
+          <label class="label" for="tools-gh-app-id">App ID</label>
           <input type="text" inputmode="numeric" class="input-sm"
-                 x-model="ghAppId" placeholder="123456">
+                 x-model="ghAppId" placeholder="123456" id="tools-gh-app-id">
         </div>
         <div>
-          <label class="label">Installation ID</label>
+          <label class="label" for="tools-gh-install-id">Installation ID</label>
           <input type="text" inputmode="numeric" class="input-sm"
-                 x-model="ghInstallationId" placeholder="12345678">
+                 x-model="ghInstallationId" placeholder="12345678" id="tools-gh-install-id">
         </div>
       </div>
       <div>
-        <label class="label">Private key (PEM)</label>
+        {% if gh_key_vaulted %}<span class="label">Private key (PEM)</span>{% else %}<label class="label" for="tools-gh-private-key">Private key (PEM)</label>{% endif %}
         {% if gh_key_vaulted %}
         <div class="text-xs text-muted py-1" style="max-width:640px">
           🔒 Stored in the <strong>Secrets</strong> vault — manage it there. Never shown or logged.
         </div>
         {% else %}
-        <textarea class="input-sm" x-model="ghPrivateKey"
+        <textarea class="input-sm" x-model="ghPrivateKey" id="tools-gh-private-key"
                   style="max-width:640px; min-height:160px; font-family:monospace; font-size:0.75rem"
                   placeholder="-----BEGIN RSA PRIVATE KEY-----&#10;...&#10;-----END RSA PRIVATE KEY-----"></textarea>
         <p class="text-muted text-xs mt-1">
@@ -517,8 +517,8 @@
     <div class="flex items-center justify-between gap-3 mb-1">
       <h3 class="text-sm text-accent">Browser automation</h3>
       <div class="flex items-center gap-2">
-        <label class="label mb-0">Enabled</label>
-        <input type="checkbox" x-model="enabled">
+        <label class="label mb-0" for="tools-browser-enabled">Enabled</label>
+        <input type="checkbox" x-model="enabled" id="tools-browser-enabled">
       </div>
     </div>
     <p class="text-muted text-xs mb-3">
@@ -536,12 +536,12 @@
     {# Settings #}
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
       <label class="flex items-center gap-2">
-        <input type="checkbox" x-model="headless">
+        <input type="checkbox" x-model="headless" id="tools-browser-headless">
         <span class="label mb-0">Headless (no visible window)</span>
       </label>
       <div>
-        <label class="label">Sidecar CDP URL <span class="text-muted">(optional)</span></label>
-        <input type="text" class="input-sm" style="max-width:100%" x-model="cdp"
+        <label class="label" for="tools-browser-cdp">Sidecar CDP URL <span class="text-muted">(optional)</span></label>
+        <input type="text" class="input-sm" style="max-width:100%" x-model="cdp" id="tools-browser-cdp"
                placeholder="ws://browser:9222 — empty = run locally">
         <p class="text-muted text-xs mt-1">
           Empty launches Chromium locally (works in the CLI). Set to connect to a
@@ -549,8 +549,8 @@
         </p>
       </div>
       <div class="sm:col-span-2">
-        <label class="label">User-Agent <span class="text-muted">(optional)</span></label>
-        <input type="text" class="input-sm" style="max-width:100%" x-model="userAgent"
+        <label class="label" for="tools-browser-ua">User-Agent <span class="text-muted">(optional)</span></label>
+        <input type="text" class="input-sm" style="max-width:100%" x-model="userAgent" id="tools-browser-ua"
                placeholder="empty = built-in desktop Chrome UA">
         <p class="text-muted text-xs mt-1">
           Override the browser's User-Agent string. Leave empty for the default
@@ -570,13 +570,13 @@
       <h4 class="text-xs text-muted mb-2">Test</h4>
       <div class="flex flex-wrap items-end gap-2">
         <div class="grow" style="min-width:200px">
-          <label class="label">URL</label>
+          <label class="label" for="tools-browser-test-url">URL</label>
           <input type="text" class="input-sm" style="max-width:100%" x-model="testUrl"
-                 placeholder="https://example.com">
+                 placeholder="https://example.com" id="tools-browser-test-url">
         </div>
         <div style="width:140px">
-          <label class="label">Profile</label>
-          <input type="text" class="input-sm" style="max-width:100%" x-model="testProfile"
+          <label class="label" for="tools-browser-test-profile">Profile</label>
+          <input type="text" class="input-sm" style="max-width:100%" x-model="testProfile" id="tools-browser-test-profile"
                  placeholder="default">
         </div>
         <button class="btn btn-sm" :disabled="testing" @click="test()">
@@ -644,13 +644,13 @@
       </div>
       <div class="flex flex-wrap items-end gap-2 mt-2">
         <div class="grow" style="min-width:180px">
-          <label class="label">Domain</label>
+          <label class="label" for="tools-browser-new-domain">Domain</label>
           <input type="text" class="input-sm" style="max-width:100%" x-model="newDomain"
-                 placeholder="github.com">
+                 placeholder="github.com" id="tools-browser-new-domain">
         </div>
         <div style="width:140px">
-          <label class="label">Action</label>
-          <select class="select input-sm" style="max-width:100%" x-model="newLevel">
+          <label class="label" for="tools-browser-new-level">Action</label>
+          <select class="select input-sm" style="max-width:100%" x-model="newLevel" id="tools-browser-new-level">
             <option value="ALWAYS">Allow</option>
             <option value="ASK">Ask</option>
             <option value="NEVER">Block</option>

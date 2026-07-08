@@ -4,7 +4,7 @@
   <div class="flex items-center gap-2 mb-2 flex-wrap">
     <a class="btn btn-sm" href="/admin/agents/new">+ Create agent</a>
     <input type="text" class="input-sm flex-1" style="max-width:280px"
-           placeholder="Filter agents..." x-model="filter">
+           placeholder="Filter agents..." x-model="filter" id="filter-agents" aria-label="Filter agents">
     <span class="text-muted text-xs">{{ agents|length }} agents</span>
   </div>
   <p class="text-muted text-xs mb-4">

@@ -49,7 +49,7 @@
   }
 
   .input-sm {
-    @apply px-2 py-1.5 text-xs;
+    @apply px-2 py-1.5 text-sm;
   }
 
   .select {
@@ -96,7 +96,7 @@
   }
 
   .btn-sm {
-    @apply px-2 py-1 text-[0.7rem];
+    @apply px-2 py-1 text-xs;
   }
 
   .btn-icon {
@@ -162,7 +162,7 @@
 
   /* Tab navigation */
   .tab-link {
-    @apply px-4 py-2.5 text-xs font-medium text-muted
+    @apply px-4 py-2.5 text-sm font-medium text-muted
            border-b-2 border-transparent
            hover:text-gray-200 transition-all cursor-pointer;
   }
@@ -191,7 +191,7 @@
 
   /* Label */
   .label {
-    @apply block text-xs text-muted mb-1 font-medium;
+    @apply block text-sm text-muted mb-1 font-medium;
   }
 
   /* HTMX loading indicator */
@@ -268,6 +268,15 @@
   @keyframes shimmer {
     0% { background-position: 200% 0; }
     100% { background-position: -200% 0; }
+  }
+
+  /* Invisible scrollbar — scrolling works, bar hidden */
+  .scrollbar-hide {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
   }
 
   /* Tab content loading state (#247) */

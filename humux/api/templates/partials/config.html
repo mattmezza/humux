@@ -14,7 +14,7 @@
       Refresh
     </button>
     <input type="text" class="input-sm flex-1" style="max-width:300px"
-           placeholder="Filter keys..." x-model="filter">
+           id="filter-config" aria-label="Filter config keys" placeholder="Filter keys..." x-model="filter">
   </div>
 
   {# Config table #}
@@ -53,12 +53,12 @@
   <h3 class="text-xs text-muted uppercase tracking-wider mt-5 mb-2">Add / edit config</h3>
   <div class="flex gap-2 items-end flex-wrap">
     <div class="flex-1 min-w-[150px]">
-      <label class="label">Key</label>
-      <input type="text" class="input-sm" x-model="editKey" :readonly="editing" placeholder="agent.name">
+      <label class="label" for="config-key">Key</label>
+      <input type="text" class="input-sm" id="config-key" x-model="editKey" :readonly="editing" placeholder="agent.name">
     </div>
     <div class="flex-[2] min-w-[200px]">
-      <label class="label">Value</label>
-      <input type="text" class="input-sm" x-model="editVal" placeholder="Jarvis">
+      <label class="label" for="config-value">Value</label>
+      <input type="text" class="input-sm" id="config-value" x-model="editVal" placeholder="Jarvis">
     </div>
     <button type="button" class="btn btn-sm"
             @click="

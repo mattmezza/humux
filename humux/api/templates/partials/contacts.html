@@ -21,36 +21,42 @@
 
         <div class="grid gap-3" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));">
           <div>
-            <label class="label">Name</label>
-            <input type="text" class="input-sm" x-model="provider.name" placeholder="icloud, google, work">
+            <label class="label" :for="'contacts-name-' + idx">Name</label>
+            <input type="text" class="input-sm" x-model="provider.name" placeholder="icloud, google, work"
+                   :id="'contacts-name-' + idx">
           </div>
           <div>
-            <label class="label">Provider type</label>
-            <select class="input-sm" x-model="provider.type">
+            <label class="label" :for="'contacts-type-' + idx">Provider type</label>
+            <select class="input-sm" x-model="provider.type" :id="'contacts-type-' + idx">
               <option value="carddav">CardDAV</option>
               <option value="google_contacts">Google Contacts</option>
             </select>
           </div>
           <div x-show="provider.type === 'carddav'">
-            <label class="label">CardDAV URL</label>
-            <input type="text" class="input-sm" x-model="provider.url" placeholder="https://contacts.icloud.com/">
+            <label class="label" :for="'contacts-url-' + idx">CardDAV URL</label>
+            <input type="text" class="input-sm" x-model="provider.url" placeholder="https://contacts.icloud.com/"
+                   :id="'contacts-url-' + idx">
           </div>
           <div x-show="provider.type === 'carddav'">
-            <label class="label">Username / email</label>
-            <input type="text" class="input-sm" x-model="provider.username" placeholder="you@example.com">
+            <label class="label" :for="'contacts-username-' + idx">Username / email</label>
+            <input type="text" class="input-sm" x-model="provider.username" placeholder="you@example.com"
+                   :id="'contacts-username-' + idx">
           </div>
           <div x-show="provider.type === 'carddav'">
-            <label class="label">App password</label>
-            <input type="password" class="input-sm" x-model="provider.password" placeholder="xxxx xxxx xxxx xxxx" autocomplete="new-password">
+            <label class="label" :for="'contacts-password-' + idx">App password</label>
+            <input type="password" class="input-sm" x-model="provider.password" placeholder="xxxx xxxx xxxx xxxx" autocomplete="new-password"
+                   :id="'contacts-password-' + idx">
             <p class="text-muted text-xs mt-1">May be a <code>${vault:NAME}</code> reference. Purelymail: use your unique CardDAV URL from <code>purelymail.com/manage/cardDavUrl</code>.</p>
           </div>
           <div x-show="provider.type === 'google_contacts'">
-            <label class="label">Google Client ID</label>
-            <input type="text" class="input-sm" x-model="provider.client_id" placeholder="...apps.googleusercontent.com">
+            <label class="label" :for="'contacts-client-id-' + idx">Google Client ID</label>
+            <input type="text" class="input-sm" x-model="provider.client_id" placeholder="...apps.googleusercontent.com"
+                   :id="'contacts-client-id-' + idx">
           </div>
           <div x-show="provider.type === 'google_contacts'">
-            <label class="label">Google Client Secret</label>
-            <input type="password" class="input-sm" x-model="provider.client_secret" placeholder="GOCSPX-..." autocomplete="new-password">
+            <label class="label" :for="'contacts-client-secret-' + idx">Google Client Secret</label>
+            <input type="password" class="input-sm" x-model="provider.client_secret" placeholder="GOCSPX-..." autocomplete="new-password"
+                   :id="'contacts-client-secret-' + idx">
           </div>
           <div x-show="provider.type === 'google_contacts'" class="flex items-center gap-2">
             <button class="btn btn-sm" type="button" @click="startGoogleOAuth(provider)">
