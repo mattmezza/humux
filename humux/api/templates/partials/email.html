@@ -18,7 +18,8 @@
             <p class="text-muted text-xs">Give each account a unique name, e.g. personal, work.</p>
           </div>
           <div class="flex items-center gap-2 shrink-0">
-            <select class="select input-sm" style="max-width:150px" @change="applyPreset(provider, $event.target.value); $event.target.value=''">
+            <select class="select input-sm" style="max-width:150px" @change="applyPreset(provider, $event.target.value); $event.target.value=''"
+                    :id="'email-preset-' + idx" :aria-label="'Preset for account ' + (idx + 1)">
               <option value="">Preset…</option>
               <option value="purelymail">Purelymail</option>
               <option value="gmail">Gmail</option>
@@ -30,51 +31,60 @@
 
         <div class="grid gap-3" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));">
           <div>
-            <label class="label">Account name</label>
-            <input type="text" class="input-sm" x-model="provider.name" placeholder="personal">
+            <label class="label" :for="'email-name-' + idx">Account name</label>
+            <input type="text" class="input-sm" x-model="provider.name" placeholder="personal"
+                   :id="'email-name-' + idx">
             <p class="text-muted text-xs mt-1">Slug used to identify this account (alphanumeric, dashes).</p>
           </div>
           <div>
-            <label class="label">Email address</label>
-            <input type="email" class="input-sm" x-model="provider.email" placeholder="you@example.com">
+            <label class="label" :for="'email-address-' + idx">Email address</label>
+            <input type="email" class="input-sm" x-model="provider.email" placeholder="you@example.com"
+                   :id="'email-address-' + idx">
           </div>
           <div>
-            <label class="label">Display name</label>
-            <input type="text" class="input-sm" x-model="provider.display_name" placeholder="Your Name">
+            <label class="label" :for="'email-display-' + idx">Display name</label>
+            <input type="text" class="input-sm" x-model="provider.display_name" placeholder="Your Name"
+                   :id="'email-display-' + idx">
             <p class="text-muted text-xs mt-1">Sender name shown in outgoing mail (optional).</p>
           </div>
           <div>
-            <label class="label">Login username</label>
-            <input type="text" class="input-sm" x-model="provider.login" placeholder="you@example.com">
+            <label class="label" :for="'email-login-' + idx">Login username</label>
+            <input type="text" class="input-sm" x-model="provider.login" placeholder="you@example.com"
+                   :id="'email-login-' + idx">
             <p class="text-muted text-xs mt-1">Defaults to your email address if left blank.</p>
           </div>
         </div>
 
         <div class="grid gap-3 mt-3" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));">
           <div>
-            <label class="label">IMAP host</label>
-            <input type="text" class="input-sm" x-model="provider.imap_host" placeholder="imap.example.com">
+            <label class="label" :for="'email-imap-host-' + idx">IMAP host</label>
+            <input type="text" class="input-sm" x-model="provider.imap_host" placeholder="imap.example.com"
+                   :id="'email-imap-host-' + idx">
           </div>
           <div>
-            <label class="label">IMAP port</label>
-            <input type="number" class="input-sm" x-model="provider.imap_port" placeholder="993">
+            <label class="label" :for="'email-imap-port-' + idx">IMAP port</label>
+            <input type="number" class="input-sm" x-model="provider.imap_port" placeholder="993"
+                   :id="'email-imap-port-' + idx">
             <p class="text-muted text-xs mt-1">Usually 993 (TLS).</p>
           </div>
           <div>
-            <label class="label">SMTP host</label>
-            <input type="text" class="input-sm" x-model="provider.smtp_host" placeholder="smtp.example.com">
+            <label class="label" :for="'email-smtp-host-' + idx">SMTP host</label>
+            <input type="text" class="input-sm" x-model="provider.smtp_host" placeholder="smtp.example.com"
+                   :id="'email-smtp-host-' + idx">
           </div>
           <div>
-            <label class="label">SMTP port</label>
-            <input type="number" class="input-sm" x-model="provider.smtp_port" placeholder="465">
+            <label class="label" :for="'email-smtp-port-' + idx">SMTP port</label>
+            <input type="number" class="input-sm" x-model="provider.smtp_port" placeholder="465"
+                   :id="'email-smtp-port-' + idx">
             <p class="text-muted text-xs mt-1">Usually 465 (TLS) or 587 (STARTTLS).</p>
           </div>
         </div>
 
         <div class="grid gap-3 mt-3" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));">
           <div>
-            <label class="label">App password</label>
-            <input type="password" class="input-sm" x-model="provider.password" placeholder="xxxx-xxxx-xxxx-xxxx" autocomplete="new-password">
+            <label class="label" :for="'email-password-' + idx">App password</label>
+            <input type="password" class="input-sm" x-model="provider.password" placeholder="xxxx-xxxx-xxxx-xxxx" autocomplete="new-password"
+                   :id="'email-password-' + idx">
             <p class="text-muted text-xs mt-1">Use an app-specific password, not your main login password. May be a <code>${vault:NAME}</code> reference to an infra-vault secret.</p>
           </div>
         </div>
@@ -82,7 +92,7 @@
         <div class="flex items-center gap-2 mt-3 flex-wrap">
           <button class="btn btn-sm" type="button" @click="testProvider(provider)" :disabled="provider.testing">
             <span x-show="!provider.testing">Test connection</span>
-            <span x-show="provider.testing">Testing…</span>
+            <span x-show="provider.testing"><span class="spinner-sm mr-1"></span>Testing…</span>
           </button>
           <span class="text-xs" :class="provider.testOk ? 'text-accent' : 'text-warn'" x-text="provider.testResult"></span>
         </div>
@@ -96,7 +106,7 @@
   </div>
 
   <div class="flex items-center gap-2 mt-4">
-    <button class="btn-primary btn-sm" type="button" @click="saveProviders()">Save email accounts</button>
+    <button class="btn-primary btn-sm" type="button" @click="withLoading($el, () => saveProviders())">Save email accounts</button>
     <span class="text-xs text-muted" x-text="status"></span>
   </div>
   <template x-if="result">

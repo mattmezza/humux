@@ -12,21 +12,21 @@
 
     <div class="space-y-3">
       <div>
-        <label class="label">Your name</label>
+        <label class="label" for="you-owner-name">Your name</label>
         <input type="text" class="input-sm" style="max-width:300px"
-               x-model="ownerName" placeholder="Matteo">
+               x-model="ownerName" placeholder="Matteo" id="you-owner-name">
       </div>
       <div>
-        <label class="label">Timezone</label>
+        <label class="label" for="you-timezone">Timezone</label>
         <input type="text" class="input-sm" style="max-width:300px"
-               x-model="timezone" placeholder="Europe/Zurich">
+               x-model="timezone" placeholder="Europe/Zurich" id="you-timezone">
         <p class="text-muted text-xs mt-1">IANA timezone (e.g. Europe/Zurich, America/New_York, UTC).</p>
       </div>
     </div>
 
     <div class="flex justify-end mt-3">
       <button class="btn-primary btn-sm"
-              @click="
+              @click="withLoading($el, () =>
                 fetch('/config', {
                   method: 'PATCH',
                   headers: {
@@ -42,7 +42,7 @@
                   if (ok && window.updateAdminGreeting) { window.updateAdminGreeting(ownerName, ''); }
                 })
                 .catch(e => { ok = false; result = e.message; })
-              ">
+              )">
         Save
       </button>
     </div>
@@ -53,10 +53,10 @@
 
   {# Your personalia #}
   <div class="card" x-data="{ personal: '', persResult: '', persOk: false }" x-init="personal = $refs.persEditor.value">
-    <h2 class="text-base mb-1">Your personalia</h2>
+    <h2 class="text-base mb-1"><label for="you-pers-editor">Your personalia</label></h2>
     <p class="text-muted text-xs mb-3">Facts about you that the agent should know — preferences, routines, contacts, anything that helps it assist you better. Markdown format.</p>
     <textarea class="textarea" id="you-pers-editor" x-ref="persEditor"
-              x-model="personal"
+              x-model="personal" name="personalia"
               style="min-height:300px; font-size:0.8rem; line-height:1.5; tab-size:2"
               @keydown.tab.prevent="
                 const start = $el.selectionStart;
@@ -70,7 +70,7 @@
     </div>
     <div class="flex justify-end mt-3">
       <button class="btn-primary btn-sm"
-              @click="
+              @click="withLoading($el, () =>
                 fetch('/config/you-personalia', {
                   method: 'POST',
                   headers: {
@@ -85,7 +85,7 @@
                   if (persOk && window.showToast) { window.showToast('Personalia saved'); }
                 })
                 .catch(e => { persOk = false; persResult = e.message; })
-              ">
+              )">
         Save personalia
       </button>
     </div>

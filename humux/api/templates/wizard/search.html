@@ -33,8 +33,8 @@
     }">
   <h2 class="text-base mb-3">Web Search <span class="text-muted font-normal text-xs">(optional)</span></h2>
 
-  <label class="label">Provider</label>
-  <select class="input" style="max-width:320px" x-model="provider">
+  <label class="label" for="wiz-search-provider">Provider</label>
+  <select class="input" style="max-width:320px" x-model="provider" id="wiz-search-provider">
     <option value="tavily">Tavily — hosted, needs an API key</option>
     <option value="searxng">SearXNG — self-hosted, zero cost, needs a URL</option>
   </select>

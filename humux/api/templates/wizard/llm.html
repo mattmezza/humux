@@ -166,7 +166,7 @@
       <button class="btn ml-2" type="button" :disabled="fetchingModels.anthropic"
               @click="fetchModels('anthropic', document.getElementById('w-anthropic-key').value, null)">
         <span x-show="!fetchingModels.anthropic">Fetch models</span>
-        <span x-show="fetchingModels.anthropic">Fetching...</span>
+        <span x-show="fetchingModels.anthropic"><span class="spinner-sm mr-1"></span>Fetching...</span>
       </button>
       <button class="btn ml-2" type="button" @click="copyModels('anthropic')">Copy list</button>
     </div>
@@ -217,7 +217,7 @@
       <button class="btn ml-2" type="button" :disabled="fetchingModels.openai"
               @click="fetchModels('openai', document.getElementById('w-openai-key').value, document.getElementById('w-openai-base-url').value)">
         <span x-show="!fetchingModels.openai">Fetch models</span>
-        <span x-show="fetchingModels.openai">Fetching...</span>
+        <span x-show="fetchingModels.openai"><span class="spinner-sm mr-1"></span>Fetching...</span>
       </button>
       <button class="btn ml-2" type="button" @click="copyModels('openai')">Copy list</button>
     </div>
@@ -268,7 +268,7 @@
       <button class="btn ml-2" type="button" :disabled="fetchingModels.google"
               @click="fetchModels('google', document.getElementById('w-google-key').value, document.getElementById('w-google-base-url').value || 'https://generativelanguage.googleapis.com/v1beta/openai')">
         <span x-show="!fetchingModels.google">Fetch models</span>
-        <span x-show="fetchingModels.google">Fetching...</span>
+        <span x-show="fetchingModels.google"><span class="spinner-sm mr-1"></span>Fetching...</span>
       </button>
       <button class="btn ml-2" type="button" @click="copyModels('google')">Copy list</button>
     </div>
@@ -319,7 +319,7 @@
       <button class="btn ml-2" type="button" :disabled="fetchingModels.grok"
               @click="fetchModels('grok', document.getElementById('w-grok-key').value, document.getElementById('w-grok-base-url').value || 'https://api.x.ai/v1')">
         <span x-show="!fetchingModels.grok">Fetch models</span>
-        <span x-show="fetchingModels.grok">Fetching...</span>
+        <span x-show="fetchingModels.grok"><span class="spinner-sm mr-1"></span>Fetching...</span>
       </button>
       <button class="btn ml-2" type="button" @click="copyModels('grok')">Copy list</button>
     </div>
@@ -370,7 +370,7 @@
       <button class="btn ml-2" type="button" :disabled="fetchingModels.deepseek"
               @click="fetchModels('deepseek', document.getElementById('w-deepseek-key').value, document.getElementById('w-deepseek-base-url').value || 'https://api.deepseek.com')">
         <span x-show="!fetchingModels.deepseek">Fetch models</span>
-        <span x-show="fetchingModels.deepseek">Fetching...</span>
+        <span x-show="fetchingModels.deepseek"><span class="spinner-sm mr-1"></span>Fetching...</span>
       </button>
       <button class="btn ml-2" type="button" @click="copyModels('deepseek')">Copy list</button>
     </div>
@@ -422,7 +422,7 @@
       <button class="btn ml-2" type="button" :disabled="fetchingModels.openrouter"
               @click="fetchModels('openrouter', document.getElementById('w-openrouter-key').value, document.getElementById('w-openrouter-base-url').value || 'https://openrouter.ai/api/v1')">
         <span x-show="!fetchingModels.openrouter">Fetch models</span>
-        <span x-show="fetchingModels.openrouter">Fetching...</span>
+        <span x-show="fetchingModels.openrouter"><span class="spinner-sm mr-1"></span>Fetching...</span>
       </button>
       <button class="btn ml-2" type="button" @click="copyModels('openrouter')">Copy list</button>
     </div>

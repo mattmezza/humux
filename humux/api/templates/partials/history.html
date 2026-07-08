@@ -15,8 +15,8 @@
     <div class="flex items-center justify-between gap-3 mb-1">
       <h2 class="text-base">Context compaction</h2>
       <div class="flex items-center gap-2">
-        <label class="label mb-0">Enabled</label>
-        <input type="checkbox" x-model="compactionEnabled"
+        <label class="label mb-0" for="hist-compaction-enabled">Enabled</label>
+        <input type="checkbox" x-model="compactionEnabled" id="hist-compaction-enabled"
                :checked="compactionEnabled === 'true' || compactionEnabled === true">
       </div>
     </div>
@@ -29,15 +29,15 @@
 
     <div class="space-y-3" :class="(compactionEnabled === 'true' || compactionEnabled === true) ? '' : 'opacity-50'">
       <div>
-        <label class="label">Trigger threshold</label>
+        <span class="label" id="hist-threshold-label">Trigger threshold</span>
         <div class="flex gap-4 mt-1">
           <label class="flex items-center gap-2 cursor-pointer">
-            <input type="radio" name="threshold_type" value="percent"
+            <input type="radio" name="threshold_type" value="percent" id="hist-threshold-percent"
                    x-model="thresholdType" class="accent-primary">
             <span class="text-sm">% of context window</span>
           </label>
           <label class="flex items-center gap-2 cursor-pointer">
-            <input type="radio" name="threshold_type" value="tokens"
+            <input type="radio" name="threshold_type" value="tokens" id="hist-threshold-absolute"
                    x-model="thresholdType" class="accent-primary">
             <span class="text-sm">Absolute tokens</span>
           </label>
@@ -46,29 +46,29 @@
 
       <div x-show="thresholdType === 'percent'" x-transition class="flex gap-4 flex-wrap">
         <div>
-          <label class="label">Percent</label>
-          <input type="number" class="input-sm" style="max-width:120px"
+          <label class="label" for="hist-threshold-pct">Percent</label>
+          <input type="number" class="input-sm" style="max-width:120px" id="hist-threshold-pct"
                  x-model="thresholdPercent" min="10" max="99">
           <p class="text-muted text-xs mt-1">Compact at this % of the window.</p>
         </div>
         <div>
-          <label class="label">Context window (fallback)</label>
-          <input type="number" class="input-sm" style="max-width:160px"
+          <label class="label" for="hist-context-window">Context window (fallback)</label>
+          <input type="number" class="input-sm" style="max-width:160px" id="hist-context-window"
                  x-model="contextWindow" min="8000" step="1000">
           <p class="text-muted text-xs mt-1">Used when the model's window isn't known (e.g. 200000, 1000000).</p>
         </div>
       </div>
 
       <div x-show="thresholdType === 'tokens'" x-transition>
-        <label class="label">Tokens</label>
-        <input type="number" class="input-sm" style="max-width:160px"
+        <label class="label" for="hist-threshold-tokens">Tokens</label>
+        <input type="number" class="input-sm" style="max-width:160px" id="hist-threshold-tokens"
                x-model="thresholdTokens" min="8000" step="1000">
         <p class="text-muted text-xs mt-1">Compact once the context reaches this many tokens (e.g. 150000).</p>
       </div>
 
       <div>
-        <label class="label">Keep recent turns</label>
-        <input type="number" class="input-sm" style="max-width:120px"
+        <label class="label" for="hist-keep-turns">Keep recent turns</label>
+        <input type="number" class="input-sm" style="max-width:120px" id="hist-keep-turns"
                x-model="keepRecentTurns" min="1" max="20">
         <p class="text-muted text-xs mt-1">Most-recent user turns kept verbatim; everything older is summarized.</p>
       </div>
@@ -76,7 +76,7 @@
 
     <div class="flex items-center gap-2 mt-4">
       <button class="btn-primary btn-sm"
-              @click="
+              @click="withLoading($el, () => {
                 const vals = {
                   'compaction.enabled': String(compactionEnabled === true || compactionEnabled === 'true'),
                   'compaction.threshold_type': thresholdType,
@@ -85,7 +85,7 @@
                   'compaction.context_window': String(contextWindow),
                   'compaction.keep_recent_turns': String(keepRecentTurns)
                 };
-                fetch('/config', {
+                return fetch('/config', {
                   method: 'PATCH',
                   headers: {
                     'Content-Type': 'application/json',
@@ -99,7 +99,7 @@
                   if (cResultOk && window.showToast) { window.showToast('Compaction settings saved'); }
                 })
                 .catch(e => { cResultOk = false; cResult = e.message; })
-              ">
+              })">
         Save
       </button>
       <span class="text-muted text-xs">Compaction model is set in the LLM tab.</span>

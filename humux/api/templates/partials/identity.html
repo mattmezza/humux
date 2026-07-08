@@ -19,14 +19,14 @@
 
   <div class="space-y-3">
     <div class="flex items-center gap-2">
-      <label class="label mb-0">Enable TTS replies</label>
-      <input type="checkbox" x-model="ttsEnabled"
+      <label class="label mb-0" for="voice-tts-enabled">Enable TTS replies</label>
+      <input type="checkbox" x-model="ttsEnabled" id="voice-tts-enabled"
              :checked="ttsEnabled === 'true' || ttsEnabled === true">
     </div>
 
     <div>
-      <label class="label">STT model</label>
-      <select class="input-sm" style="max-width:240px" x-model="sttModel">
+      <label class="label" for="voice-stt-model">STT model</label>
+      <select class="input-sm" style="max-width:240px" x-model="sttModel" id="voice-stt-model">
         <option value="base">Whisper Base</option>
         <option value="small">Whisper Small</option>
         <option value="medium">Whisper Medium</option>
@@ -43,8 +43,8 @@
     </div>
 
     <div>
-      <label class="label">TTS backend</label>
-      <select class="input-sm" style="max-width:240px" x-model="backend">
+      <label class="label" for="voice-tts-backend">TTS backend</label>
+      <select class="input-sm" style="max-width:240px" x-model="backend" id="voice-tts-backend">
         <option value="edge-tts">Edge TTS (cloud)</option>
         <option value="kokoro">Kokoro 82M (offline, multilingual)</option>
       </select>
@@ -61,15 +61,15 @@
 
     {# Edge voice #}
     <div x-show="backend === 'edge-tts'">
-      <label class="label">TTS voice</label>
-      <input type="text" class="input-sm" style="max-width:260px" x-model="ttsVoice" placeholder="en-US-AvaNeural">
+      <label class="label" for="voice-tts-voice">TTS voice</label>
+      <input type="text" class="input-sm" style="max-width:260px" x-model="ttsVoice" placeholder="en-US-AvaNeural" id="voice-tts-voice">
       <p class="text-muted text-xs mt-1">Use Edge TTS voice names. Example: en-US-AvaNeural.</p>
     </div>
 
     {# Kokoro default voice #}
     <div x-show="backend === 'kokoro'">
-      <label class="label">Default Kokoro voice</label>
-      <select class="input-sm" style="max-width:260px" x-model="kokoroVoice">
+      <label class="label" for="voice-kokoro-voice">Default Kokoro voice</label>
+      <select class="input-sm" style="max-width:260px" x-model="kokoroVoice" id="voice-kokoro-voice">
         {% for v in kokoro_voices %}
         <option value="{{ v }}">{{ v }}</option>
         {% endfor %}
@@ -79,12 +79,12 @@
 
     {# Preview — type text, pick a language (Kokoro), hear the selected voice #}
     <div>
-      <label class="label">Preview</label>
+      <label class="label" for="voice-preview-text">Preview</label>
       <div class="flex items-center gap-2 flex-wrap">
         <input type="text" class="input-sm" style="max-width:300px" x-model="previewText"
-               placeholder="Type a few words to hear… (blank = sample)">
+               placeholder="Type a few words to hear… (blank = sample)" id="voice-preview-text">
         <select x-show="backend === 'kokoro'" class="input-sm" style="max-width:180px"
-                x-model="previewLang" title="Pronunciation language">
+                x-model="previewLang" id="voice-preview-lang" title="Pronunciation language" aria-label="Pronunciation language">
           <option value="">Auto (match voice)</option>
           {% for code, label in kokoro_languages %}
           <option value="{{ code }}">{{ label }}</option>
@@ -104,7 +104,7 @@
 
   <div class="flex justify-end mt-3">
     <button class="btn-primary btn-sm"
-            @click="
+            @click="withLoading($el, () => {
               const vals = {
                 'voice.tts_enabled': String(ttsEnabled === true || ttsEnabled === 'true'),
                 'voice.stt_model': sttModel,
@@ -114,7 +114,7 @@
                 'voice.stt_api_base_url': sttApiBaseUrl,
                 'voice.kokoro.default_voice': kokoroVoice
               };
-              fetch('/config', {
+              return fetch('/config', {
                 method: 'PATCH',
                 headers: {
                   'Content-Type': 'application/json',
@@ -129,7 +129,7 @@
                 if (voiceOk && d.restart_required && window.notifyRestartRequired) { notifyRestartRequired(); }
               })
               .catch(e => { voiceOk = false; voiceResult = e.message; })
-            ">
+            })">
       Save voice
     </button>
   </div>

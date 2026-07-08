@@ -53,8 +53,8 @@
       <input type="checkbox" x-model="autoRefresh"
              class="rounded border-border bg-surface text-accent focus:ring-accent">
       Auto-refresh every
-      <input type="number" min="1" x-model.number="intervalSec"
-             class="w-14 rounded border-border bg-surface text-xs px-1 py-0.5">
+      <input type="number" min="1" x-model.number="intervalSec" id="logs-refresh-interval"
+             class="w-14 rounded border-border bg-surface text-xs px-1 py-0.5" aria-label="Refresh interval seconds">
       s
     </label>
   </form>

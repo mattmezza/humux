@@ -202,9 +202,10 @@ chat proved out-of-band (the message landed in a conversation whose history the 
 doesn't share). When something genuinely needs the owner, the agent uses
 `send_message` — a deliberate act, in a real conversation.
 
-Five more knobs exist as raw frontmatter only (no editor field; the editor preserves
-them across saves) — built for multi-agent workflows where several Apps coordinate on
-the same repos:
+Five more knobs — in the agent editor as the **Wake on events** matrix plus the rate
+limit / digest / reaction controls next to the webhook secret (raw frontmatter shown
+for reference) — built for multi-agent workflows where several Apps coordinate on the
+same repos:
 
 - **Event map** (`gh: {..., webhook_events: {issues: [opened, reopened, closed],
   pull_request: [opened, synchronize], pull_request_review: [submitted],
