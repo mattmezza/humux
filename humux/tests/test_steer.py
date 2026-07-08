@@ -225,3 +225,63 @@ async def test_idle_message_is_not_a_steer(agent) -> None:
     resp = await agent.process("do a thing", "telegram", "u", chat_id="9")
     assert resp.text == "normal" and called["msg"] == "do a thing"
     assert not agent._steer_map().get(key)  # nothing buffered
+
+
+@pytest.mark.asyncio
+async def test_webhook_event_steers_running_turn_when_steerable(agent) -> None:
+    # #266: a GitHub event landing on a thread whose turn is still running is
+    # injected into THAT turn (steerable=True), not queued as a duplicate.
+    agent.llm = _RecordingLLM(rounds=3)
+    agent.channels = {}
+
+    async def fake_tool(call, channel, user_id, request_state):
+        await asyncio.sleep(0.01)
+        return {"ok": True}
+
+    agent._execute_tool = fake_tool
+    chat = "github:dev:acme/widgets#7"
+    key = ("system", "github", chat)
+    turn = asyncio.create_task(
+        agent.process("[GitHub] issue opened: build it", "system", "github", chat_id=chat)
+    )
+    await _wait_active(agent, key, turn)
+
+    steer = await agent.process(
+        "[GitHub] new comment: also cover the empty case",
+        "system",
+        "github",
+        chat_id=chat,
+        steerable=True,
+    )
+    assert steer.text == ""  # consumed by the running turn
+
+    resp = await asyncio.wait_for(turn, timeout=3)
+    assert resp.text == "done"
+    flat = "".join(str(m.get("content")) for seen in agent.llm.seen for m in seen)
+    assert "<steering_message>" in flat
+    assert "also cover the empty case" in flat
+
+
+@pytest.mark.asyncio
+async def test_system_without_steerable_queues_not_steers(agent) -> None:
+    # The scheduler and other system callers keep the old behaviour: a second
+    # message for a busy chat waits for the lock and runs as its own turn.
+    agent.llm = _RecordingLLM(rounds=2)
+    agent.channels = {}
+
+    async def fake_tool(call, channel, user_id, request_state):
+        await asyncio.sleep(0.01)
+        return {"ok": True}
+
+    agent._execute_tool = fake_tool
+    key = ("system", "scheduler", "job:1")
+    turn = asyncio.create_task(agent.process("run job", "system", "scheduler", chat_id="job:1"))
+    await _wait_active(agent, key, turn)
+
+    follow = asyncio.create_task(
+        agent.process("second event", "system", "scheduler", chat_id="job:1")
+    )
+    assert (await asyncio.wait_for(turn, timeout=3)).text == "done"
+    assert (await asyncio.wait_for(follow, timeout=3)).text == "done"  # own turn
+    flat = "".join(str(m.get("content")) for seen in agent.llm.seen for m in seen)
+    assert "<steering_message>" not in flat

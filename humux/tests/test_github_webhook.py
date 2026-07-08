@@ -404,6 +404,7 @@ def test_webhook_runs_turn_in_background(monkeypatch) -> None:
     assert kwargs["agent_name"] == "dev"
     assert kwargs["chat_id"] == "github:dev:acme/widgets#7"  # agent-scoped (#244)
     assert kwargs["channel"] == "system"
+    assert kwargs["steerable"] is True  # busy-thread events steer the running turn (#266)
 
 
 PR_PAYLOAD = {
