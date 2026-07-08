@@ -19,7 +19,7 @@
           </div>
           <div class="flex items-center gap-2 shrink-0">
             <select class="select input-sm" style="max-width:150px" @change="applyPreset(provider, $event.target.value); $event.target.value=''"
-                    :aria-label="'Preset for account ' + (idx + 1)">
+                    :id="'email-preset-' + idx" :aria-label="'Preset for account ' + (idx + 1)">
               <option value="">Preset…</option>
               <option value="purelymail">Purelymail</option>
               <option value="gmail">Gmail</option>
