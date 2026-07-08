@@ -172,54 +172,40 @@ sidecars: $(SIDECAR_NET) sidecar-embeddings sidecar-browser sidecar-whisper side
 $(SIDECAR_NET):
 	docker network create $(SIDECAR_NET) 2>/dev/null || true
 
+define _SIDECAR_RUN
+docker rm -f $(1) 2>/dev/null; docker run -d --name $(1) \
+	--network $(SIDECAR_NET) $(2) --restart unless-stopped $(3)
+endef
+
 sidecar-embeddings: $(SIDECAR_NET)
-	docker run -d --name humux-embeddings \
-		--network $(SIDECAR_NET) \
-		-p $(EMBED_PORT):7997 \
-		--restart unless-stopped \
-		michaelf34/infinity:latest \
-		v2 --model-id BAAI/bge-small-en-v1.5 --port 7997
+	$(call _SIDECAR_RUN,humux-embeddings,\
+		-p $(EMBED_PORT):7997,\
+		michaelf34/infinity:latest v2 --model-id BAAI/bge-small-en-v1.5 --port 7997)
 	@echo "embeddings → http://localhost:$(EMBED_PORT)/v1"
 
 sidecar-browser: $(SIDECAR_NET)
-	docker run -d --name humux-browser \
-		--network $(SIDECAR_NET) \
-		-p $(BROWSER_PORT):3000 \
-		-e MAX_CONCURRENT_SESSIONS=2 \
-		--restart unless-stopped \
-		browserless/chrome:latest
+	$(call _SIDECAR_RUN,humux-browser,\
+		-p $(BROWSER_PORT):3000 -e MAX_CONCURRENT_SESSIONS=2,\
+		browserless/chrome:latest)
 	@echo "browser → ws://localhost:$(BROWSER_PORT)"
 
 sidecar-whisper: $(SIDECAR_NET)
-	@if docker info 2>/dev/null | grep -q 'Runtimes.*nvidia'; then \
-		gpu='--gpus all'; \
-	else \
-		gpu=''; \
-	fi; \
-	docker run -d --name humux-whisper \
-		--network $(SIDECAR_NET) \
-		-p $(WHISPER_PORT):8000 \
-		$$gpu \
-		--restart unless-stopped \
-		fedirz/faster-whisper-server:latest-cpu
+	$(eval _GPU := $(shell docker info 2>/dev/null | grep -q 'Runtimes.*nvidia' && echo '--gpus all' || echo ''))
+	$(call _SIDECAR_RUN,humux-whisper,\
+		-p $(WHISPER_PORT):8000 $(_GPU),\
+		fedirz/faster-whisper-server:latest-cpu)
 	@echo "whisper → http://localhost:$(WHISPER_PORT)/v1"
 
 sidecar-kokoro: $(SIDECAR_NET)
-	docker run -d --name humux-kokoro \
-		--network $(SIDECAR_NET) \
-		-p $(KOKORO_PORT):8880 \
-		--restart unless-stopped \
-		ghcr.io/remsky/kokoro-fastapi-cpu:latest
+	$(call _SIDECAR_RUN,humux-kokoro,\
+		-p $(KOKORO_PORT):8880,\
+		ghcr.io/remsky/kokoro-fastapi-cpu:latest)
 	@echo "kokoro → http://localhost:$(KOKORO_PORT)/v1"
 
 sidecar-searxng: $(SIDECAR_NET)
-	docker run -d --name humux-searxng \
-		--network $(SIDECAR_NET) \
-		-p $(SEARXNG_PORT):8080 \
-		-v $(PWD)/searxng:/etc/searxng:rw \
-		-e SEARXNG_BASE_URL=http://localhost:$(SEARXNG_PORT)/ \
-		--restart unless-stopped \
-		searxng/searxng:latest
+	$(call _SIDECAR_RUN,humux-searxng,\
+		-p $(SEARXNG_PORT):8080 -v $(PWD)/searxng:/etc/searxng:rw -e SEARXNG_BASE_URL=http://localhost:$(SEARXNG_PORT)/,\
+		searxng/searxng:latest)
 	@echo "searxng → http://localhost:$(SEARXNG_PORT)"
 
 sidecar-stop:
