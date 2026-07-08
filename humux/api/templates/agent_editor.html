@@ -31,27 +31,27 @@
     <div x-show="tab === 'identity'" class="space-y-3">
       <div class="card space-y-3">
         <div>
-          <label class="label">Name (slug)</label>
-          <input class="input-sm" x-model="name" placeholder="fitness-coach">
+          <label class="label" for="agent-name">Name (slug)</label>
+          <input class="input-sm" x-model="name" placeholder="fitness-coach" id="agent-name">
           {% if not is_new %}
           <p class="hint" x-show="name.trim() !== originalName">Renaming moves this agent's chat bindings, private memories and scheduled jobs to the new slug. An agent with its own bot needs an agent restart afterwards.</p>
           {% endif %}
         </div>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label class="label">Role <span class="text-muted">(label)</span></label>
-            <input class="input-sm" x-model="role" placeholder="Fitness coach">
+            <label class="label" for="agent-role">Role <span class="text-muted">(label)</span></label>
+            <input class="input-sm" x-model="role" placeholder="Fitness coach" id="agent-role">
           </div>
           <div>
-            <label class="label">Agent name <span class="text-muted">(blank = default)</span></label>
-            <input class="input-sm" x-model="agent_name" placeholder="Forge">
+            <label class="label" for="agent-agent-name">Agent name <span class="text-muted">(blank = default)</span></label>
+            <input class="input-sm" x-model="agent_name" placeholder="Forge" id="agent-agent-name">
           </div>
         </div>
       </div>
 
       <div class="card">
-        <label class="label">Character &amp; tone <span class="text-muted">— who the agent is + tone & behaviour</span></label>
-        <textarea class="textarea" x-model="character" style="min-height:260px; font-size:0.8rem; line-height:1.5"
+        <label class="label" for="agent-character">Character &amp; tone <span class="text-muted">— who the agent is + tone & behaviour</span></label>
+        <textarea class="textarea" x-model="character" id="agent-character" style="min-height:260px; font-size:0.8rem; line-height:1.5"
                   placeholder="You are a strength &amp; conditioning coach…&#10;&#10;## Tone&#10;- Direct and motivating…"></textarea>
         <div class="hint flex justify-between"><span></span>
           <span class="text-[10px] text-muted" x-text="'~' + window.estimateTokens(character) + ' tokens'"></span>
@@ -62,8 +62,8 @@
          TTS backend are offered (the backend itself lives in the Voice tab). #}
       <div class="card">
         <h3 class="text-xs text-muted uppercase tracking-wider mb-2">This agent's voice</h3>
-        <label class="label">Voice <span class="text-muted">(TTS — blank = the global default in the Voice tab)</span></label>
-        <input class="input-sm" x-model="voice" list="voice-options"
+        <label class="label" for="agent-voice">Voice <span class="text-muted">(TTS — blank = the global default in the Voice tab)</span></label>
+        <input class="input-sm" x-model="voice" list="voice-options" id="agent-voice"
                placeholder="{% if backend == 'kokoro' %}af_bella{% else %}en-US-AvaNeural{% endif %}">
         <datalist id="voice-options">
           {% if backend == 'kokoro' %}
@@ -81,9 +81,9 @@
         </datalist>
         <div class="flex items-center gap-2 mt-2 flex-wrap">
           <input type="text" class="input-sm" style="max-width:240px" x-model="previewText"
-                 placeholder="Preview text… (blank = sample)">
+                 placeholder="Preview text… (blank = sample)" id="agent-preview-text" aria-label="Preview text">
           <select x-show="/^[a-z][fm]_/.test(voice)" class="input-sm" style="max-width:170px"
-                  x-model="previewLang" title="Pronunciation language">
+                  x-model="previewLang" title="Pronunciation language" id="agent-preview-lang" aria-label="Pronunciation language">
             <option value="">Auto (match voice)</option>
             {% for code, label in kokoro_languages %}
             <option value="{{ code }}">{{ label }}</option>
@@ -112,7 +112,7 @@
           configured providers.
         </p>
         <label class="flex items-center gap-2 text-sm">
-          <input type="checkbox" x-model="llmOverride">
+          <input type="checkbox" x-model="llmOverride" id="agent-llm-override">
           Custom LLM settings for this agent
         </label>
 
@@ -123,8 +123,8 @@
 
         <div x-show="llmOverride" class="space-y-3">
           <div>
-            <label class="label">Provider</label>
-            <select class="select input-sm" style="max-width:300px" x-model="llmProvider">
+            <label class="label" for="agent-llm-provider">Provider</label>
+            <select class="select input-sm" style="max-width:300px" x-model="llmProvider" id="agent-llm-provider">
               <option value="" x-text="'Global — ' + llmDefaults.provider"></option>
               <template x-for="p in llmProviders" :key="'agent-llm-' + p.value">
                 <option :value="p.value" x-text="p.label"></option>
@@ -133,9 +133,9 @@
             <p class="text-xs text-muted mt-1">The provider must have its API key configured in Dashboard → LLM → Providers.</p>
           </div>
           <div>
-            <label class="label">Model</label>
+            <label class="label" for="agent-llm-model">Model</label>
             <input type="text" class="input-sm" style="max-width:300px" x-model="llmModel"
-                   list="dl-agent-llm-model" :placeholder="'Global — ' + (llmDefaults.model || 'unset')">
+                   list="dl-agent-llm-model" id="agent-llm-model" :placeholder="'Global — ' + (llmDefaults.model || 'unset')">
             <datalist id="dl-agent-llm-model">
               <template x-for="m in llmModelOptions()" :key="'agent-llm-m-' + m">
                 <option :value="m"></option>
@@ -144,8 +144,8 @@
             <p class="text-xs text-muted mt-1">Type any model id, or pick a suggestion for the selected provider. Blank = the global model.</p>
           </div>
           <div>
-            <label class="label">Thinking level</label>
-            <select class="select input-sm" style="max-width:300px" x-model="llmThinking">
+            <label class="label" for="agent-llm-thinking">Thinking level</label>
+            <select class="select input-sm" style="max-width:300px" x-model="llmThinking" id="agent-llm-thinking">
               <option value="inherit" x-text="'Global — ' + (llmDefaults.thinking_level || 'off')"></option>
               <option value="off">Off</option>
               <option value="low">Low</option>
@@ -159,14 +159,14 @@
           </div>
           <div class="flex flex-wrap gap-4">
             <div>
-              <label class="label">Max output tokens</label>
+              <label class="label" for="agent-llm-max-tokens">Max output tokens</label>
               <input type="number" min="256" class="input-sm" style="max-width:160px"
-                     x-model="llmMaxTokens" :placeholder="'Global — ' + llmDefaults.max_tokens">
+                     x-model="llmMaxTokens" id="agent-llm-max-tokens" :placeholder="'Global — ' + llmDefaults.max_tokens">
             </div>
             <div>
-              <label class="label">Temperature</label>
+              <label class="label" for="agent-llm-temperature">Temperature</label>
               <input type="number" min="0" max="2" step="0.05" class="input-sm" style="max-width:160px"
-                     x-model="llmTemperature" :placeholder="'Global — ' + llmDefaults.temperature">
+                     x-model="llmTemperature" id="agent-llm-temperature" :placeholder="'Global — ' + llmDefaults.temperature">
             </div>
           </div>
           <p class="text-xs text-muted border-t border-border pt-2">
@@ -192,34 +192,34 @@
           </ul>
         </details>
         <div>
-          <label class="label">Bot token <span class="text-muted">(from @BotFather)</span></label>
-          <input class="input-sm" type="password" x-model="bot_token" autocomplete="off" placeholder="123456:ABC-DEF…">
+          <label class="label" for="agent-bot-token">Bot token <span class="text-muted">(from @BotFather)</span></label>
+          <input class="input-sm" type="password" x-model="bot_token" autocomplete="off" placeholder="123456:ABC-DEF…" id="agent-bot-token">
         </div>
         <div>
-          <label class="label">Allowed user IDs <span class="text-muted">(comma-separated; blank = anyone)</span></label>
-          <input class="input-sm" x-model="allowedUserIds" placeholder="111111111, 222222222">
+          <label class="label" for="agent-allowed-users">Allowed user IDs <span class="text-muted">(comma-separated; blank = anyone)</span></label>
+          <input class="input-sm" x-model="allowedUserIds" placeholder="111111111, 222222222" id="agent-allowed-users">
           <p class="text-xs text-muted mt-1">Only these Telegram users can make this bot reply. Blank = no restriction — set your own ID to lock the bot to you.</p>
         </div>
         <div class="pt-1 border-t border-border">
           <label class="flex items-center gap-2 text-sm mt-2">
-            <input type="checkbox" x-model="groupChat.enabled">
+            <input type="checkbox" x-model="groupChat.enabled" id="agent-group-enabled">
             Group multi-agent rooms
           </label>
           <p class="text-xs text-muted mt-1">Let this bot share a Telegram group with other agent-bots without them talking over each other. Requires the bot's privacy mode <strong>off</strong> (@BotFather → <code>/setprivacy</code>) so it can see the whole conversation.</p>
           <div class="ml-5 mt-1 space-y-1" x-show="groupChat.enabled">
             <label class="flex items-center gap-2 text-sm">
-              <input type="checkbox" x-model="groupChat.reply_when_addressed_only">
+              <input type="checkbox" x-model="groupChat.reply_when_addressed_only" id="agent-group-addressed">
               Reply only when addressed (@mention or reply-to)
             </label>
             <label class="flex items-center gap-2 text-sm">
-              <input type="checkbox" x-model="groupChat.ignore_bots">
+              <input type="checkbox" x-model="groupChat.ignore_bots" id="agent-group-ignore-bots">
               Never reply to other bots (loop guard)
             </label>
           </div>
         </div>
         <div class="pt-1 border-t border-border">
-          <label class="label">"Thinking" feedback</label>
-          <select class="select input-sm" x-model="cotFeedback">
+          <label class="label" for="agent-cot-feedback">"Thinking" feedback</label>
+          <select class="select input-sm" x-model="cotFeedback" id="agent-cot-feedback">
             <option value="placeholder">Message — post "🤔 Thinking…", delete when done</option>
             <option value="reaction">Reaction — set 👀 on your message, clear when done</option>
           </select>
@@ -239,14 +239,16 @@
                 <strong x-show="c.title" x-text="c.title"></strong>
                 <code x-text="c.chat_id"></code>
               </span>
-              <select class="select input-sm" style="max-width:150px" x-model="chatMode[c.chat_id]">
+              <select class="select input-sm" style="max-width:150px" x-model="chatMode[c.chat_id]"
+                      :id="'agent-chat-mode-' + c.chat_id" :aria-label="'Trigger mode for ' + (c.title || c.chat_id)">
                 <option value="everyone">Everyone</option>
                 <option value="nobody">Nobody</option>
                 <option value="users">Specific users</option>
               </select>
             </div>
             <div x-show="chatMode[c.chat_id] === 'users'" class="mt-1">
-              <input class="input-sm" x-model="chatUsers[c.chat_id]" placeholder="Telegram user IDs — 111111111, 222222222">
+              <input class="input-sm" x-model="chatUsers[c.chat_id]" placeholder="Telegram user IDs — 111111111, 222222222"
+                     :id="'agent-chat-users-' + c.chat_id" aria-label="Allowed user IDs">
               <p class="text-xs text-muted mt-1" x-text="c.kind === 'group' ? 'Only these users can make the agent reply in this group.' : 'Only these users may DM the agent.'"></p>
             </div>
           </div>
@@ -273,7 +275,8 @@
               <div class="flex items-center justify-between gap-2 mb-1">
                 <span class="text-xs break-all" x-text="acc"></span>
                 <div class="flex items-center gap-2 shrink-0">
-                  <select class="select input-sm" style="max-width:128px" x-model="emailAccess[acc]">
+                  <select class="select input-sm" style="max-width:128px" x-model="emailAccess[acc]"
+                          :id="'agent-email-access-' + acc" :aria-label="'Email access for ' + acc">
                     <option value="none">None</option>
                     <option value="read">Read</option>
                     <option value="read_write">Read &amp; write</option>
@@ -297,7 +300,8 @@
             <template x-for="acc in availableCalendar" :key="acc">
               <div class="flex items-center justify-between gap-2 mb-1">
                 <span class="text-xs break-all" x-text="acc"></span>
-                <select class="select input-sm" style="max-width:128px" x-model="calAccess[acc]">
+                <select class="select input-sm" style="max-width:128px" x-model="calAccess[acc]"
+                        :id="'agent-cal-access-' + acc" :aria-label="'Calendar access for ' + acc">
                   <option value="none">None</option>
                   <option value="read">Read</option>
                   <option value="read_write">Read &amp; write</option>
@@ -316,7 +320,8 @@
             <template x-for="acc in availableContacts" :key="acc">
               <div class="flex items-center justify-between gap-2 mb-1">
                 <span class="text-xs break-all" x-text="acc"></span>
-                <select class="select input-sm" style="max-width:128px" x-model="contactsAccess[acc]">
+                <select class="select input-sm" style="max-width:128px" x-model="contactsAccess[acc]"
+                        :id="'agent-contacts-access-' + acc" :aria-label="'Contacts access for ' + acc">
                   <option value="none">None</option>
                   <option value="read">Read</option>
                   <option value="read_write">Read &amp; write</option>
@@ -383,8 +388,9 @@
         {% for spec in tool_specs %}
         <div class="mb-3 pb-3 border-b border-border last:border-0 last:mb-0 last:pb-0">
           <div class="flex items-center justify-between gap-2">
-            <label class="label mb-0">{{ spec.label }}</label>
-            <select class="select input-sm" style="max-width:160px" x-model="modes['{{ spec.key }}']">
+            <label class="label mb-0" for="agent-tool-mode-{{ spec.key }}">{{ spec.label }}</label>
+            <select class="select input-sm" style="max-width:160px" x-model="modes['{{ spec.key }}']"
+                    id="agent-tool-mode-{{ spec.key }}">
               <option value="inherit">Inherit</option>
               <option value="on">Enabled</option>
               <option value="off">Disabled</option>
@@ -399,8 +405,8 @@
               <div class="space-y-2">
                 {# Explicit identity: PAT vs GitHub App (#111). #}
                 <div>
-                  <label class="label">GitHub identity</label>
-                  <select class="select input-sm" x-model="ghAuth">
+                  <label class="label" for="agent-gh-auth">GitHub identity</label>
+                  <select class="select input-sm" x-model="ghAuth" id="agent-gh-auth">
                     <option value="pat">Personal Access Token</option>
                     <option value="app">GitHub App</option>
                   </select>
@@ -410,8 +416,8 @@
                 <template x-if="ghAuth === 'pat'">
                   <div class="space-y-2">
                     <div>
-                      <label class="label">Token source</label>
-                      <select class="select input-sm" x-model="ghTokenSecret">
+                      <label class="label" for="agent-gh-token-source">Token source</label>
+                      <select class="select input-sm" x-model="ghTokenSecret" id="agent-gh-token-source">
                         <option value="">Type a new token…</option>
                         {# Options rendered server-side so they exist before Alpine's
                            x-model binds — an x-for select drops its saved value at init
@@ -423,7 +429,8 @@
                     </div>
                     <div x-show="!ghTokenSecret">
                       <input type="password" class="input-sm" autocomplete="new-password"
-                             x-model="ghToken" placeholder="ghp_… (leave blank to keep current)">
+                             x-model="ghToken" placeholder="ghp_… (leave blank to keep current)"
+                             id="agent-gh-token" aria-label="GitHub personal access token">
                       <p class="text-xs text-muted mt-1">
                         <span x-show="ghTokenSet">🔒 A token is stored for this agent — type a new one to replace it.</span>
                         <span x-show="!ghTokenSet">Stored encrypted in the infra vault; injected as this agent's <code>GH_TOKEN</code>.</span>
@@ -441,19 +448,19 @@
                   <div class="space-y-2">
                     <div class="grid gap-2" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr))">
                       <div>
-                        <label class="label">App ID</label>
+                        <label class="label" for="agent-gh-app-id">App ID</label>
                         <input type="text" inputmode="numeric" class="input-sm"
-                               x-model="ghAppId" placeholder="123456">
+                               x-model="ghAppId" placeholder="123456" id="agent-gh-app-id">
                       </div>
                       <div>
-                        <label class="label">Installation ID</label>
+                        <label class="label" for="agent-gh-install-id">Installation ID</label>
                         <input type="text" inputmode="numeric" class="input-sm"
-                               x-model="ghInstallationId" placeholder="7890123">
+                               x-model="ghInstallationId" placeholder="7890123" id="agent-gh-install-id">
                       </div>
                     </div>
                     <div>
-                      <label class="label">Private key</label>
-                      <select class="select input-sm" x-model="ghKeySecret">
+                      <label class="label" for="agent-gh-key-secret">Private key</label>
+                      <select class="select input-sm" x-model="ghKeySecret" id="agent-gh-key-secret">
                         <option value="">— use the system-wide App —</option>
                         {# Options rendered server-side so they exist before Alpine's
                            x-model binds — an x-for select drops its saved value at init
@@ -471,8 +478,8 @@
                     </div>
                     {# Inbound webhook (#210): App events wake this agent. #}
                     <div>
-                      <label class="label">Webhook secret <span class="text-muted">(optional)</span></label>
-                      <select class="select input-sm" x-model="ghWebhookSecret">
+                      <label class="label" for="agent-gh-webhook-secret">Webhook secret <span class="text-muted">(optional)</span></label>
+                      <select class="select input-sm" x-model="ghWebhookSecret" id="agent-gh-webhook-secret">
                         <option value="">— inbound webhook off —</option>
                         {# Options rendered server-side so they exist before Alpine's
                            x-model binds — an x-for select drops its saved value at init
@@ -489,8 +496,8 @@
                       </p>
                     </div>
                     <div x-show="ghWebhookSecret">
-                      <label class="label">Webhook authors <span class="text-muted">(optional)</span></label>
-                      <input type="text" class="input-sm" x-model="ghWebhookUsers"
+                      <label class="label" for="agent-gh-webhook-users">Webhook authors <span class="text-muted">(optional)</span></label>
+                      <input type="text" class="input-sm" x-model="ghWebhookUsers" id="agent-gh-webhook-users"
                              placeholder="mattmezza, teammate  — blank = anyone">
                       <p class="text-xs text-muted mt-1">
                         Comma-separated GitHub usernames. When set, only events <em>authored</em>
@@ -501,8 +508,8 @@
                       </p>
                     </div>
                     <div x-show="ghWebhookSecret">
-                      <label class="label">Mention gate <span class="text-muted">(optional)</span></label>
-                      <input type="text" class="input-sm" x-model="ghWebhookMention"
+                      <label class="label" for="agent-gh-webhook-mention">Mention gate <span class="text-muted">(optional)</span></label>
+                      <input type="text" class="input-sm" x-model="ghWebhookMention" id="agent-gh-webhook-mention"
                              placeholder="app handle, e.g. my-agent  — blank = every event">
                       <p class="text-xs text-muted mt-1">
                         The App's GitHub handle (without <code>@</code>). When set, only issues,
@@ -566,8 +573,8 @@
 
                 {# Per-agent repo allowlist (#111) — applies to either identity. #}
                 <div>
-                  <label class="label">Allowed repos <span class="text-muted">(optional)</span></label>
-                  <input type="text" class="input-sm" x-model="ghRepos"
+                  <label class="label" for="agent-gh-repos">Allowed repos <span class="text-muted">(optional)</span></label>
+                  <input type="text" class="input-sm" x-model="ghRepos" id="agent-gh-repos"
                          placeholder="owner/repo, owner/other  — blank = no restriction">
                   <p class="text-xs text-muted mt-1">
                     Comma-separated. When set, this agent may only pass these repos to
@@ -580,7 +587,7 @@
           </div>
           {% elif spec.key == "browser" %}
           <div x-show="modes['browser'] === 'on'" class="mt-2">
-            <input type="text" class="input-sm" x-model="profiles['browser']"
+            <input type="text" class="input-sm" x-model="profiles['browser']" id="agent-browser-profile" aria-label="Browser profile"
                    :placeholder="name.trim() || 'profile'">
             <p class="text-xs text-muted mt-1">Isolated browser profile (cookies/sessions). Blank = the agent slug.</p>
           </div>
@@ -598,15 +605,15 @@
         <h3 class="text-xs text-muted uppercase tracking-wider mb-2">Secret scope</h3>
         <p class="text-xs text-muted mb-2">Vault namespaces (one per line). Stored now; enforced once the secrets vault lands.</p>
         <textarea class="textarea" x-model="secretsText" style="min-height:64px; font-size:0.75rem"
-                  placeholder="agent:fitness-coach:*"></textarea>
+                  placeholder="agent:fitness-coach:*" id="agent-secrets" aria-label="Secret namespaces"></textarea>
       </div>
     </div>
   </div>
 
   {# ── Raw mode ── #}
   <div x-show="mode === 'raw'" class="card">
-    <label class="label">Markdown (YAML frontmatter)</label>
-    <textarea class="textarea" x-model="raw" style="min-height:460px; font-size:0.8rem; line-height:1.5; tab-size:2"></textarea>
+    <label class="label" for="agent-raw">Markdown (YAML frontmatter)</label>
+    <textarea class="textarea" x-model="raw" id="agent-raw" style="min-height:460px; font-size:0.8rem; line-height:1.5; tab-size:2"></textarea>
     <p class="hint">Saving in raw mode parses this document directly — frontmatter keys (role, voice, bot_token, allowed_user_ids, group_chat, llm, skills, tools, secrets, email_accounts, calendar_accounts, contacts_accounts, chat_settings, character).</p>
   </div>
 
