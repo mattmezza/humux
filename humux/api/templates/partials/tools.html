@@ -223,7 +223,7 @@
       </div>
 
       <div>
-        <label class="label" {% if not imagegen_key_vaulted %}for="tools-imagegen-key"{% endif %}>API key</label>
+        {% if imagegen_key_vaulted %}<span class="label">API key</span>{% else %}<label class="label" for="tools-imagegen-key">API key</label>{% endif %}
         {% if imagegen_key_vaulted %}
         <div class="text-xs text-muted py-1" style="max-width:500px">
           🔒 Stored in the <strong>Secrets</strong> vault — manage it there.
@@ -301,7 +301,7 @@
       </div>
 
       <div x-show="provider === 'tavily'">
-        <label class="label" {% if not search_vaulted %}for="tools-search-key"{% endif %}>API Key</label>
+        {% if search_vaulted %}<span class="label">API Key</span>{% else %}<label class="label" for="tools-search-key">API Key</label>{% endif %}
         {% if search_vaulted %}
         <div class="text-xs text-muted py-1" style="max-width:500px">🔒 Stored in the vault as <code>${vault:TAVILY_API_KEY}</code> — manage it from the <button type="button" class="text-accent hover:underline" @click="$dispatch('switch-tab', 'secrets')">Vaults</button> tab.</div>
         {% else %}
@@ -426,7 +426,7 @@
     {# PAT mode #}
     <div class="space-y-3" x-show="ghMode === 'pat'">
       <div>
-        <label class="label" {% if not gh_token_vaulted %}for="tools-gh-token"{% endif %}>Personal Access Token</label>
+        {% if gh_token_vaulted %}<span class="label">Personal Access Token</span>{% else %}<label class="label" for="tools-gh-token">Personal Access Token</label>{% endif %}
         {% if gh_token_vaulted %}
         <div class="text-xs text-muted py-1" style="max-width:500px">
           🔒 Stored in the <strong>Secrets</strong> vault — manage it there.
@@ -471,7 +471,7 @@
         </div>
       </div>
       <div>
-        <label class="label" {% if not gh_key_vaulted %}for="tools-gh-private-key"{% endif %}>Private key (PEM)</label>
+        {% if gh_key_vaulted %}<span class="label">Private key (PEM)</span>{% else %}<label class="label" for="tools-gh-private-key">Private key (PEM)</label>{% endif %}
         {% if gh_key_vaulted %}
         <div class="text-xs text-muted py-1" style="max-width:640px">
           🔒 Stored in the <strong>Secrets</strong> vault — manage it there. Never shown or logged.
