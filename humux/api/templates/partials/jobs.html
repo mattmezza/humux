@@ -1,223 +1,308 @@
 {# Jobs tab partial #}
 {% set job_agents = jobs | map(attribute='agent') | reject('equalto', '') | unique | sort %}
 <div x-data="jobsTab()">
-  <div class="flex items-center gap-2 mb-4 flex-wrap">
-    <button class="btn btn-sm" hx-get="/partials/jobs" hx-target="#tab-content" hx-swap="innerHTML"
-            hx-include="#jobs-show-completed">
-      Refresh
-    </button>
-    <span class="text-muted text-xs">{{ jobs|length }} job{{ 's' if jobs|length != 1 else '' }}</span>
-    {% if job_agents %}
-    <select id="jobs-agent-filter" class="input-sm" style="max-width:200px" x-model="agentFilter"
-            title="Filter jobs by the agent they run as" aria-label="Filter by agent">
-      <option value="">All agents</option>
-      {% for p in job_agents %}
-      <option value="{{ p }}">{{ p }}</option>
-      {% endfor %}
-    </select>
-    {% endif %}
-    {% if not agent_running %}
-    <span class="badge-off text-[0.65rem]">agent stopped — jobs won't run</span>
-    {% endif %}
-    <label class="flex items-center gap-1.5 text-xs text-muted cursor-pointer ml-auto" title="Show completed, cancelled, and past one-time jobs">
-      <input id="jobs-show-completed" type="checkbox" name="show_completed" value="true"
-             hx-get="/partials/jobs" hx-target="#tab-content" hx-swap="innerHTML" hx-include="this"
-             {% if show_completed %}checked{% endif %}>
-      Show completed
-    </label>
+  {# Sub-tabs: Scheduled | Subagents — selection remembered in URL hash #}
+  <div class="flex border-b border-border mb-4 overflow-x-auto">
+    <button type="button" class="tab-link" :class="sub === 'scheduled' && 'tab-link-active'" @click="setSub('scheduled')">Scheduled</button>
+    <button type="button" class="tab-link" :class="sub === 'subagents' && 'tab-link-active'" @click="setSub('subagents')">Subagents</button>
   </div>
 
-  {# Subagent runs (issue #15) — live status, polled every 3s #}
-  <div class="mb-5">
-    <h3 class="text-xs text-muted uppercase tracking-wider mb-2">Subagent runs</h3>
+  {# ── Scheduled jobs ───────────────────────────────────────── #}
+  <div x-show="sub === 'scheduled'">
+    <div class="flex items-center gap-2 mb-4 flex-wrap">
+      <button class="btn btn-sm" hx-get="/partials/jobs" hx-target="#tab-content" hx-swap="innerHTML"
+              hx-include="#jobs-show-completed">
+        Refresh
+      </button>
+      <span class="text-muted text-xs">{{ jobs|length }} job{{ 's' if jobs|length != 1 else '' }}</span>
+      {% if job_agents %}
+      <select id="jobs-agent-filter" class="input-sm" style="max-width:200px" x-model="agentFilter"
+              title="Filter jobs by the agent they run as" aria-label="Filter by agent">
+        <option value="">All agents</option>
+        {% for p in job_agents %}
+        <option value="{{ p }}">{{ p }}</option>
+        {% endfor %}
+      </select>
+      {% endif %}
+      {% if not agent_running %}
+      <span class="badge-off text-[0.65rem]">agent stopped — jobs won't run</span>
+      {% endif %}
+      <label class="flex items-center gap-1.5 text-xs text-muted cursor-pointer ml-auto" title="Show completed, cancelled, and past one-time jobs">
+        <input id="jobs-show-completed" type="checkbox" name="show_completed" value="true"
+               hx-get="/partials/jobs" hx-target="#tab-content" hx-swap="innerHTML" hx-include="this"
+               {% if show_completed %}checked{% endif %}>
+        Show completed
+      </label>
+    </div>
+
+    {# Jobs table #}
+    <div class="overflow-x-auto">
+      <table class="table">
+        <thead>
+          <tr>
+            <th class="min-w-[120px]">ID</th>
+            <th>Schedule</th>
+            <th>Type</th>
+            <th>Agent</th>
+            <th>Task / Command</th>
+            <th class="w-16">Status</th>
+            <th class="w-20">Channel</th>
+            <th class="min-w-[120px]">Next Run</th>
+            <th class="w-28"></th>
+          </tr>
+        </thead>
+        <tbody x-ref="jobsTbody">
+          {% for job in jobs %}
+          <tr data-job data-agent="{{ job.agent }}" x-show="!agentFilter || agentFilter === {{ job.agent|tojson|forceescape }}">
+            <td class="text-xs break-all font-medium">
+              {{ job.id }}
+              {% if job.description %}
+              <span class="block text-muted text-[0.65rem]" title="{{ job.description }}">{{ job.description[:40] }}{{ '...' if job.description|length > 40 else '' }}</span>
+              {% endif %}
+            </td>
+            <td class="text-xs">
+              <code class="px-1.5 py-0.5 bg-surface-active rounded text-accent text-[0.7rem]">{{ job.cron }}</code>
+            </td>
+            <td class="text-xs">
+              <span class="{% if job.type == 'agent' %}badge-ok{% elif job.type == 'system' %}badge-warn{% else %}badge-off{% endif %}">
+                {{ job.type }}
+              </span>
+            </td>
+            <td class="text-xs">{{ job.agent or '—' }}</td>
+            <td class="text-xs break-all" style="max-width: 320px;">
+              <span class="block truncate" title="{{ job.task }}">{{ job.task }}</span>
+            </td>
+            <td class="text-xs">
+              <span class="{% if job.status == 'active' %}text-green-400{% elif job.status == 'paused' %}text-yellow-400{% elif job.status == 'cancelled' %}text-red-400{% else %}text-muted{% endif %}">
+                {{ job.status }}
+              </span>
+            </td>
+            <td class="text-xs">{{ job.channel }}</td>
+            <td class="text-xs text-muted">{{ job.next_run or '—' }}</td>
+            <td class="whitespace-nowrap">
+              <button class="btn btn-sm"
+                      @click="showForm = true; editJob({{ job|tojson|forceescape }})">
+                edit
+              </button>
+              <button class="btn btn-sm ml-0.5" title="Run now"
+                      hx-post="/jobs/run" hx-target="#job-flash" hx-swap="innerHTML"
+                      hx-vals='{"job_id": {{ job.id|tojson }} }'>
+                &triangleright;
+              </button>
+              <button class="btn-danger btn-sm ml-0.5"
+                      hx-post="/jobs/delete" hx-target="#tab-content" hx-swap="innerHTML"
+                      hx-include="#jobs-show-completed"
+                      hx-vals='{"job_id": {{ job.id|tojson }} }'
+                      hx-confirm="Delete job &quot;{{ job.id }}&quot;?">
+                x
+              </button>
+            </td>
+          </tr>
+          {% endfor %}
+          {% if not jobs %}
+          <tr><td colspan="9" class="text-muted text-xs text-center py-4">No jobs configured</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+
+    {# Pagination controls #}
+    {% if jobs|length > 10 %}
+    <div class="flex items-center justify-between gap-3 mt-3 flex-wrap">
+      <div class="flex items-center gap-2">
+        <label class="label mb-0 shrink-0" for="jobs-per-page">Per page</label>
+        <select class="input-sm" style="max-width:80px" id="jobs-per-page"
+                @change="setPerPage($event.target.value)">
+          <option value="10" selected>10</option>
+          <option value="25">25</option>
+          <option value="50">50</option>
+          <option value="all">All</option>
+        </select>
+      </div>
+      <span class="text-xs text-muted" x-show="perPage > 0"
+            x-text="'Showing ' + ((jobPage - 1) * perPage + 1) + '–' + Math.min(jobPage * perPage, visibleJobCount) + ' of ' + visibleJobCount"></span>
+      <div class="flex items-center gap-1" x-show="perPage > 0 && jobTotalPages > 1">
+        <button class="btn btn-sm" :disabled="jobPage <= 1" @click="setJobPage(jobPage - 1)">‹ Prev</button>
+        <span class="text-xs text-muted px-2" x-text="jobPage + ' / ' + jobTotalPages"></span>
+        <button class="btn btn-sm" :disabled="jobPage >= jobTotalPages" @click="setJobPage(jobPage + 1)">Next ›</button>
+      </div>
+    </div>
+    {% endif %}
+
+    {# Flash area for run-now feedback #}
+    <div id="job-flash" class="mt-3"></div>
+
+    {# Collapsible add / edit job form #}
+    <div class="mt-5">
+      <button class="btn btn-sm" type="button" x-show="!showForm && !editing" @click="showForm = true">
+        + Add new job
+      </button>
+
+      <div x-show="showForm || editing" x-transition>
+        <div class="flex items-center justify-between mb-2">
+          <h3 class="text-xs text-muted uppercase tracking-wider" x-text="editing ? 'Edit job' : 'Add new job'">Add new job</h3>
+          <button class="btn btn-sm" type="button" x-show="!editing" @click="showForm = false">Cancel</button>
+        </div>
+        <form hx-post="/jobs" hx-target="#tab-content" hx-swap="innerHTML"
+              hx-include="#jobs-show-completed">
+          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label class="label" for="job-id">Job ID</label>
+              <input type="text" class="input-sm" name="job_id" id="job-id" x-model="form.id"
+                     placeholder="morning-briefing" required
+                     :readonly="editing" :class="editing && 'opacity-60 cursor-not-allowed'">
+              <span class="hint">Unique identifier (lowercase, dashes ok)</span>
+            </div>
+            <div>
+              <label class="label" for="job-schedule">Schedule</label>
+              <select class="select" name="schedule" id="job-schedule" x-model="form.schedule"
+                      style="padding: 0.375rem 2rem 0.375rem 0.5rem; font-size: 0.75rem;">
+                <option value="cron">Recurring (cron)</option>
+                <option value="once">One-time</option>
+              </select>
+            </div>
+            <div x-show="form.schedule === 'cron'">
+              <label class="label" for="job-cron">Cron Expression</label>
+              <input type="text" class="input-sm" name="cron" id="job-cron" x-model="form.cron"
+                     placeholder="0 7 * * *" :required="form.schedule === 'cron'">
+              <span class="hint">5-field cron: min hour day month weekday</span>
+            </div>
+            <div x-show="form.schedule === 'once'">
+              <label class="label" for="job-run-at">Run At</label>
+              <input type="text" class="input-sm" name="run_at" id="job-run-at" x-model="form.run_at"
+                     placeholder="2026-02-20T18:00:00+01:00" :required="form.schedule === 'once'">
+              <span class="hint">ISO datetime with timezone offset</span>
+            </div>
+            <div>
+              <label class="label" for="job-type">Type</label>
+              <select class="select" name="type" id="job-type" x-model="form.type"
+                      style="padding: 0.375rem 2rem 0.375rem 0.5rem; font-size: 0.75rem;">
+                <option value="agent">agent — natural language task</option>
+                <option value="agent_silent">agent_silent — quiet when nothing new</option>
+                <option value="system">system — CLI command</option>
+                <option value="subagent">subagent — run task under an agent</option>
+                <option value="memory_consolidation">memory_consolidation</option>
+              </select>
+            </div>
+            <div x-show="['agent', 'agent_silent', 'subagent'].includes(form.type)">
+              <label class="label" for="job-agent">Agent</label>
+              <input type="text" class="input-sm" name="agent" id="job-agent" x-model="form.agent"
+                     placeholder="coding-helper">
+              <span class="hint">Agent this job runs as (blank = default identity)</span>
+            </div>
+            <div>
+              <label class="label" for="job-channel">Channel</label>
+              <select class="select" name="channel" id="job-channel" x-model="form.channel"
+                      style="padding: 0.375rem 2rem 0.375rem 0.5rem; font-size: 0.75rem;">
+                <option value="telegram">telegram</option>
+                <option value="whatsapp">whatsapp</option>
+              </select>
+              <span class="hint">Where to deliver the result</span>
+            </div>
+            <div class="sm:col-span-2">
+              <label class="label" for="job-task" x-text="form.type === 'system' ? 'Command' : 'Task'">Task</label>
+              <textarea class="textarea text-xs" name="task" id="job-task" x-model="form.task" rows="2"
+                        :placeholder="form.type === 'system' ? 'sqlite3 /app/data/memory.db \'VACUUM;\'' : 'Check my calendar and send me a morning briefing'"
+                        :required="form.type !== 'memory_consolidation'"></textarea>
+              <span class="hint" x-show="form.type === 'agent'">Natural language instruction for the agent</span>
+              <span class="hint" x-show="form.type === 'agent_silent'">Only sends when there are updates; otherwise stays quiet</span>
+              <span class="hint" x-show="form.type === 'system'">Shell command to execute</span>
+              <span class="hint" x-show="form.type === 'subagent'">Task for the subagent to run under the chosen agent</span>
+              <span class="hint" x-show="form.type === 'memory_consolidation'">No task needed — runs memory consolidation automatically</span>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 mt-4">
+            <input type="hidden" name="description" x-model="form.description">
+            <button type="submit" class="btn btn-primary btn-sm">
+              <span x-text="editing ? 'Update Job' : 'Add Job'">Add Job</span>
+            </button>
+            <button type="button" class="btn btn-sm" x-show="editing" @click="cancelEdit()">
+              Cancel
+            </button>
+          </div>
+        </form>
+
+        {# Cron cheat-sheet #}
+        <details class="mt-5">
+          <summary class="text-xs text-muted cursor-pointer hover:text-gray-200 transition-colors">
+            Cron cheat sheet
+          </summary>
+          <div class="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 text-xs text-muted" style="max-width: 480px;">
+            <code class="text-accent">0 7 * * *</code>    <span>Every day at 07:00</span>
+            <code class="text-accent">*/15 * * * *</code> <span>Every 15 minutes</span>
+            <code class="text-accent">0 9 * * 1-5</code>  <span>Weekdays at 09:00</span>
+            <code class="text-accent">0 0 * * 0</code>    <span>Sunday at midnight</span>
+            <code class="text-accent">30 18 * * *</code>   <span>Every day at 18:30</span>
+            <code class="text-accent">0 */6 * * *</code>   <span>Every 6 hours</span>
+          </div>
+        </details>
+      </div>
+    </div>
+  </div>
+
+  {# ── Subagent runs ────────────────────────────────────────── #}
+  <div x-show="sub === 'subagents'" style="display:none">
     <div id="subagent-runs"
          hx-get="/partials/subagent-runs" hx-trigger="load, every 3s" hx-swap="innerHTML">
       <p class="text-muted text-xs">Loading…</p>
     </div>
   </div>
-
-  {# Jobs table #}
-  <div class="overflow-x-auto">
-    <table class="table">
-      <thead>
-        <tr>
-          <th class="min-w-[120px]">ID</th>
-          <th>Schedule</th>
-          <th>Type</th>
-          <th>Agent</th>
-          <th>Task / Command</th>
-          <th class="w-16">Status</th>
-          <th class="w-20">Channel</th>
-          <th class="min-w-[120px]">Next Run</th>
-          <th class="w-28"></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for job in jobs %}
-        <tr x-show="!agentFilter || agentFilter === {{ job.agent|tojson|forceescape }}">
-          <td class="text-xs break-all font-medium">
-            {{ job.id }}
-            {% if job.description %}
-            <span class="block text-muted text-[0.65rem]" title="{{ job.description }}">{{ job.description[:40] }}{{ '...' if job.description|length > 40 else '' }}</span>
-            {% endif %}
-          </td>
-          <td class="text-xs">
-            <code class="px-1.5 py-0.5 bg-surface-active rounded text-accent text-[0.7rem]">{{ job.cron }}</code>
-          </td>
-          <td class="text-xs">
-            <span class="{% if job.type == 'agent' %}badge-ok{% elif job.type == 'system' %}badge-warn{% else %}badge-off{% endif %}">
-              {{ job.type }}
-            </span>
-          </td>
-          <td class="text-xs">{{ job.agent or '—' }}</td>
-          <td class="text-xs break-all" style="max-width: 320px;">
-            <span class="block truncate" title="{{ job.task }}">{{ job.task }}</span>
-          </td>
-          <td class="text-xs">
-            <span class="{% if job.status == 'active' %}text-green-400{% elif job.status == 'paused' %}text-yellow-400{% elif job.status == 'cancelled' %}text-red-400{% else %}text-muted{% endif %}">
-              {{ job.status }}
-            </span>
-          </td>
-          <td class="text-xs">{{ job.channel }}</td>
-          <td class="text-xs text-muted">{{ job.next_run or '—' }}</td>
-          <td class="whitespace-nowrap">
-            <button class="btn btn-sm"
-                    @click="editJob({{ job|tojson|forceescape }})">
-              edit
-            </button>
-            <button class="btn btn-sm ml-0.5" title="Run now"
-                    hx-post="/jobs/run" hx-target="#job-flash" hx-swap="innerHTML"
-                    hx-vals='{"job_id": {{ job.id|tojson }} }'>
-              &triangleright;
-            </button>
-            <button class="btn-danger btn-sm ml-0.5"
-                    hx-post="/jobs/delete" hx-target="#tab-content" hx-swap="innerHTML"
-                    hx-include="#jobs-show-completed"
-                    hx-vals='{"job_id": {{ job.id|tojson }} }'
-                    hx-confirm="Delete job &quot;{{ job.id }}&quot;?">
-              x
-            </button>
-          </td>
-        </tr>
-        {% endfor %}
-        {% if not jobs %}
-        <tr><td colspan="9" class="text-muted text-xs text-center py-4">No jobs configured</td></tr>
-        {% endif %}
-      </tbody>
-    </table>
-  </div>
-
-  {# Flash area for run-now feedback #}
-  <div id="job-flash" class="mt-3"></div>
-
-  {# Add / edit job form #}
-  <h3 class="text-xs text-muted uppercase tracking-wider mt-5 mb-2" x-text="editing ? 'Edit job' : 'Add new job'">Add new job</h3>
-  <form hx-post="/jobs" hx-target="#tab-content" hx-swap="innerHTML"
-        hx-include="#jobs-show-completed">
-    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-      <div>
-        <label class="label" for="job-id">Job ID</label>
-        <input type="text" class="input-sm" name="job_id" id="job-id" x-model="form.id"
-               placeholder="morning-briefing" required
-               :readonly="editing" :class="editing && 'opacity-60 cursor-not-allowed'">
-        <span class="hint">Unique identifier (lowercase, dashes ok)</span>
-      </div>
-      <div>
-        <label class="label" for="job-schedule">Schedule</label>
-        <select class="select" name="schedule" id="job-schedule" x-model="form.schedule"
-                style="padding: 0.375rem 2rem 0.375rem 0.5rem; font-size: 0.75rem;">
-          <option value="cron">Recurring (cron)</option>
-          <option value="once">One-time</option>
-        </select>
-      </div>
-      <div x-show="form.schedule === 'cron'">
-        <label class="label" for="job-cron">Cron Expression</label>
-        <input type="text" class="input-sm" name="cron" id="job-cron" x-model="form.cron"
-               placeholder="0 7 * * *" :required="form.schedule === 'cron'">
-        <span class="hint">5-field cron: min hour day month weekday</span>
-      </div>
-      <div x-show="form.schedule === 'once'">
-        <label class="label" for="job-run-at">Run At</label>
-        <input type="text" class="input-sm" name="run_at" id="job-run-at" x-model="form.run_at"
-               placeholder="2026-02-20T18:00:00+01:00" :required="form.schedule === 'once'">
-        <span class="hint">ISO datetime with timezone offset</span>
-      </div>
-      <div>
-        <label class="label" for="job-type">Type</label>
-        <select class="select" name="type" id="job-type" x-model="form.type"
-                style="padding: 0.375rem 2rem 0.375rem 0.5rem; font-size: 0.75rem;">
-          <option value="agent">agent — natural language task</option>
-          <option value="agent_silent">agent_silent — quiet when nothing new</option>
-          <option value="system">system — CLI command</option>
-          <option value="subagent">subagent — run task under an agent</option>
-          <option value="memory_consolidation">memory_consolidation</option>
-        </select>
-      </div>
-      <div x-show="['agent', 'agent_silent', 'subagent'].includes(form.type)">
-        <label class="label" for="job-agent">Agent</label>
-        <input type="text" class="input-sm" name="agent" id="job-agent" x-model="form.agent"
-               placeholder="coding-helper">
-        <span class="hint">Agent this job runs as (blank = default identity)</span>
-      </div>
-      <div>
-        <label class="label" for="job-channel">Channel</label>
-        <select class="select" name="channel" id="job-channel" x-model="form.channel"
-                style="padding: 0.375rem 2rem 0.375rem 0.5rem; font-size: 0.75rem;">
-          <option value="telegram">telegram</option>
-          <option value="whatsapp">whatsapp</option>
-        </select>
-        <span class="hint">Where to deliver the result</span>
-      </div>
-      <div class="sm:col-span-2">
-        <label class="label" for="job-task" x-text="form.type === 'system' ? 'Command' : 'Task'">Task</label>
-        <textarea class="textarea text-xs" name="task" id="job-task" x-model="form.task" rows="2"
-                  :placeholder="form.type === 'system' ? 'sqlite3 /app/data/memory.db \'VACUUM;\'' : 'Check my calendar and send me a morning briefing'"
-                  :required="form.type !== 'memory_consolidation'"></textarea>
-        <span class="hint" x-show="form.type === 'agent'">Natural language instruction for the agent</span>
-        <span class="hint" x-show="form.type === 'agent_silent'">Only sends when there are updates; otherwise stays quiet</span>
-        <span class="hint" x-show="form.type === 'system'">Shell command to execute</span>
-        <span class="hint" x-show="form.type === 'subagent'">Task for the subagent to run under the chosen agent</span>
-        <span class="hint" x-show="form.type === 'memory_consolidation'">No task needed — runs memory consolidation automatically</span>
-      </div>
-    </div>
-    <div class="flex items-center gap-2 mt-4">
-      <input type="hidden" name="description" x-model="form.description">
-      <button type="submit" class="btn btn-primary btn-sm">
-        <span x-text="editing ? 'Update Job' : 'Add Job'">Add Job</span>
-      </button>
-      <button type="button" class="btn btn-sm" x-show="editing" @click="cancelEdit()">
-        Cancel
-      </button>
-    </div>
-  </form>
-
-  {# Cron cheat-sheet #}
-  <details class="mt-5">
-    <summary class="text-xs text-muted cursor-pointer hover:text-gray-200 transition-colors">
-      Cron cheat sheet
-    </summary>
-    <div class="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 text-xs text-muted" style="max-width: 480px;">
-      <code class="text-accent">0 7 * * *</code>    <span>Every day at 07:00</span>
-      <code class="text-accent">*/15 * * * *</code> <span>Every 15 minutes</span>
-      <code class="text-accent">0 9 * * 1-5</code>  <span>Weekdays at 09:00</span>
-      <code class="text-accent">0 0 * * 0</code>    <span>Sunday at midnight</span>
-      <code class="text-accent">30 18 * * *</code>   <span>Every day at 18:30</span>
-      <code class="text-accent">0 */6 * * *</code>   <span>Every 6 hours</span>
-    </div>
-  </details>
 </div>
 
 <script>
 function jobsTab() {
   return {
+    sub: 'scheduled',
     editing: false,
-    // Persist filter so it survives HTMX re-renders (Refresh, Show completed, add/edit/delete).
+    showForm: false,
+    jobPage: 1,
+    perPage: 10,
     agentFilter: sessionStorage.getItem('jobsAgentFilter') || '',
     init() {
+      // Restore sub-tab from URL hash
+      const hash = window.location.hash.replace('#', '');
+      if (hash === 'subagents' || hash === 'scheduled') this.sub = hash;
       // Drop a stale filter whose agent no longer has any listed job.
       const opts = [...this.$el.querySelectorAll('#jobs-agent-filter option')].map(o => o.value);
       if (this.agentFilter && !opts.includes(this.agentFilter)) this.agentFilter = '';
-      this.$watch('agentFilter', v => sessionStorage.setItem('jobsAgentFilter', v));
+      this.$watch('agentFilter', v => {
+        sessionStorage.setItem('jobsAgentFilter', v);
+        this.jobPage = 1;
+        this.$nextTick(() => this.paginateJobs());
+      });
+      this.$nextTick(() => this.paginateJobs());
+    },
+    setSub(s) {
+      this.sub = s;
+      history.replaceState(null, '', '#' + s);
+    },
+    // Pagination
+    get visibleJobCount() {
+      const rows = this.$refs.jobsTbody?.querySelectorAll('tr[data-job]') || [];
+      let n = 0;
+      rows.forEach(r => { if (!this.agentFilter || r.dataset.agent === this.agentFilter) n++; });
+      return n;
+    },
+    get jobTotalPages() { return Math.max(1, Math.ceil(this.visibleJobCount / this.perPage)); },
+    paginateJobs() {
+      const rows = this.$refs.jobsTbody?.querySelectorAll('tr[data-job]') || [];
+      const start = (this.jobPage - 1) * this.perPage;
+      let visIdx = 0;
+      rows.forEach(r => {
+        const matchesFilter = !this.agentFilter || r.dataset.agent === this.agentFilter;
+        if (!matchesFilter) { r.style.display = 'none'; return; }
+        r.style.display = (this.perPage === 0 || (visIdx >= start && visIdx < start + this.perPage)) ? '' : 'none';
+        visIdx++;
+      });
+    },
+    setPerPage(v) {
+      this.perPage = v === 'all' ? 0 : parseInt(v);
+      this.jobPage = 1;
+      this.$nextTick(() => this.paginateJobs());
+    },
+    setJobPage(p) {
+      this.jobPage = Math.max(1, Math.min(p, this.jobTotalPages));
+      this.$nextTick(() => this.paginateJobs());
     },
     form: {
       id: '',
@@ -241,13 +326,13 @@ function jobsTab() {
       this.form.channel = job.channel || 'telegram';
       this.form.description = job.description || '';
       this.form.agent = job.agent || '';
-      // scroll to form
       this.$nextTick(() => {
         document.querySelector('form[hx-post="/jobs"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       });
     },
     cancelEdit() {
       this.editing = false;
+      this.showForm = false;
       this.form = { id: '', schedule: 'cron', cron: '', run_at: '', type: 'agent', task: '', channel: 'telegram', description: '', agent: '' };
     }
   };

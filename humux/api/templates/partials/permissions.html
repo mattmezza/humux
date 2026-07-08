@@ -1,10 +1,32 @@
 {# Permissions tab partial #}
-<div>
+<div x-data="{
+  page: 1,
+  perPage: 10,
+  get totalRules() { return this.$refs.tbody ? this.$refs.tbody.querySelectorAll('tr[data-rule]').length : 0; },
+  get totalPages() { return Math.max(1, Math.ceil(this.totalRules / this.perPage)); },
+  paginate() {
+    const rows = this.$refs.tbody?.querySelectorAll('tr[data-rule]') || [];
+    const start = (this.page - 1) * this.perPage;
+    rows.forEach((r, i) => {
+      r.style.display = (this.perPage === 0 || (i >= start && i < start + this.perPage)) ? '' : 'none';
+    });
+  },
+  setPerPage(v) {
+    this.perPage = v === 'all' ? 0 : parseInt(v);
+    this.page = 1;
+    this.$nextTick(() => this.paginate());
+  },
+  setPage(p) {
+    this.page = Math.max(1, Math.min(p, this.totalPages));
+    this.$nextTick(() => this.paginate());
+  }
+}" x-init="$nextTick(() => paginate())">
   <div class="flex items-center gap-2 mb-4 flex-wrap">
     <button class="btn btn-sm" hx-get="/partials/permissions" hx-target="#tab-content" hx-swap="innerHTML"
             hx-vals='{"scope": {{ scope|tojson }} }'>
       Refresh
     </button>
+    <span class="text-muted text-xs">{{ rules|length }} rule{{ 's' if rules|length != 1 else '' }}</span>
     {# Per-agent scope picker (#100). "" = the default ruleset every agent inherits. #}
     <div class="flex items-center gap-1.5 ml-auto">
       <label class="label mb-0" for="perm-scope">Editing rules for</label>
@@ -57,9 +79,9 @@
           <th class="w-20"></th>
         </tr>
       </thead>
-      <tbody>
+      <tbody x-ref="tbody">
         {% for pattern, level in rules.items() %}
-        <tr>
+        <tr data-rule>
           <td class="text-xs break-all">{{ pattern }}</td>
           <td>
             <span class="{% if level == 'ALWAYS' %}badge-ok{% elif level == 'NEVER' %}badge-off{% else %}badge-warn{% endif %}">
@@ -91,4 +113,27 @@
       </tbody>
     </table>
   </div>
+
+  {# Pagination controls #}
+  {% if rules|length > 10 %}
+  <div class="flex items-center justify-between gap-3 mt-3 flex-wrap">
+    <div class="flex items-center gap-2">
+      <label class="label mb-0 shrink-0" for="perm-per-page">Per page</label>
+      <select class="input-sm" style="max-width:80px" id="perm-per-page"
+              @change="setPerPage($event.target.value)">
+        <option value="10" selected>10</option>
+        <option value="25">25</option>
+        <option value="50">50</option>
+        <option value="all">All</option>
+      </select>
+    </div>
+    <span class="text-xs text-muted" x-show="perPage > 0"
+          x-text="'Showing ' + ((page - 1) * perPage + 1) + '–' + Math.min(page * perPage, totalRules) + ' of ' + totalRules"></span>
+    <div class="flex items-center gap-1" x-show="perPage > 0 && totalPages > 1">
+      <button class="btn btn-sm" :disabled="page <= 1" @click="setPage(page - 1)">‹ Prev</button>
+      <span class="text-xs text-muted px-2" x-text="page + ' / ' + totalPages"></span>
+      <button class="btn btn-sm" :disabled="page >= totalPages" @click="setPage(page + 1)">Next ›</button>
+    </div>
+  </div>
+  {% endif %}
 </div>
