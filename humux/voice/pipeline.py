@@ -220,11 +220,13 @@ class VoicePipeline:
         kokoro_model_path: str = "models/kokoro/kokoro-v1.0.onnx",
         kokoro_voices_path: str = "models/kokoro/voices-v1.0.bin",
         kokoro_default_voice: str = "af_bella",
+        tts_api_base_url: str = "",
     ):
         self.tts_voice = tts_voice
         self.tts_enabled = tts_enabled
         self.backend = backend
         self.kokoro_default_voice = kokoro_default_voice
+        self.tts_api_base_url = tts_api_base_url.rstrip("/") if tts_api_base_url else ""
         self._kokoro = None
 
         log.info("Loading Whisper model '%s' …", stt_model)
@@ -293,6 +295,12 @@ class VoicePipeline:
         # phonemize (e.g. German) — then go straight to a matching edge-tts voice.
         # An unknown/untagged language just lets Kokoro derive lang from the voice.
         skip_kokoro = known is not None and known[0] is None
+        # Remote TTS API takes priority when configured (#246)
+        if self.tts_api_base_url and not skip_kokoro:
+            try:
+                return await self._synthesize_remote(text, voice)
+            except Exception:
+                log.exception("Remote TTS failed, falling back to local")
         if self._kokoro is not None and not skip_kokoro:
             try:
                 return await self._synthesize_kokoro(text, voice, kokoro_lang)
@@ -327,6 +335,33 @@ class VoicePipeline:
 
         audio = buf.getvalue()
         log.info("Synthesized %d chars → %d bytes audio (edge-tts)", len(text), len(audio))
+        return audio
+
+    async def _synthesize_remote(self, text: str, voice: str | None) -> bytes:
+        """Call an OpenAI-compatible TTS endpoint (e.g. Kokoro FastAPI sidecar).
+
+        Returns OGG/Opus bytes. The remote API returns mp3 by default; we ask
+        for opus so Telegram can play it directly without transcoding.
+        """
+        import httpx
+
+        url = f"{self.tts_api_base_url}/audio/speech"
+        body = {
+            "model": "kokoro",
+            "input": text,
+            "voice": voice or self.kokoro_default_voice,
+            "response_format": "opus",
+        }
+        async with httpx.AsyncClient(timeout=30) as client:
+            r = await client.post(url, json=body)
+            r.raise_for_status()
+        audio = r.content
+        log.info(
+            "Synthesized %d chars → %d bytes audio (remote-tts/%s)",
+            len(text),
+            len(audio),
+            voice or self.kokoro_default_voice,
+        )
         return audio
 
     async def _synthesize_kokoro(
@@ -365,10 +400,12 @@ class VoicePipeline:
         """
         text = clean_for_speech(text) or text
         if _is_kokoro_voice(voice):
+            if self.tts_api_base_url:
+                return await self._synthesize_remote(text, voice), "audio/ogg"
             if self._kokoro is None:
                 raise RuntimeError(
                     "Kokoro model isn't loaded — switch the TTS backend to "
-                    "'kokoro' and restart to preview Kokoro voices."
+                    "'kokoro' and restart, or set a remote TTS API URL."
                 )
             return await self._synthesize_kokoro(text, voice, lang or None), "audio/ogg"
         return await self._synthesize_edge(text, voice), "audio/mpeg"
