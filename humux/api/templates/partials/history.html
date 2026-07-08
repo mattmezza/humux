@@ -32,12 +32,12 @@
         <label class="label" id="hist-threshold-label">Trigger threshold</label>
         <div class="flex gap-4 mt-1">
           <label class="flex items-center gap-2 cursor-pointer">
-            <input type="radio" name="threshold_type" value="percent"
+            <input type="radio" name="threshold_type" value="percent" id="hist-threshold-percent"
                    x-model="thresholdType" class="accent-primary">
             <span class="text-sm">% of context window</span>
           </label>
           <label class="flex items-center gap-2 cursor-pointer">
-            <input type="radio" name="threshold_type" value="tokens"
+            <input type="radio" name="threshold_type" value="tokens" id="hist-threshold-absolute"
                    x-model="thresholdType" class="accent-primary">
             <span class="text-sm">Absolute tokens</span>
           </label>
