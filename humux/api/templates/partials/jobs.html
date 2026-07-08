@@ -4,7 +4,11 @@
   {# Sub-tabs: Scheduled | Subagents — selection remembered in URL hash #}
   <div class="flex border-b border-border mb-4 overflow-x-auto">
     <button type="button" class="tab-link" :class="sub === 'scheduled' && 'tab-link-active'" @click="setSub('scheduled')">Scheduled</button>
-    <button type="button" class="tab-link" :class="sub === 'subagents' && 'tab-link-active'" @click="setSub('subagents')">Subagents</button>
+    <button type="button" class="tab-link" :class="sub === 'subagents' && 'tab-link-active'" @click="setSub('subagents')">
+      Subagents
+      <span x-show="subagentCount > 0" x-text="subagentCount"
+            class="inline-flex items-center justify-center ml-1 px-1.5 py-0.5 rounded-full text-[0.65rem] font-bold bg-accent text-black" style="min-width:1.25rem; line-height:1;"></span>
+    </button>
   </div>
 
   {# ── Scheduled jobs ───────────────────────────────────────── #}
@@ -107,8 +111,7 @@
     </div>
 
     {# Pagination controls #}
-    {% if jobs|length > 10 %}
-    <div class="flex items-center justify-between gap-3 mt-3 flex-wrap">
+    <div class="flex items-center justify-between gap-3 mt-3 flex-wrap" x-show="visibleJobCount > 0">
       <div class="flex items-center gap-2">
         <label class="label mb-0 shrink-0" for="jobs-per-page">Per page</label>
         <select class="input-sm" style="max-width:80px" id="jobs-per-page"
@@ -127,7 +130,6 @@
         <button class="btn btn-sm" :disabled="jobPage >= jobTotalPages" @click="setJobPage(jobPage + 1)">Next ›</button>
       </div>
     </div>
-    {% endif %}
 
     {# Flash area for run-now feedback #}
     <div id="job-flash" class="mt-3"></div>
@@ -257,6 +259,7 @@ function jobsTab() {
     showForm: false,
     jobPage: 1,
     perPage: 10,
+    subagentCount: 0,
     agentFilter: sessionStorage.getItem('jobsAgentFilter') || '',
     init() {
       // Restore sub-tab from URL hash
@@ -271,6 +274,13 @@ function jobsTab() {
         this.$nextTick(() => this.paginateJobs());
       });
       this.$nextTick(() => this.paginateJobs());
+      // Watch subagent-runs div for HTMX swaps to update badge count
+      const runsDiv = document.getElementById('subagent-runs');
+      if (runsDiv) {
+        const countCards = () => { this.subagentCount = runsDiv.querySelectorAll('.card').length; };
+        countCards();
+        new MutationObserver(countCards).observe(runsDiv, { childList: true, subtree: true });
+      }
     },
     setSub(s) {
       this.sub = s;
