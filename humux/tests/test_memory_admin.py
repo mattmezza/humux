@@ -49,14 +49,19 @@ def _client(overrides: dict | None = None) -> TestClient:
     return TestClient(app)
 
 
-def test_embedding_status_local_default() -> None:
+def test_embedding_status_sidecar_default() -> None:
+    # Default = the keyless infinity sidecar (#253); "local" is opt-in.
     resp = _client().get("/memory/embedding/status", headers=HEADERS)
     assert resp.status_code == 200
     data = resp.json()
     assert data["enabled"] is True
-    assert data["provider"] == "local"
-    assert data["local"] is True
-    assert "model_ready" in data  # bool (true/false) for local
+    assert data["provider"] == "sidecar"
+    assert data["local"] is False
+    assert data["model_ready"] is None  # only meaningful for the local provider
+    local = _client({"memory.embedding.provider": "local"}).get(
+        "/memory/embedding/status", headers=HEADERS
+    )
+    assert local.json()["local"] is True and "model_ready" in local.json()
 
 
 def test_embedding_prefetch_invokes_helper(monkeypatch) -> None:
@@ -69,7 +74,10 @@ def test_embedding_prefetch_invokes_helper(monkeypatch) -> None:
 
     monkeypatch.setattr("core.embeddings.prefetch_local_model", fake_prefetch)
 
-    resp = _client().post("/memory/embedding/prefetch", headers=HEADERS)
+    # Prefetch is a local-provider concern; the sidecar default has no local model.
+    resp = _client({"memory.embedding.provider": "local"}).post(
+        "/memory/embedding/prefetch", headers=HEADERS
+    )
     assert resp.status_code == 200
     data = resp.json()
     assert data["ok"] is True
@@ -93,7 +101,8 @@ def test_embedding_test_endpoint(monkeypatch) -> None:
             # First two related (close), third unrelated (orthogonal).
             return [[1.0, 0.0], [0.9, 0.1], [0.0, 1.0]][: len(texts)]
 
-    monkeypatch.setattr("core.embeddings.LocalEmbeddingClient", _FakeClient)
+    # Default provider is the keyless sidecar → the API-client path, no key needed.
+    monkeypatch.setattr("core.embeddings.EmbeddingClient", _FakeClient)
 
     resp = _client().post("/memory/embedding/test", headers=HEADERS)
     assert resp.status_code == 200

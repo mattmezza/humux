@@ -27,10 +27,10 @@ services:
     environment:
       - MAX_CONCURRENT_SESSIONS=2
 
-  # Optional embedding sidecar (keeps fastembed + onnxruntime out of main image).
-  # Start with:  docker compose --profile embeddings up
-  # Then set memory.embedding.provider to "openai" (or any non-local) and
-  # memory.embedding.base_url to http://embeddings:7997/v1 in the admin UI.
+  # Embedding sidecar — the DEFAULT semantic-memory backend (keeps fastembed +
+  # onnxruntime out of the main image; the config default already points at
+  # http://embeddings:7997/v1). To run on-device instead: build the main image
+  # with INSTALL_FASTEMBED=true and set memory.embedding.provider to "local".
   embeddings:
     image: michaelf34/infinity:latest
     command: v2 --model-id BAAI/bge-small-en-v1.5 --port 7997

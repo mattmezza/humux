@@ -120,7 +120,8 @@ Each long-term memory gets a vector **embedding**, stored as a packed float32 bl
 
 Set via `memory.embedding.provider`:
 
-- **`local`** (default) — runs a small on-device model via [`fastembed`](https://github.com/qdrant/fastembed): `BAAI/bge-small-en-v1.5`, 384-dim, ~130MB ONNX/CPU. Private (memory never leaves the box), no API key, free. The model is **prefetched at Docker build** into `/app/models` (outside the `/app/data` volume) so the first call has no download latency and the container works offline. It loads lazily on first use, in a worker thread.
+- **`sidecar`** (default) — the [infinity](https://github.com/michaelfeil/infinity) container from `docker-compose.yml` serving `BAAI/bge-small-en-v1.5` on `http://embeddings:7997/v1`. Keyless, private (stays on your host), and keeps fastembed + onnxruntime (~200MB) out of the main image. Any name works for a keyless OpenAI-compatible endpoint — set `base_url` accordingly.
+- **`local`** — runs the same model on-device via [`fastembed`](https://github.com/qdrant/fastembed): 384-dim, ~130MB ONNX/CPU, loaded lazily in a worker thread. Requires an image built with `INSTALL_FASTEMBED=true` (the model is then prefetched at build into `/app/models`, so it works offline with no sidecar).
 - **`openai` / `google`** (or any OpenAI-compatible `/embeddings` endpoint via `base_url`) — calls a remote API. Needs a key (falls back to the matching agent provider key); a few cents/year at typical volume, but memory text is sent to the provider. *(DeepSeek has no embeddings endpoint.)*
 
 Set `memory.embedding.enabled: false` to fall back to **Tier-1 lexical** (word-overlap / Jaccard) retrieval — still works, no model needed.
@@ -235,11 +236,11 @@ memory:
   # Tier 2 — semantic similarity + relevance-ranked injection
   embedding:
     enabled: true
-    provider: "local"                  # "local" (on-device) | "openai" | "google"
-    model: "BAAI/bge-small-en-v1.5"    # local model id; for API e.g. text-embedding-3-small
-    cache_dir: "models"                # local model store (bundled in the image)
-    api_key: ""                        # API providers only; falls back to agent provider key
-    base_url: ""                       # API providers only; falls back to agent provider base URL
+    provider: "sidecar"                # "sidecar" (default) | "local" (on-device) | "openai" | "google"
+    model: "BAAI/bge-small-en-v1.5"    # local/sidecar model id; for API e.g. text-embedding-3-small
+    cache_dir: "models"                # local model store (needs INSTALL_FASTEMBED=true)
+    api_key: ""                        # blank is fine on a keyless sidecar; API providers fall back to agent provider key
+    base_url: "http://embeddings:7997/v1"  # OpenAI-compatible /embeddings endpoint
     dimensions: 0                      # 0 = provider default (API providers only)
     injection_top_k: 12                # relevance-ranked memories injected per turn
     recall_top_k: 10                   # max memories returned by the recall_memory tool

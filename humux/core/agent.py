@@ -4468,8 +4468,15 @@ class AgentCore:
         api_key = emb.api_key or getattr(cfg, f"{emb.provider}_api_key", "")
         base_url = emb.base_url or getattr(cfg, f"{emb.provider}_base_url", "") or None
         if not api_key:
-            log.warning("Memory embeddings enabled but no API key for provider %s", emb.provider)
-            return None
+            if not base_url:
+                log.warning(
+                    "Memory embeddings enabled but no API key for provider %s", emb.provider
+                )
+                return None
+            # Keyless OpenAI-compatible endpoint — e.g. the infinity sidecar,
+            # the default (#253). The client insists on some key string; the
+            # server ignores it.
+            api_key = "none"
         try:
             return EmbeddingClient(
                 provider=emb.provider,
