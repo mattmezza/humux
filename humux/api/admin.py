@@ -3595,7 +3595,10 @@ def create_admin_app(
             raise HTTPException(400, str(exc)) from exc
         skills = await store.list_skills(offset=0, limit=25)
         total = await store.count_skills()
-        return _render_partial("partials/skills.html", skills=skills, total=total, offset=0, limit=25)
+        return _render_partial(
+            "partials/skills.html",
+            skills=skills, total=total, offset=0, limit=25,
+        )
 
     @app.post("/skills/install", dependencies=[Depends(auth)])
     async def install_skill(request: Request) -> HTMLResponse:
@@ -3616,7 +3619,11 @@ def create_admin_app(
             raise HTTPException(400, str(exc)) from exc
         skills = await store.list_skills(offset=0, limit=25)
         total = await store.count_skills()
-        return _render_partial("partials/skills.html", skills=skills, total=total, offset=0, limit=25, install_result=result)
+        return _render_partial(
+            "partials/skills.html",
+            skills=skills, total=total, offset=0, limit=25,
+            install_result=result,
+        )
 
     @app.post("/skills/{name}/update", dependencies=[Depends(auth)])
     async def update_skill(name: str) -> HTMLResponse:
@@ -3628,7 +3635,11 @@ def create_admin_app(
             raise HTTPException(400, str(exc)) from exc
         skills = await store.list_skills(offset=0, limit=25)
         total = await store.count_skills()
-        return _render_partial("partials/skills.html", skills=skills, total=total, offset=0, limit=25, install_result=result)
+        return _render_partial(
+            "partials/skills.html",
+            skills=skills, total=total, offset=0, limit=25,
+            install_result=result,
+        )
 
     @app.post("/skills/delete", dependencies=[Depends(auth)])
     async def delete_skill(request: Request) -> HTMLResponse:
@@ -3646,7 +3657,10 @@ def create_admin_app(
             raise HTTPException(404, f"Skill not found: {name}")
         skills = await store.list_skills(offset=0, limit=25)
         total = await store.count_skills()
-        return _render_partial("partials/skills.html", skills=skills, total=total, offset=0, limit=25)
+        return _render_partial(
+            "partials/skills.html",
+            skills=skills, total=total, offset=0, limit=25,
+        )
 
     @app.post("/skills/{name}/reset", dependencies=[Depends(auth)])
     async def reset_skill(name: str) -> HTMLResponse:
@@ -3660,7 +3674,10 @@ def create_admin_app(
                 raise HTTPException(404, f"Skill not found: {name}")
         skills = await store.list_skills(offset=0, limit=25)
         total = await store.count_skills()
-        return _render_partial("partials/skills.html", skills=skills, total=total, offset=0, limit=25)
+        return _render_partial(
+            "partials/skills.html",
+            skills=skills, total=total, offset=0, limit=25,
+        )
 
     @app.post("/skills/validate", dependencies=[Depends(auth)])
     async def validate_skill(body: SkillUpsertIn) -> dict:
