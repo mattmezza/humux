@@ -739,18 +739,24 @@ async def _execute_webhook_turn(
     (auto-approved writes, no confirmation round-trips — nobody can answer one
     on a webhook). chat_id keeps per-thread continuity.
     """
+
+    async def _mint() -> str | None:
+        """Fresh installation token (cached ~1h in core.github_app); best-effort."""
+        try:
+            from core.tools import _agent_gh_token
+
+            agent = await core.agents.get(agent_name)
+            resolve = secret_store.infra_resolve if secret_store else (lambda _n: None)
+            return _agent_gh_token(gh, agent_name, core.config, resolve) if agent else None
+        except Exception:  # noqa: BLE001 — ack/digest are best-effort extras
+            log.exception("webhook token mint failed (agent=%s)", agent_name)
+            return None
+
+    want_ack = bool(ack) and gh.get("webhook_ack", True)
     try:
-        want_ack = bool(ack) and gh.get("webhook_ack", True)
         token = None
         if want_ack or gh.get("webhook_digest", True):
-            try:
-                from core.tools import _agent_gh_token
-
-                agent = await core.agents.get(agent_name)
-                resolve = secret_store.infra_resolve if secret_store else (lambda _n: None)
-                token = _agent_gh_token(gh, agent_name, core.config, resolve) if agent else None
-            except Exception:  # noqa: BLE001 — ack/digest are best-effort extras
-                log.exception("webhook token mint failed (agent=%s)", agent_name)
+            token = await _mint()
         # 👀 ack (#241): a visible "an agent is on it" in the GitHub UI, with
         # the agent's own identity, before the (slow) turn runs.
         if want_ack and token:
@@ -797,6 +803,17 @@ async def _execute_webhook_turn(
             log.debug("webhook turn reply discarded (agent=%s chat=%s)", agent_name, chat_id)
         if delivery:
             _gh_wal_remove(delivery)
+        # Turn-done ack (#268): 🚀 on the same item the 👀 landed on — the
+        # thread shows picked-up AND finished without tailing logs. For a
+        # steered event this executor resumed only when the carrying turn
+        # ended (it waits on the chat lock), so its own target closes at the
+        # right moment too. Re-mint: a long turn can outlive the ~1h token.
+        if want_ack:
+            from core import github_digest
+
+            token = await _mint()
+            if token:
+                await github_digest.ack_reaction(ack, token, content="rocket")
     except Exception:
         # Forget the GUID so GitHub's "Redeliver" can retry a failed turn (a
         # completed turn stays deduped). Drop the WAL entry too: the turn's
@@ -806,6 +823,14 @@ async def _execute_webhook_turn(
         if delivery:
             _gh_wal_remove(delivery)
         log.exception("GitHub webhook turn failed (agent=%s)", agent_name)
+        # Failure ack (#268): 😕 — the turn DIED, visible on the thread instead
+        # of only in the logs. Best-effort like every reaction.
+        if want_ack:
+            from core import github_digest
+
+            token = await _mint()
+            if token:
+                await github_digest.ack_reaction(ack, token, content="confused")
 
 
 async def replay_webhook_deliveries(agent_state, secret_store) -> int:
