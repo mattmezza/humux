@@ -1790,11 +1790,42 @@ def create_admin_app(
         return await _render_permissions(scope)
 
     @app.get("/partials/skills", dependencies=[Depends(auth)])
-    async def partial_skills() -> HTMLResponse:
-        """Skills tab partial."""
+    async def partial_skills(
+        offset: int = 0,
+        limit: int = 25,
+    ) -> HTMLResponse:
+        """Skills tab partial with server-side pagination."""
         store = await _skills_store_from_config(config_store)
-        skills = await store.list_skills()
-        return _render_partial("partials/skills.html", skills=skills)
+        skills = await store.list_skills(offset=offset, limit=limit)
+        total = await store.count_skills()
+
+        # Precompute pagination info for the template.
+        total_pages = max(1, (total + limit - 1) // limit) if total > 0 else 1
+        current_page = (offset // limit) + 1 if limit > 0 else 1
+
+        # Build a list of visible page numbers for the nav bar.
+        max_visible = 8
+        half = max_visible // 2
+        start_p = max(1, current_page - half)
+        end_p = min(total_pages, start_p + max_visible - 1)
+        start_p = max(1, end_p - max_visible + 1)
+        page_numbers = list(range(start_p, end_p + 1))
+
+        prev_offset = max(0, offset - limit) if offset > 0 else None
+        next_offset = offset + limit if offset + limit < total else None
+
+        return _render_partial(
+            "partials/skills.html",
+            skills=skills,
+            total=total,
+            offset=offset,
+            limit=limit,
+            total_pages=total_pages,
+            current_page=current_page,
+            page_numbers=page_numbers,
+            prev_offset=prev_offset,
+            next_offset=next_offset,
+        )
 
     @app.get("/partials/agents", dependencies=[Depends(auth)])
     async def partial_agents() -> HTMLResponse:
@@ -3562,8 +3593,9 @@ def create_admin_app(
             await store.upsert_skill(name, content)
         except ValueError as exc:  # installed skill — read-only (#65)
             raise HTTPException(400, str(exc)) from exc
-        skills = await store.list_skills()
-        return _render_partial("partials/skills.html", skills=skills)
+        skills = await store.list_skills(offset=0, limit=25)
+        total = await store.count_skills()
+        return _render_partial("partials/skills.html", skills=skills, total=total, offset=0, limit=25)
 
     @app.post("/skills/install", dependencies=[Depends(auth)])
     async def install_skill(request: Request) -> HTMLResponse:
@@ -3582,8 +3614,9 @@ def create_admin_app(
             result = await store.install_from_git(url, path)
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
-        skills = await store.list_skills()
-        return _render_partial("partials/skills.html", skills=skills, install_result=result)
+        skills = await store.list_skills(offset=0, limit=25)
+        total = await store.count_skills()
+        return _render_partial("partials/skills.html", skills=skills, total=total, offset=0, limit=25, install_result=result)
 
     @app.post("/skills/{name}/update", dependencies=[Depends(auth)])
     async def update_skill(name: str) -> HTMLResponse:
@@ -3593,8 +3626,9 @@ def create_admin_app(
             result = await store.update_installed_skill(name)
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
-        skills = await store.list_skills()
-        return _render_partial("partials/skills.html", skills=skills, install_result=result)
+        skills = await store.list_skills(offset=0, limit=25)
+        total = await store.count_skills()
+        return _render_partial("partials/skills.html", skills=skills, total=total, offset=0, limit=25, install_result=result)
 
     @app.post("/skills/delete", dependencies=[Depends(auth)])
     async def delete_skill(request: Request) -> HTMLResponse:
@@ -3610,8 +3644,9 @@ def create_admin_app(
         deleted = await store.delete_skill(name)
         if not deleted:
             raise HTTPException(404, f"Skill not found: {name}")
-        skills = await store.list_skills()
-        return _render_partial("partials/skills.html", skills=skills)
+        skills = await store.list_skills(offset=0, limit=25)
+        total = await store.count_skills()
+        return _render_partial("partials/skills.html", skills=skills, total=total, offset=0, limit=25)
 
     @app.post("/skills/{name}/reset", dependencies=[Depends(auth)])
     async def reset_skill(name: str) -> HTMLResponse:
@@ -3623,8 +3658,9 @@ def create_admin_app(
             skill = await store.get_skill(name)
             if not skill:
                 raise HTTPException(404, f"Skill not found: {name}")
-        skills = await store.list_skills()
-        return _render_partial("partials/skills.html", skills=skills)
+        skills = await store.list_skills(offset=0, limit=25)
+        total = await store.count_skills()
+        return _render_partial("partials/skills.html", skills=skills, total=total, offset=0, limit=25)
 
     @app.post("/skills/validate", dependencies=[Depends(auth)])
     async def validate_skill(body: SkillUpsertIn) -> dict:

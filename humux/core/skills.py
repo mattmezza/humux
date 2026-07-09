@@ -292,14 +292,22 @@ class SkillsStore:
             await db.commit()
             return True
 
-    async def list_skills(self) -> list[dict]:
+    async def list_skills(self, offset: int | None = None, limit: int | None = None) -> list[dict]:
         await self.ensure_seeded()
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
-            cursor = await db.execute(
+            query = (
                 "SELECT name, summary, content, seed_hash, origin, updated_at"
                 " FROM skills ORDER BY name"
             )
+            params: list[int] = []
+            if limit is not None:
+                query += " LIMIT ?"
+                params.append(limit)
+            if offset is not None:
+                query += " OFFSET ?"
+                params.append(offset)
+            cursor = await db.execute(query, params)
             rows = [dict(row) for row in await cursor.fetchall()]
         # Annotate each row with whether the seed has drifted.
         for r in rows:
@@ -309,6 +317,14 @@ class SkillsStore:
             else:
                 r["stale_seed"] = False
         return rows
+
+    async def count_skills(self) -> int:
+        """Return the total number of skills in the store."""
+        await self.ensure_seeded()
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute("SELECT COUNT(*) FROM skills")
+            row = await cursor.fetchone()
+            return row[0] if row else 0
 
     async def get_skill(self, name: str) -> dict | None:
         await self.ensure_seeded()
