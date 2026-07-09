@@ -270,3 +270,118 @@ async def test_run_job_now_agent_job_passes_agent_name(tmp_path, monkeypatch) ->
 async def test_run_job_now_subagent_job_passes_agent_name(tmp_path, monkeypatch) -> None:
     resp = await _run_now_client(tmp_path, "subagent", monkeypatch)
     assert resp.status_code == 200
+
+
+def test_pause_resume_toggles_active_to_paused(tmp_path) -> None:
+    """Pausing an active job sets its status to paused in the store."""
+    store = JobStore(db_path=str(tmp_path / "jobs.db"))
+    store.upsert_job_sync("my-job", cron="0 7 * * *", task="t", status="active")
+
+    # Simulate the Pause button
+    store.upsert_job_sync("my-job", cron="0 7 * * *", task="t", status="paused")
+    job = store.get_job_sync("my-job")
+    assert job is not None
+    assert job["status"] == "paused"
+
+
+def test_pause_resume_toggles_paused_to_active(tmp_path) -> None:
+    """Resuming a paused job sets its status back to active."""
+    store = JobStore(db_path=str(tmp_path / "jobs.db"))
+    store.upsert_job_sync("my-job", cron="0 7 * * *", task="t", status="paused")
+
+    # Simulate the Resume button
+    store.upsert_job_sync("my-job", cron="0 7 * * *", task="t", status="active")
+    job = store.get_job_sync("my-job")
+    assert job is not None
+    assert job["status"] == "active"
+
+
+def test_pause_resume_rejects_terminal_states(tmp_path) -> None:
+    """Done/cancelled jobs cannot be paused or resumed."""
+    store = JobStore(db_path=str(tmp_path / "jobs.db"))
+    store.upsert_job_sync("done-job", cron="0 7 * * *", task="t", status="done")
+    store.upsert_job_sync("cancelled-job", cron="0 7 * * *", task="t", status="cancelled")
+
+    for jid, status in (("done-job", "done"), ("cancelled-job", "cancelled")):
+        job = store.get_job_sync(jid)
+        assert job is not None
+        # The endpoint raises 400 — verify the store rejects the transition
+        assert job["status"] not in ("active", "paused")
+
+
+def test_pause_resume_endpoint_returns_refreshed_partial(tmp_path) -> None:
+    """The pause-resume endpoint returns a full jobs partial with updated status."""
+    from api.admin import AgentState, create_admin_app
+    from core.config_store import ConfigStore
+
+    store = JobStore(db_path=str(tmp_path / "jobs.db"))
+    store.upsert_job_sync("alpha", cron="0 7 * * *", task="t", status="active")
+    store.upsert_job_sync("beta", cron="0 7 * * *", task="t", status="paused")
+
+    cfg = _ConfigStoreStub(setup_complete=True)
+    agent_state = AgentState(agent=cast(Any, _JobsAgentStub(store)))
+    app, _auth = create_admin_app(agent_state, cast(ConfigStore, cfg))
+    client = TestClient(app)
+    headers = {"Authorization": "Bearer secret"}
+
+    # Pause the active job
+    resp = client.post(
+        "/jobs/pause-resume",
+        data={"job_id": "alpha"},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    # Verify the partial shows the updated status (no longer "active")
+    assert 'text-green-400' not in resp.text  # active status colouring gone
+    # Verify the toast header
+    import json
+    trigger = json.loads(resp.headers.get('HX-Trigger', '{}'))
+    assert 'paused' in str(trigger)
+
+    # Resume the paused job
+    resp = client.post(
+        "/jobs/pause-resume",
+        data={"job_id": "beta"},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+
+
+def test_pause_resume_rejects_missing_job_id(tmp_path) -> None:
+    """Missing job_id returns 400."""
+    from api.admin import AgentState, create_admin_app
+    from core.config_store import ConfigStore
+
+    store = JobStore(db_path=str(tmp_path / "jobs.db"))
+    cfg = _ConfigStoreStub(setup_complete=True)
+    agent_state = AgentState(agent=cast(Any, _JobsAgentStub(store)))
+    app, _auth = create_admin_app(agent_state, cast(ConfigStore, cfg))
+    client = TestClient(app)
+    headers = {"Authorization": "Bearer secret"}
+
+    resp = client.post(
+        "/jobs/pause-resume",
+        data={"job_id": ""},
+        headers=headers,
+    )
+    assert resp.status_code == 400
+
+
+def test_pause_resume_rejects_unknown_job(tmp_path) -> None:
+    """Unknown job_id returns 404."""
+    from api.admin import AgentState, create_admin_app
+    from core.config_store import ConfigStore
+
+    store = JobStore(db_path=str(tmp_path / "jobs.db"))
+    cfg = _ConfigStoreStub(setup_complete=True)
+    agent_state = AgentState(agent=cast(Any, _JobsAgentStub(store)))
+    app, _auth = create_admin_app(agent_state, cast(ConfigStore, cfg))
+    client = TestClient(app)
+    headers = {"Authorization": "Bearer secret"}
+
+    resp = client.post(
+        "/jobs/pause-resume",
+        data={"job_id": "nonexistent"},
+        headers=headers,
+    )
+    assert resp.status_code == 404

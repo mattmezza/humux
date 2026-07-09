@@ -93,6 +93,13 @@
                       hx-vals='{"job_id": {{ job.id|tojson }} }'>
                 &triangleright;
               </button>
+              <button class="btn btn-sm ml-0.5"
+                      x-show="{{ job.status|tojson|forceescape }} === 'active' || {{ job.status|tojson|forceescape }} === 'paused'"
+                      hx-post="/jobs/pause-resume" hx-target="#tab-content" hx-swap="innerHTML"
+                      hx-include="#jobs-show-completed"
+                      hx-vals='{"job_id": {{ job.id|tojson }} }'>
+                <span x-text="{{ job.status|tojson|forceescape }} === 'paused' ? '▶ Resume' : '⏸ Pause'"></span>
+              </button>
               <button class="btn-danger btn-sm ml-0.5"
                       hx-post="/jobs/delete" hx-target="#tab-content" hx-swap="innerHTML"
                       hx-include="#jobs-show-completed"
