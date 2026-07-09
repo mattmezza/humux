@@ -224,10 +224,14 @@ same repos:
 - **Rate cap** (`gh: {..., webhook_rate_limit: 20}`) — max webhook turns per thread
   per hour (default 20). Author gates stop loops; this stops storms between mutually
   allowlisted bots.
-- **Start-of-work ack** (`gh: {..., webhook_ack: false}` to disable) — by default,
-  the agent reacts 👀 on the triggering issue, PR or comment as its turn starts, so
-  the GitHub UI shows the event was picked up before any comment lands. Reviews get
-  the reaction on their PR (reviews have no reactions API); CI runs get none.
+- **Lifecycle acks** (`gh: {..., webhook_ack: false}` to disable) — by default the
+  agent reacts on the triggering issue, PR or comment: 👀 as its turn starts (picked
+  up), 🚀 when the turn completes, 😕 when it crashes — the whole lifecycle is
+  visible on the thread without tailing logs. Posted by the runtime, never the
+  model (no tool calls, no context cost). An event that steered a running turn gets
+  its 🚀 when that turn ends. Reviews get the reactions on their PR (reviews have no
+  reactions API); CI runs get none. (GitHub's reaction set has no checkmark — rocket
+  is the closest "done".)
 - **Thread digest** (`gh: {..., webhook_digest: false}` to disable) — by default,
   each webhook turn is prefixed with the thread's current state fetched live from
   GitHub (title/state/labels/milestone/assignees + the last 10 comments) using the

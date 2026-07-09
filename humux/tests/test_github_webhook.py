@@ -729,10 +729,10 @@ def test_webhook_ack_reaction_posted(monkeypatch) -> None:
     from core import github_digest, tools
 
     monkeypatch.setattr(tools, "_agent_gh_token", lambda *a, **k: "tok-123")
-    acked: dict = {}
+    acked: list = []
 
     async def fake_ack(target, token, content="eyes"):
-        acked.update(target=target, token=token, content=content)
+        acked.append({"target": target, "token": token, "content": content})
         return True
 
     monkeypatch.setattr(github_digest, "ack_reaction", fake_ack)
@@ -740,18 +740,24 @@ def test_webhook_ack_reaction_posted(monkeypatch) -> None:
     core.config = SimpleNamespace()  # token mint is stubbed; config is opaque
     assert _post(client, ISSUE_PAYLOAD).status_code == 202
     asyncio.run(captured[0])
-    assert acked == {
-        "target": "repos/acme/widgets/issues/7/reactions",
-        "token": "tok-123",
-        "content": "eyes",
-    }
-    core.process.assert_awaited_once()  # ack rides the turn, never replaces it
-    # Disabled → no reaction even though a target exists.
+    # Lifecycle (#241/#268): 👀 when picked up, 🚀 when the turn completes —
+    # both on the same target, both from the executor (never the model).
+    assert [a["content"] for a in acked] == ["eyes", "rocket"]
+    assert all(a["target"] == "repos/acme/widgets/issues/7/reactions" for a in acked)
+    assert all(a["token"] == "tok-123" for a in acked)
+    core.process.assert_awaited_once()  # acks ride the turn, never replace it
+    # A crashed turn closes with 😕 instead of 🚀 (#268).
+    acked.clear()
+    core.process = AsyncMock(side_effect=RuntimeError("boom"))
+    assert _post(client, ISSUE_PAYLOAD).status_code == 202
+    asyncio.run(captured[1])
+    assert [a["content"] for a in acked] == ["eyes", "confused"]
+    # Disabled → no reactions even though a target exists.
     acked.clear()
     client2, core2 = _client(agent=_agent(webhook_ack=False))
     assert _post(client2, ISSUE_PAYLOAD).status_code == 202
-    asyncio.run(captured[1])
-    assert acked == {}
+    asyncio.run(captured[2])
+    assert acked == []
 
 
 def test_resolve_chat_titles() -> None:
