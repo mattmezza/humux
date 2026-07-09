@@ -1,8 +1,10 @@
 # humux — Human Multiplexer
 
-> Self-hosted personal AI agent. One Docker container.
+> Self-hosted AI personal assistant. One Docker container.
 
-humux is an open-source, self-hosted personal AI agent that runs in a single Docker container. It unifies messaging (Telegram, WhatsApp, CLI), email (IMAP/SMTP via Himalaya), calendar (CalDAV), and contacts (CardDAV) under one autonomous agent with persistent memory, scheduled tasks, voice interaction, and a web admin UI.
+humux is an open-source, self-hosted AI personal assistant that runs in a single Docker container. It triages your email, manages your calendar, sends morning briefings, handles your messages, and runs scheduled tasks — all on your own hardware with no cloud AI dependencies.
+
+For advanced use: create a squad of specialized agents (lead, developer, marketing, QA) that coordinate via GitHub issues, each with their own identity, tools, model, and voice.
 
 ## Key facts
 
@@ -15,6 +17,7 @@ humux is an open-source, self-hosted personal AI agent that runs in a single Doc
 ## What makes it different
 
 - Email, calendar, and contacts are built in — not via third-party plugins
+- Multi-agent squads that coordinate work via GitHub issues, each with their own GitHub App identity
 - Skills system: teach the agent new CLI tools by writing markdown files, no code
 - Encrypted two-tier secrets vault (infra keys + agent secrets) — credentials never enter the LLM context
 - Multiple agents with per-agent Telegram bots, voice, email accounts, and tool scopes
@@ -35,7 +38,7 @@ Admin UI at http://localhost:8000 — setup wizard guides through LLM API key, T
 - Email: read, compose, search, manage — per-agent mailboxes with vault-secured credentials
 - Calendar: CalDAV (Google Calendar, iCloud, Fastmail) — read/write events, scheduled briefings
 - Contacts: CardDAV + Google Contacts — search, create, per-agent access levels
-- GitHub: webhook-driven agent turns on issues/PRs/comments, multi-agent routing, lifecycle reactions
+- GitHub: webhook-driven agent turns on issues/PRs/comments, multi-agent routing, per-agent GitHub App identity
 - Voice: STT via faster-whisper or remote OpenAI-compatible API, TTS via edge-tts / Kokoro / remote TTS
 - Memory: four-tier system with automatic extraction from conversations
 - Skills: markdown-based, installable from git repos via admin UI
@@ -45,6 +48,7 @@ Admin UI at http://localhost:8000 — setup wizard guides through LLM API key, T
 - Scheduling: cron-based jobs for briefings, email checks, custom tasks
 - Security: ALWAYS/ASK/NEVER permission rules, Telegram inline approval buttons, YOLO mode default
 - Admin UI: PWA-installable, token usage dashboard (24h/7d/30d), per-agent LLM override, mid-turn steering
+- Artifacts: agent-generated web apps and pages served under /artifacts/ with shareable links
 
 ## LLM providers
 
