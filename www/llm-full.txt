@@ -115,7 +115,7 @@ Two tiers of storage: permanent long-term facts and expiring short-term context.
 
 ## Skills
 
-Markdown-based capability system. Instead of writing Python adapter classes, describe CLI tools in markdown files. The agent reads the description and calls tools through a whitelisted bash executor.
+Markdown-based capability system. Instead of writing Python adapter classes, describe CLI tools in markdown files. The agent reads the description and calls tools through a whitelisted bash executor. Install community skills from git repos via the admin UI.
 
 ### Skill file format
 Skills use a dual format: flat `<name>.md` files or directories with `<name>/SKILL.md` (for skills with bundled scripts). Frontmatter metadata supported (name, description, commands).
@@ -206,8 +206,10 @@ Full web dashboard: FastAPI + HTMX + Alpine.js + Tailwind CSS v4.
 - Job management (create, cancel, monitor)
 - Per-agent log streams (filterable by stream, level, time, text)
 - Prompt inspector (last-sent LLM payload per context)
+- Token usage dashboard (24h/7d/30d, per-provider breakdown)
 - Secrets vault management
 - GitHub webhook configuration
+- PWA: installable on mobile and desktop
 
 ## LLM providers
 
@@ -223,7 +225,15 @@ In group chats, a cheap LLM classifier decides per-message whether to reply. Har
 
 ## Mid-turn steering
 
-Any addressed follow-up message is injected into the running turn between rounds. The agent acknowledges with a 👀 reaction.
+Any addressed follow-up message is injected into the running turn between rounds. The agent acknowledges with a 👀 reaction. Also works for webhook events: a follow-up comment on a GitHub thread while the agent is mid-turn steers the current turn instead of spawning a duplicate.
+
+## Webhook lifecycle
+
+Emoji reactions signal webhook processing state: 👀 pickup, 🚀 done, 😕 crash. Agent GitHub identity fails closed (no silent fallback to owner token). Bot git authorship for agent-made commits.
+
+## Multi-message replies
+
+One turn can produce multiple heterogeneous messages (text, voice, images) via a [[split]] marker. Each segment is delivered as a separate Telegram bubble.
 
 ## Configuration
 

@@ -8,6 +8,13 @@
     <atom:link href="https://humux.dev/blog/feed.xml" rel="self" type="application/rss+xml"/>
 
     <item>
+      <title>Release Notes: v0.32 – v0.33</title>
+      <link>https://humux.dev/blog/release-notes-v032-v033.html</link>
+      <guid>https://humux.dev/blog/release-notes-v032-v033.html</guid>
+      <pubDate>Wed, 09 Jul 2026 00:00:00 +0000</pubDate>
+      <description>Webhook lifecycle reactions, mid-turn steering for busy threads, GitHub identity hardening, and infrastructure cleanup.</description>
+    </item>
+    <item>
       <title>Release Notes: v0.29 – v0.31</title>
       <link>https://humux.dev/blog/release-notes-v029-v031.html</link>
       <guid>https://humux.dev/blog/release-notes-v029-v031.html</guid>

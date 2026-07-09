@@ -31,18 +31,20 @@ Admin UI at http://localhost:8000 — setup wizard guides through LLM API key, T
 
 ## Capabilities
 
-- Messaging: Telegram (per-agent bots, voice, reactions, inline approvals), WhatsApp, CLI
+- Messaging: Telegram (per-agent bots, voice, reactions, inline approvals, multi-message replies), WhatsApp, CLI
 - Email: read, compose, search, manage — per-agent mailboxes with vault-secured credentials
 - Calendar: CalDAV (Google Calendar, iCloud, Fastmail) — read/write events, scheduled briefings
 - Contacts: CardDAV + Google Contacts — search, create, per-agent access levels
-- Voice: STT via faster-whisper (on-device), TTS via edge-tts or Kokoro 82M (offline)
+- GitHub: webhook-driven agent turns on issues/PRs/comments, multi-agent routing, lifecycle reactions
+- Voice: STT via faster-whisper or remote OpenAI-compatible API, TTS via edge-tts / Kokoro / remote TTS
 - Memory: four-tier system with automatic extraction from conversations
 - Skills: markdown-based, installable from git repos via admin UI
 - Subagents: scoped sub-tasks with step/token/thinking budgets
-- Browser: headless Playwright with persistent profiles and per-domain rules
+- Browser: headless Playwright with persistent profiles and per-domain rules, optional sidecar
 - Coding: read/write/edit/bash tools confined to workspace directory
 - Scheduling: cron-based jobs for briefings, email checks, custom tasks
-- Security: ALWAYS/ASK/NEVER permission rules, Telegram inline approval buttons
+- Security: ALWAYS/ASK/NEVER permission rules, Telegram inline approval buttons, YOLO mode default
+- Admin UI: PWA-installable, token usage dashboard (24h/7d/30d), per-agent LLM override, mid-turn steering
 
 ## LLM providers
 
