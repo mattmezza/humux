@@ -211,6 +211,16 @@ DEFAULT_RULES: dict[str, str] = {
     "bash:gh*issue create*": "ASK",
     "bash:gh*pr create*": "ASK",
     "bash:gh*release create*": "ASK",
+    # gh auth mutations touch SHARED container state (#263): login/logout swap
+    # the ambient keyring identity for EVERY agent, setup-git writes the global
+    # gitconfig credential helper, refresh rescopes, and `gh auth token` prints
+    # the secret into the transcript. Identity comes from the per-agent GH_TOKEN
+    # env, never from ambient auth — `gh auth status` stays readable above.
+    "bash:gh auth login*": "NEVER",
+    "bash:gh auth logout*": "NEVER",
+    "bash:gh auth setup-git*": "NEVER",
+    "bash:gh auth refresh*": "NEVER",
+    "bash:gh auth token*": "NEVER",
     # Browser automation — reading is safe, acting (click/fill/submit) asks.
     # Per-domain rules work because every command carries `--url`, e.g. add
     # "bash:*browser.py act*github.com*": "ALWAYS" via the admin UI.
@@ -283,7 +293,6 @@ class PermissionEngine:
 
     # Sentinel row in the yolo table marking the #222 migration as complete.
     _YOLO_SENTINEL = "__migrated_yolo_default_on__"
-
 
     def __init__(self, db_path: str = "data/config.db") -> None:
         self.db_path = db_path
