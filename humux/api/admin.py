@@ -778,12 +778,19 @@ async def _execute_webhook_turn(
         # reference something it has no memory of. The turn's record lives on
         # GitHub and in the thread chat; the agent reaches the owner with
         # send_message when something genuinely needs them.
+        # steerable (#266): if this thread's previous turn is still running, the
+        # event (with its fresh digest) is injected INTO that turn between tool
+        # rounds instead of queueing behind it — the working agent learns about
+        # the new comment now, not after redoing the thread from stale premises.
+        # If the turn finishes before draining it, the event runs as its own
+        # turn, unchanged.
         response = await core.process(
             message=task,
             channel="system",
             user_id="github",
             chat_id=chat_id,
             agent_name=agent_name,
+            steerable=True,
         )
         text = (response.text or "").strip()
         if text:

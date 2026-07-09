@@ -1078,8 +1078,15 @@ class AgentCore:
         respond: bool = True,
         addressed: bool = True,
         message_id: int | None = None,
+        steerable: bool = False,
     ) -> AgentResponse:
         """Serialize concurrent turns of one chat, then run the turn.
+
+        ``steerable=True`` opts a system-channel caller into mid-turn steering
+        (#266): the GitHub webhook passes it so an event landing on a thread
+        whose turn is still running is injected into THAT turn instead of
+        queueing behind it and re-running from stale premises. Chat channels
+        steer via the addressed-follow-up rule regardless of this flag.
 
         A single ``(channel, user_id, chat_id)`` is one conversation, and its
         turns share in-memory history/session caches. When two inbound messages
@@ -1113,10 +1120,9 @@ class AgentCore:
         # turn so a late steer is never lost.
         key = (channel, user_id, chat_id)
         steer_entry: dict | None = None
+        chat_steer = respond and addressed and channel != "system"
         if (
-            respond
-            and addressed
-            and channel != "system"
+            (chat_steer or steerable)
             and not _control_command(message)
             and self._active_turns_map().get(key) is not None
         ):
@@ -1193,8 +1199,11 @@ class AgentCore:
         text only — a steer's attachments are dropped; if it wasn't consumed its own
         turn still carries them, and mid-turn image steers are rare enough to defer."""
         joined = "\n\n".join(e["text"] for e in entries)
+        # Neutral label (#266): a steer may be a user's follow-up OR an inbound
+        # event (a GitHub comment on the thread being worked) — "the user said"
+        # would misattribute the latter.
         text = (
-            "[The user sent a follow-up while you were working:]\n"
+            "[A follow-up arrived while you were working:]\n"
             f"<steering_message>\n{joined}\n</steering_message>\n"
             "Continue your current task taking this into account."
         )
