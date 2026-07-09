@@ -136,8 +136,10 @@ def test_sub_tab_nav_buttons_link_correctly() -> None:
     body = resp.text
     # Each nav button should target #tab-content via hx-get
     assert 'hx-get="/partials/memory?view=settings"' in body
-    assert 'hx-get="/partials/memory?view=long-term"' in body or 'hx-get="/partials/memory?view=long-term' in body
-    assert 'hx-get="/partials/memory?view=short-term"' in body or 'hx-get="/partials/memory?view=short-term' in body
+    long_hx = 'hx-get="/partials/memory?view=long-term'
+    assert long_hx in body
+    short_hx = 'hx-get="/partials/memory?view=short-term'
+    assert short_hx in body
 
 
 def test_endpoints_require_auth() -> None:

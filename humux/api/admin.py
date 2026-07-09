@@ -2434,7 +2434,10 @@ def create_admin_app(
         await MemoryStore(db_path=memory_db)._ensure_schema()
 
         if tier == "long-term":
-            cols = "id, category, subject, content, source, confidence, created_at, updated_at, scope"
+            cols = (
+                "id, category, subject, content, source, "
+                "confidence, created_at, updated_at, scope"
+            )
             table = "long_term"
             base_where = ""
             order = "updated_at DESC"
@@ -2462,7 +2465,7 @@ def create_admin_app(
         if search_clause and where_parts:
             where_clause += " " + search_clause.lstrip()
         elif search_clause:
-            where_clause = search_clause
+            where_clause = "WHERE " + search_clause.lstrip("AND ")
 
         async with aiosqlite.connect(memory_db) as db:
             db.row_factory = aiosqlite.Row
@@ -2475,7 +2478,10 @@ def create_admin_app(
                 total = row["cnt"]
 
             # Paginated rows
-            data_sql = f"SELECT {cols} FROM {table} {where_clause} ORDER BY {order} LIMIT ? OFFSET ?"
+            data_sql = (
+                f"SELECT {cols} FROM {table} {where_clause} "
+                f"ORDER BY {order} LIMIT ? OFFSET ?"
+            )
             cursor = await db.execute(data_sql, params + [str(limit), str(offset)])
             entries = [dict(row) for row in await cursor.fetchall()]
 
@@ -2533,11 +2539,15 @@ def create_admin_app(
             # Settings view: no memory data needed
             pass
         elif view == "long-term":
-            entries, total = await _fetch_memories_paginated(memory_db, "long-term", offset, limit, q)
+            entries, total = await _fetch_memories_paginated(
+                memory_db, "long-term", offset, limit, q
+            )
             ctx["long_term"] = entries
             ctx["long_term_total"] = total
         elif view == "short-term":
-            entries, total = await _fetch_memories_paginated(memory_db, "short-term", offset, limit, q)
+            entries, total = await _fetch_memories_paginated(
+                memory_db, "short-term", offset, limit, q
+            )
             ctx["short_term"] = entries
             ctx["short_term_total"] = total
 
