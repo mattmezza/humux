@@ -2416,14 +2416,81 @@ def create_admin_app(
             agent.permissions.remove_rule(pattern)
         return {"ok": True, "rules": _browser_rules()}
 
-    async def _render_memory_partial() -> HTMLResponse:
-        """Build the Memory tab partial (config + stored memories).
+    async def _fetch_memories_paginated(
+        memory_db: str, tier: str, offset: int, limit: int, q: str | None = None
+    ) -> tuple[list[dict], int]:
+        """Fetch a paginated slice of memory entries with optional search.
 
-        Shared by the tab load and the post-delete refresh so both render the
-        full embedding/lifecycle config, not just the memory tables.
+        Returns (entries, total_count).
         """
         import aiosqlite
 
+        entries: list[dict] = []
+        total = 0
+        if not Path(memory_db).exists():
+            return entries, total
+
+        from core.memory import MemoryStore
+        await MemoryStore(db_path=memory_db)._ensure_schema()
+
+        if tier == "long-term":
+            cols = "id, category, subject, content, source, confidence, created_at, updated_at, scope"
+            table = "long_term"
+            base_where = ""
+            order = "updated_at DESC"
+        elif tier == "short-term":
+            cols = "id, content, context, expires_at, created_at, scope"
+            table = "short_term"
+            base_where = "expires_at > datetime('now')"
+            order = "created_at DESC"
+        else:
+            return entries, total
+
+        search_clause = ""
+        params: list[str] = []
+        if q:
+            like_q = f"%{q}%"
+            if tier == "long-term":
+                search_clause = "AND (content LIKE ? OR subject LIKE ? OR category LIKE ?)"
+                params = [like_q, like_q, like_q]
+            else:
+                search_clause = "AND content LIKE ?"
+                params = [like_q]
+
+        where_parts = [p for p in [base_where] if p]
+        where_clause = ("WHERE " + " AND ".join(where_parts)) if where_parts else ""
+        if search_clause and where_parts:
+            where_clause += " " + search_clause.lstrip()
+        elif search_clause:
+            where_clause = search_clause
+
+        async with aiosqlite.connect(memory_db) as db:
+            db.row_factory = aiosqlite.Row
+
+            # Total count
+            count_sql = f"SELECT COUNT(*) as cnt FROM {table} {where_clause}"
+            cursor = await db.execute(count_sql, params)
+            row = await cursor.fetchone()
+            if row:
+                total = row["cnt"]
+
+            # Paginated rows
+            data_sql = f"SELECT {cols} FROM {table} {where_clause} ORDER BY {order} LIMIT ? OFFSET ?"
+            cursor = await db.execute(data_sql, params + [str(limit), str(offset)])
+            entries = [dict(row) for row in await cursor.fetchall()]
+
+        return entries, total
+
+    async def _render_memory_partial(
+        view: str = "settings",
+        offset: int = 0,
+        limit: int = 25,
+        q: str | None = None,
+    ) -> HTMLResponse:
+        """Build the Memory tab partial for the given sub-tab view.
+
+        Shared by the tab load, pagination, search, and post-delete/update refresh.
+        """
         async def _cfg(key: str, default: str) -> str:
             val = await config_store.get(key)
             return default if val is None or val == "" else str(val)
@@ -2432,7 +2499,15 @@ def create_admin_app(
             val = await config_store.get(key)
             return default if val is None else str(val).lower()
 
+        allowed_views = ("settings", "long-term", "short-term")
+        if view not in allowed_views:
+            view = "settings"
+
         ctx: dict[str, object] = {
+            "memory_view": view,
+            "memory_offset": offset,
+            "memory_limit": limit,
+            "memory_q": q or "",
             "memory_long_term_limit": await _cfg("memory.long_term_limit", "50"),
             "emb_enabled": await _bool("memory.embedding.enabled", "true"),
             "emb_provider": await _cfg("memory.embedding.provider", "sidecar"),
@@ -2452,38 +2527,39 @@ def create_admin_app(
         agent_store = await _agent_store_from_config(config_store)
         ctx["agent_slugs"] = [a.name for a in await agent_store.list_agents()]
 
-        # Memory data — read directly from DB (works even when agent is stopped)
         memory_db = await config_store.get("memory.db_path") or "data/memory.db"
-        long_term: list[dict] = []
-        short_term: list[dict] = []
-        if Path(memory_db).exists():
-            # Idempotent migrate-on-read so a legacy DB has the scope column (#42)
-            # even when no agent is running to have migrated it on startup.
-            from core.memory import MemoryStore
 
-            await MemoryStore(db_path=memory_db)._ensure_schema()
-            cols = (
-                "id, category, subject, content, source, confidence, created_at, updated_at, scope"
-            )
-            async with aiosqlite.connect(memory_db) as db:
-                db.row_factory = aiosqlite.Row
-                cursor = await db.execute(f"SELECT {cols} FROM long_term ORDER BY updated_at DESC")
-                long_term = [dict(row) for row in await cursor.fetchall()]
-                cursor = await db.execute(
-                    "SELECT id, content, context, expires_at, created_at, scope "
-                    "FROM short_term WHERE expires_at > datetime('now') "
-                    "ORDER BY created_at DESC"
-                )
-                short_term = [dict(row) for row in await cursor.fetchall()]
+        if view == "settings":
+            # Settings view: no memory data needed
+            pass
+        elif view == "long-term":
+            entries, total = await _fetch_memories_paginated(memory_db, "long-term", offset, limit, q)
+            ctx["long_term"] = entries
+            ctx["long_term_total"] = total
+        elif view == "short-term":
+            entries, total = await _fetch_memories_paginated(memory_db, "short-term", offset, limit, q)
+            ctx["short_term"] = entries
+            ctx["short_term_total"] = total
 
-        return _render_partial(
-            "partials/memory.html", long_term=long_term, short_term=short_term, **ctx
-        )
+        return _render_partial("partials/memory.html", **ctx)
 
     @app.get("/partials/memory", dependencies=[Depends(auth)])
-    async def partial_memory() -> HTMLResponse:
-        """Memory tab partial."""
-        return await _render_memory_partial()
+    async def partial_memory(
+        request: Request,
+        view: str = "settings",
+        offset: int = 0,
+        limit: int = 25,
+        q: str | None = None,
+    ) -> HTMLResponse:
+        """Memory tab partial with sub-tab support.
+
+        Query params:
+          view    — sub-tab: settings | long-term | short-term (default: settings)
+          offset  — row offset for pagination (default: 0)
+          limit   — page size (default: 25)
+          q       — search query to filter by content/subject/category
+        """
+        return await _render_memory_partial(view=view, offset=offset, limit=limit, q=q)
 
     async def _history_ctx() -> dict:
         """History + compaction config, shared by the History sub-tab of the LLM
@@ -4023,8 +4099,8 @@ def create_admin_app(
             if cursor.rowcount == 0:
                 raise HTTPException(404, f"Memory {memory_id} not found in {tier}")
 
-        # Return refreshed memory partial (full config + tables)
-        return await _render_memory_partial()
+        # Return refreshed sub-view based on the deleted tier
+        return await _render_memory_partial(view=tier)
 
     @app.post("/memory/update", dependencies=[Depends(auth)])
     async def update_memory(request: Request) -> HTMLResponse:
@@ -4067,7 +4143,8 @@ def create_admin_app(
             )
         if rows == 0:
             raise HTTPException(404, f"Memory {memory_id} not found in {tier}")
-        return await _render_memory_partial()
+        # Return refreshed sub-view based on the updated tier
+        return await _render_memory_partial(view=tier)
 
     @app.get("/memory/embedding/status", dependencies=[Depends(auth)])
     async def embedding_status() -> dict:
