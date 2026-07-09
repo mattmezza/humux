@@ -2356,6 +2356,10 @@ def create_admin_app(
         profile = str(body.get("profile", "")).strip() or "default"
         root = Path(__file__).resolve().parent.parent
         # Subprocess, not in-process: the sync Playwright API can't run in this event loop.
+        browser_cdp = (await config_store.get("tools.browser.cdp_url")) or ""
+        test_env = {**os.environ, "BROWSER_HEADLESS": "1"}
+        if browser_cdp:
+            test_env["BROWSER_CDP_URL"] = browser_cdp
         try:
             proc = await asyncio.create_subprocess_exec(
                 sys.executable,
@@ -2368,7 +2372,7 @@ def create_admin_app(
                 cwd=str(root),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                env={**os.environ, "BROWSER_HEADLESS": "1"},
+                env=test_env,
             )
             out, err = await asyncio.wait_for(proc.communicate(), timeout=60)
         except TimeoutError:
