@@ -131,6 +131,10 @@
             <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">Gate who can trigger an agent in each group and who may DM it: everyone, nobody, or specific user IDs.</p>
           </div>
           <div class="feature-card">
+            <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Multi-message replies</h3>
+            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">One turn can produce several heterogeneous messages — text, voice, images — delivered as separate bubbles via a <code class="inline-code">[[split]]</code> marker.</p>
+          </div>
+          <div class="feature-card">
             <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">WhatsApp (wacli)</h3>
             <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">Read and send WhatsApp messages via the wacli CLI tool. Integrated as a skill the agent can learn.</p>
           </div>
@@ -234,7 +238,39 @@
       </div>
     </section>
 
-    <!-- 5. Agents & Memory -->
+    <!-- 5. GitHub Integration -->
+    <section class="mb-20" x-data="{ open: false }">
+      <button @click="open = !open" class="flex w-full items-center justify-between py-4 text-left">
+        <div class="flex items-center gap-3">
+          <div class="flex h-10 w-10 items-center justify-center rounded-md" style="background: var(--color-accent-glow);">
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" style="color: var(--color-accent);"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+          </div>
+          <div>
+            <h2 class="text-lg font-semibold" style="color: #eee;">GitHub Integration</h2>
+            <p class="text-xs" style="color: var(--color-muted);">Webhook events, multi-agent routing, lifecycle reactions</p>
+          </div>
+        </div>
+        <svg class="h-4 w-4 transition-transform duration-200" :class="{ 'rotate-180': open }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--color-muted);"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      <div x-show="open" x-collapse>
+        <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          <div class="feature-card">
+            <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">GitHub App webhooks</h3>
+            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">Register a GitHub App and receive issue, PR, and comment events in near-realtime. Each event triggers an agent turn with full context.</p>
+          </div>
+          <div class="feature-card">
+            <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Multi-agent routing</h3>
+            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">Route events to multiple agents based on @mention slugs and author filters. Each agent gets its own isolated conversation thread per event.</p>
+          </div>
+          <div class="feature-card">
+            <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Lifecycle reactions</h3>
+            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">Visual feedback on webhook processing: 👀 when picked up, 🚀 on completion, 😕 on failure. Mid-turn steering injects follow-up messages into running turns.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 6. Agents & Memory -->
     <section class="mb-20" x-data="{ open: false }">
       <button @click="open = !open" class="flex w-full items-center justify-between py-4 text-left">
         <div class="flex items-center gap-3">
@@ -264,7 +300,11 @@
           </div>
           <div class="feature-card">
             <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Markdown skills</h3>
-            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">Teach the agent new capabilities by writing markdown files — no code required. Add tool integrations by describing the CLI command.</p>
+            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">Teach the agent new capabilities by writing markdown files — no code required. Install community skills from git repos via the admin UI.</p>
+          </div>
+          <div class="feature-card">
+            <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Mid-turn steering</h3>
+            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">Send a follow-up message while the agent is still working. It gets injected between tool rounds, so you can redirect without waiting for the turn to finish.</p>
           </div>
           <div class="feature-card">
             <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Scheduled jobs</h3>
@@ -301,6 +341,14 @@
           <div class="feature-card">
             <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Agent editor</h3>
             <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">Configure agent character, skills, tools, voice, Telegram bot, and account bindings. Tabbed interface with sys prompt, inference, and provider settings.</p>
+          </div>
+          <div class="feature-card">
+            <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Token usage dashboard</h3>
+            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">Track token consumption across 24h, 7d, and 30d windows. Per-provider breakdown, per-agent attribution, and cost estimates in the Overview tab.</p>
+          </div>
+          <div class="feature-card">
+            <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Progressive Web App</h3>
+            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">Install the admin UI on your phone or desktop. Full PWA support with app icon, standalone mode, and offline shell.</p>
           </div>
           <div class="feature-card">
             <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Log streams</h3>
