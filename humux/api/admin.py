@@ -2787,6 +2787,11 @@ def create_admin_app(
             "partials/jobs_scheduled.html", **(await _jobs_context(show_completed))
         )
 
+    @app.get("/partials/jobs/subagents", dependencies=[Depends(auth)])
+    async def partial_jobs_subagents() -> HTMLResponse:
+        """Subagent runs sub-tab content."""
+        return _render_partial("partials/jobs_subagents.html")
+
     @app.post("/jobs", dependencies=[Depends(auth)])
     async def upsert_job(request: Request) -> HTMLResponse:
         """Add or update a scheduled job. Returns refreshed jobs partial."""
