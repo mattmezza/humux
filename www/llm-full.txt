@@ -177,6 +177,10 @@ faster-whisper (CTranslate2-based). On-device, offline, multilingual. Auto-selec
 
 Headless Chromium via Playwright. Self-driving explore mode (inner LLM loop navigates, fills forms, clicks). Persistent logged-in profiles. Per-domain action rules.
 
+## Deep research
+
+Multi-step autonomous research pipeline. The agent plans search queries, fans out web searches, fetches and reads full pages, cross-checks claims across sources, and synthesizes a cited report delivered as a shareable artifact. Configurable search/read models and token budget via the admin UI Tools tab.
+
 ## Web artifacts
 
 Agent writes files to `artifacts/<slug>/`, served as shareable links with sandboxed CSP. Multi-file sites, PDFs, images.
@@ -193,7 +197,7 @@ Cron-based job scheduler. Job types:
 - memory_consolidation: T4 hygiene job
 - subagent: scoped sub-task
 
-One-shot tasks via Telegram or admin UI. Filter by agent. Show/hide completed jobs.
+Pause and resume jobs from the admin UI. One-shot tasks via Telegram or admin UI. Filter by agent. Show/hide completed jobs.
 
 ## Admin UI
 
@@ -202,8 +206,8 @@ Full web dashboard: FastAPI + HTMX + Alpine.js + Tailwind CSS v4.
 - Setup wizard for first-boot configuration
 - Agent editor (character, skills, tools, voice, accounts, LLM provider)
 - Skills editor with live preview
-- Memory inspector (browse, edit, delete entries)
-- Job management (create, cancel, monitor)
+- Memory inspector (Settings / Long-term / Short-term sub-tabs, pagination, search, inline editing via detail modal)
+- Job management (create, pause, resume, cancel, monitor)
 - Per-agent log streams (filterable by stream, level, time, text)
 - Prompt inspector (last-sent LLM payload per context)
 - Token usage dashboard (24h/7d/30d, per-provider breakdown)
