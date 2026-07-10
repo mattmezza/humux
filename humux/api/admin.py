@@ -463,7 +463,9 @@ class _BufferHandler(logging.Handler):
             _LOG_BUFFER.append(
                 {
                     "ts": record.created,
-                    "time": datetime.fromtimestamp(record.created, tz=ZoneInfo(_LOG_TIMEZONE)).strftime("%H:%M:%S"),
+                    "time": datetime.fromtimestamp(
+                        record.created, tz=ZoneInfo(_LOG_TIMEZONE)
+                    ).strftime("%H:%M:%S"),
                     "level": record.levelname,
                     "levelno": record.levelno,
                     "name": record.name,
