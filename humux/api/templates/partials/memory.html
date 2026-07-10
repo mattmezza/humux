@@ -1,74 +1,136 @@
-{# Memory tab partial #}
-  <div x-data="{
-    longTermLimit: {{ memory_long_term_limit|default('50', true)|tojson|forceescape }},
-    cfgResult: '',
-    cfgOk: false,
-    // Embeddings (Tier 2)
-    embEnabled: {{ emb_enabled|default('true', true)|tojson|forceescape }} === 'true',
-    embProvider: {{ emb_provider|default('local', true)|tojson|forceescape }},
-    embModel: {{ emb_model|default('intfloat/multilingual-e5-small', true)|tojson|forceescape }},
-    embBaseUrl: {{ emb_base_url|default('', true)|tojson|forceescape }},
-    embTopK: {{ emb_top_k|default('12', true)|tojson|forceescape }},
-    embRecallTopK: {{ emb_recall_top_k|default('10', true)|tojson|forceescape }},
-    embResult: '', embOk: false,
-    embStatus: null, embBusy: false, embTestResult: '',
-    // Lifecycle (Tier 3/4)
-    defaultImportance: {{ default_importance|default('5.0', true)|tojson|forceescape }},
-    archiveAfterDays: {{ archive_after_days|default('90', true)|tojson|forceescape }},
-    archiveMaxImportance: {{ archive_max_importance|default('4.0', true)|tojson|forceescape }},
-    archiveMinIdleDays: {{ archive_min_idle_days|default('45', true)|tojson|forceescape }},
-    hygieneEnabled: {{ hygiene_enabled|default('true', true)|tojson|forceescape }} === 'true',
-    hygieneThreshold: {{ hygiene_threshold|default('0.45', true)|tojson|forceescape }},
-    lifeResult: '', lifeOk: false,
-    get isLocal() { return this.embProvider === 'local' || this.embProvider === 'fastembed'; },
-    _hdrs() {
-      return {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + (localStorage.getItem('admin_api_key') || '')
-      };
-    },
-    saveCfg(vals, okMsg, okField, resField) {
-      return fetch('/config', { method: 'PATCH', headers: this._hdrs(), body: JSON.stringify({values: vals}) })
-        .then(r => { this[okField] = r.ok; return r.json(); })
-        .then(d => {
-          this[resField] = this[okField] ? okMsg : (d.detail || 'Error');
-          if (this[okField] && window.showToast) { window.showToast(okMsg); }
-        })
-        .catch(e => { this[okField] = false; this[resField] = e.message; });
-    },
-    loadEmbStatus() {
-      fetch('/memory/embedding/status', { headers: this._hdrs() })
-        .then(r => r.json()).then(d => { this.embStatus = d; }).catch(() => {});
-    },
-    downloadModel() {
-      this.embBusy = true; this.embTestResult = 'Downloading model… (first time may take a minute)';
-      fetch('/memory/embedding/prefetch', { method: 'POST', headers: this._hdrs() })
-        .then(r => r.json().then(d => ({ok: r.ok, d})))
-        .then(({ok, d}) => {
-          this.embTestResult = ok ? ('Model ready (dim ' + d.dimensions + ')') : ('Error: ' + (d.detail || 'failed'));
-          this.loadEmbStatus();
-        })
-        .catch(e => { this.embTestResult = 'Error: ' + e.message; })
-        .finally(() => { this.embBusy = false; });
-    },
-    testEmb() {
-      this.embBusy = true; this.embTestResult = 'Testing…';
-      fetch('/memory/embedding/test', { method: 'POST', headers: this._hdrs() })
-        .then(r => r.json().then(d => ({ok: r.ok, d})))
-        .then(({ok, d}) => {
-          this.embTestResult = ok
-            ? ('OK · dim ' + d.dimensions + ' · related=' + d.similar_pair + ' vs unrelated=' + d.unrelated_pair)
-            : ('Error: ' + (d.detail || 'failed'));
-        })
-        .catch(e => { this.embTestResult = 'Error: ' + e.message; })
-        .finally(() => { this.embBusy = false; });
-    }
-  }" x-init="loadEmbStatus()">
+{# Memory tab partial with sub-tabs: Settings | Long-term | Short-term #}
+{% set categories = ['preference','relationship','fact','routine','work','health','travel'] %}
+{% set page_sizes = [25, 50, 100] %}
+{% set v = memory_view|default('settings') %}
+{% set off = memory_offset|default(0)|int %}
+{% set lim = memory_limit|default(25)|int %}
+{% set q = memory_q|default('') %}
+
+{%- macro nav(view) %}
+<div class="flex border-b border-border mb-4 overflow-x-auto">
+  <button type="button" class="tab-link{% if view == 'settings' %} tab-link-active{% endif %}"
+          hx-get="/partials/memory?view=settings" hx-target="#tab-content" hx-swap="innerHTML">Settings</button>
+  <button type="button" class="tab-link{% if view == 'long-term' %} tab-link-active{% endif %}"
+          hx-get="/partials/memory?view=long-term&offset=0&limit={{ lim }}" hx-target="#tab-content" hx-swap="innerHTML">Long-term</button>
+  <button type="button" class="tab-link{% if view == 'short-term' %} tab-link-active{% endif %}"
+          hx-get="/partials/memory?view=short-term&offset=0&limit={{ lim }}" hx-target="#tab-content" hx-swap="innerHTML">Short-term</button>
+</div>
+{%- endmacro %}
+
+{%- macro pag(view, total) %}
+{% set total = total|default(0)|int %}
+{% set cp = (off // lim) + 1 if total > 0 else 1 %}
+{% set tp = ((total + lim - 1) // lim) if total > 0 else 1 %}
+{% set ss = off + 1 if total > 0 else 0 %}
+{% set se = (off + lim)|min(total) if total > 0 else 0 %}
+{% set qs = ('&q=' + q|urlencode) if q else '' %}
+<div class="flex items-center justify-between gap-2 mb-3 flex-wrap">
+  <div class="flex items-center gap-2">
+    <span class="text-xs text-muted">
+      {%- if total > 0 %}Showing {{ ss }}&ndash;{{ se }} of {{ total }}{% else %}No entries{% endif -%}
+    </span>
+    <label class="label mb-0 text-xs" for="ps-{{ view }}">Per page</label>
+    <select class="input-sm" style="max-width:80px" id="ps-{{ view }}"
+            onchange="htmx.ajax('GET','/partials/memory?view={{ view }}&offset=0&limit='+this.value+'{{ qs }}',{target:'#tab-content',swap:'innerHTML'})">
+      {% for ps in page_sizes %}<option value="{{ ps }}"{% if lim == ps %} selected{% endif %}>{{ ps }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="flex items-center gap-1">
+    <button class="btn btn-sm"{% if cp <= 1 %} disabled{% endif %}
+            hx-get="/partials/memory?view={{ view }}&offset=0&limit={{ lim }}{{ qs }}" hx-target="#tab-content" hx-swap="innerHTML">&laquo;</button>
+    <button class="btn btn-sm"{% if cp <= 1 %} disabled{% endif %}
+            hx-get="/partials/memory?view={{ view }}&offset={{ [off - lim, 0]|max }}&limit={{ lim }}{{ qs }}" hx-target="#tab-content" hx-swap="innerHTML">&lsaquo;</button>
+    <span class="text-xs text-muted px-1">Page {{ cp }} / {{ tp }}</span>
+    <button class="btn btn-sm"{% if cp >= tp %} disabled{% endif %}
+            hx-get="/partials/memory?view={{ view }}&offset={{ off + lim }}&limit={{ lim }}{{ qs }}" hx-target="#tab-content" hx-swap="innerHTML">&rsaquo;</button>
+    <button class="btn btn-sm"{% if cp >= tp %} disabled{% endif %}
+            hx-get="/partials/memory?view={{ view }}&offset={{ (tp - 1) * lim }}&limit={{ lim }}{{ qs }}" hx-target="#tab-content" hx-swap="innerHTML">&raquo;</button>
+  </div>
+</div>
+{%- endmacro %}
+
+{%- macro search(view) %}
+<div class="flex items-center gap-2 mb-3">
+  <input type="text" class="input-sm flex-1" style="max-width:300px" placeholder="Search memories..."
+         value="{{ q }}" id="search-{{ view }}"
+         onkeydown="if(event.key==='Enter'){const v=this.value;htmx.ajax('GET','/partials/memory?view={{ view }}&offset=0&limit={{ lim }}'+(v?'&q='+encodeURIComponent(v):''),{target:'#tab-content',swap:'innerHTML'});}">
+  <button class="btn btn-sm"
+          hx-get="/partials/memory?view={{ view }}&offset=0&limit={{ lim }}" hx-target="#tab-content" hx-swap="innerHTML"
+          title="Refresh">&#x21bb;</button>
+</div>
+{%- endmacro %}
+
+{% if v == 'settings' %}
+{{ nav('settings') }}
+<div x-data="{
+  longTermLimit: {{ memory_long_term_limit|default('50', true)|tojson|forceescape }},
+  cfgResult: '', cfgOk: false,
+  // Embeddings (Tier 2)
+  embEnabled: {{ emb_enabled|default('true', true)|tojson|forceescape }} === 'true',
+  embProvider: {{ emb_provider|default('sidecar', true)|tojson|forceescape }},
+  embModel: {{ emb_model|default('intfloat/multilingual-e5-small', true)|tojson|forceescape }},
+  embBaseUrl: {{ emb_base_url|default('', true)|tojson|forceescape }},
+  embTopK: {{ emb_top_k|default('12', true)|tojson|forceescape }},
+  embRecallTopK: {{ emb_recall_top_k|default('10', true)|tojson|forceescape }},
+  embResult: '', embOk: false,
+  embStatus: null, embBusy: false, embTestResult: '',
+  // Lifecycle (Tier 3/4)
+  defaultImportance: {{ default_importance|default('5.0', true)|tojson|forceescape }},
+  archiveAfterDays: {{ archive_after_days|default('90', true)|tojson|forceescape }},
+  archiveMaxImportance: {{ archive_max_importance|default('4.0', true)|tojson|forceescape }},
+  archiveMinIdleDays: {{ archive_min_idle_days|default('45', true)|tojson|forceescape }},
+  hygieneEnabled: {{ hygiene_enabled|default('true', true)|tojson|forceescape }} === 'true',
+  hygieneThreshold: {{ hygiene_threshold|default('0.45', true)|tojson|forceescape }},
+  lifeResult: '', lifeOk: false,
+  get isLocal() { return this.embProvider === 'local' || this.embProvider === 'fastembed'; },
+  _hdrs() {
+    return {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + (localStorage.getItem('admin_api_key') || '')
+    };
+  },
+  saveCfg(vals, okMsg, okField, resField) {
+    return fetch('/config', { method: 'PATCH', headers: this._hdrs(), body: JSON.stringify({values: vals}) })
+      .then(r => { this[okField] = r.ok; return r.json(); })
+      .then(d => {
+        this[resField] = this[okField] ? okMsg : (d.detail || 'Error');
+        if (this[okField] && window.showToast) { window.showToast(okMsg); }
+      })
+      .catch(e => { this[okField] = false; this[resField] = e.message; });
+  },
+  loadEmbStatus() {
+    fetch('/memory/embedding/status', { headers: this._hdrs() })
+      .then(r => r.json()).then(d => { this.embStatus = d; }).catch(() => {});
+  },
+  downloadModel() {
+    this.embBusy = true; this.embTestResult = 'Downloading model\u2026 (first time may take a minute)';
+    fetch('/memory/embedding/prefetch', { method: 'POST', headers: this._hdrs() })
+      .then(r => r.json().then(d => ({ok: r.ok, d})))
+      .then(({ok, d}) => {
+        this.embTestResult = ok ? ('Model ready (dim ' + d.dimensions + ')') : ('Error: ' + (d.detail || 'failed'));
+        this.loadEmbStatus();
+      })
+      .catch(e => { this.embTestResult = 'Error: ' + e.message; })
+      .finally(() => { this.embBusy = false; });
+  },
+  testEmb() {
+    this.embBusy = true; this.embTestResult = 'Testing\u2026';
+    fetch('/memory/embedding/test', { method: 'POST', headers: this._hdrs() })
+      .then(r => r.json().then(d => ({ok: r.ok, d})))
+      .then(({ok, d}) => {
+        this.embTestResult = ok
+          ? ('OK \u00b7 dim ' + d.dimensions + ' \u00b7 related=' + d.similar_pair + ' vs unrelated=' + d.unrelated_pair)
+          : ('Error: ' + (d.detail || 'failed'));
+      })
+      .catch(e => { this.embTestResult = 'Error: ' + e.message; })
+      .finally(() => { this.embBusy = false; });
+  }
+}" x-init="loadEmbStatus()">
+
   {# Memory config section #}
   <div class="card mb-6">
     <h2 class="text-base mb-1">Memory Settings</h2>
     <p class="text-muted text-xs mb-3">Configure memory storage behaviour.</p>
-
     <div class="space-y-3">
       <div>
         <label class="label" for="mem-long-term-limit">Long-term limit</label>
@@ -77,7 +139,6 @@
         <p class="text-muted text-xs mt-1">Maximum number of long-term memories before consolidation triggers cleanup.</p>
       </div>
     </div>
-
     <div class="flex justify-end mt-3">
       <button class="btn-primary btn-sm"
               @click="withLoading($el, () => saveCfg({'memory.long_term_limit': String(longTermLimit)}, 'Memory settings saved', 'cfgOk', 'cfgResult'))">
@@ -87,37 +148,34 @@
     <template x-if="cfgResult">
       <div :class="cfgOk ? 'alert-success' : 'alert-error'" class="mt-2" x-text="cfgResult"></div>
     </template>
-
     <p class="text-muted text-xs mt-4">
       The models used for memory extraction and consolidation can be configured in the
       <a href="#" class="text-link" @click.prevent="$dispatch('switch-tab', 'llm')">LLM tab</a>.
     </p>
   </div>
 
-  {# Semantic memory (embeddings) — Tier 2 #}
+  {# Semantic memory (embeddings) #}
   <div class="card mb-6">
     <h2 class="text-base mb-1">Semantic memory (embeddings)</h2>
     <p class="text-muted text-xs mb-3">
-      Match memories by <em>meaning</em>, not just words — so “allergic to shellfish” surfaces when you ask about eating prawns.
+      Match memories by <em>meaning</em>, not just words
+      &mdash; so &ldquo;allergic to shellfish&rdquo; surfaces when you ask about eating prawns.
     </p>
-
     <details class="mb-4 rounded border border-border p-2">
       <summary class="text-xs cursor-pointer">How it works (the science)</summary>
       <div class="text-muted text-xs mt-2 space-y-2">
-        <p>An <strong>embedding model</strong> turns each memory and your current message into a vector — a list of numbers positioning the text in a “meaning space”. Texts with similar meaning land close together, even with no shared words.</p>
-        <p>Closeness is measured by <strong>cosine similarity</strong> (1.0 = same direction/meaning, 0 = unrelated). On every message we embed it, compare against stored memory vectors, and inject only the most relevant ones — ranked by <em>relevance + importance + recency</em> (a Generative-Agents-style score) instead of dumping everything.</p>
+        <p>An <strong>embedding model</strong> turns each memory and your current message into a vector &mdash; a list of numbers positioning the text in a &ldquo;meaning space&rdquo;. Texts with similar meaning land close together, even with no shared words.</p>
+        <p>Closeness is measured by <strong>cosine similarity</strong> (1.0 = same direction/meaning, 0 = unrelated). On every message we embed it, compare against stored memory vectors, and inject only the most relevant ones &mdash; ranked by <em>relevance + importance + recency</em> (a Generative-Agents-style score) instead of dumping everything.</p>
         <p>The same similarity drives dedup (does this new fact match an existing one?) and the hygiene pass (cluster &amp; merge near-duplicates).</p>
-        <p><strong>Local</strong> runs the model on this machine (private, free, no key; the model file is bundled in the Docker image). <strong>API</strong> providers call a remote endpoint (needs a key; a few cents/year at most, but your memory text is sent to them). When disabled, memory falls back to fast word-overlap matching — still works, just less “fuzzy”.</p>
+        <p><strong>Local</strong> runs the model on this machine (private, free, no key; the model file is bundled in the Docker image). <strong>API</strong> providers call a remote endpoint (needs a key; a few cents/year at most, but your memory text is sent to them). When disabled, memory falls back to fast word-overlap matching &mdash; still works, just less &ldquo;fuzzy&rdquo;.</p>
       </div>
     </details>
-
     <div class="space-y-3">
       <div class="flex items-center gap-2">
         <label class="label mb-0" for="mem-emb-enabled">Enabled</label>
         <input type="checkbox" x-model="embEnabled" class="rounded border-border" id="mem-emb-enabled">
-        <span class="text-muted text-xs">Off → lexical (word-overlap) retrieval, no model needed.</span>
+        <span class="text-muted text-xs">Off &rarr; lexical (word-overlap) retrieval, no model needed.</span>
       </div>
-
       <div>
         <label class="label" for="mem-emb-backend">Backend</label>
         <select class="input-sm" style="max-width:360px" x-model="embProvider" :disabled="!embEnabled" id="mem-emb-backend">
@@ -132,7 +190,6 @@
           (Note: DeepSeek has no embeddings endpoint.)
         </p>
       </div>
-
       <div>
         <label class="label" for="mem-emb-model">Model</label>
         <input type="text" class="input-sm" style="max-width:420px" x-model="embModel" :disabled="!embEnabled"
@@ -140,32 +197,27 @@
         <p class="text-muted text-xs mt-1" x-show="isLocal">Multilingual CPU model (384-dim, ~470MB).</p>
         <p class="text-muted text-xs mt-1" x-show="!isLocal">e.g. <code>text-embedding-3-small</code> (OpenAI) or <code>text-embedding-004</code> (Google).</p>
       </div>
-
       <div x-show="!isLocal">
         <label class="label" for="mem-emb-base-url">Base URL (optional)</label>
         <input type="text" class="input-sm" style="max-width:420px" x-model="embBaseUrl" :disabled="!embEnabled"
-               placeholder="https://… (OpenAI-compatible /embeddings)" id="mem-emb-base-url">
+               placeholder="https://&hellip; (OpenAI-compatible /embeddings)" id="mem-emb-base-url">
       </div>
-
       <div>
         <label class="label" for="mem-emb-top-k">Injected memories per turn (top-k)</label>
         <input type="number" class="input-sm" style="max-width:120px" x-model="embTopK" :disabled="!embEnabled" min="1" max="100" id="mem-emb-top-k">
         <p class="text-muted text-xs mt-1">How many of the most relevant long-term memories to put in the prompt each message.</p>
       </div>
-
       <div>
         <label class="label" for="mem-emb-recall-top-k">Recall results (recall_memory tool)</label>
         <input type="number" class="input-sm" style="max-width:120px" x-model="embRecallTopK" :disabled="!embEnabled" min="1" max="25" id="mem-emb-recall-top-k">
         <p class="text-muted text-xs mt-1">Default number of memories the recall_memory tool returns when the agent searches its full long-term store on demand (the agent may request fewer/more per call, capped at 25).</p>
       </div>
-
       <div class="text-xs" x-show="isLocal && embStatus">
         Model on disk:
-        <span x-show="embStatus && embStatus.model_ready" class="text-success">yes ✓</span>
+        <span x-show="embStatus && embStatus.model_ready" class="text-success">yes &#x2713;</span>
         <span x-show="embStatus && embStatus.model_ready === false" class="text-error">not downloaded yet</span>
       </div>
     </div>
-
     <div class="flex items-center gap-2 mt-4 flex-wrap">
       <button class="btn-primary btn-sm"
               @click="withLoading($el, () => saveCfg({
@@ -180,7 +232,7 @@
       </button>
       <button class="btn btn-sm" type="button" x-show="isLocal" :disabled="embBusy" @click="downloadModel()">
         <span x-show="!embBusy">Download model</span>
-        <span x-show="embBusy">Working…</span>
+        <span x-show="embBusy">Working&hellip;</span>
       </button>
       <button class="btn btn-sm" type="button" :disabled="embBusy || !embEnabled" @click="testEmb()">Test</button>
     </div>
@@ -193,23 +245,21 @@
     <p class="text-muted text-xs mt-3">Changes apply live to the running agent (the local model loads on first use).</p>
   </div>
 
-  {# Memory lifecycle (forgetting + hygiene) — Tier 3/4 #}
+  {# Memory lifecycle (forgetting + hygiene) #}
   <div class="card mb-6">
     <h2 class="text-base mb-1">Memory lifecycle (forgetting &amp; hygiene)</h2>
     <p class="text-muted text-xs mb-3">Keep long-term memory from growing forever: reinforce what matters, forget cold trivia, merge duplicates.</p>
-
     <details class="mb-4 rounded border border-border p-2">
       <summary class="text-xs cursor-pointer">How it works (the science)</summary>
       <div class="text-muted text-xs mt-2 space-y-2">
-        <p>Each memory has an <strong>importance</strong> (1–10). Recall <strong>reinforces</strong> it (access count + recency), and re-stating a fact bumps its importance — mirroring how human memory strengthens with use.</p>
-        <p><strong>Forgetting:</strong> during consolidation, memories that are old, low-importance, and not accessed for a while are <em>archived</em> (soft-deleted, recoverable) rather than injected forever. This is decay, like the “use it or lose it” curve.</p>
-        <p><strong>Hygiene:</strong> the same run clusters near-duplicate memories (by similarity) and asks the model to merge them and drop contradictions, keeping the most recent — so the store stays compact and consistent.</p>
+        <p>Each memory has an <strong>importance</strong> (1&ndash;10). Recall <strong>reinforces</strong> it (access count + recency), and re-stating a fact bumps its importance &mdash; mirroring how human memory strengthens with use.</p>
+        <p><strong>Forgetting:</strong> during consolidation, memories that are old, low-importance, and not accessed for a while are <em>archived</em> (soft-deleted, recoverable) rather than injected forever. This is decay, like the &ldquo;use it or lose it&rdquo; curve.</p>
+        <p><strong>Hygiene:</strong> the same run clusters near-duplicate memories (by similarity) and asks the model to merge them and drop contradictions, keeping the most recent &mdash; so the store stays compact and consistent.</p>
       </div>
     </details>
-
     <div class="space-y-3">
       <div>
-        <label class="label" for="mem-default-importance">Default importance (1–10)</label>
+        <label class="label" for="mem-default-importance">Default importance (1&ndash;10)</label>
         <input type="number" step="0.5" class="input-sm" style="max-width:120px" x-model="defaultImportance" min="1" max="10" id="mem-default-importance">
         <p class="text-muted text-xs mt-1">Starting importance for a new memory.</p>
       </div>
@@ -219,7 +269,7 @@
         <p class="text-muted text-xs mt-1">A memory must be at least this old before it can be archived.</p>
       </div>
       <div>
-        <label class="label" for="mem-archive-max-imp">Archive only if importance ≤</label>
+        <label class="label" for="mem-archive-max-imp">Archive only if importance &le;</label>
         <input type="number" step="0.5" class="input-sm" style="max-width:120px" x-model="archiveMaxImportance" min="1" max="10" id="mem-archive-max-imp">
         <p class="text-muted text-xs mt-1">Important memories are never auto-archived.</p>
       </div>
@@ -240,8 +290,7 @@
         <p class="text-muted text-xs mt-1">Higher = stricter (only very-similar memories merge). 0.45 is a sensible default.</p>
       </div>
     </div>
-
-    <div class="flex justify-end mt-4">
+    <div class="flex items-center gap-2 mt-4">
       <button class="btn-primary btn-sm"
               @click="withLoading($el, () => saveCfg({
                 'memory.default_importance': String(defaultImportance),
@@ -253,142 +302,144 @@
               }, 'Lifecycle settings saved', 'lifeOk', 'lifeResult'))">
         Save lifecycle settings
       </button>
+      <button class="btn btn-sm" hx-post="/memory/consolidate" hx-target="#consolidation-result" hx-swap="innerHTML">
+        Run consolidation
+      </button>
+      <span id="consolidation-result" class="text-xs"></span>
     </div>
     <template x-if="lifeResult">
       <div :class="lifeOk ? 'alert-success' : 'alert-error'" class="mt-2" x-text="lifeResult"></div>
     </template>
   </div>
-
-  {# Memory data #}
-  <div class="flex items-center gap-2 mb-4">
-    <button class="btn btn-sm" hx-get="/partials/memory" hx-target="#tab-content" hx-swap="innerHTML">
-      Refresh
-    </button>
-    <button class="btn btn-sm" hx-post="/memory/consolidate" hx-target="#consolidation-result" hx-swap="innerHTML">
-      Run consolidation
-    </button>
-    <span id="consolidation-result" class="text-xs"></span>
-  </div>
-
-  {# Long-term memories #}
-  <h3 class="text-xs text-muted uppercase tracking-wider mb-2">Long-term</h3>
-  <div class="overflow-x-auto mb-6">
-    <table class="table">
-      <thead>
-        <tr>
-          <th class="w-10">ID</th>
-          <th class="w-20">Category</th>
-          <th class="w-24">Subject</th>
-          <th>Content</th>
-          <th class="w-24">Scope</th>
-          <th class="w-10"></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% set categories = ['preference','relationship','fact','routine','work','health','travel'] %}
-        {% for m in long_term %}
-        <tr x-data="{editing:false}">
-          <td class="text-xs">{{ m.id }}</td>
-          <td class="text-xs">
-            <span x-show="!editing">{{ m.category }}</span>
-            <select name="category" class="input-sm" x-show="editing" aria-label="Category">
-              {% if m.category not in categories %}<option value="{{ m.category }}" selected>{{ m.category }}</option>{% endif %}
-              {% for c in categories %}<option value="{{ c }}" {% if m.category == c %}selected{% endif %}>{{ c }}</option>{% endfor %}
-            </select>
-          </td>
-          <td class="text-xs">
-            <span x-show="!editing">{{ m.subject }}</span>
-            <input name="subject" class="input-sm" value="{{ m.subject }}" x-show="editing" aria-label="Subject">
-          </td>
-          <td class="text-xs break-all">
-            <span x-show="!editing">{{ m.content }}</span>
-            <textarea name="content" class="input-sm w-full" rows="2" x-show="editing" aria-label="Content">{{ m.content }}</textarea>
-          </td>
-          <td class="text-xs">
-            <span x-show="!editing">{% if m.scope %}{{ m.scope }}{% else %}<span class="text-muted">shared</span>{% endif %}</span>
-            <select name="scope" class="input-sm" x-show="editing" aria-label="Scope">
-              <option value="" {% if not m.scope %}selected{% endif %}>shared</option>
-              {% if m.scope and m.scope not in agent_slugs %}<option value="{{ m.scope }}" selected>{{ m.scope }} (no agent)</option>{% endif %}
-              {% for s in agent_slugs %}<option value="{{ s }}" {% if m.scope == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
-            </select>
-          </td>
-          <td class="whitespace-nowrap">
-            <button class="btn btn-sm" x-show="!editing" @click="editing=true">edit</button>
-            <button class="btn-primary btn-sm" x-show="editing"
-                    hx-post="/memory/update" hx-target="#tab-content" hx-swap="innerHTML"
-                    hx-include="closest tr"
-                    hx-vals='{"tier": "long-term", "memory_id": "{{ m.id }}"}'>save</button>
-            <button class="btn btn-sm" x-show="editing" @click="editing=false">cancel</button>
-            <button class="btn-danger btn-sm" x-show="!editing"
-                    hx-post="/memory/delete" hx-target="#tab-content" hx-swap="innerHTML"
-                    hx-vals='{"tier": "long-term", "memory_id": "{{ m.id }}"}'
-                    hx-confirm="Delete this memory?">
-              x
-            </button>
-          </td>
-        </tr>
-        {% endfor %}
-        {% if not long_term %}
-        <tr><td colspan="6" class="text-muted text-xs text-center py-4">No long-term memories</td></tr>
-        {% endif %}
-      </tbody>
-    </table>
-  </div>
-
-  {# Short-term memories #}
-  <h3 class="text-xs text-muted uppercase tracking-wider mb-2">Short-term (active)</h3>
-  <div class="overflow-x-auto">
-    <table class="table">
-      <thead>
-        <tr>
-          <th class="w-10">ID</th>
-          <th>Content</th>
-          <th class="w-24">Scope</th>
-          <th class="w-32">Expires</th>
-          <th class="w-10"></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for m in short_term %}
-        <tr x-data="{editing:false}">
-          <td class="text-xs">{{ m.id }}</td>
-          <td class="text-xs break-all">
-            <span x-show="!editing">{{ m.content }}</span>
-            <input name="content" class="input-sm w-full" value="{{ m.content }}" x-show="editing" aria-label="Content">
-          </td>
-          <td class="text-xs">
-            <span x-show="!editing">{% if m.scope %}{{ m.scope }}{% else %}<span class="text-muted">shared</span>{% endif %}</span>
-            <select name="scope" class="input-sm" x-show="editing" aria-label="Scope">
-              <option value="" {% if not m.scope %}selected{% endif %}>shared</option>
-              {% if m.scope and m.scope not in agent_slugs %}<option value="{{ m.scope }}" selected>{{ m.scope }} (no agent)</option>{% endif %}
-              {% for s in agent_slugs %}<option value="{{ s }}" {% if m.scope == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
-            </select>
-          </td>
-          <td class="text-xs">
-            <span x-show="!editing">{{ m.expires_at }}</span>
-            <input type="datetime-local" name="expires_at" step="1" class="input-sm"
-                   value="{{ m.expires_at[:19]|replace(' ','T') }}" x-show="editing" aria-label="Expires at">
-          </td>
-          <td class="whitespace-nowrap">
-            <button class="btn btn-sm" x-show="!editing" @click="editing=true">edit</button>
-            <button class="btn-primary btn-sm" x-show="editing"
-                    hx-post="/memory/update" hx-target="#tab-content" hx-swap="innerHTML"
-                    hx-include="closest tr"
-                    hx-vals='{"tier": "short-term", "memory_id": "{{ m.id }}"}'>save</button>
-            <button class="btn btn-sm" x-show="editing" @click="editing=false">cancel</button>
-            <button class="btn-danger btn-sm" x-show="!editing"
-                    hx-post="/memory/delete" hx-target="#tab-content" hx-swap="innerHTML"
-                    hx-vals='{"tier": "short-term", "memory_id": "{{ m.id }}"}'
-                    hx-confirm="Delete this memory?">
-              x
-            </button>
-          </td>
-        </tr>
-        {% endfor %}
-        {% if not short_term %}
-        <tr><td colspan="5" class="text-muted text-xs text-center py-4">No active short-term memories</td></tr>
-        {% endif %}
-      </tbody>
-    </table>
-  </div>
 </div>
+
+{% elif v == 'long-term' %}
+{{ nav('long-term') }}
+{% set lt = long_term|default([]) %}
+{% set lt_total = long_term_total|default(0) %}
+
+{{ search('long-term') }}
+{{ pag('long-term', lt_total) }}
+
+<div class="overflow-x-auto mb-6">
+  <table class="table">
+    <thead>
+      <tr>
+        <th class="w-10">ID</th>
+        <th class="w-20">Category</th>
+        <th class="w-24">Subject</th>
+        <th>Content</th>
+        <th class="w-24">Scope</th>
+        <th class="w-10"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for m in lt %}
+      <tr x-data="{editing:false}">
+        <td class="text-xs">{{ m.id }}</td>
+        <td class="text-xs">
+          <span x-show="!editing">{{ m.category }}</span>
+          <select name="category" class="input-sm" x-show="editing" aria-label="Category">
+            {% if m.category not in categories %}<option value="{{ m.category }}" selected>{{ m.category }}</option>{% endif %}
+            {% for c in categories %}<option value="{{ c }}" {% if m.category == c %}selected{% endif %}>{{ c }}</option>{% endfor %}
+          </select>
+        </td>
+        <td class="text-xs">
+          <span x-show="!editing">{{ m.subject }}</span>
+          <input name="subject" class="input-sm" value="{{ m.subject }}" x-show="editing" aria-label="Subject">
+        </td>
+        <td class="text-xs break-all">
+          <span x-show="!editing">{{ m.content }}</span>
+          <textarea name="content" class="input-sm w-full" rows="2" x-show="editing" aria-label="Content">{{ m.content }}</textarea>
+        </td>
+        <td class="text-xs">
+          <span x-show="!editing">{% if m.scope %}{{ m.scope }}{% else %}<span class="text-muted">shared</span>{% endif %}</span>
+          <select name="scope" class="input-sm" x-show="editing" aria-label="Scope">
+            <option value="" {% if not m.scope %}selected{% endif %}>shared</option>
+            {% if m.scope and m.scope not in agent_slugs %}<option value="{{ m.scope }}" selected>{{ m.scope }} (no agent)</option>{% endif %}
+            {% for s in agent_slugs %}<option value="{{ s }}" {% if m.scope == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+          </select>
+        </td>
+        <td class="whitespace-nowrap">
+          <button class="btn btn-sm" x-show="!editing" @click="editing=true">edit</button>
+          <button class="btn-primary btn-sm" x-show="editing"
+                  hx-post="/memory/update" hx-target="#tab-content" hx-swap="innerHTML"
+                  hx-include="closest tr"
+                  hx-vals='{"tier": "long-term", "memory_id": "{{ m.id }}"}'>&#x2713;</button>
+          <button class="btn btn-sm" x-show="editing" @click="editing=false">cancel</button>
+          <button class="btn-danger btn-sm" x-show="!editing"
+                  hx-post="/memory/delete" hx-target="#tab-content" hx-swap="innerHTML"
+                  hx-vals='{"tier": "long-term", "memory_id": "{{ m.id }}"}' hx-confirm="Delete this memory?">x</button>
+        </td>
+      </tr>
+      {% endfor %}
+      {% if not lt %}
+      <tr><td colspan="6" class="text-muted text-xs text-center py-4">No long-term memories</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+{{ pag('long-term', lt_total) }}
+
+{% elif v == 'short-term' %}
+{{ nav('short-term') }}
+{% set st = short_term|default([]) %}
+{% set st_total = short_term_total|default(0) %}
+
+{{ search('short-term') }}
+{{ pag('short-term', st_total) }}
+
+<div class="overflow-x-auto">
+  <table class="table">
+    <thead>
+      <tr>
+        <th class="w-10">ID</th>
+        <th>Content</th>
+        <th class="w-24">Scope</th>
+        <th class="w-32">Expires</th>
+        <th class="w-10"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for m in st %}
+      <tr x-data="{editing:false}">
+        <td class="text-xs">{{ m.id }}</td>
+        <td class="text-xs break-all">
+          <span x-show="!editing">{{ m.content }}</span>
+          <input name="content" class="input-sm w-full" value="{{ m.content }}" x-show="editing" aria-label="Content">
+        </td>
+        <td class="text-xs">
+          <span x-show="!editing">{% if m.scope %}{{ m.scope }}{% else %}<span class="text-muted">shared</span>{% endif %}</span>
+          <select name="scope" class="input-sm" x-show="editing" aria-label="Scope">
+            <option value="" {% if not m.scope %}selected{% endif %}>shared</option>
+            {% if m.scope and m.scope not in agent_slugs %}<option value="{{ m.scope }}" selected>{{ m.scope }} (no agent)</option>{% endif %}
+            {% for s in agent_slugs %}<option value="{{ s }}" {% if m.scope == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+          </select>
+        </td>
+        <td class="text-xs">
+          <span x-show="!editing">{{ m.expires_at }}</span>
+          <input type="datetime-local" name="expires_at" step="1" class="input-sm"
+                 value="{{ m.expires_at[:19]|replace(' ','T') }}" x-show="editing" aria-label="Expires at">
+        </td>
+        <td class="whitespace-nowrap">
+          <button class="btn btn-sm" x-show="!editing" @click="editing=true">edit</button>
+          <button class="btn-primary btn-sm" x-show="editing"
+                  hx-post="/memory/update" hx-target="#tab-content" hx-swap="innerHTML"
+                  hx-include="closest tr"
+                  hx-vals='{"tier": "short-term", "memory_id": "{{ m.id }}"}'>&#x2713;</button>
+          <button class="btn btn-sm" x-show="editing" @click="editing=false">cancel</button>
+          <button class="btn-danger btn-sm" x-show="!editing"
+                  hx-post="/memory/delete" hx-target="#tab-content" hx-swap="innerHTML"
+                  hx-vals='{"tier": "short-term", "memory_id": "{{ m.id }}"}' hx-confirm="Delete this memory?">x</button>
+        </td>
+      </tr>
+      {% endfor %}
+      {% if not st %}
+      <tr><td colspan="5" class="text-muted text-xs text-center py-4">No active short-term memories</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+{{ pag('short-term', st_total) }}
+
+{% endif %}
