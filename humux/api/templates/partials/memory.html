@@ -22,7 +22,7 @@
 {% set cp = (off // lim) + 1 if total > 0 else 1 %}
 {% set tp = ((total + lim - 1) // lim) if total > 0 else 1 %}
 {% set ss = off + 1 if total > 0 else 0 %}
-{% set se = (off + lim)|min(total) if total > 0 else 0 %}
+{% set se = [(off + lim), total]|min if total > 0 else 0 %}
 {% set qs = ('&q=' + q|urlencode) if q else '' %}
 <div class="flex items-center justify-between gap-2 mb-3 flex-wrap">
   <div class="flex items-center gap-2">
