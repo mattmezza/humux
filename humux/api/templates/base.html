@@ -1354,6 +1354,60 @@
     }
     window.vaultTabs = vaultTabs;
 
+    // Memory tab: Settings | Long-term | Short-term sub-tabs.
+    // Persisted so bookmarking, refresh, and browser back/forward land on
+    // the same sub-tab. Modeled after vaultTabs (x-show within a single
+    // partial that re-renders into #tab-content).
+    function memorySubtab() {
+      const allowed = ['settings', 'long-term', 'short-term'];
+      return {
+        sub: (() => {
+          try {
+            const q = new URLSearchParams(window.location.search).get('memsub');
+            if (allowed.includes(q)) return q;
+            const ls = localStorage.getItem('memory_sub');
+            if (allowed.includes(ls)) return ls;
+          } catch (e) {}
+          return 'settings';
+        })(),
+        init() { this._syncUrl(this.sub); },
+        select(name) {
+          this.sub = name;
+          try { localStorage.setItem('memory_sub', name); } catch (e) {}
+          this._syncUrl(name);
+          // Load the sub-tab content via HTMX, replacing the full tab pane.
+          // Pagination/search params preserved via the view-specific URLs
+          // embedded in the template.
+          if (window.htmx) {
+            const url = '/partials/memory?view=' + encodeURIComponent(name);
+            htmx.ajax('GET', url, {target: '#tab-content', swap: 'innerHTML'});
+          }
+        },
+        _syncUrl(name) {
+          try {
+            const url = new URL(window.location.href);
+            if (url.searchParams.get('memsub') !== name) {
+              url.searchParams.set('memsub', name);
+              history.replaceState(history.state, '', url);
+            }
+          } catch (e) {}
+        },
+        // Returns the HTMX URL for the 'long-term' and 'short-term' views
+        // including the current offset/limit/q. For settings view, no extra
+        // params needed.
+        tabUrl(name) {
+          if (name === 'settings') return '/partials/memory?view=settings';
+          // These are supplied by the template context when the partial
+          // is rendered server-side; in the Alpine component we let the
+          // select() method pass a simple view param and let the server
+          // use defaults for offset/limit. The pagination buttons inside
+          // each view handle their own offsets.
+          return '/partials/memory?view=' + encodeURIComponent(name);
+        }
+      };
+    }
+    window.memorySubtab = memorySubtab;
+
     // Global: handle 401 by redirecting to auth gate
     document.body.addEventListener('htmx:responseError', function(e) {
       if (e.detail.xhr.status === 401) {

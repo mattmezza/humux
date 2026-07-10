@@ -580,7 +580,14 @@
         // Defer the initial HTMX fetch so both Alpine and HTMX are fully
         // initialised before the request fires.
         this.$nextTick(() => {
-          htmx.ajax('GET', tabs[initialTab], {target: '#tab-content', swap: 'innerHTML'});
+          let url = tabs[initialTab];
+          // Forward sub-tab param for memory (?memsub=) so the initial load
+          // lands on the right sub-tab instead of always defaulting to settings.
+          if (initialTab === 'memory') {
+            const ms = new URLSearchParams(window.location.search).get('memsub');
+            if (ms) { url += '?view=' + encodeURIComponent(ms); }
+          }
+          htmx.ajax('GET', url, {target: '#tab-content', swap: 'innerHTML'});
         });
 
         window.addEventListener('popstate', () => {
@@ -594,17 +601,31 @@
         this.loadTab(name, true);
       },
       loadTab(name, updateUrl) {
-        if (!tabs[name] || this.tab === name && !updateUrl) {
+        // Always re-load memory when memsub param may have changed
+        // (e.g. browser back/forward). For other tabs, skip if already active.
+        if (!tabs[name] || (this.tab === name && !updateUrl && name !== 'memory')) {
           return;
         }
         this.tab = name;
+        let fetchUrl = tabs[name];
+        // Forward sub-tab param for memory (?memsub=) so the URL-preserved
+        // sub-tab is loaded after a refresh or navigation.
+        if (name === 'memory') {
+          const ms = new URLSearchParams(window.location.search).get('memsub');
+          if (ms) { fetchUrl += '?view=' + encodeURIComponent(ms); }
+        }
         showSkeleton('#tab-content');
-        htmx.ajax('GET', tabs[name], {target: '#tab-content', swap: 'innerHTML'});
+        htmx.ajax('GET', fetchUrl, {target: '#tab-content', swap: 'innerHTML'});
         if (updateUrl) {
+          // Save sub-tab params before clearing (#197).
+          const curParams = new URLSearchParams(window.location.search);
+          const memsub = curParams.get('memsub');
           const url = new URL(window.location.href);
-          // Strip all sub-tab query params when switching parent tabs (#197).
           url.search = '';
           url.searchParams.set('tab', name);
+          // Preserve memsub when switching to the memory tab so bookmarking
+          // still works across tab switches.
+          if (name === 'memory' && memsub) { url.searchParams.set('memsub', memsub); }
           history.pushState({tab: name}, '', url);
         }
       }

@@ -7,13 +7,13 @@
 {% set q = memory_q|default('') %}
 
 {%- macro nav(view) %}
-<div class="flex border-b border-border mb-4 overflow-x-auto">
-  <button type="button" class="tab-link{% if view == 'settings' %} tab-link-active{% endif %}"
-          hx-get="/partials/memory?view=settings" hx-target="#tab-content" hx-swap="innerHTML">Settings</button>
-  <button type="button" class="tab-link{% if view == 'long-term' %} tab-link-active{% endif %}"
-          hx-get="/partials/memory?view=long-term&offset=0&limit={{ lim }}" hx-target="#tab-content" hx-swap="innerHTML">Long-term</button>
-  <button type="button" class="tab-link{% if view == 'short-term' %} tab-link-active{% endif %}"
-          hx-get="/partials/memory?view=short-term&offset=0&limit={{ lim }}" hx-target="#tab-content" hx-swap="innerHTML">Short-term</button>
+<div x-data="memorySubtab()" x-init="init()" class="flex border-b border-border mb-4 overflow-x-auto">
+  <button type="button" class="tab-link" :class="{'tab-link-active': sub === 'settings'}"
+          @click="select('settings')">Settings</button>
+  <button type="button" class="tab-link" :class="{'tab-link-active': sub === 'long-term'}"
+          @click="select('long-term')">Long-term</button>
+  <button type="button" class="tab-link" :class="{'tab-link-active': sub === 'short-term'}"
+          @click="select('short-term')">Short-term</button>
 </div>
 {%- endmacro %}
 
@@ -60,8 +60,12 @@
 </div>
 {%- endmacro %}
 
+{# Nav rendered once — the Alpine component inside it reads ?memsub= from
+   URL on init and syncs it when a sub-tab is clicked. The partial re-renders
+   into #tab-content on each sub-tab switch, so the component is fresh. #}
+{{ nav(v) }}
+
 {% if v == 'settings' %}
-{{ nav('settings') }}
 <div x-data="{
   longTermLimit: {{ memory_long_term_limit|default('50', true)|tojson|forceescape }},
   cfgResult: '', cfgOk: false,
@@ -314,7 +318,6 @@
 </div>
 
 {% elif v == 'long-term' %}
-{{ nav('long-term') }}
 {% set lt = long_term|default([]) %}
 {% set lt_total = long_term_total|default(0) %}
 
@@ -382,7 +385,6 @@
 {{ pag('long-term', lt_total) }}
 
 {% elif v == 'short-term' %}
-{{ nav('short-term') }}
 {% set st = short_term|default([]) %}
 {% set st_total = short_term_total|default(0) %}
 
