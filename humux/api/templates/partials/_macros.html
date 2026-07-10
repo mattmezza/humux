@@ -1,0 +1,83 @@
+{# Shared Jinja macros used by multiple tab partials #}
+
+{# ── LLM thinking-level control ─────────────────────────────── #}
+{%- macro think(level, prov, model, lid, bg=false) -%}
+      <div class="mt-2">
+        <label class="label" for="{{ lid }}-input">Thinking level{% if bg %}<span class="text-muted text-xs font-normal" x-show="sameAsMain({{ prov }}, {{ model }})"> · same config as Main inference</span>{% endif %}</label>
+        <div class="flex items-center gap-2">
+          <input type="text" class="input-sm" style="max-width:300px" x-model="{{ level }}"
+                 list="{{ lid }}" id="{{ lid }}-input" placeholder="off — type or pick low / medium / high">
+          <datalist id="{{ lid }}">
+            <option value=""></option>
+            <template x-for="lvl in levelOptions({{ prov }})" :key="'{{ lid }}-' + lvl">
+              <option :value="lvl"></option>
+            </template>
+          </datalist>
+          <button type="button" class="btn-secondary btn-sm" x-show="{{ prov }} === 'anthropic'"
+                  @click="fetchThinkingLevels({{ prov }}, {{ model }})" :disabled="fetchingLevels[{{ prov }}]">
+            <span x-show="!fetchingLevels[{{ prov }}]">Fetch levels</span>
+            <span x-show="fetchingLevels[{{ prov }}]"><span class="spinner-sm mr-1"></span>…</span>
+          </button>
+          <a class="text-xs text-muted underline" x-show="{{ prov }} !== 'anthropic'"
+             :href="providerDocsUrl({{ prov }})" target="_blank" rel="noopener">effort docs ↗</a>
+        </div>
+        <p class="text-muted text-xs mt-1" x-show="fetchLevelsResult[{{ prov }}]" x-text="fetchLevelsResult[{{ prov }}]"></p>
+        <p class="text-muted text-xs mt-1">Leave <strong>Off</strong> for non-reasoning models. Higher = more reasoning, more tokens. Anthropic: "Fetch levels" autodiscovers supported values; other providers: see the docs link and type the value.</p>
+        <p class="text-amber-600 text-xs mt-1" x-show="{{ level }} && !modelSupportsThinking({{ model }})">Heads up: "<span x-text="{{ model }}"></span>" isn't a recognized reasoning model — only set a level if you know it supports thinking, or the inference call may error.</p>
+      </div>
+{%- endmacro %}
+
+{# ── Memory pagination ──────────────────────────────────────── #}
+{%- macro memory_pag(view, total) %}
+{% set off = memory_offset|default(0)|int %}
+{% set lim = memory_limit|default(25)|int %}
+{% set q = memory_q|default('') %}
+{% set page_sizes = [25, 50, 100] %}
+{% set total = total|default(0)|int %}
+{% set cp = (off // lim) + 1 if total > 0 else 1 %}
+{% set tp = ((total + lim - 1) // lim) if total > 0 else 1 %}
+{% set ss = off + 1 if total > 0 else 0 %}
+{% set se = [(off + lim), total]|min if total > 0 else 0 %}
+{% set qs = ('&q=' + q|urlencode) if q else '' %}
+<div class="flex items-center justify-between gap-2 mb-3 flex-wrap">
+  <div class="flex items-center gap-2">
+    <span class="text-xs text-muted">
+      {%- if total > 0 %}Showing {{ ss }}&ndash;{{ se }} of {{ total }}{% else %}No entries{% endif -%}
+    </span>
+    <label class="label mb-0 text-xs" for="ps-{{ view }}">Per page</label>
+    <select class="input-sm" style="max-width:80px" id="ps-{{ view }}"
+            onchange="htmx.ajax('GET','/partials/memory/{{ view }}?offset=0&limit='+this.value+'{{ qs }}',{target:'#memory-sub',swap:'innerHTML'})">
+      {% for ps in page_sizes %}<option value="{{ ps }}"{% if lim == ps %} selected{% endif %}>{{ ps }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="flex items-center gap-1">
+    <button class="btn btn-sm"{% if cp <= 1 %} disabled{% endif %}
+            hx-get="/partials/memory/{{ view }}?offset=0&limit={{ lim }}{{ qs }}" hx-target="#memory-sub" hx-swap="innerHTML">&laquo;</button>
+    <button class="btn btn-sm"{% if cp <= 1 %} disabled{% endif %}
+            hx-get="/partials/memory/{{ view }}?offset={{ [off - lim, 0]|max }}&limit={{ lim }}{{ qs }}" hx-target="#memory-sub" hx-swap="innerHTML">&lsaquo;</button>
+    <span class="text-xs text-muted px-1">Page {{ cp }} / {{ tp }}</span>
+    <button class="btn btn-sm"{% if cp >= tp %} disabled{% endif %}
+            hx-get="/partials/memory/{{ view }}?offset={{ off + lim }}&limit={{ lim }}{{ qs }}" hx-target="#memory-sub" hx-swap="innerHTML">&rsaquo;</button>
+    <button class="btn btn-sm"{% if cp >= tp %} disabled{% endif %}
+            hx-get="/partials/memory/{{ view }}?offset={{ (tp - 1) * lim }}&limit={{ lim }}{{ qs }}" hx-target="#memory-sub" hx-swap="innerHTML">&raquo;</button>
+  </div>
+</div>
+{%- endmacro %}
+
+{# ── Memory search ──────────────────────────────────────────── #}
+{%- macro memory_search(view) %}
+{% set off = memory_offset|default(0)|int %}
+{% set lim = memory_limit|default(25)|int %}
+{% set q = memory_q|default('') %}
+<div class="flex items-center gap-2 mb-3">
+  <input type="text" class="input-sm flex-1" style="max-width:300px" placeholder="Search memories..."
+         value="{{ q }}" id="search-{{ view }}"
+         onkeydown="if(event.key==='Enter'){const v=this.value;htmx.ajax('GET','/partials/memory/{{ view }}?offset=0&limit={{ lim }}'+(v?'&q='+encodeURIComponent(v):''),{target:'#memory-sub',swap:'innerHTML'});}">
+  <button class="btn btn-sm"
+          hx-get="/partials/memory/{{ view }}?offset=0&limit={{ lim }}" hx-target="#memory-sub" hx-swap="innerHTML"
+          title="Refresh">&#x21bb;</button>
+</div>
+{%- endmacro %}
+
+{# ── Memory category list ───────────────────────────────────── #}
+{% set memory_categories = ['preference','relationship','fact','routine','work','health','travel'] %}

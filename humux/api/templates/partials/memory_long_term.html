@@ -1,0 +1,71 @@
+{% import 'partials/_macros.html' as m %}
+{% set categories = m.memory_categories %}
+{% set lt = long_term|default([]) %}
+{% set lt_total = long_term_total|default(0) %}
+{% set off = memory_offset|default(0)|int %}
+{% set lim = memory_limit|default(25)|int %}
+{% set q = memory_q|default('') %}
+{% set agent_slugs = agent_slugs|default([]) %}
+
+{{ m.memory_search('long-term') }}
+{{ m.memory_pag('long-term', lt_total) }}
+
+<div class="overflow-x-auto mb-6">
+  <table class="table">
+    <thead>
+      <tr>
+        <th class="w-10">ID</th>
+        <th class="w-20">Category</th>
+        <th class="w-24">Subject</th>
+        <th>Content</th>
+        <th class="w-24">Scope</th>
+        <th class="w-10"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for m in lt %}
+      <tr x-data="{editing:false}">
+        <td class="text-xs">{{ m.id }}</td>
+        <td class="text-xs">
+          <span x-show="!editing">{{ m.category }}</span>
+          <select name="category" class="input-sm" x-show="editing" aria-label="Category">
+            {% if m.category not in categories %}<option value="{{ m.category }}" selected>{{ m.category }}</option>{% endif %}
+            {% for c in categories %}<option value="{{ c }}" {% if m.category == c %}selected{% endif %}>{{ c }}</option>{% endfor %}
+          </select>
+        </td>
+        <td class="text-xs">
+          <span x-show="!editing">{{ m.subject }}</span>
+          <input name="subject" class="input-sm" value="{{ m.subject }}" x-show="editing" aria-label="Subject">
+        </td>
+        <td class="text-xs break-all">
+          <span x-show="!editing">{{ m.content }}</span>
+          <textarea name="content" class="input-sm w-full" rows="2" x-show="editing" aria-label="Content">{{ m.content }}</textarea>
+        </td>
+        <td class="text-xs">
+          <span x-show="!editing">{% if m.scope %}{{ m.scope }}{% else %}<span class="text-muted">shared</span>{% endif %}</span>
+          <select name="scope" class="input-sm" x-show="editing" aria-label="Scope">
+            <option value="" {% if not m.scope %}selected{% endif %}>shared</option>
+            {% if m.scope and m.scope not in agent_slugs %}<option value="{{ m.scope }}" selected>{{ m.scope }} (no agent)</option>{% endif %}
+            {% for s in agent_slugs %}<option value="{{ s }}" {% if m.scope == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+          </select>
+        </td>
+        <td class="whitespace-nowrap">
+          <button class="btn btn-sm" x-show="!editing" @click="editing=true">edit</button>
+          <button class="btn-primary btn-sm" x-show="editing"
+                  hx-post="/memory/update" hx-target="#memory-sub" hx-swap="innerHTML"
+                  hx-include="closest tr"
+                  hx-vals='{"tier": "long-term", "memory_id": "{{ m.id }}"}'>&#x2713;</button>
+          <button class="btn btn-sm" x-show="editing" @click="editing=false">cancel</button>
+          <button class="btn-danger btn-sm" x-show="!editing"
+                  hx-post="/memory/delete" hx-target="#memory-sub" hx-swap="innerHTML"
+                  hx-vals='{"tier": "long-term", "memory_id": "{{ m.id }}"}' hx-confirm="Delete this memory?">x</button>
+        </td>
+      </tr>
+      {% endfor %}
+      {% if not lt %}
+      <tr><td colspan="6" class="text-muted text-xs text-center py-4">No long-term memories</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+{{ m.memory_pag('long-term', lt_total) }}

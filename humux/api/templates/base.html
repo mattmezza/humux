@@ -284,8 +284,15 @@
             url.searchParams.set('llmsub', s);
             history.replaceState(history.state, '', url);
           } catch (e) {}
+          this._loadSection(s);
         },
-        reloadLlmPartial() { if (window.htmx) { htmx.ajax('GET', '/partials/llm', {target: '#tab-content', swap: 'innerHTML'}); } },
+        _loadSection(s) {
+          if (window.htmx) {
+            showSkeleton('#llm-sub');
+            htmx.ajax('GET', '/partials/llm/' + s, {target: '#llm-sub', swap: 'innerHTML'});
+          }
+        },
+        reloadLlmPartial() { this._loadSection(this.section); },
         providerOptions: window.LLM_PROVIDERS,
         provider: currentProvider,
         apiKey: apiKey || '',
@@ -549,6 +556,8 @@
             this.resetMemoryModel('consolidation');
             this.resetBackgroundModel('gd');
             this.resetBackgroundModel('tr');
+            // Load the initial sub-tab content after seeding model values.
+            this._loadSection(this.section);
           });
         },
         resetModel() {
@@ -1319,94 +1328,55 @@
     }
     window.accountsTabs = accountsTabs;
 
-    // Vaults tab: Agents | Infra | Import. Unlike inspect/accounts these are
-    // shown/hidden in place (x-show) because every action re-renders the whole
-    // partial into #tab-content; the sub-tab is mirrored in the URL (?vaultsub=)
-    // and restored after each re-render.
+    // Vaults tab: Agents | Infra | Import sub-tabs.
+    // Persisted via ?vaultsub= URL param; each sub-tab lazy-loads its own
+    // partial via htmx with skeleton loading.
     function vaultTabs() {
-      const allowed = ['agents', 'infra', 'import'];
-      return {
-        sub: (() => {
-          try {
-            const q = new URLSearchParams(window.location.search).get('vaultsub');
-            if (allowed.includes(q)) { return q; }
-            const ls = localStorage.getItem('vault_sub');
-            if (allowed.includes(ls)) { return ls; }
-          } catch (e) {}
-          return 'agents';
-        })(),
-        init() { this._syncUrl(this.sub); },
-        select(name) {
-          this.sub = name;
-          try { localStorage.setItem('vault_sub', name); } catch (e) {}
-          this._syncUrl(name);
+      return subTabs({
+        subs: {
+          agents: '/partials/secrets/agents',
+          infra: '/partials/secrets/infra',
+          import: '/partials/secrets/import'
         },
-        _syncUrl(name) {
-          try {
-            const url = new URL(window.location.href);
-            if (url.searchParams.get('vaultsub') !== name) {
-              url.searchParams.set('vaultsub', name);
-              history.replaceState(history.state, '', url);
-            }
-          } catch (e) {}
-        }
-      };
+        param: 'vaultsub',
+        storageKey: 'vault_sub',
+        container: '#vault-sub',
+        fallback: 'agents'
+      });
     }
     window.vaultTabs = vaultTabs;
 
     // Memory tab: Settings | Long-term | Short-term sub-tabs.
-    // Persisted so bookmarking, refresh, and browser back/forward land on
-    // the same sub-tab. Modeled after vaultTabs (x-show within a single
-    // partial that re-renders into #tab-content).
+    // Persisted via ?memsub= URL param; each sub-tab lazy-loads its own
+    // partial via htmx with skeleton loading.
     function memorySubtab() {
-      const allowed = ['settings', 'long-term', 'short-term'];
-      return {
-        sub: (() => {
-          try {
-            const q = new URLSearchParams(window.location.search).get('memsub');
-            if (allowed.includes(q)) return q;
-            const ls = localStorage.getItem('memory_sub');
-            if (allowed.includes(ls)) return ls;
-          } catch (e) {}
-          return 'settings';
-        })(),
-        init() { this._syncUrl(this.sub); },
-        select(name) {
-          this.sub = name;
-          try { localStorage.setItem('memory_sub', name); } catch (e) {}
-          this._syncUrl(name);
-          // Load the sub-tab content via HTMX, replacing the full tab pane.
-          // Pagination/search params preserved via the view-specific URLs
-          // embedded in the template.
-          if (window.htmx) {
-            const url = '/partials/memory?view=' + encodeURIComponent(name);
-            htmx.ajax('GET', url, {target: '#tab-content', swap: 'innerHTML'});
-          }
+      return subTabs({
+        subs: {
+          settings: '/partials/memory/settings',
+          'long-term': '/partials/memory/long-term',
+          'short-term': '/partials/memory/short-term'
         },
-        _syncUrl(name) {
-          try {
-            const url = new URL(window.location.href);
-            if (url.searchParams.get('memsub') !== name) {
-              url.searchParams.set('memsub', name);
-              history.replaceState(history.state, '', url);
-            }
-          } catch (e) {}
-        },
-        // Returns the HTMX URL for the 'long-term' and 'short-term' views
-        // including the current offset/limit/q. For settings view, no extra
-        // params needed.
-        tabUrl(name) {
-          if (name === 'settings') return '/partials/memory?view=settings';
-          // These are supplied by the template context when the partial
-          // is rendered server-side; in the Alpine component we let the
-          // select() method pass a simple view param and let the server
-          // use defaults for offset/limit. The pagination buttons inside
-          // each view handle their own offsets.
-          return '/partials/memory?view=' + encodeURIComponent(name);
-        }
-      };
+        param: 'memsub',
+        storageKey: 'memory_sub',
+        container: '#memory-sub',
+        fallback: 'settings'
+      });
     }
     window.memorySubtab = memorySubtab;
+
+    // Jobs tab: Scheduled | Subagents sub-tabs.
+    // Persisted via ?jobsub= URL param; each sub-tab lazy-loads its own
+    // partial via htmx with skeleton loading.
+    function jobsTabs() {
+      return subTabs({
+        subs: { scheduled: '/partials/jobs/scheduled', subagents: '/partials/jobs/subagents' },
+        param: 'jobsub',
+        storageKey: 'jobs_sub',
+        container: '#jobs-sub',
+        fallback: 'scheduled'
+      });
+    }
+    window.jobsTabs = jobsTabs;
 
     // Global: handle 401 by redirecting to auth gate
     document.body.addEventListener('htmx:responseError', function(e) {

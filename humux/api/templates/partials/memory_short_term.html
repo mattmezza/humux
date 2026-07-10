@@ -1,0 +1,64 @@
+{% import 'partials/_macros.html' as m %}
+{% set categories = m.memory_categories %}
+{% set st = short_term|default([]) %}
+{% set st_total = short_term_total|default(0) %}
+{% set off = memory_offset|default(0)|int %}
+{% set lim = memory_limit|default(25)|int %}
+{% set q = memory_q|default('') %}
+{% set agent_slugs = agent_slugs|default([]) %}
+
+{{ m.memory_search('short-term') }}
+{{ m.memory_pag('short-term', st_total) }}
+
+<div class="overflow-x-auto">
+  <table class="table">
+    <thead>
+      <tr>
+        <th class="w-10">ID</th>
+        <th>Content</th>
+        <th class="w-24">Scope</th>
+        <th class="w-32">Expires</th>
+        <th class="w-10"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for m in st %}
+      <tr x-data="{editing:false}">
+        <td class="text-xs">{{ m.id }}</td>
+        <td class="text-xs break-all">
+          <span x-show="!editing">{{ m.content }}</span>
+          <input name="content" class="input-sm w-full" value="{{ m.content }}" x-show="editing" aria-label="Content">
+        </td>
+        <td class="text-xs">
+          <span x-show="!editing">{% if m.scope %}{{ m.scope }}{% else %}<span class="text-muted">shared</span>{% endif %}</span>
+          <select name="scope" class="input-sm" x-show="editing" aria-label="Scope">
+            <option value="" {% if not m.scope %}selected{% endif %}>shared</option>
+            {% if m.scope and m.scope not in agent_slugs %}<option value="{{ m.scope }}" selected>{{ m.scope }} (no agent)</option>{% endif %}
+            {% for s in agent_slugs %}<option value="{{ s }}" {% if m.scope == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+          </select>
+        </td>
+        <td class="text-xs">
+          <span x-show="!editing">{{ m.expires_at }}</span>
+          <input type="datetime-local" name="expires_at" step="1" class="input-sm"
+                 value="{{ m.expires_at[:19]|replace(' ','T') }}" x-show="editing" aria-label="Expires at">
+        </td>
+        <td class="whitespace-nowrap">
+          <button class="btn btn-sm" x-show="!editing" @click="editing=true">edit</button>
+          <button class="btn-primary btn-sm" x-show="editing"
+                  hx-post="/memory/update" hx-target="#memory-sub" hx-swap="innerHTML"
+                  hx-include="closest tr"
+                  hx-vals='{"tier": "short-term", "memory_id": "{{ m.id }}"}'>&#x2713;</button>
+          <button class="btn btn-sm" x-show="editing" @click="editing=false">cancel</button>
+          <button class="btn-danger btn-sm" x-show="!editing"
+                  hx-post="/memory/delete" hx-target="#memory-sub" hx-swap="innerHTML"
+                  hx-vals='{"tier": "short-term", "memory_id": "{{ m.id }}"}' hx-confirm="Delete this memory?">x</button>
+        </td>
+      </tr>
+      {% endfor %}
+      {% if not st %}
+      <tr><td colspan="5" class="text-muted text-xs text-center py-4">No active short-term memories</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+{{ m.memory_pag('short-term', st_total) }}
