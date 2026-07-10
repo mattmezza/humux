@@ -152,6 +152,7 @@ def test_partial_jobs_hides_completed_by_default(tmp_path) -> None:
     client = _jobs_client(tmp_path)
     headers = {"Authorization": "Bearer secret"}
 
+    # Wrapper returns nav + skeleton; hit the scheduled sub-tab for content
     resp = client.get("/partials/jobs/scheduled", headers=headers)
     assert resp.status_code == 200
     assert "alpha-live" in resp.text
@@ -332,11 +333,12 @@ def test_pause_resume_endpoint_returns_refreshed_partial(tmp_path) -> None:
     )
     assert resp.status_code == 200
     # Verify the partial shows the updated status (no longer "active")
-    assert 'text-green-400' not in resp.text  # active status colouring gone
+    assert "text-green-400" not in resp.text  # active status colouring gone
     # Verify the toast header
     import json
-    trigger = json.loads(resp.headers.get('HX-Trigger', '{}'))
-    assert 'paused' in str(trigger)
+
+    trigger = json.loads(resp.headers.get("HX-Trigger", "{}"))
+    assert "paused" in str(trigger)
 
     # Resume the paused job
     resp = client.post(

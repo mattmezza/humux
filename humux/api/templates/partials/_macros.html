@@ -28,7 +28,7 @@
 {%- endmacro %}
 
 {# ── Memory pagination ──────────────────────────────────────── #}
-{%- macro memory_pag(view, total) %}
+{%- macro memory_pag(view, total, suffix='') %}
 {% set off = memory_offset|default(0)|int %}
 {% set lim = memory_limit|default(25)|int %}
 {% set q = memory_q|default('') %}
@@ -39,13 +39,14 @@
 {% set ss = off + 1 if total > 0 else 0 %}
 {% set se = [(off + lim), total]|min if total > 0 else 0 %}
 {% set qs = ('&q=' + q|urlencode) if q else '' %}
+{% set pid = 'ps-' + view + suffix %}
 <div class="flex items-center justify-between gap-2 mb-3 flex-wrap">
   <div class="flex items-center gap-2">
     <span class="text-xs text-muted">
       {%- if total > 0 %}Showing {{ ss }}&ndash;{{ se }} of {{ total }}{% else %}No entries{% endif -%}
     </span>
-    <label class="label mb-0 text-xs" for="ps-{{ view }}">Per page</label>
-    <select class="input-sm" style="max-width:80px" id="ps-{{ view }}"
+    <label class="label mb-0 text-xs" for="{{ pid }}">Per page</label>
+    <select class="input-sm" style="max-width:80px" id="{{ pid }}"
             onchange="htmx.ajax('GET','/partials/memory/{{ view }}?offset=0&limit='+this.value+'{{ qs }}',{target:'#memory-sub',swap:'innerHTML'})">
       {% for ps in page_sizes %}<option value="{{ ps }}"{% if lim == ps %} selected{% endif %}>{{ ps }}</option>{% endfor %}
     </select>

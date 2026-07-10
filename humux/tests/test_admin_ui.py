@@ -305,14 +305,14 @@ class TestVoicePreview:
             assert f"section === '{sec}'" in resp.text
         assert "setSection('sysprompt')" not in resp.text
         assert "System Prompt Controls" not in resp.text
-        # History sub-tab content is lazy-loaded, hit the sub-tab endpoint.
+        # History sub-tab content lives in separate partial
         hist = client.get("/partials/llm/history", headers=AUTH)
         assert hist.status_code == 200
         assert "Context compaction" in hist.text
 
     def test_llm_partial_has_vision_fallback(self):
         client = _client(setup_complete=True)
-        # Inference sub-tab contains vision fallback controls.
+        # Vision Fallback is in the inference sub-tab content
         resp = client.get("/partials/llm/inference", headers=AUTH)
         assert resp.status_code == 200
         assert "Vision Fallback" in resp.text
@@ -322,7 +322,7 @@ class TestVoicePreview:
 
     def test_llm_partial_has_reply_decision(self):
         client = _client(setup_complete=True)
-        # Inference sub-tab contains reply decision controls.
+        # Reply Decision card is in the inference sub-tab
         resp = client.get("/partials/llm/inference", headers=AUTH)
         assert resp.status_code == 200
         assert "Reply Decision" in resp.text
@@ -334,7 +334,7 @@ class TestVoicePreview:
         # OpenRouter provider card (#128): renders (exercises the positional
         # llmTab() call), saves the dedicated key, and carries the info text.
         client = _client(setup_complete=True)
-        # Providers sub-tab contains the OpenRouter card.
+        # OpenRouter card is in the providers sub-tab
         resp = client.get("/partials/llm/providers", headers=AUTH)
         assert resp.status_code == 200
         assert "OpenRouter" in resp.text

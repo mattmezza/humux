@@ -365,21 +365,24 @@ async def test_add_and_list_secret_via_admin(admin_client) -> None:
         data={"name": "STRIPE", "value": "sk_live", "scope": "all", "duration": "forever"},
         headers=_auth(),
     )
+    # POST returns the wrapper (flash/skeleton) not the secret list
     assert resp.status_code == 200
+    assert "sk_live" not in resp.text  # value never rendered
     assert await s.get_secret("STRIPE") == "sk_live"
-    # The secret appears in the agents sub-tab (lazy-loaded).
-    agents = client.get("/partials/secrets/agents", headers=_auth())
-    assert agents.status_code == 200
-    assert "STRIPE" in agents.text
-    assert "sk_live" not in agents.text  # value never rendered
+    # Verify secret appears in the agents sub-tab
+    body = client.get("/partials/secrets/agents", headers=_auth()).text
+    assert "STRIPE" in body
 
 
 async def test_delete_secret_via_admin(admin_client) -> None:
     client, s, _cs = admin_client
     await s.set_secret("DOOMED", "v", shared=True)
     resp = client.post("/admin/secrets/delete", data={"name": "DOOMED"}, headers=_auth())
-    assert resp.status_code == 200 and "DOOMED" not in resp.text
+    # POST returns wrapper; verify via agents sub-tab
+    assert resp.status_code == 200
     assert await s.get_secret("DOOMED") is None
+    body = client.get("/partials/secrets/agents", headers=_auth()).text
+    assert "DOOMED" not in body
 
 
 async def test_delete_infra_secret_via_admin(tmp_path) -> None:
@@ -550,7 +553,7 @@ async def test_patch_config_preserves_vault_ref(tmp_path) -> None:
 async def test_llm_tab_collapses_vaulted_key(admin_client) -> None:
     client, _s, cs = admin_client
     await cs.set("agent.anthropic_api_key", "${vault:ANTHROPIC_API_KEY}")
-    # Providers sub-tab shows the vault note for vaulted keys.
+    # Vaulted annotation is in the providers sub-tab
     body = client.get("/partials/llm/providers", headers=_auth()).text
     assert "Stored in the" in body  # read-only vault note shown
     # The note names the vault ref for reuse (#114); the secret VALUE is never
