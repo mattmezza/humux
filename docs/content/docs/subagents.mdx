@@ -137,7 +137,7 @@ section of the Subagents card) or under `subagent_summary` in `config.yml`:
 | `enabled` | `true` | Off falls back to a crude first-line truncation (no LLM call) |
 | `provider` | `deepseek` | Inference provider for the summary |
 | `model` | `deepseek-v4-flash` | Fast + cheap is ideal for this distillation |
-| `thinking_level` | `""` | `""` (off) / `low` / `medium` / `high` for reasoning models |
+| `thinking_level` | `""` | `""` (off) / `low` / `medium` / `high` / `max` for reasoning models |
 
 Synchronous spawns are unaffected — the agent gets the full result inline as the
 tool result and weaves it into its own reply.

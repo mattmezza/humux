@@ -297,7 +297,7 @@ class LLMClient:
         Empty when no level is set, so non-reasoning calls are untouched.
         """
         level = self.thinking_level
-        if level not in ("low", "medium", "high"):
+        if level not in ("low", "medium", "high", "max"):
             return {}
         if self.provider == "anthropic":
             return {"thinking": {"type": "adaptive"}, "output_config": {"effort": level}}

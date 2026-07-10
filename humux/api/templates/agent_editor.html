@@ -151,9 +151,10 @@
               <option value="low">Low</option>
               <option value="medium">Medium</option>
               <option value="high">High</option>
+              <option value="max">Max</option>
             </select>
             <p class="text-amber-600 text-xs mt-1"
-               x-show="['low','medium','high'].includes(llmThinking) && !window.llmModelSupportsThinking(llmModel || llmDefaults.model)">
+               x-show="['low','medium','high','max'].includes(llmThinking) && !window.llmModelSupportsThinking(llmModel || llmDefaults.model)">
               Heads up: “<span x-text="llmModel || llmDefaults.model"></span>” isn't a recognized reasoning model — only set a level if you know it supports thinking.
             </p>
           </div>

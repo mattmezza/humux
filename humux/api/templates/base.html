@@ -435,7 +435,7 @@
         levelOptions(prov) {
           const fetched = this.fetchedLevels[prov];
           if (fetched && fetched.length) return fetched;
-          return ['low', 'medium', 'high'];
+          return ['low', 'medium', 'high', 'max'];
         },
         fetchThinkingLevels(service, model) {
           const apiKey = this.keyFor(service);
