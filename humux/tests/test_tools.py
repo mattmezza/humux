@@ -184,14 +184,6 @@ async def test_clear_drops_system_snapshot(tmp_path) -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture
-def agent(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    from core.agent import AgentCore
-
-    return AgentCore(Config())
-
-
 @pytest.mark.asyncio
 async def test_turn_preamble_carries_datetime(agent) -> None:
     preamble = await agent._turn_preamble(None)

@@ -72,7 +72,7 @@ async def test_stop_command_aborts_running_turn(agent) -> None:
     agent.llm = _LoopingLLM()
 
     async def fake_tool(call, channel, user_id, request_state):
-        await asyncio.sleep(0.01)  # pace rounds so /stop lands well before the cap
+        await asyncio.sleep(0.002)  # pace rounds so /stop lands well before the cap
         return {"ok": True}
 
     agent._execute_tool = fake_tool
@@ -83,7 +83,7 @@ async def test_stop_command_aborts_running_turn(agent) -> None:
     turn = asyncio.create_task(run_turn())
     # Wait for the turn to register its abort Event (it does so before the tool loop).
     for _ in range(200):
-        await asyncio.sleep(0.005)
+        await asyncio.sleep(0.001)
         if ("telegram", "u", "55") in agent._active_turns_map():
             break
     else:
@@ -93,7 +93,7 @@ async def test_stop_command_aborts_running_turn(agent) -> None:
     stop = await agent.process("/stop", "telegram", "u", chat_id="55")
     assert stop.text == ""  # the aborting turn delivers the notice, not /stop
 
-    resp = await asyncio.wait_for(turn, timeout=2)
+    resp = await asyncio.wait_for(turn, timeout=1)
     assert resp.text == _STOPPED_MESSAGE
     # The loop broke instead of spinning to the round cap.
     assert agent.llm.calls < 50

@@ -6,12 +6,18 @@ on:
       - 'humux/**'
       - '.github/workflows/tests.yml'
 
+env:
+  UV_LINK_MODE: copy  # avoids hardlink-fallback warnings on self-hosted runner
+
 jobs:
   lint:
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: "humux/pyproject.toml"
       - name: Install dependencies
         working-directory: ./humux
         run: uv sync
@@ -21,15 +27,26 @@ jobs:
 
   pytest:
     runs-on: self-hosted
+    strategy:
+      matrix:
+        chunk: ["core", "integration"]
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: "humux/pyproject.toml"
       - name: Install dependencies
         working-directory: ./humux
         run: uv sync
       - name: Validate skill files
         working-directory: ./humux
         run: uv run python -m core.skills validate --strict
-      - name: Run tests
+      - name: Run tests (core chunk)
+        if: matrix.chunk == 'core'
         working-directory: ./humux
-        run: uv run pytest -n auto
+        run: uv run pytest -n auto --ignore=tests/test_secrets_vault.py --ignore=tests/test_admin_ui.py --durations=10
+      - name: Run tests (integration chunk)
+        if: matrix.chunk == 'integration'
+        working-directory: ./humux
+        run: uv run pytest -n auto tests/test_secrets_vault.py tests/test_admin_ui.py --durations=10
