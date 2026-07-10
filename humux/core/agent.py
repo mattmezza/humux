@@ -4325,10 +4325,19 @@ class AgentCore:
                 target = Path(ws).expanduser() / ARTIFACTS_SUBDIR / slug / "index.html"
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_text(page, encoding="utf-8")
-                result["artifact_url"] = f"{self._base_url()}/artifacts/{slug}/"
+                url = f"{self._base_url()}/artifacts/{slug}/"
+                result["artifact_url"] = url
+                # Deliver the link deterministically, like the progress updates
+                # — the user must get it even if the model's reply drops it.
+                try:
+                    await progress(f"📄 Full report: {url}")
+                except Exception:
+                    log.exception("Failed to deliver deep-research artifact link")
                 result["note"] = (
-                    "Report published as a web artifact. Reply briefly: the key "
-                    "takeaways plus the artifact_url link — do not paste the report."
+                    "Report published as a web artifact; its link was already "
+                    "posted to the chat. Reply briefly: the key takeaways, plus "
+                    "the artifact_url repeated verbatim as a plain URL — do not "
+                    "paste the report."
                 )
             except OSError:
                 log.exception("Failed to write deep-research artifact %s", slug)
