@@ -24,7 +24,7 @@
     </thead>
     <tbody>
       {% for m in lt %}
-      <tr x-data="{editing:false}">
+      <tr x-data="{editing:false, showDetail:false}">
         <td class="text-xs">{{ m.id }}</td>
         <td class="text-xs">
           <span x-show="!editing">{{ m.category }}</span>
@@ -37,8 +37,8 @@
           <span x-show="!editing">{{ m.subject }}</span>
           <input name="subject" class="input-sm" value="{{ m.subject }}" x-show="editing" aria-label="Subject">
         </td>
-        <td class="text-xs break-all">
-          <span x-show="!editing">{{ m.content }}</span>
+        <td class="text-xs truncate max-w-0">
+          <span class="truncate block" x-show="!editing">{{ m.content }}</span>
           <textarea name="content" class="input-sm w-full" rows="2" x-show="editing" aria-label="Content">{{ m.content }}</textarea>
         </td>
         <td class="text-xs">
@@ -50,6 +50,13 @@
           </select>
         </td>
         <td class="whitespace-nowrap">
+          <button class="btn-icon" x-show="!editing" @click="showDetail=true" title="View details"
+                  aria-label="View details">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" width="16" height="16">
+              <path d="M10 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z"/>
+              <path fill-rule="evenodd" d="M.664 10.59a1.651 1.651 0 0 1 0-1.186A10.004 10.004 0 0 1 10 3c4.257 0 7.893 2.66 9.336 6.41.147.381.146.804 0 1.186A10.004 10.004 0 0 1 10 17c-4.257 0-7.893-2.66-9.336-6.41ZM14 10a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z" clip-rule="evenodd"/>
+            </svg>
+          </button>
           <button class="btn btn-sm" x-show="!editing" @click="editing=true">edit</button>
           <button class="btn-primary btn-sm" x-show="editing"
                   hx-post="/memory/update" hx-target="#memory-sub" hx-swap="innerHTML"
@@ -60,6 +67,39 @@
                   hx-post="/memory/delete" hx-target="#memory-sub" hx-swap="innerHTML"
                   hx-vals='{"tier": "long-term", "memory_id": "{{ m.id }}"}' hx-confirm="Delete this memory?">x</button>
         </td>
+
+        {# Detail modal for mobile #}
+        <div x-show="showDetail"
+             class="fixed inset-0 z-50 flex items-center justify-center"
+             style="background:rgba(0,0,0,0.65);"
+             x-cloak
+             @keydown.window.escape="showDetail=false">
+          <div class="card mx-4" style="max-width:440px;width:100%;max-height:80vh;overflow-y:auto;"
+               @click.outside="showDetail=false">
+            <div class="flex items-start justify-between mb-4 gap-3">
+              <span class="text-sm font-semibold">Memory #{{ m.id }}</span>
+              <button class="btn btn-sm shrink-0" @click="showDetail=false">Close</button>
+            </div>
+            <dl class="text-xs space-y-3">
+              <div>
+                <dt class="text-muted uppercase tracking-wider text-[10px] mb-0.5">Category</dt>
+                <dd>{{ m.category }}</dd>
+              </div>
+              <div>
+                <dt class="text-muted uppercase tracking-wider text-[10px] mb-0.5">Subject</dt>
+                <dd>{{ m.subject }}</dd>
+              </div>
+              <div>
+                <dt class="text-muted uppercase tracking-wider text-[10px] mb-0.5">Content</dt>
+                <dd class="text-gray-200 leading-relaxed whitespace-pre-wrap break-words">{{ m.content }}</dd>
+              </div>
+              <div>
+                <dt class="text-muted uppercase tracking-wider text-[10px] mb-0.5">Scope</dt>
+                <dd>{% if m.scope %}{{ m.scope }}{% else %}<span class="text-muted">shared</span>{% endif %}</dd>
+              </div>
+            </dl>
+          </div>
+        </div>
       </tr>
       {% endfor %}
       {% if not lt %}
