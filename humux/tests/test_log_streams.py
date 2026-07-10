@@ -101,3 +101,48 @@ def test_bad_regex_is_noop_not_crash() -> None:
 def test_stream_hue_is_stable() -> None:
     assert _stream_hue("default") == _stream_hue("default")
     assert 0 <= _stream_hue("coding-helper") < 360
+
+
+def test_log_timestamp_defaults_to_utc() -> None:
+    """Without a timezone configured, timestamps are formatted in UTC."""
+    import api.admin as admin
+
+    saved = admin._LOG_TIMEZONE
+    admin._LOG_TIMEZONE = "UTC"
+    try:
+        handler = _BufferHandler()
+        rec = logging.LogRecord("core.agent", logging.INFO, __file__, 1, "hi", None, None)
+        rec.created = 1700006400.0  # 2023-11-15 00:00:00 UTC
+        captured: list[dict] = []
+        saved_buf = admin._LOG_BUFFER
+        admin._LOG_BUFFER = captured
+        try:
+            handler.emit(rec)
+        finally:
+            admin._LOG_BUFFER = saved_buf
+        assert captured[0]["time"] == "00:00:00"
+    finally:
+        admin._LOG_TIMEZONE = saved
+
+
+def test_log_timestamp_respects_configured_timezone() -> None:
+    """Log timestamps are formatted in the configured timezone."""
+    import api.admin as admin
+
+    saved = admin._LOG_TIMEZONE
+    admin._LOG_TIMEZONE = "US/Eastern"
+    try:
+        handler = _BufferHandler()
+        rec = logging.LogRecord("core.agent", logging.INFO, __file__, 1, "hi", None, None)
+        rec.created = 1700006400.0  # 2023-11-15 00:00:00 UTC
+        captured: list[dict] = []
+        saved_buf = admin._LOG_BUFFER
+        admin._LOG_BUFFER = captured
+        try:
+            handler.emit(rec)
+        finally:
+            admin._LOG_BUFFER = saved_buf
+        # US/Eastern in Nov is EST (UTC-5): 2023-11-14 19:00:00
+        assert captured[0]["time"] == "19:00:00"
+    finally:
+        admin._LOG_TIMEZONE = saved
