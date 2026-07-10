@@ -159,6 +159,6 @@ EXPOSE 8000
 # The start period is generous: the first boot runs the setup wizard and may
 # take a while before the /health route responds 200.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD curl -f http://localhost:8000/health || exit 1
+  CMD curl -f "http://localhost:${PORT:-8000}/health" || exit 1
 
 CMD ["uv", "run", "python", "-m", "core.main"]
