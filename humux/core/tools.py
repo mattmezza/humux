@@ -485,11 +485,11 @@ def effective_tool_env(
                     agent.name,
                 )
                 env["GH_TOKEN"] = GH_NO_IDENTITY
-            # Commits authored as the bot (#263): env beats any `git config
+            # Commits authored as the agent (#263): env beats any `git config
             # user.*` the model sets in a shared workspace, so bot work can't
-            # carry the owner's name. The app slug rides webhook_mention; the
-            # plain noreply form displays the bot name (no avatar link — that
-            # would need the bot USER id, which isn't known offline).
+            # carry the owner's name.  webhook_mention gives the GitHub App
+            # slug (best: links to the bot profile); without it, the agent's
+            # own name prevents the owner's ~/.gitconfig from leaking through.
             slug = (
                 str(gh.get("webhook_mention") or "")
                 .strip()
@@ -497,12 +497,17 @@ def effective_tool_env(
                 .lower()
                 .removesuffix("[bot]")
             )
-            if slug and _agent_has_own_app(gh):
+            if slug:
                 bot = f"{slug}[bot]"
                 env["GIT_AUTHOR_NAME"] = bot
                 env["GIT_COMMITTER_NAME"] = bot
                 env["GIT_AUTHOR_EMAIL"] = f"{bot}@users.noreply.github.com"
                 env["GIT_COMMITTER_EMAIL"] = f"{bot}@users.noreply.github.com"
+            else:
+                env["GIT_AUTHOR_NAME"] = agent.name
+                env["GIT_COMMITTER_NAME"] = agent.name
+                env["GIT_AUTHOR_EMAIL"] = f"{agent.name}@users.noreply.github.com"
+                env["GIT_COMMITTER_EMAIL"] = f"{agent.name}@users.noreply.github.com"
 
     browser = agent.tool_setting("browser")
     if browser is not None and browser.get("enabled") and config.tools.browser.enabled:
@@ -544,10 +549,22 @@ if __name__ == "__main__":
     env = effective_tool_env(cfg, hopper, resolve)
     assert env["GH_TOKEN"] == "hopper-token", env.get("GH_TOKEN")
     assert env["BROWSER_PROFILE"] == "hop"
+    # No webhook_mention → git identity falls back to agent name.
+    assert env["GIT_AUTHOR_NAME"] == "hopper", env.get("GIT_AUTHOR_NAME")
+    assert env["GIT_AUTHOR_EMAIL"] == "hopper@users.noreply.github.com"
 
-    # gh enabled but no own token stored → no token (never borrows the owner's).
+    # Agent with webhook_mention → git identity uses the slug[bot] form.
+    mentioned = Agent(
+        name="coder",
+        tool_config={"gh": {"enabled": True, "webhook_mention": "@mybot[bot]"}},
+    )
+    menv = effective_tool_env(cfg, mentioned, resolve)
+    assert menv["GIT_AUTHOR_NAME"] == "mybot[bot]", menv.get("GIT_AUTHOR_NAME")
+    assert menv["GIT_AUTHOR_EMAIL"] == "mybot[bot]@users.noreply.github.com"
+
+    # gh enabled but no own token stored → fails closed (#263).
     atlas = Agent(name="atlas", tool_config={"gh": {"enabled": True}})
-    assert "GH_TOKEN" not in effective_tool_env(cfg, atlas, resolve)
+    assert effective_tool_env(cfg, atlas, resolve)["GH_TOKEN"] == GH_NO_IDENTITY
 
     # token_secret reuses an existing vault secret instead of the namespaced one.
     ref = Agent(name="atlas", tool_config={"gh": {"enabled": True, "token_secret": "SHARED_PAT"}})
@@ -578,7 +595,7 @@ if __name__ == "__main__":
         )
         assert effective_tool_env(app_cfg, pat_only, resolve)["GH_TOKEN"] == "hopper-token"
         pat_none = Agent(name="none", tool_config={"gh": {"enabled": True, "auth": "pat"}})
-        assert "GH_TOKEN" not in effective_tool_env(app_cfg, pat_none, resolve)
+        assert effective_tool_env(app_cfg, pat_none, resolve)["GH_TOKEN"] == GH_NO_IDENTITY
 
         # Agent's OWN GitHub App (multiple apps) → its own bot (app 500), not 42.
         own_app = Agent(
@@ -607,7 +624,7 @@ if __name__ == "__main__":
         pat_sys.tools.gh.app_id = "42"
         pat_sys.tools.gh.installation_id = "7"
         pat_sys.tools.gh.private_key = "PEM"
-        assert "GH_TOKEN" not in effective_tool_env(pat_sys, atlas, resolve)
+        assert effective_tool_env(pat_sys, atlas, resolve)["GH_TOKEN"] == GH_NO_IDENTITY
     finally:
         _ga.installation_token = _real_it
 

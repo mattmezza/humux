@@ -305,6 +305,9 @@ def _yolo_gate_agent(tmp_path):
     from core.executor import ToolExecutor
 
     agent = object.__new__(AgentCore)
+    agent.config = MagicMock()
+    agent.config.tools.gh.enabled = False
+    agent.secret_store = None
     agent.permissions = PermissionEngine(db_path=str(tmp_path / "config.db"))
     agent.executor = ToolExecutor()
     agent.executor.run_in_dir = AsyncMock(return_value={"exit_code": 0})
@@ -369,7 +372,7 @@ async def test_unlisted_bash_runs_workspace_confined(tmp_path):
     )
     assert result == {"exit_code": 0}
     agent._request_approval.assert_awaited_once()
-    agent.executor.run_in_dir.assert_awaited_once_with("make test", str(tmp_path))
+    agent.executor.run_in_dir.assert_awaited_once_with("make test", str(tmp_path), tool_env=None)
 
 
 @pytest.mark.asyncio

@@ -101,10 +101,11 @@ async def test_agent_app_identity_sets_bot_git_authorship(agent: AgentCore, monk
     assert env["GH_TOKEN"] == "app-token"
     assert env["GIT_AUTHOR_NAME"] == "kindralai[bot]"
     assert env["GIT_COMMITTER_EMAIL"] == "kindralai[bot]@users.noreply.github.com"
-    # A PAT agent (no own app) gets no forced git identity.
+    # A PAT agent (no webhook_mention) gets git identity from agent name.
     pat = Agent(name="hopper", tool_config={"gh": {"enabled": True}})
     cap2 = await _run(agent, pat, monkeypatch)
-    assert "GIT_AUTHOR_NAME" not in cap2["tool_env"]
+    assert cap2["tool_env"]["GIT_AUTHOR_NAME"] == "hopper"
+    assert cap2["tool_env"]["GIT_AUTHOR_EMAIL"] == "hopper@users.noreply.github.com"
 
 
 async def test_agent_gh_disabled_strips_owner_token(agent: AgentCore, monkeypatch) -> None:
