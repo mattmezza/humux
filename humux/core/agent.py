@@ -2599,6 +2599,15 @@ class AgentCore:
                 if not resolved.is_dir():
                     return {"error": f"Not a directory: {workdir}"}
                 cwd = str(resolved)
+            # Per-agent tool identity (#93): resolve BEFORE the unlisted-bash
+            # fork so compound workspace commands (`cd repo && gh pr create`)
+            # authenticate as the agent, not the container's ambient identity.
+            agent = request_state.get("agent_obj")
+            agent_env = None
+            if agent is not None or _gh_app_configured(self.config):
+                store = self.secret_store
+                resolve = store.infra_resolve if store else (lambda _n: None)
+                agent_env = effective_tool_env(self.config, agent, resolve)
             if unlisted_bash:
                 # Outside the prefix allowlist: runs ONLY workspace-confined, under
                 # the per-call approval that already happened above (the old
@@ -2607,7 +2616,7 @@ class AgentCore:
                 if workspace is None:
                     # No workspace → surface the executor's allowlist guidance.
                     return await self.executor.run_command(command)
-                return await self.executor.run_in_dir(command, cwd)
+                return await self.executor.run_in_dir(command, cwd, tool_env=agent_env)
             # Secret substitution boundary (issue #19): {{secret:NAME}} is resolved
             # ONLY here, for the model's generic command tool, after an ACL check.
             # Structured tools (send_email/send_message/…) build their commands
@@ -2618,10 +2627,6 @@ class AgentCore:
                 command, serr = await self.secret_store.resolve_command_secrets(command, allowed)
                 if serr:
                     return {"error": serr}
-            # Per-agent tool identity (#93): an agent runs `gh`/`browser` with its
-            # own credentials/profile, never the owner's. No agent → the shared
-            # default env (unchanged path).
-            agent = request_state.get("agent_obj")
             # Per-agent GitHub repo allowlist (#111) — block before running.
             bad_repo = github_repo_violation(agent, command)
             if bad_repo:
@@ -2632,16 +2637,6 @@ class AgentCore:
                         "GitHub tool identity."
                     )
                 }
-            agent_env = None
-            # Build the per-turn tool env when an agent is active OR a GitHub App
-            # is configured — the latter so its rotating installation token (#111)
-            # is minted fresh per command instead of the stale one cached at
-            # construction. A static PAT doesn't rotate, so the no-agent/PAT case
-            # keeps using the executor's shared default (unchanged).
-            if agent is not None or _gh_app_configured(self.config):
-                store = self.secret_store
-                resolve = store.infra_resolve if store else (lambda _n: None)
-                agent_env = effective_tool_env(self.config, agent, resolve)
             return await self.executor.run_command(command, tool_env=agent_env, cwd=cwd)
 
         if name == "send_email":

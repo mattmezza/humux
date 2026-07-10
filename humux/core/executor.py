@@ -234,13 +234,24 @@ class ToolExecutor:
         """
         return await self._exec(self._resolve_command(command), timeout)
 
-    async def run_in_dir(self, command: str, cwd: str, timeout: int = 120) -> dict:
+    async def run_in_dir(
+        self,
+        command: str,
+        cwd: str,
+        timeout: int = 120,
+        tool_env: dict[str, str] | None = None,
+    ) -> dict:
         """Run a shell command in ``cwd`` (no prefix whitelist) for the coding
         harness (#76). Confinement of ``cwd`` to the workspace and per-call ASK
         approval are enforced by the caller (core/coding.py + the agent); this
         only adds the working directory. Builds/tests get a longer default
-        timeout than the 30s interactive default."""
-        return await self._exec(command, timeout, cwd=cwd)
+        timeout than the 30s interactive default.
+
+        ``tool_env`` injects the active agent's identity (GH_TOKEN, git author
+        env vars) so compound workspace commands (``cd repo && gh pr create``)
+        authenticate as the agent, not the container's ambient identity.
+        """
+        return await self._exec(command, timeout, cwd=cwd, tool_env=tool_env)
 
     async def _exec(
         self,
