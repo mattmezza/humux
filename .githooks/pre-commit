@@ -1,18 +1,10 @@
 #!/usr/bin/env bash
-set -e
+# Pre-commit hook — run ruff linter before allowing a commit.
+# Installed via core.hooksPath in .gitattributes. If you skip lint with
+# `git commit --no-verify`, CI will catch it instead.
 
-# Get staged Python files (excluding deleted files)
-STAGED=$(git diff --cached --name-only --diff-filter=d -- '*.py')
+set -euo pipefail
 
-if [ -z "$STAGED" ]; then
-  exit 0
-fi
-
-# Fix lint issues and format staged files. The uv project lives under humux/
-# (monorepo layout), so point uv at it; paths stay repo-root-relative and ruff
-# discovers per-file config by walking up to humux/pyproject.toml.
-uv run --project humux ruff check --fix $STAGED
-uv run --project humux ruff format $STAGED
-
-# Re-stage any files that were modified by ruff
-git add $STAGED
+echo "--- ruff check ---"
+uv run --directory humux ruff check .
+echo "OK"
