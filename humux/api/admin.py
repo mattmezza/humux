@@ -2145,6 +2145,17 @@ def create_admin_app(
         ig_daily = await config_store.get("tools.imagegen.daily_budget") or "0"
         ig_monthly = await config_store.get("tools.imagegen.monthly_budget") or "0"
 
+        # Deep research (issue #293). One prefix fetch; fall back to the
+        # pydantic defaults so they live in config.py only.
+        from core.config import DeepResearchToolConfig
+
+        dr_defaults = DeepResearchToolConfig()
+        dr_stored = await config_store.get_many("tools.deep_research.")
+
+        def dr_get(field: str) -> str:
+            stored = dr_stored.get(f"tools.deep_research.{field}")
+            return stored if stored is not None else str(getattr(dr_defaults, field)).lower()
+
         # WhatsApp tool (#97) — enable flag + wacli link status for the badge.
         wa_enabled = await config_store.get("tools.whatsapp.enabled")
         wa_enabled = wa_enabled if wa_enabled is not None else "false"
@@ -2192,6 +2203,14 @@ def create_admin_app(
             imagegen_key_vaulted=ig_key_vaulted,
             imagegen_daily_budget=ig_daily,
             imagegen_monthly_budget=ig_monthly,
+            deep_research_enabled=dr_get("enabled"),
+            deep_research_provider=dr_get("provider"),
+            deep_research_model=dr_get("model"),
+            deep_research_synth_provider=dr_get("synthesis_provider"),
+            deep_research_synth_model=dr_get("synthesis_model"),
+            deep_research_depth=dr_get("depth"),
+            deep_research_max_sources=dr_get("max_sources"),
+            deep_research_token_budget=dr_get("token_budget"),
             search_enabled=search_enabled,
             search_provider=search_provider,
             search_api_key="" if search_vaulted else search_api_key,
@@ -5194,6 +5213,7 @@ GATEABLE_TOOLS = [
     "search_contacts",
     "create_contact",
     "web_search",
+    "deep_research",
     "manage_jobs",
     "spawn_subagent",
     "generate_image",
@@ -5220,6 +5240,7 @@ TOOL_DESCRIPTIONS = {
     "search_contacts": "Look up people in a bound address book.",
     "create_contact": "Add a contact to a bound address book.",
     "web_search": "Search the web (needs the Web search tool enabled).",
+    "deep_research": "Multi-step web research with a synthesized, cited report.",
     "manage_jobs": "Schedule, list and cancel the agent's own jobs.",
     "spawn_subagent": "Delegate a scoped subtask to a child agent.",
     "generate_image": "Generate images and send them as photos.",

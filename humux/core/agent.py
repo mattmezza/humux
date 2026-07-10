@@ -19,8 +19,9 @@ from zoneinfo import ZoneInfo
 
 from tavily import TavilyClient
 
-from core import coding, imagegen
+from core import coding, deep_research, imagegen
 from core.agents import Agent, AgentStore, default_agent_from_values, topic_base_id
+from core.artifacts import ARTIFACTS_SUBDIR
 from core.compaction import compact_messages, should_compact
 from core.config import Config, search_ready
 from core.embeddings import LOCAL_PROVIDERS, EmbeddingClient, LocalEmbeddingClient
@@ -535,6 +536,41 @@ TOOLS = [
         },
     },
     {
+        "name": "deep_research",
+        "description": (
+            "Run an autonomous multi-step web research job: the question is "
+            "decomposed into sub-questions, each is searched, the top sources are "
+            "read and distilled, gaps trigger follow-up searches, and everything "
+            "is synthesized into a structured, cited report. Takes minutes and "
+            "posts its own progress updates to the chat — use it for genuine "
+            "research requests ('research X', 'write a report on Y', 'compare A "
+            "vs B in depth'), NOT for quick lookups (use web_search for those). "
+            "When the result contains an artifact_url, reply briefly with the key "
+            "takeaways and that link — do not paste the whole report."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "The research question"},
+                "depth": {
+                    "type": "integer",
+                    "description": (
+                        "Search-read-iterate cycles (1 = quick, 3 = exhaustive). "
+                        "Defaults to the configured value, which is also the cap."
+                    ),
+                },
+                "max_sources": {
+                    "type": "integer",
+                    "description": (
+                        "Max pages to read. Defaults to the configured value, "
+                        "which is also the cap."
+                    ),
+                },
+            },
+            "required": ["query"],
+        },
+    },
+    {
         "name": "generate_image",
         "description": (
             "Generate an image from a text prompt and deliver it to the user as a "
@@ -957,6 +993,7 @@ def apply_feature_gates(
     imagegen_enabled: bool = False,
     workspace_enabled: bool = False,
     search_enabled: bool = False,
+    deep_research_enabled: bool = False,
 ) -> list[dict]:
     """Drop tools whose backing feature is unavailable/disabled, so the model is
     never offered a capability it can't use (defence in depth — the tool handlers
@@ -970,6 +1007,9 @@ def apply_feature_gates(
         out = [t for t in out if t["name"] != "generate_image"]
     if not search_enabled:
         out = [t for t in out if t["name"] != "web_search"]
+    # Deep research needs a working search backend too (#293).
+    if not (deep_research_enabled and search_enabled):
+        out = [t for t in out if t["name"] != "deep_research"]
     if not workspace_enabled:
         out = [t for t in out if t["name"] not in ("read", "write", "edit")]
     return out
@@ -1628,7 +1668,7 @@ class AgentCore:
     def _tools_for_turn(self, agent: Agent | None) -> list[dict]:
         """The function-tool schemas offered to the model this turn: the agent's
         tool scope, with feature-gated tools dropped."""
-        return apply_feature_gates(
+        tools = apply_feature_gates(
             scoped_tools(agent),
             secrets_available=self.secret_store is not None,
             subagents_enabled=self.config.subagents.enabled,
@@ -1636,7 +1676,13 @@ class AgentCore:
             workspace_enabled=self.config.workspace.enabled
             and bool(self.config.workspace.directory.strip()),
             search_enabled=self.search_enabled,
+            deep_research_enabled=self.config.tools.deep_research.enabled,
         )
+        # deep_research fans out web searches — hide it from an agent whose
+        # scope withholds web_search (#293); the handler refuses too.
+        if agent and agent.tools and not agent.allows_tool("web_search"):
+            tools = [t for t in tools if t["name"] != "deep_research"]
+        return tools
 
     async def _turn_preamble(
         self,
@@ -2678,6 +2724,9 @@ class AgentCore:
         if name == "web_search":
             log.info("Tool call: web_search — %s", params.get("query", ""))
             return await self._tool_web_search(params)
+        if name == "deep_research":
+            log.info("Tool call: deep_research — %s", params.get("query", ""))
+            return await self._tool_deep_research(params, request_state)
 
         if name == "generate_image":
             return await self._tool_generate_image(params, request_state)
@@ -4153,6 +4202,137 @@ class AgentCore:
             for item in data.get("results", [])[:max_results]
         ]
         return {"query": query, "results": results}
+
+    async def _tool_deep_research(self, params: dict, request_state: dict) -> dict:
+        """``deep_research`` (#293): plan → search → read → iterate → synthesize.
+
+        Runs inside the turn's tool call, so ``/stop`` (which sets the turn's
+        abort Event) cancels it between pipeline phases; progress updates go
+        straight to the originating chat. For a non-blocking run, the model can
+        spawn it inside a background subagent — the tool is offered there too;
+        that path has no turn Event, so it is cancelled from /subagents (the
+        registry's task.cancel unwinds the pipeline's awaits) instead of /stop.
+        """
+        cfg = self.config.tools.deep_research
+        if not cfg.enabled:
+            return {"error": "Deep research is disabled. Enable it in Settings → Tools."}
+        if not self.search_enabled:
+            return {"error": "Deep research needs web search — configure it in Settings → Tools."}
+        # Inherit-never-widen: deep research fans out web searches, so an agent
+        # whose scope withholds web_search may not reach them through this tool.
+        agent_obj: Agent | None = request_state.get("agent_obj")
+        if agent_obj and not agent_obj.allows_tool("web_search"):
+            return {
+                "error": (
+                    "This agent's tool scope excludes web_search, which deep research requires."
+                )
+            }
+        providers_used = [("sub-call", cfg.provider)]
+        if cfg.synthesis_provider and cfg.synthesis_model:  # else synthesis = main agent LLM
+            providers_used.append(("synthesis", cfg.synthesis_provider))
+        for role, provider in providers_used:
+            if (
+                provider
+                and provider != self.llm.provider
+                # A base_url-only setup (keyless local OpenAI-compatible sidecar)
+                # is a supported pattern — only refuse when neither is configured.
+                and not getattr(self.config.agent, f"{provider}_api_key", "")
+                and not getattr(self.config.agent, f"{provider}_base_url", "")
+            ):
+                return {
+                    "error": (
+                        f"Deep research {role} provider '{provider}' has no API key "
+                        "configured — pick a configured provider in Settings → Tools."
+                    )
+                }
+        query = str(params.get("query", "")).strip()
+        if not query:
+            return {"error": "A research query is required."}
+        # The configured values are ceilings the model may dial down, never past.
+        depth = resolve_cap(params.get("depth"), cfg.depth)
+        max_sources = resolve_cap(params.get("max_sources"), cfg.max_sources)
+
+        # Progress + cancellation ride on the originating chat (also correct
+        # inside a subagent, whose request_state carries the spawner's origin).
+        origin = request_state.get("origin") or {}
+        o_channel = str(origin.get("channel", ""))
+        o_user = str(origin.get("user_id", ""))
+        o_chat = str(origin.get("chat_id", ""))
+        abort = self._active_turns_map().get((o_channel, o_user, o_chat))
+        ch = self.channels.get(o_channel)
+
+        async def progress(msg: str) -> None:
+            if ch and o_chat:
+                await ch.send(o_chat, msg)
+
+        def gen_with(llm: LLMClient, model: str):
+            async def gen(prompt: str, max_tokens: int) -> tuple[str, int]:
+                r = await llm.generate(
+                    model=model,
+                    system="",
+                    messages=[{"role": "user", "content": prompt}],
+                    tools=[],
+                    max_tokens=max_tokens,
+                )
+                u = r.usage or {}
+                return r.text, u.get("input_tokens", 0) + u.get("output_tokens", 0)
+
+            return gen
+
+        # Sub-calls on the configured fast/cheap model; synthesis on the main
+        # agent model unless a dedicated one is configured in the Tools tab.
+        gen_fast = gen_with(self._background_llm(cfg.provider), cfg.model)
+        if cfg.synthesis_provider and cfg.synthesis_model:
+            gen_synth = gen_with(self._background_llm(cfg.synthesis_provider), cfg.synthesis_model)
+        else:
+            synth_llm, synth_model, _ = self._agent_llm(request_state.get("agent_obj"))
+            gen_synth = gen_with(synth_llm, synth_model)
+
+        try:
+            result = await deep_research.run(
+                query,
+                depth=depth,
+                max_sources=max_sources,
+                token_budget=max(1000, cfg.token_budget),
+                gen_fast=gen_fast,
+                gen_synth=gen_synth,
+                search=lambda q: self._tool_web_search({"query": q}),
+                progress=progress,
+                cancelled=lambda: bool(abort and abort.is_set()),
+            )
+        except deep_research.ResearchCancelled:
+            return {"error": "Research cancelled by the user."}
+        except Exception as exc:
+            log.exception("Deep research failed for query: %s", query)
+            return {"error": f"Deep research failed: {exc}"}
+        if result.get("error"):
+            return result
+
+        # Publish the themed report as a web artifact when servable (#82); the
+        # chat reply then stays brief with a link. Without a workspace the full
+        # report rides back in the tool result for the model to relay.
+        ws = self._workspace_dir()
+        if ws and self.config.artifacts.enabled:
+            slug = deep_research.slugify(query, uuid.uuid4().hex[:6])
+            stamp = datetime.now(ZoneInfo(self.config.agent.timezone)).strftime("%B %d, %Y")
+            meta = f"{stamp} · {len(result['sources'])} sources · depth {depth}"
+            page = deep_research.render_report_html(
+                query, result["report"], result["sources"], meta
+            )
+            try:
+                # expanduser matches the serving route (artifacts.serving_base),
+                # so a "~/…" workspace serves what was written.
+                target = Path(ws).expanduser() / ARTIFACTS_SUBDIR / slug / "index.html"
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(page, encoding="utf-8")
+                result["artifact_url"] = f"{self._base_url()}/artifacts/{slug}/"
+                result["note"] = (
+                    "Report published as a web artifact. Reply briefly: the key "
+                    "takeaways plus the artifact_url link — do not paste the report."
+                )
+            except OSError:
+                log.exception("Failed to write deep-research artifact %s", slug)
+        return result
 
     async def _tool_generate_image(self, params: dict, request_state: dict) -> dict:
         """Generate an image and queue it for native-media delivery (issue #55).

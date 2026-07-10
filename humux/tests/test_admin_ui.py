@@ -54,6 +54,9 @@ class _ConfigStoreStub:
     async def set(self, key: str, value: str) -> None:
         self._data[key] = value
 
+    async def get_many(self, prefix: str = "") -> dict[str, str]:
+        return {k: v for k, v in self._data.items() if k.startswith(prefix)}
+
     async def set_many(self, values: dict) -> None:
         self._last_set = values
         self._data.update(values)
