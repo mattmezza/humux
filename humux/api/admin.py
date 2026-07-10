@@ -2808,6 +2808,54 @@ def create_admin_app(
         resp.headers["HX-Trigger"] = json.dumps({"showToast": f'Job "{job_id}" deleted'})
         return resp
 
+    @app.post("/jobs/pause-resume", dependencies=[Depends(auth)])
+    async def pause_resume_job(request: Request) -> HTMLResponse:
+        """Toggle a job between active and paused status. Returns refreshed jobs partial."""
+        content_type = request.headers.get("content-type", "")
+        if "application/x-www-form-urlencoded" in content_type:
+            body = await request.form()
+        else:
+            body = await request.json()
+
+        job_id = str(body.get("job_id", "")).strip()
+        if not job_id:
+            raise HTTPException(400, "Missing 'job_id' in request body")
+
+        store = _get_job_store()
+        job = await store.get_job(job_id)
+        if not job:
+            raise HTTPException(404, f"Job not found: {job_id}")
+
+        current_status = job.get("status", "")
+        if current_status == "active":
+            new_status = "paused"
+        elif current_status == "paused":
+            new_status = "active"
+        else:
+            raise HTTPException(400, f"Cannot pause/resume job in terminal state: {current_status}")
+
+        await store.update_status(job_id, new_status)
+
+        # Sync with APScheduler: paused jobs are removed, active ones re-registered
+        agent = agent_state.agent
+        if agent:
+            await agent.scheduler.sync_job(job_id)
+
+        action = "paused" if new_status == "paused" else "resumed"
+        log.info("Job %r %s via admin", job_id, action)
+
+        show_completed = str(body.get("show_completed", "")).strip().lower() in ("true", "on", "1")
+        jobs = _get_jobs_list(include_done=show_completed)
+        agent_running = agent is not None
+        resp = _render_partial(
+            "partials/jobs.html",
+            jobs=jobs,
+            agent_running=agent_running,
+            show_completed=show_completed,
+        )
+        resp.headers["HX-Trigger"] = json.dumps({"showToast": f'Job "{job_id}" {action}'})
+        return resp
+
     @app.post("/jobs/run", dependencies=[Depends(auth)])
     async def run_job_now(request: Request) -> HTMLResponse:
         """Trigger a job to run immediately. Returns a flash message."""
