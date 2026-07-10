@@ -100,6 +100,7 @@ def agent(tmp_path, monkeypatch):
     cfg = Config()
     cfg.reply_decision.enabled = True
     cfg.goal_decomposition.enabled = False  # keep the gate the only background call
+    cfg.memory.embedding.enabled = False  # no sidecar in tests → 12s timeout per embed call
     return AgentCore(cfg)
 
 

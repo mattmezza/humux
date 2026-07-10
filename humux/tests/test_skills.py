@@ -16,7 +16,7 @@ from core.skills import (
 @pytest.mark.asyncio
 async def test_get_index_block_empty_db(tmp_path) -> None:
     db_path = str(tmp_path / "skills.db")
-    engine = SkillsEngine(db_path=db_path, seed_dir=tmp_path)
+    engine = SkillsEngine(db_path=db_path, seed_dir=tmp_path, installed_dir=tmp_path / "installed")
     assert await engine.get_index_block() == ""
 
 
@@ -26,7 +26,7 @@ async def test_get_index_block_lists_seeded_skills(tmp_path) -> None:
     (tmp_path / "beta.md").write_text("Beta skill")
 
     db_path = str(tmp_path / "skills.db")
-    engine = SkillsEngine(db_path=db_path, seed_dir=tmp_path)
+    engine = SkillsEngine(db_path=db_path, seed_dir=tmp_path, installed_dir=tmp_path / "installed")
     index = await engine.get_index_block()
 
     assert '<skill name="alpha">Alpha skill</skill>' in index
@@ -38,7 +38,7 @@ async def test_get_index_block_lists_seeded_skills(tmp_path) -> None:
 async def test_get_skill_content_reads_seeded_skill(tmp_path) -> None:
     (tmp_path / "memory.md").write_text("# Memory\n\nUse sqlite3.")
     db_path = str(tmp_path / "skills.db")
-    engine = SkillsEngine(db_path=db_path, seed_dir=tmp_path)
+    engine = SkillsEngine(db_path=db_path, seed_dir=tmp_path, installed_dir=tmp_path / "installed")
 
     content = await engine.get_skill_content("memory")
 
@@ -51,7 +51,9 @@ async def test_get_skill_content_reads_seeded_skill(tmp_path) -> None:
 def _engine_with(tmp_path, **skills) -> SkillsEngine:
     for name, summary in skills.items():
         (tmp_path / f"{name}.md").write_text(summary)
-    return SkillsEngine(db_path=str(tmp_path / "skills.db"), seed_dir=tmp_path)
+    return SkillsEngine(
+        db_path=str(tmp_path / "skills.db"), seed_dir=tmp_path, installed_dir=tmp_path / "installed"
+    )
 
 
 @pytest.mark.asyncio
