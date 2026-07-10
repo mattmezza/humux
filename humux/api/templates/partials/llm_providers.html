@@ -1,4 +1,3 @@
-{% import "partials/_macros.html" as m %}
   <div class="space-y-6" x-show="section === 'providers'" >
   <div class="mb-2 rounded border border-border bg-muted/10 px-3 py-2 text-muted text-xs">
     🔒 Provider API keys are stored in the vault on save — only a <code>${vault:NAME}</code> reference is kept in config, never the raw key. Manage or reuse them from the <button type="button" class="text-accent hover:underline" @click="$dispatch('switch-tab', 'secrets')">Vaults</button> tab.
