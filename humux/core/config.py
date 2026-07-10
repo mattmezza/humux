@@ -93,7 +93,7 @@ class AgentConfig(BaseModel):
     openrouter_api_key: str = ""
     openrouter_base_url: str = ""
     model: str = "deepseek-v4-flash"
-    thinking_level: str = ""  # "" (off) | "low" | "medium" | "high" | "max" — only for reasoning models
+    thinking_level: str = ""  # "" (off) | "low" | "medium" | "high" | "max"
     # Hard ceiling on tokens the model may emit per response. The agentic loop
     # truncates mid-tool-call when this is too small for the output (e.g. a large
     # file written via the write tool), so keep it generous. 16384 is safe across providers;
