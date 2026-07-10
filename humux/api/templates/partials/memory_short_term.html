@@ -18,59 +18,34 @@
         <th>Content</th>
         <th class="w-24">Scope</th>
         <th class="w-32">Expires</th>
-        <th class="w-10"></th>
       </tr>
     </thead>
     <tbody>
       {% for m in st %}
-      <tr x-data="{editing:false, showDetail:false, modalEditing:false}">
+      <tr x-data="{showDetail:false, modalEditing:false}"
+          @click="showDetail=true" class="cursor-pointer">
         <td class="text-xs">{{ m.id }}</td>
         <td class="text-xs truncate max-w-0">
-          <span class="truncate block" x-show="!editing">{{ m.content }}</span>
-          <input name="content" class="input-sm w-full" value="{{ m.content }}" x-show="editing" aria-label="Content">
+          <span class="truncate block">{{ m.content }}</span>
         </td>
         <td class="text-xs">
-          <span x-show="!editing">{% if m.scope %}{{ m.scope }}{% else %}<span class="text-muted">shared</span>{% endif %}</span>
-          <select name="scope" class="input-sm" x-show="editing" aria-label="Scope">
-            <option value="" {% if not m.scope %}selected{% endif %}>shared</option>
-            {% if m.scope and m.scope not in agent_slugs %}<option value="{{ m.scope }}" selected>{{ m.scope }} (no agent)</option>{% endif %}
-            {% for s in agent_slugs %}<option value="{{ s }}" {% if m.scope == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
-          </select>
+          {% if m.scope %}{{ m.scope }}{% else %}<span class="text-muted">shared</span>{% endif %}
         </td>
-        <td class="text-xs">
-          <span x-show="!editing">{{ m.expires_at }}</span>
-          <input type="datetime-local" name="expires_at" step="1" class="input-sm"
-                 value="{{ m.expires_at[:19]|replace(' ','T') }}" x-show="editing" aria-label="Expires at">
-        </td>
-        <td class="whitespace-nowrap">
-          <button class="btn-icon" x-show="!editing" @click="showDetail=true" title="View details"
-                  aria-label="View details">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" width="16" height="16">
-              <path d="M10 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z"/>
-              <path fill-rule="evenodd" d="M.664 10.59a1.651 1.651 0 0 1 0-1.186A10.004 10.004 0 0 1 10 3c4.257 0 7.893 2.66 9.336 6.41.147.381.146.804 0 1.186A10.004 10.004 0 0 1 10 17c-4.257 0-7.893-2.66-9.336-6.41ZM14 10a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z" clip-rule="evenodd"/>
-            </svg>
-          </button>
-          <button class="btn btn-sm" x-show="!editing" @click="editing=true">edit</button>
-          <button class="btn-primary btn-sm" x-show="editing"
-                  hx-post="/memory/update" hx-target="#memory-sub" hx-swap="innerHTML"
-                  hx-include="closest tr"
-                  hx-vals='{"tier": "short-term", "memory_id": "{{ m.id }}"}'>&#x2713;</button>
-          <button class="btn btn-sm" x-show="editing" @click="editing=false">cancel</button>
-          <button class="btn-danger btn-sm" x-show="!editing"
-                  hx-post="/memory/delete" hx-target="#memory-sub" hx-swap="innerHTML"
-                  hx-vals='{"tier": "short-term", "memory_id": "{{ m.id }}"}' hx-confirm="Delete this memory?">x</button>
-
-          {# Detail modal for mobile #}
+        <td class="text-xs">{{ m.expires_at }}</td>
+        {# Invisible cell holding the modal #}
+        <td class="p-0 border-0" style="width:0">
           <div x-show="showDetail"
                class="fixed inset-0 z-50 flex items-center justify-center"
                style="background:rgba(0,0,0,0.65);"
                x-cloak
-               @keydown.window.escape="showDetail=false; modalEditing=false">
+               @keydown.window.escape="showDetail=false; modalEditing=false"
+               @click="showDetail=false; modalEditing=false">
             <div class="card mx-4" style="max-width:440px;width:100%;max-height:80vh;overflow-y:auto;"
+                 @click.stop
                  @click.outside="showDetail=false; modalEditing=false">
               <div class="flex items-start justify-between mb-4 gap-3">
                 <span class="text-sm font-semibold">Memory #{{ m.id }}</span>
-                <button class="btn btn-sm shrink-0" @click="showDetail=false; modalEditing=false">Close</button>
+                <button class="btn btn-sm shrink-0" @click.stop="showDetail=false; modalEditing=false">Close</button>
               </div>
 
               {# View mode #}
@@ -112,12 +87,12 @@
 
               {# Modal actions #}
               <div class="flex items-center gap-2 mt-4 border-t border-border pt-3">
-                <button class="btn btn-sm" x-show="!modalEditing" @click="modalEditing=true">Edit</button>
+                <button class="btn btn-sm" x-show="!modalEditing" @click.stop="modalEditing=true">Edit</button>
                 <button class="btn-primary btn-sm" x-show="modalEditing"
                         hx-post="/memory/update" hx-target="#memory-sub" hx-swap="innerHTML"
                         hx-include="closest td"
                         hx-vals='{"tier": "short-term", "memory_id": "{{ m.id }}"}'>&#x2713; Save</button>
-                <button class="btn btn-sm" x-show="modalEditing" @click="modalEditing=false">Cancel</button>
+                <button class="btn btn-sm" x-show="modalEditing" @click.stop="modalEditing=false">Cancel</button>
                 <button class="btn-danger btn-sm ml-auto"
                         hx-post="/memory/delete" hx-target="#memory-sub" hx-swap="innerHTML"
                         hx-vals='{"tier": "short-term", "memory_id": "{{ m.id }}"}' hx-confirm="Delete this memory?">Delete</button>
@@ -128,7 +103,7 @@
       </tr>
       {% endfor %}
       {% if not st %}
-      <tr><td colspan="5" class="text-muted text-xs text-center py-4">No active short-term memories</td></tr>
+      <tr><td colspan="4" class="text-muted text-xs text-center py-4">No active short-term memories</td></tr>
       {% endif %}
     </tbody>
   </table>
