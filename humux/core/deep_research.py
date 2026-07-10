@@ -208,7 +208,7 @@ async def run(
                 url = (item.get("url") or "").strip()
                 if url and url not in seen_urls and url not in cycle_urls:
                     cycle_urls.add(url)
-                    candidates.append(item)
+                    candidates.append({**item, "url": url})  # normalized url everywhere below
         candidates = candidates[: max_sources - len(sources)]
         # Only URLs actually read count as seen — a candidate dropped by the
         # cap above stays eligible for a later cycle.

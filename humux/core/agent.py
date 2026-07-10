@@ -4227,11 +4227,17 @@ class AgentCore:
                     "This agent's tool scope excludes web_search, which deep research requires."
                 )
             }
-        for role, provider in (("sub-call", cfg.provider), ("synthesis", cfg.synthesis_provider)):
+        providers_used = [("sub-call", cfg.provider)]
+        if cfg.synthesis_provider and cfg.synthesis_model:  # else synthesis = main agent LLM
+            providers_used.append(("synthesis", cfg.synthesis_provider))
+        for role, provider in providers_used:
             if (
                 provider
                 and provider != self.llm.provider
+                # A base_url-only setup (keyless local OpenAI-compatible sidecar)
+                # is a supported pattern — only refuse when neither is configured.
                 and not getattr(self.config.agent, f"{provider}_api_key", "")
+                and not getattr(self.config.agent, f"{provider}_base_url", "")
             ):
                 return {
                     "error": (
