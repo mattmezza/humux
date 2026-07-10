@@ -24,7 +24,7 @@
     </thead>
     <tbody>
       {% for m in lt %}
-      <tr x-data="{editing:false, showDetail:false}">
+      <tr x-data="{editing:false, showDetail:false, modalEditing:false}">
         <td class="text-xs">{{ m.id }}</td>
         <td class="text-xs">
           <span x-show="!editing">{{ m.category }}</span>
@@ -72,33 +72,75 @@
                class="fixed inset-0 z-50 flex items-center justify-center"
                style="background:rgba(0,0,0,0.65);"
                x-cloak
-               @keydown.window.escape="showDetail=false">
-            <div class="card mx-4" style="max-width:440px;width:100%;max-height:80vh;overflow-y:auto;" 
-               @click.outside="showDetail=false">
-            <div class="flex items-start justify-between mb-4 gap-3">
-              <span class="text-sm font-semibold">Memory #{{ m.id }}</span>
-              <button class="btn btn-sm shrink-0" @click="showDetail=false">Close</button>
+               @keydown.window.escape="showDetail=false; modalEditing=false">
+            <div class="card mx-4" style="max-width:440px;width:100%;max-height:80vh;overflow-y:auto;"
+                 @click.outside="showDetail=false; modalEditing=false">
+              <div class="flex items-start justify-between mb-4 gap-3">
+                <span class="text-sm font-semibold">Memory #{{ m.id }}</span>
+                <button class="btn btn-sm shrink-0" @click="showDetail=false; modalEditing=false">Close</button>
+              </div>
+
+              {# View mode #}
+              <dl x-show="!modalEditing" class="text-xs space-y-3">
+                <div>
+                  <dt class="text-muted uppercase tracking-wider text-[10px] mb-0.5">Category</dt>
+                  <dd>{{ m.category }}</dd>
+                </div>
+                <div>
+                  <dt class="text-muted uppercase tracking-wider text-[10px] mb-0.5">Subject</dt>
+                  <dd>{{ m.subject }}</dd>
+                </div>
+                <div>
+                  <dt class="text-muted uppercase tracking-wider text-[10px] mb-0.5">Content</dt>
+                  <dd class="text-gray-200 leading-relaxed whitespace-pre-wrap break-words">{{ m.content }}</dd>
+                </div>
+                <div>
+                  <dt class="text-muted uppercase tracking-wider text-[10px] mb-0.5">Scope</dt>
+                  <dd>{% if m.scope %}{{ m.scope }}{% else %}<span class="text-muted">shared</span>{% endif %}</dd>
+                </div>
+              </dl>
+
+              {# Edit mode #}
+              <div x-show="modalEditing" class="space-y-3 text-xs">
+                <div>
+                  <label class="text-muted uppercase tracking-wider text-[10px] mb-0.5 block">Category</label>
+                  <select name="category" class="input-sm w-full" aria-label="Category">
+                    {% if m.category not in categories %}<option value="{{ m.category }}" selected>{{ m.category }}</option>{% endif %}
+                    {% for c in categories %}<option value="{{ c }}" {% if m.category == c %}selected{% endif %}>{{ c }}</option>{% endfor %}
+                  </select>
+                </div>
+                <div>
+                  <label class="text-muted uppercase tracking-wider text-[10px] mb-0.5 block">Subject</label>
+                  <input name="subject" class="input-sm w-full" value="{{ m.subject }}" aria-label="Subject">
+                </div>
+                <div>
+                  <label class="text-muted uppercase tracking-wider text-[10px] mb-0.5 block">Content</label>
+                  <textarea name="content" class="input-sm w-full" rows="4" aria-label="Content">{{ m.content }}</textarea>
+                </div>
+                <div>
+                  <label class="text-muted uppercase tracking-wider text-[10px] mb-0.5 block">Scope</label>
+                  <select name="scope" class="input-sm w-full" aria-label="Scope">
+                    <option value="" {% if not m.scope %}selected{% endif %}>shared</option>
+                    {% if m.scope and m.scope not in agent_slugs %}<option value="{{ m.scope }}" selected>{{ m.scope }} (no agent)</option>{% endif %}
+                    {% for s in agent_slugs %}<option value="{{ s }}" {% if m.scope == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+                  </select>
+                </div>
+              </div>
+
+              {# Modal actions #}
+              <div class="flex items-center gap-2 mt-4 border-t border-border pt-3">
+                <button class="btn btn-sm" x-show="!modalEditing" @click="modalEditing=true">Edit</button>
+                <button class="btn-primary btn-sm" x-show="modalEditing"
+                        hx-post="/memory/update" hx-target="#memory-sub" hx-swap="innerHTML"
+                        hx-include="closest td"
+                        hx-vals='{"tier": "long-term", "memory_id": "{{ m.id }}"}'>&#x2713; Save</button>
+                <button class="btn btn-sm" x-show="modalEditing" @click="modalEditing=false">Cancel</button>
+                <button class="btn-danger btn-sm ml-auto"
+                        hx-post="/memory/delete" hx-target="#memory-sub" hx-swap="innerHTML"
+                        hx-vals='{"tier": "long-term", "memory_id": "{{ m.id }}"}' hx-confirm="Delete this memory?">Delete</button>
+              </div>
             </div>
-            <dl class="text-xs space-y-3">
-              <div>
-                <dt class="text-muted uppercase tracking-wider text-[10px] mb-0.5">Category</dt>
-                <dd>{{ m.category }}</dd>
-              </div>
-              <div>
-                <dt class="text-muted uppercase tracking-wider text-[10px] mb-0.5">Subject</dt>
-                <dd>{{ m.subject }}</dd>
-              </div>
-              <div>
-                <dt class="text-muted uppercase tracking-wider text-[10px] mb-0.5">Content</dt>
-                <dd class="text-gray-200 leading-relaxed whitespace-pre-wrap break-words">{{ m.content }}</dd>
-              </div>
-              <div>
-                <dt class="text-muted uppercase tracking-wider text-[10px] mb-0.5">Scope</dt>
-                <dd>{% if m.scope %}{{ m.scope }}{% else %}<span class="text-muted">shared</span>{% endif %}</dd>
-              </div>
-            </dl>
           </div>
-        </div>
         </td>
       </tr>
       {% endfor %}
