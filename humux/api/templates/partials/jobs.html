@@ -6,8 +6,8 @@
     <button type="button" class="tab-link" :class="sub === 'scheduled' && 'tab-link-active'" @click="select('scheduled')">Scheduled</button>
     <button type="button" class="tab-link" :class="sub === 'subagents' && 'tab-link-active'" @click="select('subagents')">
       Subagents
-      <span x-show="subagentCount > 0" x-text="subagentCount"
-            class="inline-flex items-center justify-center ml-1 px-1.5 py-0.5 rounded-full text-[0.65rem] font-bold bg-accent text-black" style="min-width:1.25rem; line-height:1;"></span>
+      <span id="subagent-badge"
+            class="inline-flex items-center justify-center ml-1 px-1.5 py-0.5 rounded-full text-[0.65rem] font-bold bg-accent text-black" style="min-width:1.25rem; line-height:1;display:none;"></span>
     </button>
   </div>
   <div id="jobs-sub">

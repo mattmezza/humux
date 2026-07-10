@@ -59,7 +59,7 @@
     this.form.description = job.description || '';
     this.form.agent = job.agent || '';
     this.$nextTick(() => {
-      document.querySelector('form[hx-post=\"/jobs\"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const f = document.getElementById('job-form'); if (f) f.scrollIntoView({ behavior: 'smooth', block: 'center' });
     });
   },
   cancelEdit() {
@@ -207,7 +207,7 @@
         <h3 class="text-xs text-muted uppercase tracking-wider" x-text="editing ? 'Edit job' : 'Add new job'">Add new job</h3>
         <button class="btn btn-sm" type="button" x-show="!editing" @click="showForm = false">Cancel</button>
       </div>
-      <form hx-post="/jobs" hx-target="#jobs-sub" hx-swap="innerHTML"
+      <form id="job-form" hx-post="/jobs" hx-target="#jobs-sub" hx-swap="innerHTML"
             hx-include="#jobs-show-completed">
         <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
