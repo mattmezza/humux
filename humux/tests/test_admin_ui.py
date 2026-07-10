@@ -296,6 +296,8 @@ class TestVoicePreview:
         # (#114 + History folded in). The SysPrompt sub-tab was removed (#137),
         # superseded by the Inspect tab.
         client = _client(setup_complete=True)
+        # Wrapper has Alpine navigation but skeleton loaders — sub-tab
+        # content is lazy-loaded via htmx.
         resp = client.get("/partials/llm", headers=AUTH)
         assert resp.status_code == 200
         for sec in ("inference", "providers", "history"):
@@ -303,12 +305,15 @@ class TestVoicePreview:
             assert f"section === '{sec}'" in resp.text
         assert "setSection('sysprompt')" not in resp.text
         assert "System Prompt Controls" not in resp.text
-        # History sub-tab content is included, not a separate top-level tab.
-        assert "Context compaction" in resp.text
+        # History sub-tab content lives in separate partial
+        hist = client.get("/partials/llm/history", headers=AUTH)
+        assert hist.status_code == 200
+        assert "Context compaction" in hist.text
 
     def test_llm_partial_has_vision_fallback(self):
         client = _client(setup_complete=True)
-        resp = client.get("/partials/llm", headers=AUTH)
+        # Vision Fallback is in the inference sub-tab content
+        resp = client.get("/partials/llm/inference", headers=AUTH)
         assert resp.status_code == 200
         assert "Vision Fallback" in resp.text
         # One-tap enable prompt + capability indicator are wired in.
@@ -317,7 +322,8 @@ class TestVoicePreview:
 
     def test_llm_partial_has_reply_decision(self):
         client = _client(setup_complete=True)
-        resp = client.get("/partials/llm", headers=AUTH)
+        # Reply Decision card is in the inference sub-tab
+        resp = client.get("/partials/llm/inference", headers=AUTH)
         assert resp.status_code == 200
         assert "Reply Decision" in resp.text
         # The save button wires the full config block, incl. the rate-cap knobs.
@@ -328,7 +334,8 @@ class TestVoicePreview:
         # OpenRouter provider card (#128): renders (exercises the positional
         # llmTab() call), saves the dedicated key, and carries the info text.
         client = _client(setup_complete=True)
-        resp = client.get("/partials/llm", headers=AUTH)
+        # OpenRouter card is in the providers sub-tab
+        resp = client.get("/partials/llm/providers", headers=AUTH)
         assert resp.status_code == 200
         assert "OpenRouter" in resp.text
         assert "agent.openrouter_api_key" in resp.text  # save button wiring

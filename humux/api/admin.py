@@ -2004,6 +2004,49 @@ def create_admin_app(
             **(await _history_ctx()),
         )
 
+    async def _llm_providers_ctx() -> dict:
+        """Vaulted flags + API keys for the LLM Providers sub-tab partial."""
+        anthropic_key = await config_store.get("agent.anthropic_api_key") or ""
+        openai_key = await config_store.get("agent.openai_api_key") or ""
+        google_key = await config_store.get("agent.google_api_key") or ""
+        grok_key = await config_store.get("agent.grok_api_key") or ""
+        deepseek_key = await config_store.get("agent.deepseek_api_key") or ""
+        openrouter_key = await config_store.get("agent.openrouter_api_key") or ""
+        return {
+            "anthropic_api_key": "" if _is_vault_ref(anthropic_key) else anthropic_key,
+            "anthropic_vaulted": _is_vault_ref(anthropic_key),
+            "openai_api_key": "" if _is_vault_ref(openai_key) else openai_key,
+            "openai_vaulted": _is_vault_ref(openai_key),
+            "openai_base_url": await config_store.get("agent.openai_base_url") or "",
+            "google_api_key": "" if _is_vault_ref(google_key) else google_key,
+            "google_vaulted": _is_vault_ref(google_key),
+            "google_base_url": await config_store.get("agent.google_base_url") or "",
+            "grok_api_key": "" if _is_vault_ref(grok_key) else grok_key,
+            "grok_vaulted": _is_vault_ref(grok_key),
+            "grok_base_url": await config_store.get("agent.grok_base_url") or "",
+            "deepseek_api_key": "" if _is_vault_ref(deepseek_key) else deepseek_key,
+            "deepseek_vaulted": _is_vault_ref(deepseek_key),
+            "deepseek_base_url": await config_store.get("agent.deepseek_base_url") or "",
+            "openrouter_api_key": "" if _is_vault_ref(openrouter_key) else openrouter_key,
+            "openrouter_vaulted": _is_vault_ref(openrouter_key),
+            "openrouter_base_url": await config_store.get("agent.openrouter_base_url") or "",
+        }
+
+    @app.get("/partials/llm/inference", dependencies=[Depends(auth)])
+    async def partial_llm_inference() -> HTMLResponse:
+        """LLM Inference sub-tab content."""
+        return _render_partial("partials/llm_inference.html")
+
+    @app.get("/partials/llm/providers", dependencies=[Depends(auth)])
+    async def partial_llm_providers() -> HTMLResponse:
+        """LLM Providers sub-tab content."""
+        return _render_partial("partials/llm_providers.html", **(await _llm_providers_ctx()))
+
+    @app.get("/partials/llm/history", dependencies=[Depends(auth)])
+    async def partial_llm_history() -> HTMLResponse:
+        """LLM History sub-tab content."""
+        return _render_partial("partials/llm_history.html", **(await _history_ctx()))
+
     def _browser_rules() -> list[dict]:
         """Per-domain browser `act` rules (excludes the generic default rule)."""
         agent = agent_state.agent
@@ -2462,12 +2505,12 @@ def create_admin_app(
             return entries, total
 
         from core.memory import MemoryStore
+
         await MemoryStore(db_path=memory_db)._ensure_schema()
 
         if tier == "long-term":
             cols = (
-                "id, category, subject, content, source, "
-                "confidence, created_at, updated_at, scope"
+                "id, category, subject, content, source, confidence, created_at, updated_at, scope"
             )
             table = "long_term"
             base_where = ""
@@ -2510,24 +2553,21 @@ def create_admin_app(
 
             # Paginated rows
             data_sql = (
-                f"SELECT {cols} FROM {table} {where_clause} "
-                f"ORDER BY {order} LIMIT ? OFFSET ?"
+                f"SELECT {cols} FROM {table} {where_clause} ORDER BY {order} LIMIT ? OFFSET ?"
             )
             cursor = await db.execute(data_sql, params + [str(limit), str(offset)])
             entries = [dict(row) for row in await cursor.fetchall()]
 
         return entries, total
 
-    async def _render_memory_partial(
-        view: str = "settings",
+    async def _memory_context(
+        view: str,
         offset: int = 0,
         limit: int = 25,
         q: str | None = None,
-    ) -> HTMLResponse:
-        """Build the Memory tab partial for the given sub-tab view.
+    ) -> dict:
+        """Build shared context for a memory sub-tab partial."""
 
-        Shared by the tab load, pagination, search, and post-delete/update refresh.
-        """
         async def _cfg(key: str, default: str) -> str:
             val = await config_store.get(key)
             return default if val is None or val == "" else str(val)
@@ -2535,10 +2575,6 @@ def create_admin_app(
         async def _bool(key: str, default: str) -> str:
             val = await config_store.get(key)
             return default if val is None else str(val).lower()
-
-        allowed_views = ("settings", "long-term", "short-term")
-        if view not in allowed_views:
-            view = "settings"
 
         ctx: dict[str, object] = {
             "memory_view": view,
@@ -2559,17 +2595,26 @@ def create_admin_app(
             "archive_min_idle_days": await _cfg("memory.archive_min_idle_days", "45"),
             "hygiene_threshold": await _cfg("memory.hygiene_similarity_threshold", "0.45"),
         }
-
         # Agent slugs for the scope dropdown in the edit forms (#158).
         agent_store = await _agent_store_from_config(config_store)
         ctx["agent_slugs"] = [a.name for a in await agent_store.list_agents()]
+        return ctx
 
+    async def _render_memory_subtab(
+        view: str = "settings",
+        offset: int = 0,
+        limit: int = 25,
+        q: str | None = None,
+    ) -> HTMLResponse:
+        """Build a single memory sub-tab content partial (no nav wrapper)."""
+        allowed_views = ("settings", "long-term", "short-term")
+        if view not in allowed_views:
+            view = "settings"
+
+        ctx = await _memory_context(view, offset, limit, q)
         memory_db = await config_store.get("memory.db_path") or "data/memory.db"
 
-        if view == "settings":
-            # Settings view: no memory data needed
-            pass
-        elif view == "long-term":
+        if view == "long-term":
             entries, total = await _fetch_memories_paginated(
                 memory_db, "long-term", offset, limit, q
             )
@@ -2582,25 +2627,39 @@ def create_admin_app(
             ctx["short_term"] = entries
             ctx["short_term_total"] = total
 
-        return _render_partial("partials/memory.html", **ctx)
+        template_name = "partials/memory_" + view.replace("-", "_") + ".html"
+        return _render_partial(template_name, **ctx)
 
     @app.get("/partials/memory", dependencies=[Depends(auth)])
-    async def partial_memory(
-        request: Request,
-        view: str = "settings",
+    async def partial_memory() -> HTMLResponse:
+        """Memory tab wrapper — Settings | Long-term | Short-term sub-tabs.
+
+        Thin shell; each sub-tab lazy-loads its own partial via htmx.
+        """
+        return _render_partial("partials/memory.html")
+
+    @app.get("/partials/memory/settings", dependencies=[Depends(auth)])
+    async def partial_memory_settings() -> HTMLResponse:
+        """Memory Settings sub-tab content."""
+        return await _render_memory_subtab(view="settings")
+
+    @app.get("/partials/memory/long-term", dependencies=[Depends(auth)])
+    async def partial_memory_long_term(
         offset: int = 0,
         limit: int = 25,
         q: str | None = None,
     ) -> HTMLResponse:
-        """Memory tab partial with sub-tab support.
+        """Long-term memory sub-tab content with pagination & search."""
+        return await _render_memory_subtab(view="long-term", offset=offset, limit=limit, q=q)
 
-        Query params:
-          view    — sub-tab: settings | long-term | short-term (default: settings)
-          offset  — row offset for pagination (default: 0)
-          limit   — page size (default: 25)
-          q       — search query to filter by content/subject/category
-        """
-        return await _render_memory_partial(view=view, offset=offset, limit=limit, q=q)
+    @app.get("/partials/memory/short-term", dependencies=[Depends(auth)])
+    async def partial_memory_short_term(
+        offset: int = 0,
+        limit: int = 25,
+        q: str | None = None,
+    ) -> HTMLResponse:
+        """Short-term memory sub-tab content with pagination & search."""
+        return await _render_memory_subtab(view="short-term", offset=offset, limit=limit, q=q)
 
     async def _history_ctx() -> dict:
         """History + compaction config, shared by the History sub-tab of the LLM
@@ -2703,17 +2762,35 @@ def create_admin_app(
             )
         return jobs
 
-    @app.get("/partials/jobs", dependencies=[Depends(auth)])
-    async def partial_jobs(show_completed: bool = False) -> HTMLResponse:
-        """Jobs tab partial. ``show_completed`` reveals done/cancelled jobs."""
+    async def _jobs_context(show_completed: bool = False) -> dict:
+        """Shared context for jobs partials."""
         jobs = _get_jobs_list(include_done=show_completed)
         agent_running = agent_state.agent is not None
+        return {
+            "jobs": jobs,
+            "agent_running": agent_running,
+            "show_completed": show_completed,
+        }
+
+    @app.get("/partials/jobs", dependencies=[Depends(auth)])
+    async def partial_jobs() -> HTMLResponse:
+        """Jobs tab wrapper — Scheduled | Subagents sub-tabs.
+
+        Thin shell; each sub-tab lazy-loads its own partial via htmx.
+        """
+        return _render_partial("partials/jobs.html")
+
+    @app.get("/partials/jobs/scheduled", dependencies=[Depends(auth)])
+    async def partial_jobs_scheduled(show_completed: bool = False) -> HTMLResponse:
+        """Scheduled jobs sub-tab content."""
         return _render_partial(
-            "partials/jobs.html",
-            jobs=jobs,
-            agent_running=agent_running,
-            show_completed=show_completed,
+            "partials/jobs_scheduled.html", **(await _jobs_context(show_completed))
         )
+
+    @app.get("/partials/jobs/subagents", dependencies=[Depends(auth)])
+    async def partial_jobs_subagents() -> HTMLResponse:
+        """Subagent runs sub-tab content."""
+        return _render_partial("partials/jobs_subagents.html")
 
     @app.post("/jobs", dependencies=[Depends(auth)])
     async def upsert_job(request: Request) -> HTMLResponse:
@@ -2791,13 +2868,8 @@ def create_admin_app(
         log.info("Job %r upserted via admin: %s (%s)", job_id, cron, job_type)
 
         show_completed = str(body.get("show_completed", "")).strip().lower() in ("true", "on", "1")
-        jobs = _get_jobs_list(include_done=show_completed)
-        agent_running = agent is not None
         resp = _render_partial(
-            "partials/jobs.html",
-            jobs=jobs,
-            agent_running=agent_running,
-            show_completed=show_completed,
+            "partials/jobs_scheduled.html", **(await _jobs_context(show_completed))
         )
         resp.headers["HX-Trigger"] = json.dumps({"showToast": f'Job "{job_id}" saved'})
         return resp
@@ -2828,13 +2900,8 @@ def create_admin_app(
         log.info("Job %r deleted via admin", job_id)
 
         show_completed = str(body.get("show_completed", "")).strip().lower() in ("true", "on", "1")
-        jobs = _get_jobs_list(include_done=show_completed)
-        agent_running = agent is not None
         resp = _render_partial(
-            "partials/jobs.html",
-            jobs=jobs,
-            agent_running=agent_running,
-            show_completed=show_completed,
+            "partials/jobs_scheduled.html", **(await _jobs_context(show_completed))
         )
         resp.headers["HX-Trigger"] = json.dumps({"showToast": f'Job "{job_id}" deleted'})
         return resp
@@ -2876,13 +2943,8 @@ def create_admin_app(
         log.info("Job %r %s via admin", job_id, action)
 
         show_completed = str(body.get("show_completed", "")).strip().lower() in ("true", "on", "1")
-        jobs = _get_jobs_list(include_done=show_completed)
-        agent_running = agent is not None
         resp = _render_partial(
-            "partials/jobs.html",
-            jobs=jobs,
-            agent_running=agent_running,
-            show_completed=show_completed,
+            "partials/jobs_scheduled.html", **(await _jobs_context(show_completed))
         )
         resp.headers["HX-Trigger"] = json.dumps({"showToast": f'Job "{job_id}" {action}'})
         return resp
@@ -3731,7 +3793,10 @@ def create_admin_app(
         total = await store.count_skills()
         return _render_partial(
             "partials/skills.html",
-            skills=skills, total=total, offset=0, limit=25,
+            skills=skills,
+            total=total,
+            offset=0,
+            limit=25,
         )
 
     @app.post("/skills/install", dependencies=[Depends(auth)])
@@ -3755,7 +3820,10 @@ def create_admin_app(
         total = await store.count_skills()
         return _render_partial(
             "partials/skills.html",
-            skills=skills, total=total, offset=0, limit=25,
+            skills=skills,
+            total=total,
+            offset=0,
+            limit=25,
             install_result=result,
         )
 
@@ -3771,7 +3839,10 @@ def create_admin_app(
         total = await store.count_skills()
         return _render_partial(
             "partials/skills.html",
-            skills=skills, total=total, offset=0, limit=25,
+            skills=skills,
+            total=total,
+            offset=0,
+            limit=25,
             install_result=result,
         )
 
@@ -3793,7 +3864,10 @@ def create_admin_app(
         total = await store.count_skills()
         return _render_partial(
             "partials/skills.html",
-            skills=skills, total=total, offset=0, limit=25,
+            skills=skills,
+            total=total,
+            offset=0,
+            limit=25,
         )
 
     @app.post("/skills/{name}/reset", dependencies=[Depends(auth)])
@@ -3810,7 +3884,10 @@ def create_admin_app(
         total = await store.count_skills()
         return _render_partial(
             "partials/skills.html",
-            skills=skills, total=total, offset=0, limit=25,
+            skills=skills,
+            total=total,
+            offset=0,
+            limit=25,
         )
 
     @app.post("/skills/validate", dependencies=[Depends(auth)])
@@ -4211,7 +4288,7 @@ def create_admin_app(
                 raise HTTPException(404, f"Memory {memory_id} not found in {tier}")
 
         # Return refreshed sub-view based on the deleted tier
-        return await _render_memory_partial(view=tier)
+        return await _render_memory_subtab(view=tier)
 
     @app.post("/memory/update", dependencies=[Depends(auth)])
     async def update_memory(request: Request) -> HTMLResponse:
@@ -4255,7 +4332,7 @@ def create_admin_app(
         if rows == 0:
             raise HTTPException(404, f"Memory {memory_id} not found in {tier}")
         # Return refreshed sub-view based on the updated tier
-        return await _render_memory_partial(view=tier)
+        return await _render_memory_subtab(view=tier)
 
     @app.get("/memory/embedding/status", dependencies=[Depends(auth)])
     async def embedding_status() -> dict:
@@ -4747,11 +4824,37 @@ def create_admin_app(
     def _no_vault_partial() -> HTMLResponse:
         return _render_partial("partials/secrets.html", configured=False)
 
+    async def _vault_subtab(view: str) -> HTMLResponse:
+        """Render a vault sub-tab content partial."""
+        if secret_store is None:
+            return _no_vault_partial()
+        ctx = await _secrets_ctx()
+        return _render_partial(f"partials/secrets_{view}.html", **ctx)
+
     @app.get("/partials/secrets", response_class=HTMLResponse, dependencies=[Depends(auth)])
     async def partial_secrets() -> HTMLResponse:
+        """Vaults tab wrapper — Agents | Infra | Import sub-tabs.
+
+        Thin shell; each sub-tab lazy-loads its own partial via htmx.
+        """
         if secret_store is None:
             return _no_vault_partial()
         return _render_partial("partials/secrets.html", **(await _secrets_ctx()))
+
+    @app.get("/partials/secrets/agents", response_class=HTMLResponse, dependencies=[Depends(auth)])
+    async def partial_secrets_agents() -> HTMLResponse:
+        """Vault Agents sub-tab content."""
+        return await _vault_subtab("agents")
+
+    @app.get("/partials/secrets/infra", response_class=HTMLResponse, dependencies=[Depends(auth)])
+    async def partial_secrets_infra() -> HTMLResponse:
+        """Vault Infra sub-tab content."""
+        return await _vault_subtab("infra")
+
+    @app.get("/partials/secrets/import", response_class=HTMLResponse, dependencies=[Depends(auth)])
+    async def partial_secrets_import() -> HTMLResponse:
+        """Vault Import sub-tab content."""
+        return await _vault_subtab("import")
 
     @app.post("/admin/secrets/migrate", response_class=HTMLResponse, dependencies=[Depends(auth)])
     async def migrate_secrets() -> HTMLResponse:

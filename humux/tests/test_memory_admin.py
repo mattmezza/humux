@@ -117,7 +117,8 @@ def test_endpoints_require_auth() -> None:
 
 
 def test_memory_partial_renders() -> None:
-    resp = _client().get("/partials/memory", headers=HEADERS)
+    # Wrapper returns nav + skeleton; check settings sub-tab for content
+    resp = _client().get("/partials/memory/settings", headers=HEADERS)
     assert resp.status_code == 200
     body = resp.text
     assert "Semantic memory (embeddings)" in body

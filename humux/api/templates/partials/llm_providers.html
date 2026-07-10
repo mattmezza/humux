@@ -1,0 +1,404 @@
+  <div class="space-y-6" x-show="section === 'providers'" >
+  <div class="mb-2 rounded border border-border bg-muted/10 px-3 py-2 text-muted text-xs">
+    🔒 Provider API keys are stored in the vault on save — only a <code>${vault:NAME}</code> reference is kept in config, never the raw key. Manage or reuse them from the <button type="button" class="text-accent hover:underline" @click="$dispatch('switch-tab', 'secrets')">Vaults</button> tab.
+  </div>
+  <div class="card">
+    <h2 class="text-base mb-1">Anthropic</h2>
+    <p class="text-muted text-xs mb-4">Configure the Anthropic API key and test the connection.</p>
+    <form class="space-y-3" @submit.prevent>
+      <div>
+        {% if anthropic_vaulted %}<span class="label">Anthropic API Key</span>{% else %}<label class="label" for="llm-anthropic-key">Anthropic API Key</label>{% endif %}
+        <input type="text" class="input-sm" name="anthropic-username-hint" style="max-width:500px; display:none"
+               autocomplete="username" aria-hidden="true" tabindex="-1">
+        {% if anthropic_vaulted %}
+        <div class="text-xs text-muted py-1" style="max-width:500px">🔒 Stored in the vault as <code>${vault:ANTHROPIC_API_KEY}</code> for easy reuse — manage it from the <button type="button" class="text-accent hover:underline" @click="$dispatch('switch-tab', 'secrets')">Vaults</button> tab.</div>
+        {% else %}
+        <input type="password" class="input-sm" style="max-width:500px"
+               autocomplete="new-password" id="llm-anthropic-key"
+               x-model="apiKey" placeholder="sk-ant-...">
+        <p class="text-muted text-xs mt-1">Get a key at <a href="https://console.anthropic.com/settings/keys" target="_blank">console.anthropic.com</a></p>
+        {% endif %}
+        <div class="flex items-center gap-2 mt-2">
+          <button class="btn btn-sm" type="button" :disabled="testing.anthropic || !apiKey"
+                  @click="testProvider('anthropic')">
+            <span x-show="!testing.anthropic">Test connection</span>
+            <span x-show="testing.anthropic"><span class="spinner-sm mr-1"></span>Testing...</span>
+          </button>
+          <button class="btn btn-sm" type="button" :disabled="fetchingModels.anthropic || !apiKey"
+                  @click="fetchModels('anthropic')">
+            <span x-show="!fetchingModels.anthropic">Fetch models</span>
+            <span x-show="fetchingModels.anthropic"><span class="spinner-sm mr-1"></span>Fetching...</span>
+          </button>
+          <button class="btn btn-sm" type="button" @click="copyModels('anthropic')">Copy list</button>
+        </div>
+        <template x-if="testResults.anthropic">
+          <div :class="tests.anthropic ? 'alert-success' : 'alert-error'" class="mt-2" x-text="testResults.anthropic"></div>
+        </template>
+        <template x-if="fetchModelsResult.anthropic">
+          <div class="text-muted text-xs mt-1" x-text="fetchModelsResult.anthropic"></div>
+        </template>
+      </div>
+    </form>
+    <div class="flex items-center gap-2 mt-4">
+      <button class="btn btn-sm"
+              @click="withLoading($el, () =>
+                fetch('/config', {
+                  method: 'PATCH',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + (localStorage.getItem('admin_api_key') || '')
+                  },
+                  body: JSON.stringify({values: {
+                    'agent.anthropic_api_key': apiKey
+                  }})
+                })
+                .then(r => { resultOk = r.ok; return r.json(); })
+                .then(d => {
+                  result = resultOk ? 'Anthropic settings saved' : (d.detail || 'Error');
+                  if (resultOk && window.showToast) { window.showToast('Anthropic settings saved'); }
+                  if (resultOk) { reloadLlmPartial(); }
+                })
+                .catch(e => { resultOk = false; result = e.message; })
+              )">
+        Save Anthropic
+      </button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 class="text-base mb-1">OpenAI</h2>
+    <p class="text-muted text-xs mb-4">Configure the OpenAI key and optional base URL, then test the connection.</p>
+    <form class="space-y-3" @submit.prevent>
+      <div>
+        {% if openai_vaulted %}<span class="label">OpenAI API Key</span>{% else %}<label class="label" for="llm-openai-key">OpenAI API Key</label>{% endif %}
+        {% if openai_vaulted %}
+        <div class="text-xs text-muted py-1" style="max-width:500px">🔒 Stored in the vault as <code>${vault:OPENAI_API_KEY}</code> for easy reuse — manage it from the <button type="button" class="text-accent hover:underline" @click="$dispatch('switch-tab', 'secrets')">Vaults</button> tab.</div>
+        {% else %}
+        <input type="password" class="input-sm" style="max-width:500px"
+               autocomplete="new-password" id="llm-openai-key"
+               x-model="openaiKey" placeholder="sk-...">
+        <p class="text-muted text-xs mt-1">Create one in <a href="https://platform.openai.com/account/api-keys" target="_blank">platform.openai.com</a></p>
+        {% endif %}
+      </div>
+      <div>
+        <label class="label" for="llm-openai-base">OpenAI Base URL (optional)</label>
+        <input type="text" class="input-sm" style="max-width:500px" id="llm-openai-base"
+               x-model="openaiBaseUrl" placeholder="https://...">
+        <div class="flex items-center gap-2 mt-2">
+          <button class="btn btn-sm" type="button" :disabled="testing.openai || !openaiKey"
+                  @click="testProvider('openai')">
+            <span x-show="!testing.openai">Test connection</span>
+            <span x-show="testing.openai"><span class="spinner-sm mr-1"></span>Testing...</span>
+          </button>
+          <button class="btn btn-sm" type="button" :disabled="fetchingModels.openai || !openaiKey"
+                  @click="fetchModels('openai')">
+            <span x-show="!fetchingModels.openai">Fetch models</span>
+            <span x-show="fetchingModels.openai"><span class="spinner-sm mr-1"></span>Fetching...</span>
+          </button>
+          <button class="btn btn-sm" type="button" @click="copyModels('openai')">Copy list</button>
+        </div>
+        <template x-if="testResults.openai">
+          <div :class="tests.openai ? 'alert-success' : 'alert-error'" class="mt-2" x-text="testResults.openai"></div>
+        </template>
+        <template x-if="fetchModelsResult.openai">
+          <div class="text-muted text-xs mt-1" x-text="fetchModelsResult.openai"></div>
+        </template>
+      </div>
+    </form>
+    <div class="flex items-center gap-2 mt-4">
+      <button class="btn btn-sm"
+              @click="withLoading($el, () =>
+                fetch('/config', {
+                  method: 'PATCH',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + (localStorage.getItem('admin_api_key') || '')
+                  },
+                  body: JSON.stringify({values: {
+                    'agent.openai_api_key': openaiKey,
+                    'agent.openai_base_url': openaiBaseUrl
+                  }})
+                })
+                .then(r => { resultOk = r.ok; return r.json(); })
+                .then(d => {
+                  result = resultOk ? 'OpenAI settings saved' : (d.detail || 'Error');
+                  if (resultOk && window.showToast) { window.showToast('OpenAI settings saved'); }
+                  if (resultOk) { reloadLlmPartial(); }
+                })
+                .catch(e => { resultOk = false; result = e.message; })
+              )">
+        Save OpenAI
+      </button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 class="text-base mb-1">Google Gemini</h2>
+    <p class="text-muted text-xs mb-4">Configure the Google API key and optional base URL, then test the connection.</p>
+    <form class="space-y-3" @submit.prevent>
+      <div>
+        {% if google_vaulted %}<span class="label">Google API Key</span>{% else %}<label class="label" for="llm-google-key">Google API Key</label>{% endif %}
+        {% if google_vaulted %}
+        <div class="text-xs text-muted py-1" style="max-width:500px">🔒 Stored in the vault as <code>${vault:GOOGLE_API_KEY}</code> for easy reuse — manage it from the <button type="button" class="text-accent hover:underline" @click="$dispatch('switch-tab', 'secrets')">Vaults</button> tab.</div>
+        {% else %}
+        <input type="password" class="input-sm" style="max-width:500px"
+               autocomplete="new-password" id="llm-google-key"
+               x-model="googleKey" placeholder="AIza...">
+        <p class="text-muted text-xs mt-1">Create a key in <a href="https://aistudio.google.com/app/apikey" target="_blank">Google AI Studio</a></p>
+        {% endif %}
+      </div>
+      <div>
+        <label class="label" for="llm-google-base">Google Base URL (optional)</label>
+        <input type="text" class="input-sm" style="max-width:500px" id="llm-google-base"
+               x-model="googleBaseUrl" placeholder="https://generativelanguage.googleapis.com/v1beta/openai">
+        <div class="flex items-center gap-2 mt-2">
+          <button class="btn btn-sm" type="button" :disabled="testing.google || !googleKey"
+                  @click="testProvider('google')">
+            <span x-show="!testing.google">Test connection</span>
+            <span x-show="testing.google"><span class="spinner-sm mr-1"></span>Testing...</span>
+          </button>
+          <button class="btn btn-sm" type="button" :disabled="fetchingModels.google || !googleKey"
+                  @click="fetchModels('google')">
+            <span x-show="!fetchingModels.google">Fetch models</span>
+            <span x-show="fetchingModels.google"><span class="spinner-sm mr-1"></span>Fetching...</span>
+          </button>
+          <button class="btn btn-sm" type="button" @click="copyModels('google')">Copy list</button>
+        </div>
+        <template x-if="testResults.google">
+          <div :class="tests.google ? 'alert-success' : 'alert-error'" class="mt-2" x-text="testResults.google"></div>
+        </template>
+        <template x-if="fetchModelsResult.google">
+          <div class="text-muted text-xs mt-1" x-text="fetchModelsResult.google"></div>
+        </template>
+      </div>
+    </form>
+    <div class="flex items-center gap-2 mt-4">
+      <button class="btn btn-sm"
+              @click="withLoading($el, () =>
+                fetch('/config', {
+                  method: 'PATCH',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + (localStorage.getItem('admin_api_key') || '')
+                  },
+                  body: JSON.stringify({values: {
+                    'agent.google_api_key': googleKey,
+                    'agent.google_base_url': googleBaseUrl
+                  }})
+                })
+                .then(r => { resultOk = r.ok; return r.json(); })
+                .then(d => {
+                  result = resultOk ? 'Google settings saved' : (d.detail || 'Error');
+                  if (resultOk && window.showToast) { window.showToast('Google settings saved'); }
+                  if (resultOk) { reloadLlmPartial(); }
+                })
+                .catch(e => { resultOk = false; result = e.message; })
+              )">
+        Save Google
+      </button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 class="text-base mb-1">Grok (xAI)</h2>
+    <p class="text-muted text-xs mb-4">Configure the Grok key and optional base URL, then test the connection.</p>
+    <form class="space-y-3" @submit.prevent>
+      <div>
+        {% if grok_vaulted %}<span class="label">Grok API Key</span>{% else %}<label class="label" for="llm-grok-key">Grok API Key</label>{% endif %}
+        {% if grok_vaulted %}
+        <div class="text-xs text-muted py-1" style="max-width:500px">🔒 Stored in the vault as <code>${vault:GROK_API_KEY}</code> for easy reuse — manage it from the <button type="button" class="text-accent hover:underline" @click="$dispatch('switch-tab', 'secrets')">Vaults</button> tab.</div>
+        {% else %}
+        <input type="password" class="input-sm" style="max-width:500px"
+               autocomplete="new-password" id="llm-grok-key"
+               x-model="grokKey" placeholder="xai-...">
+        <p class="text-muted text-xs mt-1">Create a key in <a href="https://console.x.ai/" target="_blank">console.x.ai</a></p>
+        {% endif %}
+      </div>
+      <div>
+        <label class="label" for="llm-grok-base">Grok Base URL (optional)</label>
+        <input type="text" class="input-sm" style="max-width:500px" id="llm-grok-base"
+               x-model="grokBaseUrl" placeholder="https://api.x.ai/v1">
+        <div class="flex items-center gap-2 mt-2">
+          <button class="btn btn-sm" type="button" :disabled="testing.grok || !grokKey"
+                  @click="testProvider('grok')">
+            <span x-show="!testing.grok">Test connection</span>
+            <span x-show="testing.grok"><span class="spinner-sm mr-1"></span>Testing...</span>
+          </button>
+          <button class="btn btn-sm" type="button" :disabled="fetchingModels.grok || !grokKey"
+                  @click="fetchModels('grok')">
+            <span x-show="!fetchingModels.grok">Fetch models</span>
+            <span x-show="fetchingModels.grok"><span class="spinner-sm mr-1"></span>Fetching...</span>
+          </button>
+          <button class="btn btn-sm" type="button" @click="copyModels('grok')">Copy list</button>
+        </div>
+        <template x-if="testResults.grok">
+          <div :class="tests.grok ? 'alert-success' : 'alert-error'" class="mt-2" x-text="testResults.grok"></div>
+        </template>
+        <template x-if="fetchModelsResult.grok">
+          <div class="text-muted text-xs mt-1" x-text="fetchModelsResult.grok"></div>
+        </template>
+      </div>
+    </form>
+    <div class="flex items-center gap-2 mt-4">
+      <button class="btn btn-sm"
+              @click="withLoading($el, () =>
+                fetch('/config', {
+                  method: 'PATCH',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + (localStorage.getItem('admin_api_key') || '')
+                  },
+                  body: JSON.stringify({values: {
+                    'agent.grok_api_key': grokKey,
+                    'agent.grok_base_url': grokBaseUrl
+                  }})
+                })
+                .then(r => { resultOk = r.ok; return r.json(); })
+                .then(d => {
+                  result = resultOk ? 'Grok settings saved' : (d.detail || 'Error');
+                  if (resultOk && window.showToast) { window.showToast('Grok settings saved'); }
+                  if (resultOk) { reloadLlmPartial(); }
+                })
+                .catch(e => { resultOk = false; result = e.message; })
+              )">
+        Save Grok
+      </button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 class="text-base mb-1">DeepSeek</h2>
+    <p class="text-muted text-xs mb-4">Configure the DeepSeek key and optional base URL, then test the connection.</p>
+    <form class="space-y-3" @submit.prevent>
+      <div>
+        {% if deepseek_vaulted %}<span class="label">DeepSeek API Key</span>{% else %}<label class="label" for="llm-deepseek-key">DeepSeek API Key</label>{% endif %}
+        {% if deepseek_vaulted %}
+        <div class="text-xs text-muted py-1" style="max-width:500px">🔒 Stored in the vault as <code>${vault:DEEPSEEK_API_KEY}</code> for easy reuse — manage it from the <button type="button" class="text-accent hover:underline" @click="$dispatch('switch-tab', 'secrets')">Vaults</button> tab.</div>
+        {% else %}
+        <input type="password" class="input-sm" style="max-width:500px"
+               autocomplete="new-password" id="llm-deepseek-key"
+               x-model="deepseekKey" placeholder="sk-...">
+        <p class="text-muted text-xs mt-1">Create a key in <a href="https://platform.deepseek.com/api_keys" target="_blank">platform.deepseek.com</a></p>
+        {% endif %}
+      </div>
+      <div>
+        <label class="label" for="llm-deepseek-base">DeepSeek Base URL (optional)</label>
+        <input type="text" class="input-sm" style="max-width:500px" id="llm-deepseek-base"
+               x-model="deepseekBaseUrl" placeholder="https://api.deepseek.com">
+        <div class="flex items-center gap-2 mt-2">
+          <button class="btn btn-sm" type="button" :disabled="testing.deepseek || !deepseekKey"
+                  @click="testProvider('deepseek')">
+            <span x-show="!testing.deepseek">Test connection</span>
+            <span x-show="testing.deepseek"><span class="spinner-sm mr-1"></span>Testing...</span>
+          </button>
+          <button class="btn btn-sm" type="button" :disabled="fetchingModels.deepseek || !deepseekKey"
+                  @click="fetchModels('deepseek')">
+            <span x-show="!fetchingModels.deepseek">Fetch models</span>
+            <span x-show="fetchingModels.deepseek"><span class="spinner-sm mr-1"></span>Fetching...</span>
+          </button>
+          <button class="btn btn-sm" type="button" @click="copyModels('deepseek')">Copy list</button>
+        </div>
+        <template x-if="testResults.deepseek">
+          <div :class="tests.deepseek ? 'alert-success' : 'alert-error'" class="mt-2" x-text="testResults.deepseek"></div>
+        </template>
+        <template x-if="fetchModelsResult.deepseek">
+          <div class="text-muted text-xs mt-1" x-text="fetchModelsResult.deepseek"></div>
+        </template>
+      </div>
+    </form>
+    <div class="flex items-center gap-2 mt-4">
+      <button class="btn btn-sm"
+              @click="withLoading($el, () =>
+                fetch('/config', {
+                  method: 'PATCH',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + (localStorage.getItem('admin_api_key') || '')
+                  },
+                  body: JSON.stringify({values: {
+                    'agent.deepseek_api_key': deepseekKey,
+                    'agent.deepseek_base_url': deepseekBaseUrl
+                  }})
+                })
+                .then(r => { resultOk = r.ok; return r.json(); })
+                .then(d => {
+                  result = resultOk ? 'DeepSeek settings saved' : (d.detail || 'Error');
+                  if (resultOk && window.showToast) { window.showToast('DeepSeek settings saved'); }
+                  if (resultOk) { reloadLlmPartial(); }
+                })
+                .catch(e => { resultOk = false; result = e.message; })
+              )">
+        Save DeepSeek
+      </button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 class="text-base mb-1">OpenRouter</h2>
+    <p class="text-muted text-xs mb-2">A provider-agnostic gateway: one API key reaches models from many labs (Anthropic, OpenAI, Google, Meta, DeepSeek, …). Model ids are namespaced <code>provider/model</code> (e.g. <code>anthropic/claude-sonnet-4.5</code>) — use <strong>Fetch models</strong> for the live catalog.</p>
+    <p class="text-muted text-xs mb-4">OpenRouter can auto-route around provider outages and fall back between hosts, and publishes transparent per-token pricing per model. Docs: <a href="https://openrouter.ai/docs" target="_blank" rel="noopener">openrouter.ai/docs</a> · Models &amp; pricing: <a href="https://openrouter.ai/models" target="_blank" rel="noopener">openrouter.ai/models</a> · Routing &amp; fallbacks: <a href="https://openrouter.ai/docs/features/provider-routing" target="_blank" rel="noopener">provider routing</a>.</p>
+    <form class="space-y-3" @submit.prevent>
+      <div>
+        {% if openrouter_vaulted %}<span class="label">OpenRouter API Key</span>{% else %}<label class="label" for="llm-openrouter-key">OpenRouter API Key</label>{% endif %}
+        {% if openrouter_vaulted %}
+        <div class="text-xs text-muted py-1" style="max-width:500px">🔒 Stored in the vault as <code>${vault:OPENROUTER_API_KEY}</code> for easy reuse — manage it from the <button type="button" class="text-accent hover:underline" @click="$dispatch('switch-tab', 'secrets')">Vaults</button> tab.</div>
+        {% else %}
+        <input type="password" class="input-sm" style="max-width:500px"
+               autocomplete="new-password" id="llm-openrouter-key"
+               x-model="openrouterKey" placeholder="sk-or-...">
+        <p class="text-muted text-xs mt-1">Create a key in <a href="https://openrouter.ai/settings/keys" target="_blank" rel="noopener">openrouter.ai/settings/keys</a></p>
+        {% endif %}
+      </div>
+      <div>
+        <label class="label" for="llm-openrouter-base">OpenRouter Base URL (optional)</label>
+        <input type="text" class="input-sm" style="max-width:500px" id="llm-openrouter-base"
+               x-model="openrouterBaseUrl" placeholder="https://openrouter.ai/api/v1">
+        <div class="flex items-center gap-2 mt-2">
+          <button class="btn btn-sm" type="button" :disabled="testing.openrouter || !openrouterKey"
+                  @click="testProvider('openrouter')">
+            <span x-show="!testing.openrouter">Test connection</span>
+            <span x-show="testing.openrouter"><span class="spinner-sm mr-1"></span>Testing...</span>
+          </button>
+          <button class="btn btn-sm" type="button" :disabled="fetchingModels.openrouter || !openrouterKey"
+                  @click="fetchModels('openrouter')">
+            <span x-show="!fetchingModels.openrouter">Fetch models</span>
+            <span x-show="fetchingModels.openrouter"><span class="spinner-sm mr-1"></span>Fetching...</span>
+          </button>
+          <button class="btn btn-sm" type="button" @click="copyModels('openrouter')">Copy list</button>
+        </div>
+        <template x-if="testResults.openrouter">
+          <div :class="tests.openrouter ? 'alert-success' : 'alert-error'" class="mt-2" x-text="testResults.openrouter"></div>
+        </template>
+        <template x-if="fetchModelsResult.openrouter">
+          <div class="text-muted text-xs mt-1" x-text="fetchModelsResult.openrouter"></div>
+        </template>
+      </div>
+    </form>
+    <div class="flex items-center gap-2 mt-4">
+      <button class="btn btn-sm"
+              @click="withLoading($el, () =>
+                fetch('/config', {
+                  method: 'PATCH',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + (localStorage.getItem('admin_api_key') || '')
+                  },
+                  body: JSON.stringify({values: {
+                    'agent.openrouter_api_key': openrouterKey,
+                    'agent.openrouter_base_url': openrouterBaseUrl
+                  }})
+                })
+                .then(r => { resultOk = r.ok; return r.json(); })
+                .then(d => {
+                  result = resultOk ? 'OpenRouter settings saved' : (d.detail || 'Error');
+                  if (resultOk && window.showToast) { window.showToast('OpenRouter settings saved'); }
+                  if (resultOk) { reloadLlmPartial(); }
+                })
+                .catch(e => { resultOk = false; result = e.message; })
+              )">
+        Save OpenRouter
+      </button>
+    </div>
+  </div>
+  </div>{# /providers #}
+
