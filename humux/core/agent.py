@@ -1668,7 +1668,7 @@ class AgentCore:
     def _tools_for_turn(self, agent: Agent | None) -> list[dict]:
         """The function-tool schemas offered to the model this turn: the agent's
         tool scope, with feature-gated tools dropped."""
-        return apply_feature_gates(
+        tools = apply_feature_gates(
             scoped_tools(agent),
             secrets_available=self.secret_store is not None,
             subagents_enabled=self.config.subagents.enabled,
@@ -1678,6 +1678,11 @@ class AgentCore:
             search_enabled=self.search_enabled,
             deep_research_enabled=self.config.tools.deep_research.enabled,
         )
+        # deep_research fans out web searches — hide it from an agent whose
+        # scope withholds web_search (#293); the handler refuses too.
+        if agent and agent.tools and not agent.allows_tool("web_search"):
+            tools = [t for t in tools if t["name"] != "deep_research"]
+        return tools
 
     async def _turn_preamble(
         self,
@@ -4204,13 +4209,36 @@ class AgentCore:
         Runs inside the turn's tool call, so ``/stop`` (which sets the turn's
         abort Event) cancels it between pipeline phases; progress updates go
         straight to the originating chat. For a non-blocking run, the model can
-        spawn it inside a background subagent — the tool is offered there too.
+        spawn it inside a background subagent — the tool is offered there too;
+        that path has no turn Event, so it is cancelled from /subagents (the
+        registry's task.cancel unwinds the pipeline's awaits) instead of /stop.
         """
         cfg = self.config.tools.deep_research
         if not cfg.enabled:
             return {"error": "Deep research is disabled. Enable it in Settings → Tools."}
         if not self.search_enabled:
             return {"error": "Deep research needs web search — configure it in Settings → Tools."}
+        # Inherit-never-widen: deep research fans out web searches, so an agent
+        # whose scope withholds web_search may not reach them through this tool.
+        agent_obj: Agent | None = request_state.get("agent_obj")
+        if agent_obj and not agent_obj.allows_tool("web_search"):
+            return {
+                "error": (
+                    "This agent's tool scope excludes web_search, which deep research requires."
+                )
+            }
+        for role, provider in (("sub-call", cfg.provider), ("synthesis", cfg.synthesis_provider)):
+            if (
+                provider
+                and provider != self.llm.provider
+                and not getattr(self.config.agent, f"{provider}_api_key", "")
+            ):
+                return {
+                    "error": (
+                        f"Deep research {role} provider '{provider}' has no API key "
+                        "configured — pick a configured provider in Settings → Tools."
+                    )
+                }
         query = str(params.get("query", "")).strip()
         if not query:
             return {"error": "A research query is required."}
@@ -4249,9 +4277,7 @@ class AgentCore:
         # agent model unless a dedicated one is configured in the Tools tab.
         gen_fast = gen_with(self._background_llm(cfg.provider), cfg.model)
         if cfg.synthesis_provider and cfg.synthesis_model:
-            gen_synth = gen_with(
-                self._background_llm(cfg.synthesis_provider), cfg.synthesis_model
-            )
+            gen_synth = gen_with(self._background_llm(cfg.synthesis_provider), cfg.synthesis_model)
         else:
             synth_llm, synth_model, _ = self._agent_llm(request_state.get("agent_obj"))
             gen_synth = gen_with(synth_llm, synth_model)
@@ -4288,7 +4314,9 @@ class AgentCore:
                 query, result["report"], result["sources"], meta
             )
             try:
-                target = Path(ws) / ARTIFACTS_SUBDIR / slug / "index.html"
+                # expanduser matches the serving route (artifacts.serving_base),
+                # so a "~/…" workspace serves what was written.
+                target = Path(ws).expanduser() / ARTIFACTS_SUBDIR / slug / "index.html"
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_text(page, encoding="utf-8")
                 result["artifact_url"] = f"{self._base_url()}/artifacts/{slug}/"

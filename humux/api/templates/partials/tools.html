@@ -366,19 +366,17 @@
       read, gaps trigger follow-up searches, and the result is a structured, cited
       report — published as a web artifact when the workspace is enabled. Needs the
       <strong>Web search</strong> tool configured. Cancel a running research with
-      <code>/stop</code>. Assign it per agent in the <strong>Agents</strong> editor.
+      <code>/stop</code> (a background subagent run: from its cancel button in
+      <strong>Jobs</strong>). Assign it per agent in the <strong>Agents</strong> editor.
     </p>
     <div class="space-y-3" x-show="enabled === 'true' || enabled === true">
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label class="label" for="tools-dr-provider">Sub-call provider</label>
           <select class="select input-sm" style="max-width:100%" x-model="provider" id="tools-dr-provider">
-            <option value="deepseek">DeepSeek</option>
-            <option value="anthropic">Anthropic</option>
-            <option value="openai">OpenAI</option>
-            <option value="google">Google</option>
-            <option value="grok">Grok</option>
-            <option value="openrouter">OpenRouter</option>
+            <template x-for="p in window.LLM_PROVIDERS" :key="p.value">
+              <option :value="p.value" x-text="p.label" :selected="p.value === provider"></option>
+            </template>
           </select>
           <p class="text-muted text-xs mt-1">Fast/cheap model for planning, extraction and gap analysis. Uses that provider's configured API key.</p>
         </div>
@@ -391,12 +389,9 @@
           <label class="label" for="tools-dr-synth-provider">Synthesis provider</label>
           <select class="select input-sm" style="max-width:100%" x-model="synthProvider" id="tools-dr-synth-provider">
             <option value="">Main agent model</option>
-            <option value="deepseek">DeepSeek</option>
-            <option value="anthropic">Anthropic</option>
-            <option value="openai">OpenAI</option>
-            <option value="google">Google</option>
-            <option value="grok">Grok</option>
-            <option value="openrouter">OpenRouter</option>
+            <template x-for="p in window.LLM_PROVIDERS" :key="p.value">
+              <option :value="p.value" x-text="p.label" :selected="p.value === synthProvider"></option>
+            </template>
           </select>
           <p class="text-muted text-xs mt-1">Writes the final report. Blank = the model of the agent that ran the tool.</p>
         </div>

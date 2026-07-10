@@ -294,6 +294,9 @@ class _Store:
     async def set(self, key: str, value: str) -> None:
         self._data[key] = value
 
+    async def get_many(self, prefix: str = "") -> dict[str, str]:
+        return {k: v for k, v in self._data.items() if k.startswith(prefix)}
+
     async def verify_admin_password(self, password: str) -> bool:
         return password == "secret"
 

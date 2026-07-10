@@ -200,26 +200,30 @@ async def run(
         # Search all this cycle's queries concurrently; dedupe URLs across cycles.
         results = await asyncio.gather(*(search(q) for q in queries), return_exceptions=True)
         candidates: list[dict] = []
+        cycle_urls: set[str] = set()
         for res in results:
             if not isinstance(res, dict):
                 continue
             for item in res.get("results", []):
                 url = (item.get("url") or "").strip()
-                if url and url not in seen_urls:
-                    seen_urls.add(url)
+                if url and url not in seen_urls and url not in cycle_urls:
+                    cycle_urls.add(url)
                     candidates.append(item)
         candidates = candidates[: max_sources - len(sources)]
+        # Only URLs actually read count as seen — a candidate dropped by the
+        # cap above stays eligible for a later cycle.
+        seen_urls.update(c["url"] for c in candidates)
         if not candidates:
             break
 
         check_cancel()
         await note_progress(f"📖 Reading {len(candidates)} sources (cycle {cycle + 1}/{depth})…")
-        pages = await asyncio.gather(*(fetch(c["url"]) for c in candidates))
 
-        # Extract notes per source on the fast model, concurrently. A source
-        # whose fetch failed falls back to the search snippet.
-        async def extract(cand: dict, page: str) -> tuple[dict, str, int]:
-            body = page or cand.get("content", "")
+        # Fetch + extract per source in one independent chain, concurrently —
+        # no barrier, so one slow site doesn't stall the others' extraction.
+        # A failed fetch falls back to the search snippet.
+        async def read_source(cand: dict) -> tuple[dict, str, int]:
+            body = (await fetch(cand["url"])) or cand.get("content", "")
             if not body:
                 return cand, "", 0
             out, spent = await gen_fast(
@@ -229,11 +233,11 @@ async def run(
             return cand, out, spent
 
         extracted = await asyncio.gather(
-            *(extract(c, p) for c, p in zip(candidates, pages, strict=True)),
-            return_exceptions=True,
+            *(read_source(c) for c in candidates), return_exceptions=True
         )
         for item in extracted:
             if not isinstance(item, tuple):
+                log.warning("deep_research: source extraction failed: %s", item)
                 continue
             cand, notes, spent = item
             tokens += spent
@@ -355,18 +359,9 @@ def _md_to_html(md: str) -> str:
     Markdown dependency if reports ever need tables/quotes/code fences.
     """
     out: list[str] = []
-    in_list = False
-
-    def close_list():
-        nonlocal in_list
-        if in_list:
-            out.append("</ul>")
-            in_list = False
-
     for block in re.split(r"\n{2,}", md.strip()):
         lines = block.splitlines()
         if all(re.match(r"\s*[-*•]\s+", ln) for ln in lines if ln.strip()):
-            close_list()
             out.append("<ul>")
             for ln in lines:
                 item = re.sub(r"^\s*[-*•]\s+", "", ln).strip()
@@ -374,17 +369,16 @@ def _md_to_html(md: str) -> str:
                     out.append(f"<li>{_md_inline(item)}</li>")
             out.append("</ul>")
             continue
-        close_list()
         m = re.match(r"^(#{1,4})\s+(.*)", lines[0])
         if m:
-            level = min(len(m.group(1)) + 1, 4)  # md '##' → h2 … keep h1 for the page title
+            # md '##' → h2 (the styled section heading); h1 stays the page title.
+            level = min(max(len(m.group(1)), 2), 4)
             out.append(f"<h{level}>{_md_inline(m.group(2))}</h{level}>")
             rest = "\n".join(lines[1:]).strip()
             if rest:
                 out.append(f"<p>{_md_inline(rest)}</p>")
             continue
         out.append(f"<p>{_md_inline(' '.join(ln.strip() for ln in lines))}</p>")
-    close_list()
     return "\n".join(out)
 
 

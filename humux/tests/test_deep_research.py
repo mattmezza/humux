@@ -79,6 +79,7 @@ def test_render_report_html_escapes_and_links_citations():
         meta="July 10, 2026 · 1 sources",
     )
     assert "&lt;query&gt; &amp; co" in page
+    assert "<h2>Summary</h2>" in page  # '##' sections render as the styled h2
     assert '<a href="#src-1">[1]</a>' in page
     assert "<strong>bold</strong>" in page
     assert "<li>item one</li>" in page
@@ -228,6 +229,38 @@ async def test_run_fetch_failure_falls_back_to_snippet():
         fetch=no_fetch,
     )
     assert len(result["sources"]) == 1  # snippet ("snip") was extracted instead
+
+
+async def test_run_capped_candidates_stay_eligible_next_cycle():
+    # Cycle 1 finds A, B, C but the cap reads only A, B; B is irrelevant. C was
+    # never read, so cycle 2 may still pick it up (dropped ≠ seen).
+    async def search(query: str) -> dict:
+        urls = ["A", "B", "C"] if query == "q1" else ["C"]
+        return {
+            "results": [{"title": u, "url": f"https://ex.com/{u}", "content": "c"} for u in urls]
+        }
+
+    async def gen_fast(prompt: str, max_tokens: int) -> tuple[str, int]:
+        if prompt.startswith("Decompose"):
+            return "q1", 10
+        if "still missing" in prompt:
+            return "q2", 10
+        if "/B" in prompt:
+            return "IRRELEVANT", 10
+        return f"notes for {prompt[-20:]}", 10
+
+    gen_synth = make_gen(["## Summary\nok"])
+    result = await deep_research.run(
+        "q",
+        depth=2,
+        max_sources=2,
+        token_budget=100_000,
+        gen_fast=gen_fast,
+        gen_synth=gen_synth,
+        search=search,
+        fetch=fake_fetch,
+    )
+    assert [s["url"] for s in result["sources"]] == ["https://ex.com/A", "https://ex.com/C"]
 
 
 # ── feature gating ──────────────────────────────────────────────────────────

@@ -2145,16 +2145,16 @@ def create_admin_app(
         ig_daily = await config_store.get("tools.imagegen.daily_budget") or "0"
         ig_monthly = await config_store.get("tools.imagegen.monthly_budget") or "0"
 
-        # Deep research (issue #293).
-        dr_enabled = await config_store.get("tools.deep_research.enabled")
-        dr_enabled = dr_enabled if dr_enabled is not None else "false"
-        dr_provider = await config_store.get("tools.deep_research.provider") or "deepseek"
-        dr_model = await config_store.get("tools.deep_research.model") or "deepseek-v4-flash"
-        dr_synth_provider = await config_store.get("tools.deep_research.synthesis_provider") or ""
-        dr_synth_model = await config_store.get("tools.deep_research.synthesis_model") or ""
-        dr_depth = await config_store.get("tools.deep_research.depth") or "2"
-        dr_max_sources = await config_store.get("tools.deep_research.max_sources") or "10"
-        dr_token_budget = await config_store.get("tools.deep_research.token_budget") or "300000"
+        # Deep research (issue #293). One prefix fetch; fall back to the
+        # pydantic defaults so they live in config.py only.
+        from core.config import DeepResearchToolConfig
+
+        dr_defaults = DeepResearchToolConfig()
+        dr_stored = await config_store.get_many("tools.deep_research.")
+
+        def dr_get(field: str) -> str:
+            stored = dr_stored.get(f"tools.deep_research.{field}")
+            return stored if stored is not None else str(getattr(dr_defaults, field)).lower()
 
         # WhatsApp tool (#97) — enable flag + wacli link status for the badge.
         wa_enabled = await config_store.get("tools.whatsapp.enabled")
@@ -2203,14 +2203,14 @@ def create_admin_app(
             imagegen_key_vaulted=ig_key_vaulted,
             imagegen_daily_budget=ig_daily,
             imagegen_monthly_budget=ig_monthly,
-            deep_research_enabled=dr_enabled,
-            deep_research_provider=dr_provider,
-            deep_research_model=dr_model,
-            deep_research_synth_provider=dr_synth_provider,
-            deep_research_synth_model=dr_synth_model,
-            deep_research_depth=dr_depth,
-            deep_research_max_sources=dr_max_sources,
-            deep_research_token_budget=dr_token_budget,
+            deep_research_enabled=dr_get("enabled"),
+            deep_research_provider=dr_get("provider"),
+            deep_research_model=dr_get("model"),
+            deep_research_synth_provider=dr_get("synthesis_provider"),
+            deep_research_synth_model=dr_get("synthesis_model"),
+            deep_research_depth=dr_get("depth"),
+            deep_research_max_sources=dr_get("max_sources"),
+            deep_research_token_budget=dr_get("token_budget"),
             search_enabled=search_enabled,
             search_provider=search_provider,
             search_api_key="" if search_vaulted else search_api_key,
