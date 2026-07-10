@@ -20,7 +20,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg curl ca-certificates jq sqlite3 \
     bash tar gzip xz-utils \
-    git ripgrep w3m pandoc poppler-utils yt-dlp ncal \
+    git ripgrep w3m pandoc poppler-utils yt-dlp ncal openssh-client \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Himalaya CLI (pre-built Rust binary for email management)
