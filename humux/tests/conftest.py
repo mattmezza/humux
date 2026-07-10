@@ -7,7 +7,6 @@ takes precedence over this module's definition.
 
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator
 from pathlib import Path
 
 import pytest
@@ -23,7 +22,10 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 
 
 def pytest_configure(config: pytest.Config) -> None:
-    config.addinivalue_line("markers", "slow: marks tests as slow (deselect with '-m \"not slow\"')")
+    config.addinivalue_line(
+        "markers",
+        "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    )
     config.addinivalue_line("markers", "asyncio: async test running via pytest-asyncio")
 
 
@@ -33,7 +35,7 @@ def pytest_configure(config: pytest.Config) -> None:
 
 
 @pytest.fixture
-def agent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> "AgentCore":  # noqa: F821
+def agent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AgentCore:  # noqa: F821
     """A bare AgentCore operating in tmp_path.
 
     Override this fixture in a test file when you need a different
@@ -49,7 +51,7 @@ def agent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> "AgentCore":  # no
 @pytest.fixture
 def configured_agent(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> "AgentCore":  # noqa: F821
+) -> AgentCore:  # noqa: F821
     """An AgentCore with common production-like defaults.
 
     - LLM provider: deepseek / deepseek-v4-flash
