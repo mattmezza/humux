@@ -106,7 +106,7 @@ async def test_commit_marks_and_acks(agent) -> None:
 
 async def _wait_active(agent, key, task):
     for _ in range(400):
-        await asyncio.sleep(0.005)
+        await asyncio.sleep(0.001)
         if key in agent._active_turns_map():
             return
     task.cancel()
@@ -119,7 +119,7 @@ async def test_steer_injected_into_running_turn(agent) -> None:
     agent.channels = {"telegram": _FakeChannel()}
 
     async def fake_tool(call, channel, user_id, request_state):
-        await asyncio.sleep(0.01)  # pace rounds so the steer lands mid-loop
+        await asyncio.sleep(0.002)  # pace rounds so the steer lands mid-loop
         return {"ok": True}
 
     agent._execute_tool = fake_tool
@@ -135,7 +135,7 @@ async def test_steer_injected_into_running_turn(agent) -> None:
     )
     assert steer.text == ""  # consumed by the running turn — no duplicate reply
 
-    resp = await asyncio.wait_for(turn, timeout=3)
+    resp = await asyncio.wait_for(turn, timeout=1)
     assert resp.text == "done"
     # The steering text reached at least one LLM call, wrapped for the model.
     flat = "".join(str(m.get("content")) for seen in agent.llm.seen for m in seen)
@@ -182,7 +182,7 @@ async def test_steer_not_lost_when_carrying_generate_fails(agent) -> None:
     agent.channels = {"telegram": _FakeChannel()}
 
     async def fake_tool(call, channel, user_id, request_state):
-        await asyncio.sleep(0.02)  # window for the steer to land before the failing round
+        await asyncio.sleep(0.003)  # window for the steer to land before the failing round
         return {"ok": True}
 
     agent._execute_tool = fake_tool
@@ -198,11 +198,11 @@ async def test_steer_not_lost_when_carrying_generate_fails(agent) -> None:
     )
 
     with pytest.raises(RuntimeError):
-        await asyncio.wait_for(turn, timeout=3)  # the failing round propagates
+        await asyncio.wait_for(turn, timeout=1)  # the failing round propagates
 
     # The steer was never confirmed to the model, so it runs as its own turn
     # instead of being silently dropped.
-    steer_resp = await asyncio.wait_for(steer_task, timeout=3)
+    steer_resp = await asyncio.wait_for(steer_task, timeout=1)
     assert steer_resp.text == "recovered"
     # No false ack: 👀 fires only on a committed steer, and this one never committed.
     assert agent.channels["telegram"].reactions == []
@@ -235,7 +235,7 @@ async def test_webhook_event_steers_running_turn_when_steerable(agent) -> None:
     agent.channels = {}
 
     async def fake_tool(call, channel, user_id, request_state):
-        await asyncio.sleep(0.01)
+        await asyncio.sleep(0.002)
         return {"ok": True}
 
     agent._execute_tool = fake_tool
@@ -255,7 +255,7 @@ async def test_webhook_event_steers_running_turn_when_steerable(agent) -> None:
     )
     assert steer.text == ""  # consumed by the running turn
 
-    resp = await asyncio.wait_for(turn, timeout=3)
+    resp = await asyncio.wait_for(turn, timeout=1)
     assert resp.text == "done"
     flat = "".join(str(m.get("content")) for seen in agent.llm.seen for m in seen)
     assert "<steering_message>" in flat
@@ -270,7 +270,7 @@ async def test_system_without_steerable_queues_not_steers(agent) -> None:
     agent.channels = {}
 
     async def fake_tool(call, channel, user_id, request_state):
-        await asyncio.sleep(0.01)
+        await asyncio.sleep(0.002)
         return {"ok": True}
 
     agent._execute_tool = fake_tool
@@ -281,7 +281,7 @@ async def test_system_without_steerable_queues_not_steers(agent) -> None:
     follow = asyncio.create_task(
         agent.process("second event", "system", "scheduler", chat_id="job:1")
     )
-    assert (await asyncio.wait_for(turn, timeout=3)).text == "done"
-    assert (await asyncio.wait_for(follow, timeout=3)).text == "done"  # own turn
+    assert (await asyncio.wait_for(turn, timeout=1)).text == "done"
+    assert (await asyncio.wait_for(follow, timeout=1)).text == "done"  # own turn
     flat = "".join(str(m.get("content")) for seen in agent.llm.seen for m in seen)
     assert "<steering_message>" not in flat

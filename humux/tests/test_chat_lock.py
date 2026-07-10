@@ -12,16 +12,7 @@ import asyncio
 
 import pytest
 
-from core.config import Config
 from core.models import AgentResponse
-
-
-@pytest.fixture
-def agent(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    from core.agent import AgentCore
-
-    return AgentCore(Config())
 
 
 def _install_overlap_tracker(agent, monkeypatch):
@@ -35,7 +26,7 @@ def _install_overlap_tracker(agent, monkeypatch):
     async def fake_impl(message, channel, user_id, **kw):
         state["active"] += 1
         state["peak"] = max(state["peak"], state["active"])
-        await asyncio.sleep(0.05)
+        await asyncio.sleep(0.005)
         state["active"] -= 1
         return AgentResponse(text="")
 
