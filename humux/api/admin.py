@@ -423,6 +423,16 @@ _REASONING_LOGGER = "core.llm.reasoning"
 # Severity levels offered in the Logs tab filter, low → high.
 _LOG_LEVELS = ["DEBUG", "INFO", "WARNING", "ERROR"]
 
+# Timezone for log timestamps (updated after config loads, defaults to UTC).
+_LOG_TIMEZONE: str = "UTC"
+
+
+def set_log_timezone(tz_name: str | None) -> None:
+    """Update the log timezone (called after config loads, #289)."""
+    global _LOG_TIMEZONE
+    if tz_name:
+        _LOG_TIMEZONE = tz_name
+
 
 def _should_capture_log_record(record: logging.LogRecord) -> bool:
     """Return True when a record should be visible in the admin log viewer."""
@@ -453,7 +463,9 @@ class _BufferHandler(logging.Handler):
             _LOG_BUFFER.append(
                 {
                     "ts": record.created,
-                    "time": datetime.fromtimestamp(record.created).strftime("%H:%M:%S"),
+                    "time": datetime.fromtimestamp(
+                        record.created, tz=ZoneInfo(_LOG_TIMEZONE)
+                    ).strftime("%H:%M:%S"),
                     "level": record.levelname,
                     "levelno": record.levelno,
                     "name": record.name,

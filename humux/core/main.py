@@ -23,7 +23,7 @@ import uvicorn
 from fastapi import Depends, Request
 from fastapi.responses import HTMLResponse
 
-from api.admin import AgentState, create_admin_app, install_log_buffer
+from api.admin import AgentState, create_admin_app, install_log_buffer, set_log_timezone
 from core.config_store import ConfigStore
 from core.email_config import materialize_himalaya_config
 from core.secret_store import SecretStore
@@ -53,6 +53,9 @@ async def _start_agent(config_store: ConfigStore):
     # to the agent so the executor can resolve {{secret:NAME}} at runtime.
     await _secret_store.load_infra_cache()
     config = await config_store.export_to_config(vault_resolve=_secret_store.infra_resolve)
+
+    # Apply the configured timezone to log timestamps (#289)
+    set_log_timezone(config.agent.timezone)
 
     agent = AgentCore(config, secret_store=_secret_store)
 
