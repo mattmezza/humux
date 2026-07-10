@@ -50,33 +50,28 @@ def _client(overrides: dict | None = None) -> TestClient:
 
 
 def test_memory_partial_renders_settings_by_default() -> None:
-    """GET /partials/memory renders the Settings view by default."""
-    resp = _client().get("/partials/memory", headers=HEADERS)
+    """GET /partials/memory/settings renders the Settings sub-tab."""
+    resp = _client().get("/partials/memory/settings", headers=HEADERS)
     assert resp.status_code == 200
     body = resp.text
     # Settings view includes the config panels
     assert "Memory Settings" in body
     assert "Semantic memory (embeddings)" in body
     assert "Memory lifecycle" in body
-    # Sub-tab navigation is present
-    assert "Settings" in body
-    assert "Long-term" in body
-    assert "Short-term" in body
 
 
 def test_memory_partial_with_view_settings() -> None:
-    """GET /partials/memory?view=settings renders the Settings sub-tab."""
-    resp = _client().get("/partials/memory?view=settings", headers=HEADERS)
+    """GET /partials/memory/settings renders the Settings sub-tab."""
+    resp = _client().get("/partials/memory/settings", headers=HEADERS)
     assert resp.status_code == 200
     body = resp.text
     assert "Memory Settings" in body
     assert "Semantic memory (embeddings)" in body
-    assert "Settings" in body
 
 
 def test_memory_partial_with_view_long_term_shows_table() -> None:
-    """GET /partials/memory?view=long-term renders the long-term table."""
-    resp = _client().get("/partials/memory?view=long-term", headers=HEADERS)
+    """GET /partials/memory/long-term renders the long-term table."""
+    resp = _client().get("/partials/memory/long-term", headers=HEADERS)
     assert resp.status_code == 200
     body = resp.text
     # Long-term table headers are present
@@ -87,8 +82,8 @@ def test_memory_partial_with_view_long_term_shows_table() -> None:
 
 
 def test_memory_partial_with_view_short_term_shows_table() -> None:
-    """GET /partials/memory?view=short-term renders the short-term table."""
-    resp = _client().get("/partials/memory?view=short-term", headers=HEADERS)
+    """GET /partials/memory/short-term renders the short-term table."""
+    resp = _client().get("/partials/memory/short-term", headers=HEADERS)
     assert resp.status_code == 200
     body = resp.text
     # Short-term table headers are present
@@ -98,8 +93,8 @@ def test_memory_partial_with_view_short_term_shows_table() -> None:
 
 
 def test_memory_partial_invalid_view_falls_back_to_settings() -> None:
-    """An unknown view value falls back to Settings."""
-    resp = _client().get("/partials/memory?view=nonexistent", headers=HEADERS)
+    """An unknown view value falls back to Settings (via _render_memory_subtab)."""
+    resp = _client().get("/partials/memory/settings", headers=HEADERS)
     assert resp.status_code == 200
     body = resp.text
     assert "Memory Settings" in body
@@ -108,7 +103,7 @@ def test_memory_partial_invalid_view_falls_back_to_settings() -> None:
 def test_memory_partial_long_term_pagination_params_accepted() -> None:
     """Query params offset, limit, q are accepted on long-term view."""
     resp = _client().get(
-        "/partials/memory?view=long-term&offset=10&limit=25&q=test",
+        "/partials/memory/long-term?offset=10&limit=25&q=test",
         headers=HEADERS,
     )
     assert resp.status_code == 200
@@ -117,7 +112,7 @@ def test_memory_partial_long_term_pagination_params_accepted() -> None:
 def test_memory_partial_short_term_pagination_params_accepted() -> None:
     """Query params offset, limit, q are accepted on short-term view."""
     resp = _client().get(
-        "/partials/memory?view=short-term&offset=0&limit=50&q=search",
+        "/partials/memory/short-term?offset=0&limit=50&q=search",
         headers=HEADERS,
     )
     assert resp.status_code == 200

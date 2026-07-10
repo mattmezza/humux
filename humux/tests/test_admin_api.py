@@ -152,7 +152,7 @@ def test_partial_jobs_hides_completed_by_default(tmp_path) -> None:
     client = _jobs_client(tmp_path)
     headers = {"Authorization": "Bearer secret"}
 
-    resp = client.get("/partials/jobs", headers=headers)
+    resp = client.get("/partials/jobs/scheduled", headers=headers)
     assert resp.status_code == 200
     assert "alpha-live" in resp.text
     assert "omega-done" not in resp.text  # completed hidden by default
@@ -163,7 +163,7 @@ def test_partial_jobs_show_completed_reveals_done(tmp_path) -> None:
     client = _jobs_client(tmp_path)
     headers = {"Authorization": "Bearer secret"}
 
-    resp = client.get("/partials/jobs?show_completed=true", headers=headers)
+    resp = client.get("/partials/jobs/scheduled?show_completed=true", headers=headers)
     assert resp.status_code == 200
     assert "omega-done" in resp.text  # completed revealed
     assert _toggle_checked(resp.text) is True
