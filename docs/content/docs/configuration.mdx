@@ -190,6 +190,23 @@ single config change with no code modification.
   exposes it at `http://searxng:8080`. Pick the provider and test reachability
   from the admin UI (Tools → Web search) or the setup wizard.
 
+#### `tools.deep_research`
+
+The `deep_research` tool (Tools → Deep research in the admin UI): autonomous
+multi-step research on top of `search`. Off by default; needs web search
+configured.
+
+- `provider` / `model` — the fast/cheap model for sub-calls (planning,
+  per-source extraction, gap analysis). Default `deepseek` /
+  `deepseek-v4-flash`.
+- `synthesis_provider` / `synthesis_model` — the model that writes the final
+  report. Blank (default) = the main agent model.
+- `depth` (default `2`) — search-read-iterate cycles; also the ceiling when the
+  agent picks its own per-call value.
+- `max_sources` (default `10`) — pages read per run; also a ceiling.
+- `token_budget` (default `300000`) — hard token ceiling per run; when
+  exceeded the loop stops early and synthesizes from what was gathered.
+
 #### `vision`
 
 Vision fallback. When the active model can't read images, image attachments are routed to `model` (on `provider`, reusing that provider's `agent` API key) for a text description / OCR, injected in place of the image so non-multimodal models can still "see". Off by default; engages only when the active model lacks native vision. The admin LLM tab and the setup wizard surface a one-tap enable prompt when you select a model that can't read images.

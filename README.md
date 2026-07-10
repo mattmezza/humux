@@ -180,6 +180,18 @@ Secrets are referenced as `${vault:NAME}` in config and `{{secret:NAME}}` in com
 
 <details>
 
+<summary><strong>Deep research</strong> — Multi-step web research with cited reports</summary>
+
+- `deep_research` tool: decompose the question → search → read sources → follow up on gaps → synthesize
+- Structured, cited report published as a themed web artifact; brief summary + link in chat
+- Fast/cheap model for sub-calls, main agent model (or a dedicated one) for synthesis
+- Configurable depth, max sources, and a hard per-run token budget
+- Streams progress to the chat; cancellable with `/stop`
+
+</details>
+
+<details>
+
 <summary><strong>Image generation</strong> — Visual answers</summary>
 
 - Optional `generate_image` tool (OpenRouter, fal.ai, or OpenAI)
@@ -320,6 +332,7 @@ humux/
 │   ├── artifacts.py      Web artifact serving (sandboxed)
 │   ├── coding.py         Confined workspace file tools
 │   ├── compaction.py     Conversation compaction for session history
+│   ├── deep_research.py  Multi-step web research pipeline
 │   ├── github_app.py     GitHub App JWT minting + installation tokens
 │   ├── history.py        Conversation history persistence
 │   ├── imagegen.py       Image generation with budget caps
