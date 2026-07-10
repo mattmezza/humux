@@ -441,6 +441,25 @@ class ImageGenToolConfig(BaseModel):
     db_path: str = "data/imagegen.db"  # usage counter store
 
 
+class DeepResearchToolConfig(BaseModel):
+    """Deep research (issue #293) — see core/deep_research.py.
+
+    Multi-step web research: plan → search → read → iterate → synthesize.
+    Sub-calls (planning, per-source extraction, gap analysis) run on a fast/cheap
+    model; the final synthesis defaults to the main agent model unless a
+    dedicated one is configured. ``token_budget`` is a hard per-run ceiling.
+    """
+
+    enabled: bool = False
+    provider: str = "deepseek"  # sub-call (plan/extract/gap) model provider
+    model: str = "deepseek-v4-flash"
+    synthesis_provider: str = ""  # blank = the main agent LLM
+    synthesis_model: str = ""
+    depth: int = 2  # max search-read-iterate cycles (ceiling for the tool arg)
+    max_sources: int = 10  # max pages read per run (ceiling for the tool arg)
+    token_budget: int = 300_000  # hard token ceiling per run
+
+
 class WhatsAppToolConfig(BaseModel):
     """WhatsApp via the local `wacli` CLI (issue #97) — a tool, not a channel.
 
@@ -462,6 +481,7 @@ class ToolsConfig(BaseModel):
     browser: BrowserToolConfig = BrowserToolConfig()
     imagegen: ImageGenToolConfig = ImageGenToolConfig()
     whatsapp: WhatsAppToolConfig = WhatsAppToolConfig()
+    deep_research: DeepResearchToolConfig = DeepResearchToolConfig()
 
 
 class WorkspaceConfig(BaseModel):

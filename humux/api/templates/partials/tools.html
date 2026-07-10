@@ -342,6 +342,96 @@
     </template>
   </div>
 
+  {# Deep research (issue #293) #}
+  <div class="card" x-data="deepResearchTool(
+    {{ deep_research_enabled|default('false', true)|tojson|forceescape }},
+    {{ deep_research_provider|default('deepseek', true)|tojson|forceescape }},
+    {{ deep_research_model|default('deepseek-v4-flash', true)|tojson|forceescape }},
+    {{ deep_research_synth_provider|default('', true)|tojson|forceescape }},
+    {{ deep_research_synth_model|default('', true)|tojson|forceescape }},
+    {{ deep_research_depth|default('2', true)|tojson|forceescape }},
+    {{ deep_research_max_sources|default('10', true)|tojson|forceescape }},
+    {{ deep_research_token_budget|default('300000', true)|tojson|forceescape }}
+  )">
+    <div class="flex items-center justify-between gap-3 mb-1">
+      <h3 class="text-sm text-accent">Deep research</h3>
+      <div class="flex items-center gap-2">
+        <label class="label mb-0" for="tools-dr-enabled">Enabled</label>
+        <input type="checkbox" x-model="enabled" :checked="enabled === 'true' || enabled === true" id="tools-dr-enabled">
+      </div>
+    </div>
+    <p class="text-muted text-xs mb-4">
+      Autonomous multi-step web research (the <code>deep_research</code> tool):
+      the question is split into sub-questions, each is searched and its sources
+      read, gaps trigger follow-up searches, and the result is a structured, cited
+      report — published as a web artifact when the workspace is enabled. Needs the
+      <strong>Web search</strong> tool configured. Cancel a running research with
+      <code>/stop</code>. Assign it per agent in the <strong>Agents</strong> editor.
+    </p>
+    <div class="space-y-3" x-show="enabled === 'true' || enabled === true">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <label class="label" for="tools-dr-provider">Sub-call provider</label>
+          <select class="select input-sm" style="max-width:100%" x-model="provider" id="tools-dr-provider">
+            <option value="deepseek">DeepSeek</option>
+            <option value="anthropic">Anthropic</option>
+            <option value="openai">OpenAI</option>
+            <option value="google">Google</option>
+            <option value="grok">Grok</option>
+            <option value="openrouter">OpenRouter</option>
+          </select>
+          <p class="text-muted text-xs mt-1">Fast/cheap model for planning, extraction and gap analysis. Uses that provider's configured API key.</p>
+        </div>
+        <div>
+          <label class="label" for="tools-dr-model">Sub-call model</label>
+          <input type="text" class="input-sm" style="max-width:100%" x-model="model"
+                 placeholder="deepseek-v4-flash" id="tools-dr-model">
+        </div>
+        <div>
+          <label class="label" for="tools-dr-synth-provider">Synthesis provider</label>
+          <select class="select input-sm" style="max-width:100%" x-model="synthProvider" id="tools-dr-synth-provider">
+            <option value="">Main agent model</option>
+            <option value="deepseek">DeepSeek</option>
+            <option value="anthropic">Anthropic</option>
+            <option value="openai">OpenAI</option>
+            <option value="google">Google</option>
+            <option value="grok">Grok</option>
+            <option value="openrouter">OpenRouter</option>
+          </select>
+          <p class="text-muted text-xs mt-1">Writes the final report. Blank = the model of the agent that ran the tool.</p>
+        </div>
+        <div x-show="synthProvider">
+          <label class="label" for="tools-dr-synth-model">Synthesis model</label>
+          <input type="text" class="input-sm" style="max-width:100%" x-model="synthModel"
+                 placeholder="claude-sonnet-5" id="tools-dr-synth-model">
+        </div>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div>
+          <label class="label" for="tools-dr-depth">Depth</label>
+          <input type="number" min="1" max="3" class="input-sm" style="max-width:120px" x-model="depth" id="tools-dr-depth">
+          <p class="text-muted text-xs mt-1">Search-read-iterate cycles (1-3). Also the cap when the agent picks its own.</p>
+        </div>
+        <div>
+          <label class="label" for="tools-dr-max-sources">Max sources</label>
+          <input type="number" min="1" class="input-sm" style="max-width:120px" x-model="maxSources" id="tools-dr-max-sources">
+          <p class="text-muted text-xs mt-1">Pages read per run — a cap too.</p>
+        </div>
+        <div>
+          <label class="label" for="tools-dr-token-budget">Token budget</label>
+          <input type="number" min="1000" class="input-sm" style="max-width:160px" x-model="tokenBudget" id="tools-dr-token-budget">
+          <p class="text-muted text-xs mt-1">Hard token ceiling per run.</p>
+        </div>
+      </div>
+    </div>
+    <div class="flex items-center gap-2 mt-4">
+      <button class="btn-primary btn-sm" @click="withLoading($el, () => save())">Save</button>
+    </div>
+    <template x-if="result">
+      <div :class="resultOk ? 'alert-success' : 'alert-error'" class="mt-2" x-text="result"></div>
+    </template>
+  </div>
+
   {# WhatsApp via the local wacli CLI (issue #97) — a tool, not a channel #}
   <div class="card" x-data="whatsappTool(
     {{ whatsapp_enabled|default('false', true)|tojson|forceescape }},
@@ -751,6 +841,43 @@
         .then(d => {
           this.result = this.resultOk ? 'WhatsApp settings saved' : (d.detail || 'Error');
           if (this.resultOk && window.showToast) { window.showToast('WhatsApp settings saved'); }
+        })
+        .catch(e => { this.resultOk = false; this.result = e.message; });
+      }
+    };
+  }
+
+  function deepResearchTool(enabled, provider, model, synthProvider, synthModel, depth, maxSources, tokenBudget) {
+    return {
+      enabled: enabled,
+      provider: provider || 'deepseek',
+      model: model || 'deepseek-v4-flash',
+      synthProvider: synthProvider || '',
+      synthModel: synthModel || '',
+      depth: depth || '2',
+      maxSources: maxSources || '10',
+      tokenBudget: tokenBudget || '300000',
+      result: '', resultOk: false,
+      save() {
+        const vals = {
+          'tools.deep_research.enabled': String(this.enabled === true || this.enabled === 'true'),
+          'tools.deep_research.provider': String(this.provider || 'deepseek').trim(),
+          'tools.deep_research.model': String(this.model || '').trim(),
+          'tools.deep_research.synthesis_provider': String(this.synthProvider || '').trim(),
+          'tools.deep_research.synthesis_model': String(this.synthModel || '').trim(),
+          'tools.deep_research.depth': String(parseInt(this.depth) || 2),
+          'tools.deep_research.max_sources': String(parseInt(this.maxSources) || 10),
+          'tools.deep_research.token_budget': String(parseInt(this.tokenBudget) || 300000)
+        };
+        return fetch('/config', {
+          method: 'PATCH',
+          headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('admin_api_key') || '')},
+          body: JSON.stringify({values: vals})
+        })
+        .then(r => { this.resultOk = r.ok; return r.json(); })
+        .then(d => {
+          this.result = this.resultOk ? 'Deep research settings saved' : (d.detail || 'Error');
+          if (this.resultOk && window.showToast) { window.showToast('Deep research settings saved'); }
         })
         .catch(e => { this.resultOk = false; this.result = e.message; });
       }

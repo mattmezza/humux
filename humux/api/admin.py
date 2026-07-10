@@ -2145,6 +2145,17 @@ def create_admin_app(
         ig_daily = await config_store.get("tools.imagegen.daily_budget") or "0"
         ig_monthly = await config_store.get("tools.imagegen.monthly_budget") or "0"
 
+        # Deep research (issue #293).
+        dr_enabled = await config_store.get("tools.deep_research.enabled")
+        dr_enabled = dr_enabled if dr_enabled is not None else "false"
+        dr_provider = await config_store.get("tools.deep_research.provider") or "deepseek"
+        dr_model = await config_store.get("tools.deep_research.model") or "deepseek-v4-flash"
+        dr_synth_provider = await config_store.get("tools.deep_research.synthesis_provider") or ""
+        dr_synth_model = await config_store.get("tools.deep_research.synthesis_model") or ""
+        dr_depth = await config_store.get("tools.deep_research.depth") or "2"
+        dr_max_sources = await config_store.get("tools.deep_research.max_sources") or "10"
+        dr_token_budget = await config_store.get("tools.deep_research.token_budget") or "300000"
+
         # WhatsApp tool (#97) — enable flag + wacli link status for the badge.
         wa_enabled = await config_store.get("tools.whatsapp.enabled")
         wa_enabled = wa_enabled if wa_enabled is not None else "false"
@@ -2192,6 +2203,14 @@ def create_admin_app(
             imagegen_key_vaulted=ig_key_vaulted,
             imagegen_daily_budget=ig_daily,
             imagegen_monthly_budget=ig_monthly,
+            deep_research_enabled=dr_enabled,
+            deep_research_provider=dr_provider,
+            deep_research_model=dr_model,
+            deep_research_synth_provider=dr_synth_provider,
+            deep_research_synth_model=dr_synth_model,
+            deep_research_depth=dr_depth,
+            deep_research_max_sources=dr_max_sources,
+            deep_research_token_budget=dr_token_budget,
             search_enabled=search_enabled,
             search_provider=search_provider,
             search_api_key="" if search_vaulted else search_api_key,
@@ -5194,6 +5213,7 @@ GATEABLE_TOOLS = [
     "search_contacts",
     "create_contact",
     "web_search",
+    "deep_research",
     "manage_jobs",
     "spawn_subagent",
     "generate_image",
@@ -5220,6 +5240,7 @@ TOOL_DESCRIPTIONS = {
     "search_contacts": "Look up people in a bound address book.",
     "create_contact": "Add a contact to a bound address book.",
     "web_search": "Search the web (needs the Web search tool enabled).",
+    "deep_research": "Multi-step web research with a synthesized, cited report.",
     "manage_jobs": "Schedule, list and cancel the agent's own jobs.",
     "spawn_subagent": "Delegate a scoped subtask to a child agent.",
     "generate_image": "Generate images and send them as photos.",

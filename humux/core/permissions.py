@@ -233,6 +233,7 @@ DEFAULT_RULES: dict[str, str] = {
     "bash:git*push*": "ASK",
     "bash:git*commit*": "ASK",
     "web_search": "ALWAYS",
+    "deep_research": "ALWAYS",  # read-only research; budgets cap the cost (#293)
     "recall_memory": "ALWAYS",
     "remember": "ALWAYS",  # local memory write, low-stakes — no prompt (#13)
     # Skill bodies live in the skills DB — reading them must never prompt (#178).
