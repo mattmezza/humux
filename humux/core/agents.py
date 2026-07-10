@@ -373,7 +373,7 @@ def _as_group_chat(value: object) -> dict:
     }
 
 
-_LLM_THINKING_LEVELS = ("", "low", "medium", "high")
+_LLM_THINKING_LEVELS = ("", "low", "medium", "high", "max")
 
 
 def _as_llm_config(value: object) -> dict:

@@ -93,7 +93,7 @@ class AgentConfig(BaseModel):
     openrouter_api_key: str = ""
     openrouter_base_url: str = ""
     model: str = "deepseek-v4-flash"
-    thinking_level: str = ""  # "" (off) | "low" | "medium" | "high" — only for reasoning models
+    thinking_level: str = ""  # "" (off) | "low" | "medium" | "high" | "max" — only for reasoning models
     # Hard ceiling on tokens the model may emit per response. The agentic loop
     # truncates mid-tool-call when this is too small for the output (e.g. a large
     # file written via the write tool), so keep it generous. 16384 is safe across providers;
@@ -278,8 +278,8 @@ class MemoryConfig(BaseModel):
     extraction_model: str = "deepseek-v4-flash"
     consolidation_provider: str = "deepseek"
     consolidation_model: str = "deepseek-v4-flash"
-    extraction_thinking_level: str = ""  # "" (off) | "low" | "medium" | "high"
-    consolidation_thinking_level: str = ""  # "" (off) | "low" | "medium" | "high"
+    extraction_thinking_level: str = ""  # "" (off) | "low" | "medium" | "high" | "max"
+    consolidation_thinking_level: str = ""  # "" (off) | "low" | "medium" | "high" | "max"
     extraction_cooldown_seconds: int = 120  # minimum seconds between extractions
 
     embedding: EmbeddingConfig = EmbeddingConfig()
@@ -299,14 +299,14 @@ class GoalDecompositionConfig(BaseModel):
     enabled: bool = True
     provider: str = "deepseek"
     model: str = "deepseek-v4-flash"
-    thinking_level: str = ""  # "" (off) | "low" | "medium" | "high"
+    thinking_level: str = ""  # "" (off) | "low" | "medium" | "high" | "max"
 
 
 class TaskReflectionConfig(BaseModel):
     enabled: bool = True
     provider: str = "deepseek"
     model: str = "deepseek-v4-flash"
-    thinking_level: str = ""  # "" (off) | "low" | "medium" | "high"
+    thinking_level: str = ""  # "" (off) | "low" | "medium" | "high" | "max"
     db_path: str = "data/reflections.db"
     max_reflections: int = 12  # injected per turn; kept small to cut prompt bloat (#5, was 50)
 
@@ -323,7 +323,7 @@ class ReplyDecisionConfig(BaseModel):
     enabled: bool = False
     provider: str = "deepseek"
     model: str = "deepseek-v4-flash"  # fast + cheap is ideal for the yes/no reply call
-    thinking_level: str = ""  # "" (off) | "low" | "medium" | "high"
+    thinking_level: str = ""  # "" (off) | "low" | "medium" | "high" | "max"
     group_only: bool = True  # only gate group chats; DMs always get a reply
     # Hard backstop: never send more than this many auto-replies into one chat
     # per rolling window — guarantees a runaway loop terminates even if the LLM
@@ -342,7 +342,7 @@ class CompactionConfig(BaseModel):
     enabled: bool = True
     provider: str = "deepseek"
     model: str = "deepseek-v4-flash"
-    thinking_level: str = ""  # "" (off) | "low" | "medium" | "high"
+    thinking_level: str = ""  # "" (off) | "low" | "medium" | "high" | "max"
     threshold_type: str = "percent"  # "percent" (of context window) or "tokens" (absolute)
     threshold_percent: int = 80  # trigger at this % of the model's context window
     threshold_tokens: int = 150000  # absolute trigger when threshold_type == "tokens"
@@ -519,8 +519,7 @@ class SubagentSummaryConfig(BaseModel):
     enabled: bool = True
     provider: str = "deepseek"  # fast + cheap is ideal for this distillation
     model: str = "deepseek-v4-flash"
-    thinking_level: str = ""  # "" (off) | "low" | "medium" | "high"
-
+    thinking_level: str = ""  # "" (off) | "low" | "medium" | "high" | "max"
 
 class Config(BaseModel):
     agent: AgentConfig = AgentConfig()
