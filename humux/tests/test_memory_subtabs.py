@@ -131,15 +131,19 @@ def test_memory_partial_with_legacy_tab_param() -> None:
 
 
 def test_sub_tab_nav_buttons_link_correctly() -> None:
-    """Sub-tab buttons have correct HTMX attributes."""
+    """Sub-tab buttons have Alpine @click handlers (replaced hx-get)."""
     resp = _client().get("/partials/memory?view=settings", headers=HEADERS)
     body = resp.text
-    # Each nav button should target #tab-content via hx-get
-    assert 'hx-get="/partials/memory?view=settings"' in body
-    long_hx = 'hx-get="/partials/memory?view=long-term'
-    assert long_hx in body
-    short_hx = 'hx-get="/partials/memory?view=short-term'
-    assert short_hx in body
+    # Nav is wrapped in an Alpine component
+    assert 'x-data="memorySubtab()"' in body
+    assert 'x-init="init()"' in body
+    # Buttons use @click to invoke Alpine select() method
+    assert '@click="select(\'settings\')"' in body or "@click='select(\"settings\")'" in body
+    assert '@click="select(\'long-term\')"' in body or "@click='select(\"long-term\")'" in body
+    assert '@click="select(\'short-term\')"' in body or "@click='select(\"short-term\")'" in body
+    # Buttons use :class bindings for active state
+    assert ":class" in body
+    assert "'tab-link-active'" in body
 
 
 def test_endpoints_require_auth() -> None:
