@@ -1,12 +1,14 @@
-{# Skills tab partial #}
-<div x-data="{ filter: '' }">
+{# Skills tab partial with server-side pagination #}
+<div x-data="{ filter: '', pageSize: {{ limit }} }">
   <div class="flex items-center gap-2 mb-4 flex-wrap">
-    <button class="btn btn-sm" hx-get="/partials/skills" hx-target="#tab-content" hx-swap="innerHTML">
+    <button class="btn btn-sm" hx-get="/partials/skills?offset=0&amp;limit={{ limit }}" hx-target="#tab-content" hx-swap="innerHTML">
       Refresh
     </button>
     <input type="text" class="input-sm flex-1" style="max-width:300px"
            placeholder="Filter skills..." x-model="filter" id="filter-skills" aria-label="Filter skills">
-    <span class="text-muted text-xs">{{ skills|length }} skills</span>
+    <span class="text-muted text-xs">{{ skills|length }} shown</span>
+    <span class="text-muted text-xs">&middot;</span>
+    <span class="text-muted text-xs">{{ total }} total</span>
   </div>
 
   <div class="overflow-x-auto">
@@ -36,15 +38,15 @@
                     hx-post="/skills/{{ skill.name }}/update" hx-target="#tab-content" hx-swap="innerHTML"
                     title="Re-install from {{ skill.origin }}"
                     hx-confirm="Update &quot;{{ skill.name }}&quot; from its origin repo?">
-              ⟳
+              &#8635;
             </button>
             {% endif %}
             {% if skill.stale_seed %}
             <button class="btn-outline btn-sm ml-0.5"
                     hx-post="/skills/{{ skill.name }}/reset" hx-target="#tab-content" hx-swap="innerHTML"
-                    title="Seed file changed — reset to original"
+                    title="Seed file changed &mdash; reset to original"
                     hx-confirm="Reset &quot;{{ skill.name }}&quot; to the seed version?">
-              ↺
+              &#8634;
             </button>
             {% endif %}
             <button class="btn-danger btn-sm ml-0.5"
@@ -62,6 +64,64 @@
       </tbody>
     </table>
   </div>
+
+  {# Pagination controls #}
+  {% if total > 0 %}
+  <div class="flex items-center justify-between mt-4 flex-wrap gap-2">
+    {# Left: page size selector #}
+    <div class="flex items-center gap-2">
+      <label for="page-size" class="text-xs text-muted">Show</label>
+      <select id="page-size" class="input-sm text-xs"
+              onchange="htmx.ajax('GET', '/partials/skills?offset=0&amp;limit=' + this.value, {target:'#tab-content', swap:'innerHTML'})">
+        <option value="10"{% if limit == 10 %} selected{% endif %}>10</option>
+        <option value="25"{% if limit == 25 %} selected{% endif %}>25</option>
+        <option value="50"{% if limit == 50 %} selected{% endif %}>50</option>
+        <option value="100"{% if limit == 100 %} selected{% endif %}>100</option>
+      </select>
+      <span class="text-muted text-xs">per page</span>
+    </div>
+
+    {# Centre: "Showing X–Y of Z" #}
+    <span class="text-muted text-xs">
+      {% set showing_end = offset + skills|length %}
+      Showing {{ offset + 1 }}&ndash;{{ showing_end }} of {{ total }}
+    </span>
+
+    {# Right: page buttons #}
+    <div class="flex items-center gap-1">
+      {% if prev_offset is not none %}
+      <button class="btn btn-sm"
+              hx-get="/partials/skills?offset={{ prev_offset }}&amp;limit={{ limit }}"
+              hx-target="#tab-content" hx-swap="innerHTML">
+        &laquo; Prev
+      </button>
+      {% else %}
+      <button class="btn btn-sm opacity-40" disabled>&laquo; Prev</button>
+      {% endif %}
+
+      {% for p in page_numbers %}
+        {% set p_offset = (p - 1) * limit %}
+        {% if p == current_page %}
+        <button class="btn btn-sm btn-primary" disabled>{{ p }}</button>
+        {% else %}
+        <button class="btn btn-sm btn-ghost"
+                hx-get="/partials/skills?offset={{ p_offset }}&amp;limit={{ limit }}"
+                hx-target="#tab-content" hx-swap="innerHTML">{{ p }}</button>
+        {% endif %}
+      {% endfor %}
+
+      {% if next_offset is not none %}
+      <button class="btn btn-sm"
+              hx-get="/partials/skills?offset={{ next_offset }}&amp;limit={{ limit }}"
+              hx-target="#tab-content" hx-swap="innerHTML">
+        Next &raquo;
+      </button>
+      {% else %}
+      <button class="btn btn-sm opacity-40" disabled>Next &raquo;</button>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
 
   <div class="mt-5 flex items-center gap-2">
     <a class="btn btn-sm" href="/admin/skills/new">Create new skill</a>
