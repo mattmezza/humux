@@ -74,6 +74,21 @@ async def run_agent_task(
             "only."
         )
 
+    # Clear previous context for recurring jobs (#301): each invocation starts fresh
+    # so history doesn't accumulate across runs (growing token costs, cache misses,
+    # degraded relevance). The /new command clears session/injection history alike;
+    # respond=True is required (respond=False would just record the command as an
+    # inbound message without processing it). The "Conversation cleared." response
+    # is discarded — we only care about the side effect.
+    if job_id:
+        await agent.process(
+            message="/new",
+            channel="system",
+            user_id="scheduler",
+            chat_id=f"scheduler:{job_id}",
+            respond=True,
+        )
+
     log.info("Scheduler running agent task: %s", task[:100])
     # A "telegram:<agent>" job is generated AS that agent (#29) so the bot
     # that delivers it also writes it — while keeping the "system" execution mode
@@ -163,6 +178,16 @@ async def run_subagent_task(
             f"scheduler:{job_id}" if (job_id and not origin_user_id)
             else (origin_user_id or owner or "scheduler")
         )
+        # Clear previous context for recurring subagent jobs (#301): same rationale
+        # as run_agent_task — each invocation starts with a clean slate.
+        if job_id:
+            await agent.process(
+                message="/new",
+                channel="system",
+                user_id=str(_ctx_user),
+                chat_id=str(_ctx_chat),
+                respond=True,
+            )
         result = await agent.run_subagent(
             task=task,
             agent_name=agent_name or "",
