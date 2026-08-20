@@ -4,7 +4,8 @@ and the last-sent LLM payload view (#99)."""
 from __future__ import annotations
 
 import asyncio
-from typing import cast
+from types import SimpleNamespace
+from typing import Any, cast
 
 from fastapi.testclient import TestClient
 
@@ -12,6 +13,7 @@ from api.admin import AgentState, create_admin_app
 from core import llm
 from core.config_store import ConfigStore
 from core.history import ConversationHistory
+from core.subagents import SubagentRun
 
 AUTH = {"Authorization": "Bearer secret"}
 
@@ -200,6 +202,50 @@ def test_inspect_payload_empty_for_uncaptured_context(tmp_path) -> None:
     )
     assert r.status_code == 200
     assert "No payload captured yet" in r.text
+
+
+# ── Live subagent runs panel (moved from the Jobs tab) ──────────────────────
+
+
+def _runs_client(tmp_path, runs) -> TestClient:
+    agent = SimpleNamespace(subagents=SimpleNamespace(list_runs=lambda: runs))
+    app, _ = create_admin_app(
+        AgentState(agent=cast(Any, agent)), cast(ConfigStore, _Store(tmp_path))
+    )
+    return TestClient(app)
+
+
+def test_inspect_partial_hosts_runs_panel_with_per_context_filter(tmp_path) -> None:
+    asyncio.run(_seed(tmp_path))
+    r = _client(tmp_path).get("/partials/inspect", headers=AUTH)
+    assert r.status_code == 200
+    assert 'id="subagent-runs"' in r.text  # panel lives in Inspect now
+    # Each main context row filters the panel to its own channel + chat.
+    assert "/partials/subagent-runs?channel=telegram&chat_id=c1" in r.text
+
+
+def test_subagent_runs_filtered_by_channel_and_chat(tmp_path) -> None:
+    runs = [
+        SubagentRun(
+            run_id="r1", agent="a", task="mine", origin_channel="telegram", origin_chat_id="c1"
+        ),
+        SubagentRun(
+            run_id="r2", agent="a", task="theirs", origin_channel="telegram", origin_chat_id="c2"
+        ),
+    ]
+    client = _runs_client(tmp_path, runs)
+    both = client.get("/partials/subagent-runs", headers=AUTH)
+    assert "mine" in both.text and "theirs" in both.text
+    assert "show all" not in both.text  # no reset link while unfiltered
+
+    one = client.get(
+        "/partials/subagent-runs", params={"channel": "telegram", "chat_id": "c1"}, headers=AUTH
+    )
+    assert one.status_code == 200
+    assert "mine" in one.text and "theirs" not in one.text
+    assert "show all" in one.text  # reset link shown while filtered
+    # The filter is echoed into the panel's own poll URL, so it survives refreshes.
+    assert "chat_id=c1" in one.text
 
 
 def test_config_requires_restart_flags_startup_only_keys() -> None:

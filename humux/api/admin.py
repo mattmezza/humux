@@ -2861,11 +2861,6 @@ def create_admin_app(
             "partials/jobs_scheduled.html", **(await _jobs_context(show_completed))
         )
 
-    @app.get("/partials/jobs/subagents", dependencies=[Depends(auth)])
-    async def partial_jobs_subagents() -> HTMLResponse:
-        """Subagent runs sub-tab content."""
-        return _render_partial("partials/jobs_subagents.html")
-
     @app.post("/jobs", dependencies=[Depends(auth)])
     async def upsert_job(request: Request) -> HTMLResponse:
         """Add or update a scheduled job. Returns refreshed jobs partial."""
@@ -3128,21 +3123,43 @@ def create_admin_app(
         return groups
 
     @app.get("/partials/subagent-runs", dependencies=[Depends(auth)])
-    async def partial_subagent_runs() -> HTMLResponse:
-        """Subagent runs card grid — polled by the Jobs tab for live status."""
+    async def partial_subagent_runs(channel: str = "", chat_id: str = "") -> HTMLResponse:
+        """Subagent runs card grid — polled by the Inspect tab for live status.
+
+        ``channel``/``chat_id`` narrow the panel to the runs originating from one
+        conversation (the Inspect master list's per-context "runs" buttons); both
+        empty shows every run. The filter is echoed back as ``qs`` so the panel's
+        self-poll keeps it."""
         runs = _subagent_runs()
+        # Labels come from every run, so a filtered child can still name a parent.
+        labels = {r.run_id: (r.label or r.agent or r.run_id) for r in runs}
+        if channel or chat_id:
+            runs = [
+                r
+                for r in runs
+                if (not channel or r.origin_channel == channel)
+                and (not chat_id or r.origin_chat_id == chat_id)
+            ]
         return _render_partial(
             "partials/subagent_runs.html",
             groups=_subagent_groups(runs),
-            # run_id → display label, so a child can name its parent.
-            labels={r.run_id: (r.label or r.agent or r.run_id) for r in runs},
+            labels=labels,
             running_count=sum(1 for r in runs if r.status == "running"),
             agent_running=agent_state.agent is not None,
+            qs=(
+                "?" + urllib.parse.urlencode({"channel": channel, "chat_id": chat_id})
+                if (channel or chat_id)
+                else ""
+            ),
         )
 
     @app.post("/subagents/cancel", dependencies=[Depends(auth)])
-    async def cancel_subagent(request: Request) -> HTMLResponse:
-        """Cancel a running subagent. Returns the refreshed runs partial."""
+    async def cancel_subagent(
+        request: Request, channel: str = "", chat_id: str = ""
+    ) -> HTMLResponse:
+        """Cancel a running subagent. Returns the refreshed runs partial,
+        keeping any active per-context filter (the button posts to
+        ``/subagents/cancel{qs}``, so the panel doesn't jump back to all runs)."""
         agent = agent_state.agent
         if not agent:
             raise HTTPException(503, "Agent not running")
@@ -3156,9 +3173,7 @@ def create_admin_app(
             raise HTTPException(400, "Missing 'run_id' in request body")
         agent.subagents.cancel(run_id)
         log.info("Subagent %r cancelled via admin", run_id)
-        return _render_partial(
-            "partials/subagent_runs.html", runs=_subagent_runs(), agent_running=True
-        )
+        return await partial_subagent_runs(channel=channel, chat_id=chat_id)
 
     # ── Config API ─────────────────────────────────────────────────────
 

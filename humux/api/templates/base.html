@@ -1364,20 +1364,6 @@
     }
     window.memorySubtab = memorySubtab;
 
-    // Jobs tab: Scheduled | Subagents sub-tabs.
-    // Persisted via ?jobsub= URL param; each sub-tab lazy-loads its own
-    // partial via htmx with skeleton loading.
-    function jobsTabs() {
-      return subTabs({
-        subs: { scheduled: '/partials/jobs/scheduled', subagents: '/partials/jobs/subagents' },
-        param: 'jobsub',
-        storageKey: 'jobs_sub',
-        container: '#jobs-sub',
-        fallback: 'scheduled'
-      });
-    }
-    window.jobsTabs = jobsTabs;
-
     // Global: handle 401 by redirecting to auth gate
     document.body.addEventListener('htmx:responseError', function(e) {
       if (e.detail.xhr.status === 401) {

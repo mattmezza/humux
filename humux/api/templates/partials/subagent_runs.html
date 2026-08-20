@@ -1,7 +1,9 @@
-{# Subagent runs — responsive card grid, polled live by the Jobs tab (#15).
+{# Subagent runs — responsive card grid, polled live by the Inspect tab (#15).
    Siblings of one spawn_subagents fan-out share a group_id and render under a
    group header; a child run (parent_run_id set) is indented and names its
-   parent, so the run tree is visible. #}
+   parent, so the run tree is visible. The panel replaces itself on every poll
+   (outerHTML), so an active channel/chat filter survives the refresh — the
+   filter lives in this element's own hx-get. #}
 {% macro status_badge(status) -%}
   {%- if status == 'running' -%}
     <span class="badge-warn">running</span>
@@ -37,7 +39,7 @@
   </div>
   {% if r.status == 'running' %}
   <button class="btn-danger btn-sm mt-2 w-full"
-          hx-post="/subagents/cancel" hx-target="#subagent-runs" hx-swap="innerHTML"
+          hx-post="/subagents/cancel{{ qs }}" hx-target="#subagent-runs" hx-swap="outerHTML"
           hx-vals='{"run_id": {{ r.run_id|tojson }} }'
           hx-confirm="Cancel subagent {{ r.run_id }}?">
     Cancel
@@ -46,26 +48,36 @@
 </div>
 {% endmacro %}
 
-{% if groups %}
-{% for g in groups %}
-  {% if g.group_id %}
-  <div class="flex items-center gap-2 mt-3 mb-1">
-    <span class="text-xs text-accent font-medium">fan-out {{ g.group_id }}</span>
-    <span class="text-muted text-[0.65rem]">{{ g.runs|length }} run{{ '' if g.runs|length == 1 else 's' }}</span>
-    <span class="flex-1 border-t border-border"></span>
+<div id="subagent-runs" class="mb-4"
+     hx-get="/partials/subagent-runs{{ qs }}" hx-trigger="every 3s"
+     hx-target="this" hx-swap="outerHTML">
+  <div class="flex flex-wrap items-center gap-2">
+    <span class="text-xs font-medium">Subagent runs</span>
+    {# Live running count — re-rendered with the panel on every poll. #}
+    {% if running_count %}<span class="badge-warn">{{ running_count }} running</span>{% endif %}
+    {% if qs %}
+    <span class="text-muted text-xs">filtered</span>
+    <button type="button" class="btn btn-sm btn-ghost"
+            hx-get="/partials/subagent-runs" hx-target="#subagent-runs" hx-swap="outerHTML">show all</button>
+    {% endif %}
   </div>
-  {% endif %}
-  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3{% if not g.group_id %} mt-3{% endif %}">
-    {% for r in g.runs %}{{ run_card(r, labels) }}{% endfor %}
-  </div>
-{% endfor %}
-{% else %}
-<p class="text-muted text-xs">
-  {% if agent_running %}No subagent runs yet.{% else %}Agent stopped — no subagent runs.{% endif %}
-</p>
-{% endif %}
 
-{# Live count for the Jobs sub-tab badge — swapped out-of-band on every poll. #}
-<span id="subagent-badge" hx-swap-oob="true"
-      class="inline-flex items-center justify-center ml-1 px-1.5 py-0.5 rounded-full text-[0.65rem] font-bold bg-accent text-black"
-      style="min-width:1.25rem; line-height:1;{% if not running_count %}display:none;{% endif %}">{{ running_count or '' }}</span>
+  {% if groups %}
+  {% for g in groups %}
+    {% if g.group_id %}
+    <div class="flex items-center gap-2 mt-3 mb-1">
+      <span class="text-xs text-accent font-medium">fan-out {{ g.group_id }}</span>
+      <span class="text-muted text-[0.65rem]">{{ g.runs|length }} run{{ '' if g.runs|length == 1 else 's' }}</span>
+      <span class="flex-1 border-t border-border"></span>
+    </div>
+    {% endif %}
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3{% if not g.group_id %} mt-3{% endif %}">
+      {% for r in g.runs %}{{ run_card(r, labels) }}{% endfor %}
+    </div>
+  {% endfor %}
+  {% else %}
+  <p class="text-muted text-xs mt-1">
+    {% if not agent_running %}Agent stopped — no subagent runs.{% elif qs %}No subagent runs for this context.{% else %}No subagent runs yet.{% endif %}
+  </p>
+  {% endif %}
+</div>

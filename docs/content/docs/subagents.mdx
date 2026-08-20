@@ -133,7 +133,7 @@ at least ten seconds — a quick one's result is already in the very next reply.
 Every spawn announces itself the same way (`🧬 Spawned subagent pricing`, or
 `🧬 pricing spawned subagent stock-check` for a nested one — fan-out children are
 covered by the group note instead), so the run tree is visible in the chat as it
-grows and any run in it can be cancelled from `/subagents` or the Jobs tab.
+grows and any run in it can be cancelled from `/subagents` or the Inspect tab.
 
 All spawns, singular or plural, draw from the same [per-turn budget
 pool](#guardrails) — a big fan-out can exhaust it and leave less room for
@@ -258,9 +258,10 @@ Background subagents are first-class runs you can watch and stop:
 
 - **Telegram** — send `/jobs` to list active runs, each with an inline **Cancel**
   button. Monitoring and cancelling a long task from your phone needs no web UI.
-- **Admin UI** — the **Jobs** tab shows a live card per run (agent, status,
-  elapsed time, current step) with a cancel button; the layout collapses to a
-  single column at phone width.
+- **Admin UI** — the **Inspect** tab shows a live card per run (agent, status,
+  elapsed time, current step) with a cancel button, above the context list; the
+  layout collapses to a single column at phone width. Each context row has a
+  **runs** button that filters the panel to that conversation's runs.
 
 Cancelling stops the run; if it was a background run, a cancellation notice is
 posted back to the originating chat. `/stop` cancels in-flight subagents too —

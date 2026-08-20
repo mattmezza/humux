@@ -12,6 +12,14 @@
     </p>
   </div>
 
+  {# Live subagent runs — self-polling every 3s (it re-renders its own wrapper,
+     so the channel/chat filter set by the "runs" buttons below survives). #}
+  <div id="subagent-runs" class="mb-4"
+       hx-get="/partials/subagent-runs" hx-trigger="load"
+       hx-target="this" hx-swap="outerHTML">
+    <div class="skeleton skeleton-row"></div>
+  </div>
+
   <div class="flex flex-col lg:flex-row gap-3">
     {# Master — context list, newest-active first #}
     <div class="lg:w-80 lg:shrink-0 flex flex-col gap-2">
@@ -19,15 +27,16 @@
       <span class="text-muted text-xs">{{ chats|length }} context{{ '' if chats|length == 1 else 's' }}</span>
       <div class="flex flex-col gap-1 overflow-y-auto" style="max-height: 32rem">
         {% for c in chats %}
+        <div class="flex items-center gap-1"
+             x-show="!filter
+                     || {{ c.channel|tojson|forceescape }}.toLowerCase().includes(filter.toLowerCase())
+                     || {{ c.user_id|tojson|forceescape }}.toLowerCase().includes(filter.toLowerCase())
+                     || {{ c.chat_id|tojson|forceescape }}.toLowerCase().includes(filter.toLowerCase())
+                     || {{ c.run_id|tojson|forceescape }}.toLowerCase().includes(filter.toLowerCase())">
         <button type="button"
-                class="card text-left flex flex-col gap-0.5 py-2"
+                class="card text-left flex flex-col gap-0.5 py-2 flex-1 min-w-0"
                 :class="selected === {{ loop.index0 }} ? 'border-accent' : ''"
                 @click="selected = {{ loop.index0 }}"
-                x-show="!filter
-                        || {{ c.channel|tojson|forceescape }}.toLowerCase().includes(filter.toLowerCase())
-                        || {{ c.user_id|tojson|forceescape }}.toLowerCase().includes(filter.toLowerCase())
-                        || {{ c.chat_id|tojson|forceescape }}.toLowerCase().includes(filter.toLowerCase())
-                        || {{ c.run_id|tojson|forceescape }}.toLowerCase().includes(filter.toLowerCase())"
                 hx-get="/inspect/payload?channel={{ c.channel|urlencode }}&user_id={{ c.user_id|urlencode }}&chat_id={{ c.chat_id|urlencode }}&run_id={{ c.run_id|urlencode }}"
                 hx-target="#inspect-detail" hx-swap="innerHTML"
                 hx-trigger="click{% if loop.first %}, load{% endif %}">
@@ -47,6 +56,14 @@
             {% endif %}
           </div>
         </button>
+        {% if not c.run_id %}
+        {# Narrow the runs panel above to this context's subagent runs. #}
+        <button type="button" class="btn btn-sm btn-ghost shrink-0"
+                title="Show this context's subagent runs"
+                hx-get="/partials/subagent-runs?channel={{ c.channel|urlencode }}&chat_id={{ c.chat_id|urlencode }}"
+                hx-target="#subagent-runs" hx-swap="outerHTML">runs</button>
+        {% endif %}
+        </div>
         {% endfor %}
         {% if not chats %}
         <div class="text-muted text-xs text-center py-6">

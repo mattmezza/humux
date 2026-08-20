@@ -72,6 +72,19 @@ The detail pane shows the **exact payload the agent last sent to the model** for
 
 This is the real inference payload, captured in memory at send time, so it shows exactly what ran — no guessing. It is empty until a context has had a turn since the agent started, and reselecting a context refreshes to the latest. Subagent runs are captured too — each run's last-sent payload is inspectable per run id, the same way a chat's is. The view is admin-only and shows the payload verbatim; the assembled prompt references secrets by name, not value. The page is responsive at phone width.
 
+Above the context list sits the **live subagent runs** panel, refreshed every
+three seconds. Live [subagent](/docs/subagents) runs get a card each (agent,
+status, elapsed time, current step) with a cancel button, in a badge colour that
+distinguishes running from finished. Every card carries its run id, label, tokens
+used, and steps taken, plus — once it finishes — the stopped reason. The runs
+from one `spawn_subagents` fan-out are grouped under that batch, and a run's
+parent/children links let you walk the session tree (subagents spawning
+subagents). The panel header shows a live count of currently running subagents.
+Each main context row in the list on the left has a small **runs** button that
+filters the panel to that conversation's runs (a **show all** button in the
+header clears it); the filter survives the poll. The synthetic `⚙ subagent` rows
+stay payload-only — the panel and the payload view are complementary.
+
 ### Memory
 
 Inspect and manage the agent's memories, and tune the memory engine live:
@@ -100,13 +113,9 @@ Manage scheduled tasks:
 - Delete jobs
 - View job execution history
 
-Live [subagent](/docs/subagents) runs get a card each (agent, status, elapsed
-time, current step) with a cancel button, in a badge colour that distinguishes
-running from finished. Every card carries its run id, label, tokens used, and
-steps taken, plus — once it finishes — the stopped reason. The runs from one
-`spawn_subagents` fan-out are grouped under that batch, and a run's
-parent/children links let you walk the session tree (subagents spawning
-subagents). The tab shows a live count badge for jobs currently running.
+Jobs of type `subagent` are scheduled jobs like any other and live here. Live
+[subagent](/docs/subagents) *runs* are monitored and cancelled from the
+[Inspect](#inspect) tab.
 
 ### History
 
