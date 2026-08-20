@@ -111,3 +111,42 @@ async def test_voice_marker_stripped_per_part(agent):
     )
     assert [m.text for m in messages] == ["spoken bit", "typed bit"]
     assert "[respond_with_voice" not in combined
+
+
+# --- voice fallback on failed/unavailable synthesis (#304) ------------------
+
+
+@pytest.mark.asyncio
+async def test_failed_voice_part_dropped_when_already_sent_as_text(agent):
+    # No TTS pipeline → synthesis never succeeds. The voice-marked part repeats
+    # a plain-text part's content, so it must be dropped, not resent as text.
+    messages, combined = await agent._split_reply(
+        "Here's the summary[[split]]Here's the summary[respond_with_voice]", None
+    )
+    assert [m.text for m in messages] == ["Here's the summary"]
+    assert [m.voice for m in messages] == [None]
+    assert combined == "Here's the summary"
+
+
+@pytest.mark.asyncio
+async def test_failed_voice_only_part_falls_back_to_text(agent):
+    # A voice-only part (no matching text part) still needs to reach the user.
+    messages, combined = await agent._split_reply("solo voice line[respond_with_voice]", None)
+    assert [m.text for m in messages] == ["solo voice line"]
+    assert [m.voice for m in messages] == [None]
+    assert combined == "solo voice line"
+
+
+@pytest.mark.asyncio
+async def test_successful_voice_synthesis_unchanged(agent, monkeypatch):
+    class FakeVoice:
+        async def synthesize(self, text, voice=None, lang=None):
+            return b"audio-bytes"
+
+    monkeypatch.setattr(agent, "voice", FakeVoice())
+    messages, combined = await agent._split_reply(
+        "Here's the summary[[split]]Here's the summary[respond_with_voice]", None
+    )
+    assert [m.text for m in messages] == ["Here's the summary", "Here's the summary"]
+    assert [m.voice for m in messages] == [None, b"audio-bytes"]
+    assert combined == "Here's the summary\nHere's the summary"

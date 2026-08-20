@@ -2426,13 +2426,37 @@ class AgentCore:
         note, or a mix. No marker → a single message (unchanged behaviour).
         Returns the message list and the combined marker-free text (for history,
         logging, and the backward-compat ``AgentResponse.text``).
+
+        A voice-marked part whose synthesis fails (or whose pipeline isn't
+        loaded) must never silently degrade into a duplicate text bubble
+        (#304): if the same marker-free content was already going out as plain
+        text elsewhere in the turn, the failed part is dropped instead of
+        repeated; otherwise it falls back to text with a warning logged.
         """
         voice_name = (agent.voice or None) if agent else None
         parts = [p for p in (seg.strip() for seg in _SPLIT_MARKER_RE.split(final_text)) if p]
-        messages: list[OutputMessage] = []
+        items: list[tuple[str, bool, bytes | None]] = []
         for part in parts:
+            marked = bool(_VOICE_MARKER_RE.search(part))
             voice_bytes = await self._maybe_synthesize_voice(part, voice=voice_name)
-            messages.append(OutputMessage(text=strip_voice_marker(part), voice=voice_bytes))
+            items.append((strip_voice_marker(part), marked, voice_bytes))
+        delivered_as_text = {clean for clean, marked, _ in items if not marked}
+
+        messages: list[OutputMessage] = []
+        for clean, marked, voice_bytes in items:
+            if marked and voice_bytes is None:
+                if clean in delivered_as_text:
+                    log.warning(
+                        "Voice synthesis unavailable for part already delivered as text; "
+                        "dropping duplicate: %r",
+                        clean[:80],
+                    )
+                    continue
+                log.warning(
+                    "Voice synthesis unavailable/failed; falling back to text: %r", clean[:80]
+                )
+                delivered_as_text.add(clean)
+            messages.append(OutputMessage(text=clean, voice=voice_bytes))
         combined = "\n".join(m.text for m in messages if m.text)
         return messages, combined
 
