@@ -104,7 +104,7 @@ class AgentConfig(BaseModel):
     # several tool calls), so even a model that ignores every error signal can't loop
     # forever. Normal turns use a handful; raise it if a legitimate workflow needs more.
     # Exposed on the LLM admin tab.
-    max_tool_rounds: int = 50
+    max_tool_rounds: int = 100
     # Sampling temperature for the main agent loop. Lower = steadier tool calls;
     # higher = more varied prose. Skipped automatically for reasoning calls. Tune
     # on the LLM admin tab. (#12)

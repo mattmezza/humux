@@ -46,7 +46,7 @@
   {{ rd_max_replies|default('6', true)|tojson|forceescape }},
   {{ rd_window_seconds|default('120', true)|tojson|forceescape }},
   {{ max_tokens|default('16384', true)|tojson|forceescape }},
-  {{ max_tool_rounds|default('50', true)|tojson|forceescape }},
+  {{ max_tool_rounds|default('100', true)|tojson|forceescape }},
   {{ temperature|default('0.5', true)|tojson|forceescape }},
   {{ tr_max_reflections|default('12', true)|tojson|forceescape }}
 )">
