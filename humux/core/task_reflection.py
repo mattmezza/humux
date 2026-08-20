@@ -246,14 +246,24 @@ class ReflectionStore:
         )
 
         try:
-            raw = await llm.generate_text(model=model, prompt=prompt, max_tokens=1024)
+            # 1024 cut off a reflection on a busy turn (fan-out + several tool
+            # failures = one tool_issues entry each), and a cut-off object has no
+            # closing brace, so it parses as "non-JSON" rather than as truncation.
+            raw = await llm.generate_text(model=model, prompt=prompt, max_tokens=2048)
         except Exception:
             log.exception("Task reflection LLM call failed")
             return False
 
         parsed = _extract_json_object(raw)
         if not parsed:
-            log.warning("Task reflection returned non-JSON: %s", raw[:200])
+            # Log the TAIL as well: the head of a truncated object looks like
+            # perfectly good JSON, which is what made this misleading.
+            log.warning(
+                "Task reflection returned non-JSON (%d chars): %s … %s",
+                len(raw),
+                raw[:200],
+                raw[-200:],
+            )
             return False
 
         lesson = parsed.get("lesson", "").strip()

@@ -629,8 +629,10 @@ class MemoryStore:
 
         try:
             query_vec = await self.embedder.embed_one(query)
-        except Exception:
-            log.exception("Query embedding failed; falling back to recency order")
+        except Exception as exc:
+            # warning, not exception: this is a designed fallback, and a fan-out
+            # embeds once per child — a traceback per subagent buries real errors.
+            log.warning("Query embedding failed; falling back to recency order (%s)", exc)
             return await self.get_long_term(scope)
         if not query_vec:
             return await self.get_long_term(scope)
@@ -1093,8 +1095,8 @@ class MemoryStore:
             return None
         try:
             vec = await self.embedder.embed_one(text)
-        except Exception:
-            log.exception("Embedding call failed; proceeding without a vector")
+        except Exception as exc:
+            log.warning("Embedding call failed; proceeding without a vector (%s)", exc)
             return None
         return vec or None
 
@@ -1206,7 +1208,10 @@ class MemoryStore:
                 return 0
             old_subject, old_content, old_blob = row
             if subject != old_subject or content != old_content:
-                blob = await self._embed_blob(f"{subject}: {content}")
+                # Keep the old vector when re-embedding fails (embedder down):
+                # writing NULL would silently drop this row out of semantic
+                # recall until someone ran a manual reindex.
+                blob = await self._embed_blob(f"{subject}: {content}") or old_blob
             else:
                 blob = old_blob
             cursor = await db.execute(
