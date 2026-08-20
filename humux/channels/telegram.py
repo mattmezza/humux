@@ -114,6 +114,12 @@ REACTION_EMOJI: dict[str, str] = {
     "target": "🏆",  # no native 🎯 reaction — 🏆 "on target / achieved"
 }
 
+# The same set keyed by the character, so a caller may pass the emoji itself
+# ("👀") instead of its name ("eyes") — models off providers that don't enforce
+# the tool enum do, and so does the steering ack (#145). Rejecting those raised
+# a tool error that invited the model to improvise a raw Bot API call (#300).
+REACTION_CHARS: frozenset[str] = frozenset(REACTION_EMOJI.values())
+
 
 def _chunk(text: str, limit: int = TELEGRAM_LIMIT) -> list[str]:
     """Split ``text`` into pieces no longer than ``limit``, breaking on newlines.
@@ -764,7 +770,12 @@ class TelegramChannel:
         emoji; both surface as BadRequest, which is swallowed (a cosmetic ack must
         never fail a turn — issue #70 edge cases).
         """
+        # A name from REACTION_EMOJI, or the emoji character itself (VS16 stripped:
+        # "❤️" and "❤" are the same reaction to Telegram).
         char = REACTION_EMOJI.get(emoji)
+        if char is None:
+            raw = emoji.replace("\ufe0f", "")
+            char = raw if raw in REACTION_CHARS else None
         if char is None:
             raise ValueError(f"Unsupported reaction: {emoji!r}")
         cid, _ = self._route(chat_id)

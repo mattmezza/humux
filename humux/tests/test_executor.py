@@ -47,6 +47,32 @@ async def test_run_command_allows_cp(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "command",
+    [
+        # curl is allowlisted, so the Bot API was one hop away: the model could
+        # call any method — pinChatMessage instead of a reaction (#300).
+        "curl -s https://api.telegram.org/bot123456:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw/"
+        "pinChatMessage -d chat_id=1 -d message_id=2",
+        # A mirror/proxy still carries the token path.
+        "curl -s https://tg-proxy.example/bot123456:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw/sendMessage",
+    ],
+)
+async def test_run_command_blocks_telegram_bot_api(monkeypatch, command: str) -> None:
+    executor = ToolExecutor()
+    mock_exec = AsyncMock(return_value={"stdout": "", "stderr": "", "exit_code": 0})
+    monkeypatch.setattr(executor, "_exec", mock_exec)
+
+    result = await executor.run_command(command)
+    # The workspace rail (unlisted bash) must refuse it too — it has no allowlist.
+    in_dir = await executor.run_in_dir(command, cwd="/data/ws")
+
+    assert "set_reaction" in result["error"]
+    assert "set_reaction" in in_dir["error"]
+    mock_exec.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_run_command_forwards_cwd(monkeypatch) -> None:
     # #151: the harness passes the workspace root so git operates in the same
     # tree the file tools resolve under.

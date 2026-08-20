@@ -5,12 +5,29 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import shlex
 import shutil
 import sys
 from pathlib import Path
 
 from core.email_config import himalaya_env
+
+# The Telegram Bot API is off limits to the shell (#300). `curl` is allowlisted
+# and the bot token is readable from config, so a model that wants to react but
+# improvises "the Telegram API" can call ANY method — pinChatMessage instead of
+# setMessageReaction, deleteMessage, sendMessage as the bot — bypassing every
+# guard the real tools enforce (permissions, per-chat settings, group gates).
+# Matches the host and a bare `/bot<id>:<token>` path so a proxy/mirror is caught
+# too. Structured tools (set_reaction, send_message) are the only way in.
+_TELEGRAM_API_RE = re.compile(r"api\.telegram\.org|/bot\d{5,}:[A-Za-z0-9_-]{20,}", re.I)
+_TELEGRAM_API_ERROR = {
+    "error": (
+        "Blocked: the Telegram Bot API cannot be called from the shell. "
+        "Use the built-in tools instead — `set_reaction` to react to a message, "
+        "`send_message` to send one."
+    )
+}
 
 
 def _find_wacli_bin() -> str:
@@ -209,6 +226,8 @@ class ToolExecutor:
         root here so `git clone`/`git` operate in the SAME tree the file tools
         resolve under (#151); ``None`` keeps the process cwd (unchanged default).
         """
+        if _TELEGRAM_API_RE.search(command):
+            return _TELEGRAM_API_ERROR
         # Security: validate against whitelist
         if not self._command_allowed(command):
             return {
@@ -250,7 +269,12 @@ class ToolExecutor:
         ``tool_env`` injects the active agent's identity (GH_TOKEN, git author
         env vars) so compound workspace commands (``cd repo && gh pr create``)
         authenticate as the agent, not the container's ambient identity.
+
+        The Telegram Bot API block applies here too: this rail has no prefix
+        allowlist, so it is the other way an LLM-issued command could reach it.
         """
+        if _TELEGRAM_API_RE.search(command):
+            return _TELEGRAM_API_ERROR
         return await self._exec(command, timeout, cwd=cwd, tool_env=tool_env)
 
     async def _exec(
