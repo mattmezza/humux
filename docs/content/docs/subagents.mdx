@@ -44,7 +44,7 @@ The agent decides to delegate and calls the tool. Two modes:
   "task": "Research the top 3 Python HTTP clients and summarise trade-offs",
   "agent": "coding-helper",   // optional — omit to run as yourself (same identity & scope)
   "max_steps": 6,                // optional — caller-chosen, capped at the configured max
-  "token_budget": 40000,         // optional — caller-chosen, min 1000, capped at the configured max
+  "token_budget": 120000,        // optional — caller-chosen, min 50000, capped at the configured max
   "thinking_effort": "high",     // optional — off | low | medium | high; omit to inherit yours
   "model": "deepseek-v4-flash",  // optional — must be an allowed model; omit to inherit yours
   "provider": "deepseek",        // optional — only to disambiguate; follows from "model"
@@ -220,17 +220,19 @@ limit, applied live without a restart), or under `subagents` in `config.yml`:
 | `enabled` | `true` | Master switch; off hides the `spawn_subagent` tool everywhere |
 | `recursion_depth` | `3` | Max nesting (a top-level spawn is depth 1) |
 | `max_steps` | `12` | Ceiling on tool-call rounds per run — a hard stop; the agent may request fewer per spawn, never more |
-| `token_budget` | `100000` | Ceiling on tokens per run (best-effort); the agent may request fewer per spawn, never more |
+| `token_budget` | `300000` | Ceiling on tokens per run (best-effort); the agent may request fewer per spawn, never more. A round re-sends the whole prompt, so it costs 15–35k and each round costs more than the last — sized so `max_steps`, not tokens, is what stops a run |
 | `max_concurrent` | `4` | Per-chat concurrency gate covering **every** subagent run, sync or background. Extra spawns queue instead of failing; each chat has its own pool, so one chat's fan-out can't starve another chat's spawn. A background `spawn_subagent` still refuses outright when the chat is already at the cap |
 | `max_fanout` | `6` | Max tasks in one `spawn_subagents` call |
 | `max_spawns_per_turn` | `12` | Max subagent spawns across the whole subagent tree, per turn |
-| `turn_token_budget` | `400000` | Max subagent tokens across the whole tree, per turn. Charged as spent, one LLM round at a time — never reserved up front, so a spawn is never refused for tokens before it starts. Once the pool drains, runs stop gracefully between rounds with `stopped_reason: "turn_budget"`; concurrent runs can overshoot by at most one round each, a bounded tradeoff for the simplicity |
+| `turn_token_budget` | `1200000` | Max subagent tokens across the whole tree, per turn. Charged as spent, one LLM round at a time — never reserved up front, so a spawn is never refused for tokens before it starts. Once the pool drains, runs stop gracefully between rounds with `stopped_reason: "turn_budget"`; concurrent runs can overshoot by at most one round each, a bounded tradeoff for the simplicity |
 | `allowed_models` | *(empty)* | `provider:model` entries a spawn may pick instead of inheriting the caller's model — one per line in the admin card. Empty means overrides are off entirely |
 
 When disabled, the tool is hidden from the assistant and from the Agents tool
 scope. Assign it per agent in the **Agents** editor. A run that hits its step
 or token budget stops and returns what it has, with a note that the budget was
-reached. A spawn is refused only once `max_spawns_per_turn` is used up or
+reached — a stop always lands on a round that wanted to call another tool, so
+the run spends one final tool-less round writing up what it found rather than
+returning an empty result over the work it already paid for. A spawn is refused only once `max_spawns_per_turn` is used up or
 `turn_token_budget` is already fully drained — never pre-emptively for
 tokens — with a message the model can read instead of spawning without limit.
 

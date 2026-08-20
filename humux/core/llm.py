@@ -505,12 +505,16 @@ class LLMClient:
         openai_tools = _openai_tools(tools)
         client_any = cast(Any, self._client)
         full_messages = [{"role": "system", "content": system}, *messages]
+        # The OpenAI schema rejects an empty `tools` array, so a deliberately
+        # tool-free call (vision captioning, a subagent's wrap-up round) has to
+        # omit the field entirely rather than send [].
+        tool_kwargs = {"tools": cast(Any, openai_tools)} if openai_tools else {}
         response = await _call_with_retries(
             lambda: client_any.chat.completions.create(
                 model=resolved_model,
                 max_tokens=max_tokens,
                 messages=cast(Any, full_messages),
-                tools=cast(Any, openai_tools),
+                **tool_kwargs,
                 **self._reasoning_kwargs(),
             )
         )

@@ -124,6 +124,15 @@ _TRUNCATION_GIVEUP_MESSAGE = (
 )
 
 
+# Fed back as the tool_result for a budget-stopped subagent's pending calls, so
+# its final round writes up what it already found instead of returning nothing.
+_BUDGET_WRAPUP_NOTICE = (
+    "Not executed: you are out of budget and cannot call any more tools. Write your "
+    "final answer NOW from what you already found — the findings so far, plus one "
+    "line on what is still missing."
+)
+
+
 def _truncation_tool_results(response) -> list[dict]:
     """Error tool_results for a truncated response's pending calls (issue #77).
 
@@ -152,6 +161,11 @@ _REPEAT_FAILURE_NOTICE = (
     "kept failing. Stop retrying it — change the arguments, take a different "
     "approach, or report the problem to the user."
 )
+_REPEAT_ERROR_NOTICE = (
+    "This tool has now failed the same way several times in a row — the problem is "
+    "the tool or the service behind it, not your arguments. Stop calling it and "
+    "carry on without it, or tell the user."
+)
 _LOOP_ABORT_MESSAGE = (
     "I had to stop — I made too many tool calls without reaching an answer. "
     "Could you rephrase, or break the request into smaller steps?"
@@ -160,6 +174,17 @@ _LOOP_ABORT_MESSAGE = (
 # A sync spawn's result lands in the very next reply, so a completion note only
 # earns its noise when the run kept the user waiting this long.
 _SUBAGENT_NOTE_MIN_SECONDS = 10.0
+
+# Returned for ANY web-search backend failure. The raw exception was an httpx
+# message carrying the internal endpoint URL and a link to the HTTP status docs,
+# which models read as an invitation to go curl the backend — one subagent spent
+# its whole budget diagnosing a 404 instead of giving up. Say what to do instead,
+# and leak no URL; the real exception is in the log.
+_SEARCH_BACKEND_DOWN = (
+    "The web search backend is unavailable — this is an infrastructure outage, not "
+    "a problem with your query. Do NOT retry, rephrase, or try to diagnose it. "
+    "Continue with what you can do without web results, and say search was down."
+)
 
 
 def _failure_signature(name: str, params: object) -> str:
@@ -809,9 +834,10 @@ TOOLS = [
                     "type": "integer",
                     "description": (
                         "Approximate token ceiling for the whole run, counting the "
-                        "prompt EVERY round — one round typically costs 10-20k "
-                        "tokens, so below ~20000 a run rarely finishes real work. "
-                        "Omit for the configured default; capped at the maximum."
+                        "prompt EVERY round — one round costs 15-35k tokens and each "
+                        "round costs more than the last, so below ~50000 a run cannot "
+                        "finish real work. Usually omit it: the default is sized to let "
+                        "max_steps be what stops the run. Capped at the maximum."
                     ),
                 },
                 "thinking_effort": {
@@ -908,7 +934,8 @@ TOOLS = [
                                 "description": (
                                     "Usually omit it — the shared turn pool already "
                                     "bounds total spend. If set, one round costs "
-                                    "10-20k tokens; below ~20000 a run rarely finishes."
+                                    "15-35k tokens and grows; below ~50000 a run "
+                                    "cannot finish."
                                 ),
                             },
                             "thinking_effort": {
@@ -2641,6 +2668,14 @@ class AgentCore:
         failures = request_state.setdefault("failure_counts", {})
         if failures.get(sig, 0) >= _MAX_REPEAT_FAILURES:
             return {"error": _REPEAT_FAILURE_NOTICE}
+        # Second breaker, on the *error* rather than the arguments: a dead backend
+        # fails every call identically while the arguments keep changing (five
+        # different search queries, five identical 404s), so the signature breaker
+        # above never trips on the outage it most needs to stop.
+        streaks: dict[str, tuple[str, int]] = request_state.setdefault("error_streaks", {})
+        prev_err, prev_n = streaks.get(tool_call.name, ("", 0))
+        if prev_n >= _MAX_REPEAT_FAILURES:
+            return {"error": f"{_REPEAT_ERROR_NOTICE} The error was: {prev_err}"}
         try:
             result = await self._execute_tool_inner(tool_call, channel, user_id, request_state)
         except Exception as exc:
@@ -2657,6 +2692,10 @@ class AgentCore:
         # *identical* call many times — varying the args resets the count.
         if isinstance(result, dict) and result.get("error"):
             failures[sig] = failures.get(sig, 0) + 1
+            err = str(result.get("error"))
+            streaks[tool_call.name] = (err, prev_n + 1 if err == prev_err else 1)
+        else:
+            streaks.pop(tool_call.name, None)  # a success clears the streak
         return result
 
     async def _execute_tool_inner(
@@ -4044,7 +4083,11 @@ class AgentCore:
                 "subtask whether to retry, work around it, or tell the user — do "
                 "not silently drop them."
             )
-        capped = sum(1 for r in results if r.get("stopped_reason") in ("max_steps", "token_budget"))
+        capped = sum(
+            1
+            for r in results
+            if r.get("stopped_reason") in ("max_steps", "token_budget", "turn_budget", "truncated")
+        )
         if capped:
             notes.append(f"{capped} hit a step/token budget — their results may be partial.")
         if notes:
@@ -4355,7 +4398,11 @@ class AgentCore:
             group_id=group_id,
             parent_run_id=str(parent_state.get("run_id") or ""),
             max_steps=resolve_cap(max_steps, cfg.max_steps),
-            token_budget=resolve_cap(token_budget, cfg.token_budget, floor=1000),
+            # floor: one round costs 15-35k, so a sub-50k budget can only fail —
+            # clamp a model's undersized ask up (never above the configured ceiling).
+            token_budget=resolve_cap(
+                token_budget, cfg.token_budget, floor=min(50_000, cfg.token_budget)
+            ),
             effort=normalize_effort(thinking_effort),
             provider=ov_provider,
             model=ov_model,
@@ -4515,7 +4562,13 @@ class AgentCore:
         system = f"{system}\n\n{RESULT_FOR_AGENT_INSTRUCTION}\n\n{FILE_HANDOFF_INSTRUCTION}"
         # Memory/reflections inject per-turn via the preamble (#41), scoped to the
         # child agent (#42); query=task keeps the injection relevant.
-        preamble = await self._turn_preamble(None, query=task, scope=_agent_scope(child_agent))
+        # agent=child_agent, not None: the preamble scopes the skills index and the
+        # account list to the identity it names, and the child's scopes were already
+        # narrowed against the caller's — passing None advertised EVERY skill and the
+        # default agent's accounts to a child that may reach neither.
+        preamble = await self._turn_preamble(
+            None, query=task, scope=_agent_scope(child_agent), agent=child_agent
+        )
         messages: list[dict] = [await self._build_user_message(task, None, preamble)]
 
         # The child runs on its own agent's LLM override when it has one (so a
@@ -4613,6 +4666,34 @@ class AgentCore:
                 pool.charge(spent)
 
         text = response.text or ""
+        if response.tool_calls and not aborted:
+            # Every non-abort stop lands on a response that wanted MORE tool calls,
+            # so its text is empty or a stub — returning that throws away everything
+            # the run gathered (the findings live only in the local `messages`). One
+            # wrap-up round with no tools forces prose, turning a spent budget into a
+            # usable partial answer. Charged like any other round.
+            messages.append(llm.assistant_message(response))
+            messages.extend(
+                llm.tool_result_messages(
+                    [
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": call.id,
+                            "content": json.dumps({"error": _BUDGET_WRAPUP_NOTICE}),
+                        }
+                        for call in response.tool_calls
+                    ]
+                )
+            )
+            wrap = await llm.generate(
+                model=model, max_tokens=max_tokens, system=system, messages=messages, tools=[]
+            )
+            spent = self._usage_total(wrap.usage)
+            tokens += spent
+            run.tokens_used = tokens
+            if pool is not None:
+                pool.charge(spent)
+            text = wrap.text or text
         # stopped_reason is a field the calling model can act on (retry, size up,
         # accept partial); the text suffix stays too — belt and braces.
         if aborted:
@@ -4871,9 +4952,9 @@ class AgentCore:
                 query=query,
                 max_results=max_results,
             )
-        except Exception as exc:
+        except Exception:
             log.exception("Tavily search failed for query: %s", query)
-            return {"error": f"Search failed: {exc}"}
+            return {"error": _SEARCH_BACKEND_DOWN}
 
         # Format results for the LLM
         results = []
@@ -4909,9 +4990,9 @@ class AgentCore:
                 )
                 resp.raise_for_status()
                 data = resp.json()
-        except Exception as exc:
+        except Exception:
             log.exception("SearXNG search failed for query: %s", query)
-            return {"error": f"Search failed: {exc}"}
+            return {"error": _SEARCH_BACKEND_DOWN}
 
         results = [
             {
@@ -5096,9 +5177,14 @@ class AgentCore:
                 )
             }
         await self.image_budget.record()
-        # imagegen.save returns a cwd-relative path; resolve it so a subagent's
-        # Files: report actually names a findable file.
-        path = str(Path(imagegen.save(data, mime)).resolve())
+        # Save inside the coding workspace when there is one: the file tools and
+        # bash are confined to that tree, so an image under the process cwd was
+        # unreachable by every tool that could publish it (the model had to go
+        # hunting for it with `ls -t`). Resolve it either way so a subagent's
+        # Files: report names a findable file.
+        ws_img = self._workspace_dir()
+        directory = str(Path(ws_img).expanduser() / "images") if ws_img else "data/images"
+        path = str(Path(imagegen.save(data, mime, directory=directory)).resolve())
         request_state.setdefault("pending_attachments", []).append(
             Attachment(data=data, mime_type=mime, filename=Path(path).name)
         )
@@ -5122,6 +5208,13 @@ class AgentCore:
                 "what you made."
             ),
         }
+        if ws_img and self.config.artifacts.enabled:
+            # The path is only useful while this turn's tool results are live, so
+            # say here — not in a skill — how to get the file onto a web page.
+            result["note"] += (
+                " To put it on a web page, copy it into the artifact first: "
+                f"`cp {path} artifacts/<slug>/`, then reference it relatively."
+            )
         # Issue #55 cost controls: warn the user when nearing a budget cap.
         warning = await self.image_budget.warning(ig.daily_budget, ig.monthly_budget)
         if warning:

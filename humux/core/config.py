@@ -523,7 +523,12 @@ class SubagentsConfig(BaseModel):
     enabled: bool = True
     recursion_depth: int = 3  # max nesting; spawns are refused beyond this
     max_steps: int = 12  # max tool-call rounds per run (hard stop)
-    token_budget: int = 100_000  # approx token ceiling per run (best-effort)
+    # Approx token ceiling per run. Counted as input+output EVERY round, and on
+    # OpenAI-shaped providers `input_tokens` includes the whole re-sent prompt
+    # (system + tool defs ≈ 14k before any history), so the real cost of a round
+    # grows and 100k bought only ~4 rounds — max_steps, the honest limiter, never
+    # got to bind. Sized so it does.
+    token_budget: int = 300_000
     # Runs executing at once, PER CHAT, all paths (sync fan-out queues at the
     # cap; a single background spawn still refuses). Was a background-only
     # process-wide counter before the fan-out work.
@@ -532,7 +537,7 @@ class SubagentsConfig(BaseModel):
     # Whole-tree per-turn pools (see FanoutBudget): total spawns and total
     # subagent tokens a single turn may consume, parents and children combined.
     max_spawns_per_turn: int = 12
-    turn_token_budget: int = 400_000
+    turn_token_budget: int = 1_200_000  # max_concurrent × token_budget
     # "provider:model" entries a spawn may pick instead of inheriting the
     # caller's LLM (#299). Empty = no overrides; a subagent always inherits.
     allowed_models: list[str] = []

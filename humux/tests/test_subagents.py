@@ -214,6 +214,29 @@ async def test_run_subagent_token_budget_stops_loop(agent) -> None:
 
 
 @pytest.mark.asyncio
+async def test_budget_stop_returns_the_work_done_so_far(agent) -> None:
+    """A budget stop lands on a tool_calls response whose text is empty, so the
+    findings live only in the run's local messages. The wrap-up round is what
+    gets them back to the caller — without it the parent pays for the run and
+    receives nothing but the stop marker."""
+    agent.config.subagents.max_steps = 1
+    call = LLMToolCall(id="1", name="web_search", arguments={"query": "q"})
+    agent.llm = _ScriptedLLM(
+        [
+            LLMResponse(text="", tool_calls=[call]),
+            LLMResponse(text="", tool_calls=[call]),
+            # The wrap-up round: no tools offered, so the model writes it up.
+            LLMResponse(text="found: CHF 599", tool_calls=[]),
+        ]
+    )
+    result = await agent.run_subagent(task="loop")
+    assert result["ok"] is True
+    assert "found: CHF 599" in result["result"]
+    assert "budget" in result["result"].lower()
+    assert agent.subagents.get(result["run_id"]).stopped_reason == "max_steps"
+
+
+@pytest.mark.asyncio
 async def test_background_subagent_notifies_user_digests_context(agent, monkeypatch) -> None:
     channel = AsyncMock()
     agent.channels["telegram"] = channel
@@ -1251,7 +1274,8 @@ async def test_run_reports_steps_tokens_and_stopped_reason(agent) -> None:
     run = agent.subagents.get(res["run_id"])
     assert run.stopped_reason == "max_steps" == res["stopped_reason"]
     assert res["steps"] == run.steps == 2
-    assert res["tokens_used"] == run.tokens_used == 150  # 3 rounds × 50
+    # 3 loop rounds + the wrap-up round that writes up the work done so far.
+    assert res["tokens_used"] == run.tokens_used == 200  # 4 rounds × 50
 
 
 @pytest.mark.asyncio

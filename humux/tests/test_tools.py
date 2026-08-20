@@ -887,6 +887,59 @@ async def test_repeat_failure_breaker_stops_after_n(agent) -> None:
     assert errors[-1] == _REPEAT_FAILURE_NOTICE
 
 
+@pytest.mark.asyncio
+async def test_error_streak_breaker_stops_a_dead_backend(agent, monkeypatch) -> None:
+    """Varying arguments defeat the signature breaker, so a down service keeps
+    getting called — five different search queries, five identical outages. The
+    error-streak breaker is what stops that."""
+    from core.agent import _MAX_REPEAT_FAILURES, _REPEAT_ERROR_NOTICE
+    from core.llm import LLMToolCall
+
+    async def down(*_a, **_kw):
+        return {"error": "The web search backend is unavailable."}
+
+    monkeypatch.setattr(agent, "_execute_tool_inner", down)
+    state = agent._new_request_state()
+    errors = [
+        (
+            await agent._execute_tool(
+                LLMToolCall(id=str(i), name="web_search", arguments={"query": f"q{i}"}),
+                "system",
+                "u",
+                state,
+            )
+        )["error"]
+        for i in range(_MAX_REPEAT_FAILURES + 1)
+    ]
+    assert all("unavailable" in e for e in errors[:_MAX_REPEAT_FAILURES])
+    assert errors[-1].startswith(_REPEAT_ERROR_NOTICE)
+
+
+@pytest.mark.asyncio
+async def test_error_streak_resets_on_success(agent, monkeypatch) -> None:
+    from core.agent import _MAX_REPEAT_FAILURES
+    from core.llm import LLMToolCall
+
+    outcomes = [{"error": "flaky"}] * (_MAX_REPEAT_FAILURES - 1) + [{"ok": True}]
+
+    async def flaky(*_a, **_kw):
+        return outcomes.pop(0) if outcomes else {"error": "flaky"}
+
+    monkeypatch.setattr(agent, "_execute_tool_inner", flaky)
+    state = agent._new_request_state()
+    # One more call than the streak allows: without the reset the success would
+    # not clear the two earlier failures and this last call would be refused.
+    for i in range(_MAX_REPEAT_FAILURES + 2):
+        res = await agent._execute_tool(
+            LLMToolCall(id=str(i), name="web_search", arguments={"query": f"q{i}"}),
+            "system",
+            "u",
+            state,
+        )
+    # The success cleared the streak, so the next failure starts counting again.
+    assert res["error"] == "flaky"
+
+
 # ---------------------------------------------------------------------------
 # Approval delivery (#79 B): fail closed when the prompt can't be sent
 # ---------------------------------------------------------------------------

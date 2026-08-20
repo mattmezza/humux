@@ -67,10 +67,15 @@ the task's first words if nothing better comes to mind.
 
 | Task shape | max_steps | token_budget | thinking_effort | model |
 |---|---|---|---|---|
-| Mechanical extraction (read file, pull fields) | 5–8 | 15k–25k | `off`/`low` | cheap fast model |
-| Focused web research, 3–6 sources | 10–15 | 30k–50k | `low` | cheap fast model |
-| Code reading + explanation across a module | 15–25 | 50k–80k | `medium` | parent's model |
-| Judgement, design, tradeoff analysis, review | 20–30 | 80k–120k | `high` | parent's model |
+| Mechanical extraction (read file, pull fields) | 5–8 | 50k–80k | `off`/`low` | cheap fast model |
+| Focused web research, 3–6 sources | 10–15 | 100k–150k | `low` | cheap fast model |
+| Code reading + explanation across a module | 15–25 | 150k–250k | `medium` | parent's model |
+| Judgement, design, tradeoff analysis, review | 20–30 | 250k–300k | `high` | parent's model |
+
+A round re-sends the whole prompt, so it costs 15–35k tokens and each round
+costs more than the last: `max_steps` × ~25k is the honest floor for a budget.
+Leaving `token_budget` out entirely is usually right — the default already
+sizes it so `max_steps` is what stops the run.
 
 Requested values are capped at the configured maxima — asking for 1M tokens
 gets the cap, not an error. Undersizing is the commoner mistake: a run that
