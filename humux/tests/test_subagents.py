@@ -928,6 +928,7 @@ async def test_subagent_loop_is_not_offered_the_fanout_tool(agent) -> None:
 @pytest.mark.asyncio
 async def test_fanout_token_pool_starts_only_what_fits(agent, monkeypatch) -> None:
     agent.config.subagents.turn_token_budget = 2500
+    agent.config.subagents.token_budget = 1000  # keep the pool at 2500 (max() floor)
     _install_overlap_loop(agent, monkeypatch, delay=0.0)
     tasks = [{"task": f"t{i}", "label": f"l{i}", "token_budget": 1000} for i in range(3)]
 
@@ -966,6 +967,7 @@ async def test_fanout_spawn_pool_is_shared_across_spawns_in_one_turn(agent, monk
 async def test_completed_run_refunds_its_unspent_reservation(agent) -> None:
     """Reserve the full budget up front, hand back what the run didn't spend."""
     agent.config.subagents.turn_token_budget = 50_000
+    agent.config.subagents.token_budget = 5000  # keep the pool at 50k (max() floor)
     agent.llm = _ScriptedLLM(
         [LLMResponse(text="done", tool_calls=[], usage={"input_tokens": 30, "output_tokens": 20})]
     )
@@ -977,6 +979,57 @@ async def test_completed_run_refunds_its_unspent_reservation(agent) -> None:
     budget = state["fanout_budget"]
     assert budget.tokens_left == 50_000 - 50  # 5000 reserved, 4950 refunded
     assert budget.spawns_left == agent.config.subagents.max_spawns_per_turn - 1
+
+
+@pytest.mark.asyncio
+async def test_fanout_unsized_tasks_share_the_pool(agent, monkeypatch) -> None:
+    """Omitted token_budgets split the pool across the width instead of each
+    demanding the full per-run ceiling (which would refuse most of the group
+    whenever ceiling × width exceeds the pool)."""
+    agent.config.subagents.token_budget = 100_000
+    agent.config.subagents.turn_token_budget = 150_000
+    _install_overlap_loop(agent, monkeypatch, delay=0.0)
+    tasks = [{"task": f"t{i}", "label": f"l{i}"} for i in range(3)]
+
+    out = await agent._tool_spawn_subagents({"tasks": tasks}, "cli", "u", _fanout_state(agent))
+
+    assert out["succeeded"] == 3
+    for row in out["results"]:
+        assert agent.subagents.get(row["run_id"]).token_budget == 50_000
+
+
+@pytest.mark.asyncio
+async def test_pool_is_never_smaller_than_one_default_run(agent) -> None:
+    """An owner who raised token_budget past turn_token_budget (the per-run
+    knob predates the pool) must still be able to run one unsized spawn."""
+    agent.config.subagents.token_budget = 500_000
+    agent.config.subagents.turn_token_budget = 400_000
+    agent.llm = _ScriptedLLM([LLMResponse(text="done", tool_calls=[])])
+
+    res = await agent.run_subagent(task="x")
+
+    assert res["ok"] is True
+
+
+@pytest.mark.asyncio
+async def test_tiny_budget_still_gets_its_first_tool_round(agent) -> None:
+    """The opening generate alone can exceed a small budget; the run must still
+    execute round one rather than billing that call and doing nothing."""
+    agent.config.subagents.max_steps = 10
+    call = LLMToolCall(id="1", name="web_search", arguments={"query": "q"})
+    agent.llm = _ScriptedLLM(
+        [
+            LLMResponse(
+                text="", tool_calls=[call], usage={"input_tokens": 5000, "output_tokens": 0}
+            ),
+            LLMResponse(text="answer", tool_calls=[]),
+        ]
+    )
+
+    res = await agent.run_subagent(task="x", token_budget=1000)
+
+    assert res["ok"] is True
+    assert res["steps"] == 1  # round one ran despite tokens > budget after gen 1
 
 
 # ---------------------------------------------------------------------------

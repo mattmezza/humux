@@ -804,7 +804,9 @@ TOOLS = [
                 "token_budget": {
                     "type": "integer",
                     "description": (
-                        "Approximate token ceiling for the whole run (minimum 1000). "
+                        "Approximate token ceiling for the whole run, counting the "
+                        "prompt EVERY round — one round typically costs 10-20k "
+                        "tokens, so below ~20000 a run rarely finishes real work. "
                         "Omit for the configured default; capped at the maximum."
                     ),
                 },
@@ -897,7 +899,14 @@ TOOLS = [
                                 ),
                             },
                             "max_steps": {"type": "integer"},
-                            "token_budget": {"type": "integer"},
+                            "token_budget": {
+                                "type": "integer",
+                                "description": (
+                                    "Omit it: unsized tasks share the turn's pool "
+                                    "fairly. If set, one round costs 10-20k tokens — "
+                                    "below ~20000 a run rarely finishes."
+                                ),
+                            },
                             "thinking_effort": {
                                 "type": "string",
                                 "enum": ["off", "low", "medium", "high"],
@@ -3866,6 +3875,14 @@ class AgentCore:
         group_id = f"grp_{uuid.uuid4().hex[:6]}"
         started_at = time.time()
 
+        # An unsized fan-out task must not reserve the full per-run ceiling —
+        # width × ceiling rarely fits the pool (it never does when the owner
+        # raised token_budget near turn_token_budget), and reserve-then-refund
+        # would refuse most of the group. Split what's left across the width
+        # instead, still capped at the per-run ceiling; an explicit
+        # token_budget is honoured (or refused) as requested.
+        default_tb = min(cfg.token_budget, max(10_000, budget.tokens_left // len(tasks)))
+
         # Prepare + reserve per index; a refusal becomes that index's error
         # entry, never an all-or-nothing failure.
         entries: list[dict] = []
@@ -3887,7 +3904,7 @@ class AgentCore:
                 parent_state=request_state,
                 background=background,
                 max_steps=item.get("max_steps"),
-                token_budget=item.get("token_budget"),
+                token_budget=item.get("token_budget") or default_tb,
                 thinking_effort=item.get("thinking_effort"),
                 model=str(item.get("model", "")),
                 provider=str(item.get("provider", "")),
@@ -4305,12 +4322,19 @@ class AgentCore:
         return run, child_agent, child_state
 
     def _turn_budget(self, parent_state: dict) -> FanoutBudget:
-        """The turn's shared subagent spend pool, created lazily on first spawn."""
+        """The turn's shared subagent spend pool, created lazily on first spawn.
+
+        The pool is never smaller than one default-sized run: an owner who
+        raised ``token_budget`` past ``turn_token_budget`` (the per-run knob
+        predates the pool) would otherwise find every unsized spawn refused
+        out of the box.
+        """
         budget = parent_state.get("fanout_budget")
         if budget is None:
             cfg = self.config.subagents
             budget = parent_state["fanout_budget"] = FanoutBudget(
-                tokens_left=cfg.turn_token_budget, spawns_left=cfg.max_spawns_per_turn
+                tokens_left=max(cfg.turn_token_budget, cfg.token_budget),
+                spawns_left=cfg.max_spawns_per_turn,
             )
         return budget
 
@@ -4486,7 +4510,15 @@ class AgentCore:
         tokens = self._usage_total(response.usage)
         run.tokens_used = tokens
         aborted = False
-        while response.tool_calls and steps < run.max_steps and tokens < run.token_budget:
+        # ``steps == 0 or``: the first tool round always runs. The opening
+        # generate alone can cost more than a small budget (system prompt +
+        # tools ≈ 10k+ input tokens), and stopping before the first round would
+        # bill that call and do nothing with it.
+        while (
+            response.tool_calls
+            and steps < run.max_steps
+            and (steps == 0 or tokens < run.token_budget)
+        ):
             if abort and abort.is_set():
                 aborted = True
                 break

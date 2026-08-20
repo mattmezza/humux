@@ -212,7 +212,7 @@ limit, applied live without a restart), or under `subagents` in `config.yml`:
 | `max_concurrent` | `4` | Per-chat concurrency gate covering **every** subagent run, sync or background. Extra spawns queue instead of failing; each chat has its own pool, so one chat's fan-out can't starve another chat's spawn. A background `spawn_subagent` still refuses outright when the chat is already at the cap |
 | `max_fanout` | `6` | Max tasks in one `spawn_subagents` call |
 | `max_spawns_per_turn` | `12` | Max subagent spawns across the whole subagent tree, per turn |
-| `turn_token_budget` | `400000` | Max subagent tokens across the whole tree, per turn. Reserve-then-refund: each run reserves its `token_budget` up front and refunds the unspent part when it finishes |
+| `turn_token_budget` | `400000` | Max subagent tokens across the whole tree, per turn. Reserve-then-refund: each run reserves its `token_budget` up front and refunds the unspent part when it finishes. The pool is never smaller than one default run (`token_budget`), and fan-out tasks that don't set a budget split the pool across the width |
 | `allowed_models` | *(empty)* | `provider:model` entries a spawn may pick instead of inheriting the caller's model — one per line in the admin card. Empty means overrides are off entirely |
 
 When disabled, the tool is hidden from the assistant and from the Agents tool

@@ -154,7 +154,10 @@ Every spawn — singular, plural, and any nested subagent — draws from one sha
 pool for the whole turn: `max_spawns_per_turn` (default 12) and
 `turn_token_budget` (default 400000). Each run reserves its `token_budget` up
 front and refunds the unused part on completion — so a generous budget on a
-short task is cheap; generous budgets on many tasks are not.
+short task is cheap; generous budgets on many tasks are not. In a fan-out,
+prefer omitting `token_budget`: unsized tasks split the pool fairly. If you
+do size one, remember every round re-reads the prompt (10-20k tokens a
+round) — budgets under ~20k rarely finish real work.
 
 Two or three well-briefed subtasks beat six vague ones, every time. A spawn
 refused with a budget error is the signal to finish with what you have and tell
