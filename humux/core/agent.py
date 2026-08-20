@@ -3917,7 +3917,7 @@ class AgentCore:
             if err:
                 entries.append({"index": i, "label": label, "error": err})
                 continue
-            self._start_subagent(run)
+            await self._start_subagent(run)
             entries.append(
                 {
                     "index": i,
@@ -4186,7 +4186,7 @@ class AgentCore:
             err = budget.take_spawn()
             if err:
                 return {"error": err}
-            self._start_subagent(run)
+            await self._start_subagent(run)
             bg = asyncio.create_task(
                 self._run_subagent_background(run, child_agent, child_state),
                 name=f"subagent-{run_id}",
@@ -4210,7 +4210,7 @@ class AgentCore:
         err = budget.take_spawn()
         if err:
             return {"error": err}
-        self._start_subagent(run)
+        await self._start_subagent(run)
         log.info("Running subagent %s (agent=%s)", run_id, run.agent or "default")
         try:
             text = await self._run_subagent_loop(task, child_agent, child_state, run)
@@ -4375,12 +4375,26 @@ class AgentCore:
             )
         return budget
 
-    def _start_subagent(self, run: SubagentRun) -> None:
-        """Register a prepared run and link it into its parent's run tree."""
+    async def _start_subagent(self, run: SubagentRun) -> None:
+        """Register a prepared run, link it into its parent's run tree, and
+        announce it in the originating chat. Every run passes through here, so
+        the note also covers nested spawns — the user sees the tree grow and can
+        cancel any of it via /subagents. Fan-out children are skipped: their
+        group note already names every label."""
         self.subagents.register(run)
         parent_run = self.subagents.get(run.parent_run_id) if run.parent_run_id else None
         if parent_run and run.run_id not in parent_run.children:
             parent_run.children.append(run.run_id)
+        if run.group_id:
+            return
+        name = run.label or run.agent or run.run_id
+        as_agent = f" (as {run.agent})" if run.agent and run.agent != name else ""
+        if run.depth >= 2 and parent_run:
+            parent_name = parent_run.label or parent_run.agent or parent_run.run_id
+            text = f"🧬 {parent_name} spawned subagent {name}{as_agent}"
+        else:
+            text = f"🧬 Spawned subagent {name}{as_agent}"
+        await self._notify_origin_chat(run.origin_channel, run.origin_chat_id, text)
 
     @staticmethod
     def _subagent_chat_key(channel: str, chat_id: str) -> str:

@@ -130,6 +130,10 @@ done (42s, 23k tokens)`, or the failed/cancelled variant). Like the progress
 note these are notifications only: they never start a turn and never enter the
 conversation history. A singular synchronous spawn only posts one if it ran for
 at least ten seconds — a quick one's result is already in the very next reply.
+Every spawn announces itself the same way (`🧬 Spawned subagent pricing`, or
+`🧬 pricing spawned subagent stock-check` for a nested one — fan-out children are
+covered by the group note instead), so the run tree is visible in the chat as it
+grows and any run in it can be cancelled from `/subagents` or the Jobs tab.
 
 All spawns, singular or plural, draw from the same [per-turn budget
 pool](#guardrails) — a big fan-out can exhaust it and leave less room for

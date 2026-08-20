@@ -240,10 +240,10 @@ async def test_background_subagent_notifies_user_digests_context(agent, monkeypa
     await run._task
 
     assert run.status == "done"
-    # Chat: ONLY the one-line NOTIFICATION — no per-run completion note (the
-    # last/only finisher's note is suppressed; the digest speaks for it), and
-    # never the raw output.
-    assert _sent(channel) == ["Cheapest is CHF 599."]
+    # Chat: the spawn note, then ONLY the one-line NOTIFICATION — no per-run
+    # completion note (the last/only finisher's note is suppressed; the digest
+    # speaks for it), and never the raw output.
+    assert _sent(channel) == ["🧬 Spawned subagent price check", "Cheapest is CHF 599."]
     # Context: the concise digest is kept (merged), the raw output never is.
     turns = await agent.history.get_messages("telegram", "u1", "555")
     blob = str(turns[-1]["content"])
@@ -934,6 +934,9 @@ async def test_fanout_child_completion_notes(agent, monkeypatch) -> None:
         notes = [t for t in _sent(channel) if t.startswith(f"✅ Subagent {label} ")]
         assert len(notes) == 1, notes
         assert "done" in notes[0]
+    # No per-child spawn notes: the group 🧩 note already named every label.
+    assert not [t for t in _sent(channel) if t.startswith("🧬")]
+    assert len([t for t in _sent(channel) if t.startswith("🧩")]) == 1
     # Notification only: nothing reached the conversation history.
     msgs = await agent.history.get_messages("cli", "u", "c1")
     assert not any("Subagent" in str(m.get("content", "")) for m in msgs)
@@ -958,11 +961,13 @@ async def test_fanout_failed_child_notes_the_failure(agent, monkeypatch) -> None
     sent = _sent(channel)
     assert [t for t in sent if "bad" in t and "failed" in t]
     assert [t for t in sent if "good" in t and "done" in t]
+    assert not [t for t in sent if t.startswith("🧬")]  # group note only
 
 
 @pytest.mark.asyncio
 async def test_fast_sync_spawn_posts_no_completion_note(agent) -> None:
-    """A sync result lands in the very next reply — a 0s run needs no note."""
+    """A sync result lands in the very next reply — a 0s run needs no note.
+    The spawn note still goes out, so the user knows what started."""
     channel = AsyncMock()
     agent.channels["cli"] = channel
     agent.llm = _ScriptedLLM([LLMResponse(text="quick", tool_calls=[])])
@@ -970,7 +975,58 @@ async def test_fast_sync_spawn_posts_no_completion_note(agent) -> None:
     res = await agent.run_subagent(task="x", origin_channel="cli", origin_chat_id="c1")
 
     assert res["ok"] is True
-    assert not [t for t in _sent(channel) if "Subagent" in t]
+    assert _sent(channel) == ["🧬 Spawned subagent x"]
+
+
+@pytest.mark.asyncio
+async def test_spawn_note_names_the_target_agent(agent) -> None:
+    """When the run targets a named agent, the note says which."""
+    channel = AsyncMock()
+    agent.channels["cli"] = channel
+    await agent.agents.upsert(Agent(name="qa", role="Reviews changes"))
+    agent.llm = _ScriptedLLM([LLMResponse(text="ok", tool_calls=[])])
+
+    await agent.run_subagent(
+        task="pricing", agent_name="qa", origin_channel="cli", origin_chat_id="c1"
+    )
+
+    assert _sent(channel) == ["🧬 Spawned subagent pricing (as qa)"]
+
+
+@pytest.mark.asyncio
+async def test_nested_spawn_note_names_parent_and_child(agent) -> None:
+    """A subagent spawning a subagent announces itself in the origin chat too —
+    the run tree stays visible (and cancellable) as it grows."""
+    channel = AsyncMock()
+    agent.channels["cli"] = channel
+    nested = LLMToolCall(id="1", name="spawn_subagent", arguments={"task": "check stock"})
+    agent.llm = _ScriptedLLM(
+        [
+            LLMResponse(text="", tool_calls=[nested]),  # the parent run delegates
+            LLMResponse(text="in stock", tool_calls=[]),  # the nested child answers
+            LLMResponse(text="all good", tool_calls=[]),  # the parent wraps up
+        ]
+    )
+
+    res = await agent.run_subagent(task="price check", origin_channel="cli", origin_chat_id="c1")
+
+    assert res["ok"] is True
+    assert _sent(channel) == [
+        "🧬 Spawned subagent price check",
+        "🧬 price check spawned subagent check stock",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_sync_spawn_without_chat_posts_nothing(agent) -> None:
+    """A system/scheduler run has no chat to announce into."""
+    channel = AsyncMock()
+    agent.channels["system"] = channel
+    agent.llm = _ScriptedLLM([LLMResponse(text="ok", tool_calls=[])])
+
+    await agent.run_subagent(task="x", origin_channel="system", origin_chat_id="")
+
+    channel.send.assert_not_awaited()
 
 
 @pytest.mark.asyncio

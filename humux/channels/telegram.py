@@ -656,10 +656,17 @@ class TelegramChannel:
         if not runs:
             await message.reply_text("No active subagent runs.")
             return
-        for r in runs:
+        # Oldest first so a parent reads above the children it spawned; the
+        # registry lists every run at any depth, so nested spawns are all here.
+        for r in sorted(runs, key=lambda x: x.started_at):
             name = r.label or r.agent or "default"
+            lineage = ""
+            if r.parent_run_id:
+                parent = self.agent.subagents.get(r.parent_run_id)
+                pname = (parent.label or parent.agent or parent.run_id) if parent else "?"
+                lineage = f"\n└ spawned by <b>{pname}</b>"
             text = (
-                f"🤖 <b>{name}</b> · {r.status} · {r.elapsed_str}\n"
+                f"🤖 <b>{name}</b> · {r.status} · {r.elapsed_str}{lineage}\n"
                 f"{(r.progress or '—')}\n"
                 f"<i>{r.task[:160]}</i>"
             )
