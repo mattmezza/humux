@@ -46,6 +46,8 @@ The agent decides to delegate and calls the tool. Two modes:
   "max_steps": 6,                // optional — caller-chosen, capped at the configured max
   "token_budget": 40000,         // optional — caller-chosen, min 1000, capped at the configured max
   "thinking_effort": "high",     // optional — off | low | medium | high; omit to inherit yours
+  "model": "deepseek-v4-flash",  // optional — must be an allowed model; omit to inherit yours
+  "provider": "deepseek",        // optional — only to disambiguate; follows from "model"
   "background": false            // true → run async, report back when done
 }
 ```
@@ -60,6 +62,15 @@ configured ceiling, `thinking_effort` to inherit the caller's level — and the
 numeric caps are clamped to the [Guardrails](#guardrails) maxima, which the
 agent can dial *down* but never past. Omitting `agent` runs the subagent as
 the caller itself, with the same identity and scope.
+
+**A subagent can run on a different model.** With `allowed_models` configured
+(see [Guardrails](#guardrails)), a spawn may name a `model` — a coordinator on a
+big model then farms the legwork out to cheap, fast workers and keeps the
+synthesis for itself. The model must be one of the allowed `provider:model`
+entries, which the tool description lists for the agent; anything else is
+refused. `provider` is only needed to disambiguate a model name that appears
+under two providers, and each provider uses the API key already configured for
+it. Omit both and the subagent inherits the caller's model, as it always has.
 
 **Files hand back automatically.** The subagent shares the agent's filesystem,
 so any file it writes is already on disk where the caller can reach it — it just
@@ -118,6 +129,7 @@ limit, applied live without a restart), or under `subagents` in `config.yml`:
 | `max_steps` | `12` | Ceiling on tool-call rounds per run — a hard stop; the agent may request fewer per spawn, never more |
 | `token_budget` | `100000` | Ceiling on tokens per run (best-effort); the agent may request fewer per spawn, never more |
 | `max_concurrent` | `3` | Max background runs at once |
+| `allowed_models` | *(empty)* | `provider:model` entries a spawn may pick instead of inheriting the caller's model — one per line in the admin card. Empty means overrides are off entirely |
 
 When disabled, the tool is hidden from the assistant and from the Agents tool
 scope. Assign it per agent in the **Agents** editor. A run that hits its step

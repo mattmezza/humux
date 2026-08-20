@@ -64,6 +64,68 @@ def normalize_effort(value: str | None) -> str | None:
     return _EFFORT_LEVELS.get(str(value).strip().lower())
 
 
+def _parse_allowed(allowed: list[str] | None) -> list[tuple[str, str]]:
+    """Split configured ``provider:model`` entries into pairs, dropping junk."""
+    out: list[tuple[str, str]] = []
+    for entry in allowed or []:
+        provider, _, model = str(entry).strip().partition(":")
+        if provider.strip() and model.strip():
+            out.append((provider.strip(), model.strip()))
+    return out
+
+
+def allowed_models_hint(allowed: list[str] | None) -> str:
+    """One line naming the models a spawn may pick, or "" when none are configured."""
+    pairs = _parse_allowed(allowed)
+    if not pairs:
+        return ""
+    return "Available: " + ", ".join(f"{p}:{m}" for p, m in pairs)
+
+
+def resolve_model_override(
+    provider: str, model: str, allowed: list[str] | None
+) -> tuple[str, str, str]:
+    """Resolve a spawn's requested model/provider against ``subagents.allowed_models``.
+
+    Returns ``(provider, model, error)``. ``("", "", "")`` means *inherit the
+    caller's LLM* — the default and the only outcome when the caller asked for
+    nothing, so existing spawns are unchanged (#299).
+
+    Entries are ``provider:model``; a request matches an entry when every field
+    it *did* name matches, so ``model`` alone resolves its provider from the list
+    (and ``provider`` alone picks that provider's first listed model). An empty
+    list means overrides are off entirely. A miss returns a message for the
+    calling model, never an exception.
+    """
+    provider, model = (provider or "").strip(), (model or "").strip()
+    if not provider and not model:
+        return "", "", ""
+    pairs = _parse_allowed(allowed)
+    if not pairs:
+        return (
+            "",
+            "",
+            (
+                "Subagent model/provider overrides are not enabled "
+                "(no allowed models configured). Omit 'model' and 'provider' to "
+                "inherit the current model."
+            ),
+        )
+    for p, m in pairs:
+        if (not provider or p == provider) and (not model or m == model):
+            return p, m, ""
+    asked = ":".join(x for x in (provider, model) if x)
+    return (
+        "",
+        "",
+        (
+            f"Model '{asked}' is not allowed for subagents. "
+            f"{allowed_models_hint(allowed)}. Omit 'model' and 'provider' to inherit "
+            "the current model."
+        ),
+    )
+
+
 def resolve_cap(value: object, ceiling: int, floor: int = 1) -> int:
     """Clamp a caller-requested run cap (steps / token budget) into bounds.
 
@@ -149,6 +211,9 @@ class SubagentRun:
     max_steps: int = 0
     token_budget: int = 0
     effort: str | None = None
+    # LLM override resolved from subagents.allowed_models (#299); "" = inherit.
+    provider: str = ""
+    model: str = ""
     status: str = "running"  # running | done | cancelled | error
     progress: str = ""
     result: str = ""
@@ -335,6 +400,16 @@ def _selfcheck() -> None:
     assert narrow_accounts([{"account": "y", "access_level": "read_write"}], [rw]) == []
     # Both read_write → preserved.
     assert narrow_accounts([rw], [rw]) == [rw]
+
+    # Model overrides (#299): nothing asked → inherit, whatever the config says.
+    assert resolve_model_override("", "", []) == ("", "", "")
+    assert resolve_model_override("", "", ["a:b"]) == ("", "", "")
+    # Asked with no allowlist → refused, not raised.
+    assert resolve_model_override("", "b", [])[2]
+    # Model alone resolves its provider from the list.
+    assert resolve_model_override("", "b", ["a:b"]) == ("a", "b", "")
+    assert resolve_model_override("a", "b", ["a:b", "c:d"]) == ("a", "b", "")
+    assert resolve_model_override("a", "d", ["a:b", "c:d"])[2]  # wrong pairing → refused
     print("subagents.py self-check OK")
 
 

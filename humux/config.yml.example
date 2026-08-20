@@ -218,6 +218,9 @@ subagents:
   max_steps: 12        # max tool-call rounds per run (hard stop)
   token_budget: 100000 # approx token ceiling per run (best-effort)
   max_concurrent: 3    # max background runs at once
+  # "provider:model" a spawn may pick instead of inheriting the caller's LLM
+  # (e.g. a cheap worker under an expensive coordinator). Empty = inherit only.
+  allowed_models: []   # e.g. ["deepseek:deepseek-v4-flash"]
 
 # When a background subagent batch finishes, distil it into a one-line chat
 # notification + a concise context digest (instead of dumping the raw output).

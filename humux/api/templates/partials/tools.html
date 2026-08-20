@@ -68,6 +68,7 @@
     steps: {{ subagents_max_steps|default('12', true)|tojson|forceescape }},
     tokens: {{ subagents_token_budget|default('100000', true)|tojson|forceescape }},
     concurrent: {{ subagents_max_concurrent|default('3', true)|tojson|forceescape }},
+    allowedModels: {{ subagents_allowed_models|default('', true)|tojson|forceescape }},
     summaryEnabled: {{ summary_enabled|default('true', true)|tojson|forceescape }},
     summaryProvider: {{ summary_provider|default('deepseek', true)|tojson|forceescape }},
     summaryModel: {{ summary_model|default('deepseek-v4-flash', true)|tojson|forceescape }},
@@ -80,6 +81,7 @@
         'subagents.max_steps': String(parseInt(this.steps) || 1),
         'subagents.token_budget': String(parseInt(this.tokens) || 1),
         'subagents.max_concurrent': String(parseInt(this.concurrent) || 1),
+        'subagents.allowed_models': JSON.stringify(String(this.allowedModels || '').split('\n').map(s => s.trim()).filter(Boolean)),
         'subagent_summary.enabled': String(this.summaryEnabled === true || this.summaryEnabled === 'true'),
         'subagent_summary.provider': String(this.summaryProvider || 'deepseek').trim(),
         'subagent_summary.model': String(this.summaryModel || 'deepseek-v4-flash').trim(),
@@ -135,6 +137,18 @@
         <input type="number" min="1" class="input-sm" style="max-width:200px" x-model="concurrent" id="tools-sub-concurrent">
         <p class="text-muted text-xs mt-1">Background runs allowed at once.</p>
       </div>
+    </div>
+    <div class="mt-3" x-show="enabled === 'true' || enabled === true">
+      <label class="label" for="tools-sub-allowed-models">Allowed models for subagents</label>
+      <textarea class="input-sm" x-model="allowedModels" id="tools-sub-allowed-models"
+                style="max-width:420px; min-height:80px; font-family:monospace; font-size:0.75rem"
+                placeholder="deepseek:deepseek-v4-flash&#10;anthropic:claude-sonnet-4-5"></textarea>
+      <p class="text-muted text-xs mt-1">
+        One <code>provider:model</code> per line. Lets the assistant send a subagent to a
+        cheaper or faster model than its own — it may only pick from this list, and a
+        spawn asking for anything else is refused. Blank = subagents always inherit the
+        caller's model. Each provider uses its API key from the <strong>Assistant</strong> tab.
+      </p>
     </div>
     <div class="border-t border-border mt-4 pt-4" x-show="enabled === 'true' || enabled === true">
       <div class="flex items-center justify-between gap-3 mb-1">

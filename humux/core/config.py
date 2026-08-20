@@ -525,6 +525,9 @@ class SubagentsConfig(BaseModel):
     max_steps: int = 12  # max tool-call rounds per run (hard stop)
     token_budget: int = 100_000  # approx token ceiling per run (best-effort)
     max_concurrent: int = 3  # max background runs at once
+    # "provider:model" entries a spawn may pick instead of inheriting the
+    # caller's LLM (#299). Empty = no overrides; a subagent always inherits.
+    allowed_models: list[str] = []
 
 
 class SubagentSummaryConfig(BaseModel):

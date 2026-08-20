@@ -120,6 +120,7 @@ class _ScriptedLLM:
     def __init__(self, responses: list[LLMResponse]) -> None:
         self._responses = list(responses)
         self.provider = "deepseek"
+        self.thinking_level = ""
 
     async def generate(self, **_kw) -> LLMResponse:
         if self._responses:
@@ -591,6 +592,62 @@ async def test_run_subagent_effort_uses_scoped_client(agent, monkeypatch) -> Non
     assert captured["level"] == "high"
     assert agent.llm.thinking_level == ""  # main client untouched
     assert agent.subagents.get(result["run_id"]).effort == "high"
+
+
+# ---------------------------------------------------------------------------
+# Per-spawn model/provider override, gated by subagents.allowed_models (#299)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_run_subagent_model_override(agent, monkeypatch) -> None:
+    agent.config.subagents.allowed_models = ["anthropic:claude-sonnet-4-5"]
+    agent.llm = _ScriptedLLM([LLMResponse(text="ok", tool_calls=[])])
+    built: dict = {}
+
+    def _fake_background_llm(provider, thinking_level=""):
+        built["provider"] = provider
+        return agent.llm
+
+    monkeypatch.setattr(agent, "_background_llm", _fake_background_llm)
+
+    # Allowed: the model alone resolves its provider off the allowlist.
+    result = await agent.run_subagent(task="x", model="claude-sonnet-4-5")
+    assert result["ok"] is True
+    assert built["provider"] == "anthropic"
+    run = agent.subagents.get(result["run_id"])
+    assert (run.provider, run.model) == ("anthropic", "claude-sonnet-4-5")
+
+    # Not on the list: refused with a readable error, no run started.
+    built.clear()
+    refused = await agent.run_subagent(task="x", model="gpt-9")
+    assert "not allowed" in refused["error"]
+    assert "anthropic:claude-sonnet-4-5" in refused["error"]
+    assert built == {}
+
+    # Omitted: inherits the caller's client exactly as before (#299 back-compat).
+    result = await agent.run_subagent(task="x")
+    assert result["ok"] is True
+    assert built == {}
+    run = agent.subagents.get(result["run_id"])
+    assert (run.provider, run.model) == ("", "")
+
+
+@pytest.mark.asyncio
+async def test_run_subagent_model_override_needs_an_allowlist(agent) -> None:
+    agent.llm = _ScriptedLLM([LLMResponse(text="ok", tool_calls=[])])
+    refused = await agent.run_subagent(task="x", model="anything")  # allowed_models empty
+    assert "not enabled" in refused["error"]
+
+
+def test_spawn_subagent_description_names_allowed_models(agent) -> None:
+    agent.config.subagents.allowed_models = ["deepseek:deepseek-v4-flash"]
+    spawn = next(t for t in agent._tools_for_turn(None) if t["name"] == "spawn_subagent")
+    assert "deepseek:deepseek-v4-flash" in spawn["description"]
+    # The shared module-level schema is untouched by the per-turn copy.
+    agent.config.subagents.allowed_models = []
+    spawn = next(t for t in agent._tools_for_turn(None) if t["name"] == "spawn_subagent")
+    assert "deepseek:deepseek-v4-flash" not in spawn["description"]
 
 
 # ---------------------------------------------------------------------------
