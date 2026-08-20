@@ -34,6 +34,21 @@ def pytest_configure(config: pytest.Config) -> None:
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def _isolated_cwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Run every test from its own tmp cwd.
+
+    Several stores default to cwd-relative SQLite paths (data/config.db,
+    data/agents.db, data/jobs.db). Tests that construct them bare — e.g. a
+    plain ``PermissionEngine()``, or an admin app with ``agent=None`` — used
+    to share ONE real file across pytest-xdist workers, which flaked with
+    "database is locked" on a loaded CI runner. A per-test cwd makes every
+    cwd-relative default hermetic; nothing in the suite reads repo files
+    relative to the cwd.
+    """
+    monkeypatch.chdir(tmp_path)
+
+
 @pytest.fixture
 def agent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AgentCore:  # noqa: F821
     """A bare AgentCore operating in tmp_path.
