@@ -44,6 +44,17 @@ async def test_react_swallows_badrequest_on_old_message() -> None:
 
 
 @pytest.mark.asyncio
+async def test_react_accepts_the_emoji_character_itself() -> None:
+    # The steering ack passes "👀", and models off providers that don't enforce the
+    # tool enum send the character too — both used to raise (#300).
+    ch = _channel_with_mock_bot()
+    await ch.react(5, 1, "👀")
+    await ch.react(5, 2, "❤️")  # with VS16 — same reaction to Telegram
+    emojis = [k["reaction"][0].emoji for _, k in ch.app.bot.set_message_reaction.call_args_list]
+    assert emojis == ["👀", "❤"]
+
+
+@pytest.mark.asyncio
 async def test_react_unknown_emoji_raises() -> None:
     ch = _channel_with_mock_bot()
     with pytest.raises(ValueError):
