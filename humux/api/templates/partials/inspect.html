@@ -32,7 +32,8 @@
                      || {{ c.channel|tojson|forceescape }}.toLowerCase().includes(filter.toLowerCase())
                      || {{ c.user_id|tojson|forceescape }}.toLowerCase().includes(filter.toLowerCase())
                      || {{ c.chat_id|tojson|forceescape }}.toLowerCase().includes(filter.toLowerCase())
-                     || {{ c.run_id|tojson|forceescape }}.toLowerCase().includes(filter.toLowerCase())">
+                     || {{ c.run_id|tojson|forceescape }}.toLowerCase().includes(filter.toLowerCase())
+                     || {{ (c.label ~ ' ' ~ c.task)|tojson|forceescape }}.toLowerCase().includes(filter.toLowerCase())">
         <button type="button"
                 class="card text-left flex flex-col gap-0.5 py-2 flex-1 min-w-0"
                 :class="selected === {{ loop.index0 }} ? 'border-accent' : ''"
@@ -43,11 +44,14 @@
           <div class="flex items-center gap-1.5 min-w-0">
             <span class="{{ 'badge-warn' if c.run_id else 'badge-ok' }} whitespace-nowrap">{{ c.channel }}</span>
             <span class="text-sm font-semibold break-all flex-1 min-w-0">
-              {%- if c.run_id %}⚙ subagent {{ c.run_id }}{% else %}{{ c.chat_id or '(default)' }}{% endif -%}
+              {%- if c.run_id %}⚙ {{ c.label or c.run_id }}{% else %}{{ c.chat_id or '(default)' }}{% endif -%}
             </span>
           </div>
           {% if c.run_id %}
-          <div class="text-muted text-xs break-all">chat {{ c.chat_id or '(default)' }}</div>
+          {% if c.task %}<div class="text-muted text-xs break-all">{{ c.task }}</div>{% endif %}
+          <div class="text-muted text-xs break-all">
+            {{ c.run_id }}{% if c.status %} · {{ c.status }}{% endif %} · chat {{ c.chat_id or '(default)' }}
+          </div>
           {% endif %}
           <div class="flex items-center justify-between gap-2">
             <span class="text-muted text-xs break-all">user {{ c.user_id }}</span>

@@ -4269,21 +4269,28 @@ def create_admin_app(
         tz = await config_store.get("agent.timezone") or "UTC"
         now = datetime.now(UTC)
         for c in chats:
-            c["run_id"] = ""
+            c["run_id"] = c["label"] = c["task"] = c["status"] = ""
             c["last_active_h"] = _humanize_ts(c.get("last_active", ""), now, tz)
         # Subagent runs never write to ConversationHistory, so their captured
         # payloads would be unreachable from the list. Append one synthetic row
         # per captured key that carries a run id (newest first), leaving the
-        # main-chat rows above untouched.
+        # main-chat rows above untouched. The registry supplies the label/agent/
+        # task so the row is nameable instead of an opaque run id — it keeps
+        # fewer finished runs than the payload cache, hence the .get fallback.
+        runs = {r.run_id: r for r in _subagent_runs()}
         for channel, user_id, chat_id, run_id in list_captured():
             if run_id:
+                run = runs.get(run_id)
                 chats.append(
                     {
                         "channel": channel,
                         "user_id": user_id,
                         "chat_id": chat_id,
                         "run_id": run_id,
-                        "last_active_h": "",
+                        "label": (run.label or run.agent) if run else "",
+                        "task": (run.task or "")[:120] if run else "",
+                        "status": run.status if run else "",
+                        "last_active_h": run.elapsed_str if run else "",
                     }
                 )
         return _render_partial("partials/inspect.html", chats=chats)

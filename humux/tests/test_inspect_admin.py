@@ -204,6 +204,26 @@ def test_inspect_payload_empty_for_uncaptured_context(tmp_path) -> None:
     assert "No payload captured yet" in r.text
 
 
+def test_subagent_context_row_is_named_by_its_run(tmp_path) -> None:
+    """A captured subagent payload is listed by the run's label and task — a bare
+    run id makes every row of a fan-out look identical."""
+    llm.clear_captured()
+    llm.record_sent_payload(("telegram", "u1", "c1", "sub_1"), {"model": "m"})
+    run = SubagentRun(
+        run_id="sub_1",
+        agent="clio",
+        task="research competitor logos",
+        label="logo-research",
+        origin_channel="telegram",
+        origin_chat_id="c1",
+    )
+    r = _runs_client(tmp_path, [run]).get("/partials/inspect", headers=AUTH)
+    llm.clear_captured()
+    assert r.status_code == 200
+    assert "logo-research" in r.text
+    assert "research competitor logos" in r.text
+
+
 # ── Live subagent runs panel (moved from the Jobs tab) ──────────────────────
 
 
