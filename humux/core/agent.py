@@ -53,11 +53,13 @@ from core.subagents import (
     RESULT_FOR_AGENT_INSTRUCTION,
     SubagentRegistry,
     SubagentRun,
+    allowed_models_hint,
     fallback_summary,
     narrow_accounts,
     narrow_scope,
     normalize_effort,
     resolve_cap,
+    resolve_model_override,
     short_summary,
     summarize_batch,
 )
@@ -810,6 +812,21 @@ TOOLS = [
                         "How hard the subagent reasons each step. Omit to inherit "
                         "your own level. Use 'high' for tricky reasoning, 'off'/'low' "
                         "for simple mechanical work."
+                    ),
+                },
+                "model": {
+                    "type": "string",
+                    "description": (
+                        "Model the subagent should run on. Omit to inherit yours — "
+                        "only the models named in this tool's description may be "
+                        "picked, and if none are named, omit it."
+                    ),
+                },
+                "provider": {
+                    "type": "string",
+                    "description": (
+                        "Provider for 'model' (e.g. 'deepseek', 'anthropic'). Only "
+                        "needed to disambiguate; omit and it follows from 'model'."
                     ),
                 },
                 "background": {
@@ -1682,6 +1699,16 @@ class AgentCore:
         # scope withholds web_search (#293); the handler refuses too.
         if agent and agent.tools and not agent.allows_tool("web_search"):
             tools = [t for t in tools if t["name"] != "deep_research"]
+        # Name the models a spawn may pick (#299), else the agent can't know them.
+        # Copy the schema — the module-level list is shared across turns.
+        hint = allowed_models_hint(self.config.subagents.allowed_models)
+        if hint:
+            tools = [
+                {**t, "description": f"{t['description']}\nSubagent models — {hint}."}
+                if t["name"] == "spawn_subagent"
+                else t
+                for t in tools
+            ]
         return tools
 
     async def _turn_preamble(
@@ -3672,6 +3699,8 @@ class AgentCore:
             max_steps=params.get("max_steps"),
             token_budget=params.get("token_budget"),
             thinking_effort=params.get("thinking_effort"),
+            model=str(params.get("model", "")),
+            provider=str(params.get("provider", "")),
         )
 
     async def run_subagent(
@@ -3687,6 +3716,8 @@ class AgentCore:
         max_steps: object = None,
         token_budget: object = None,
         thinking_effort: str | None = None,
+        model: str = "",
+        provider: str = "",
     ) -> dict:
         """Run a subagent — the one primitive behind both the tool and scheduled
         ``subagent`` jobs. Scope is narrowed from the caller (inherit-never-widen);
@@ -3695,6 +3726,11 @@ class AgentCore:
         ``max_steps`` / ``token_budget`` / ``thinking_effort`` let the caller size
         the run; each defaults to the configured value and is clamped to it as a
         ceiling (``thinking_effort`` defaults to inheriting the caller's level).
+
+        ``model`` / ``provider`` send the run to a *different* LLM than the caller's
+        (#299) — a cheap worker under an expensive coordinator. Both omitted (the
+        default) inherits, exactly as before; anything else must be on the
+        ``subagents.allowed_models`` allowlist or the spawn is refused.
         """
         cfg = self.config.subagents
         if not cfg.enabled:
@@ -3708,6 +3744,14 @@ class AgentCore:
                     "do this work directly instead of spawning another subagent."
                 )
             }
+
+        # LLM override, allowlisted (#299). Refused as a normal tool error the
+        # calling model can read and retry, never an exception.
+        ov_provider, ov_model, ov_error = resolve_model_override(
+            provider, model, cfg.allowed_models
+        )
+        if ov_error:
+            return {"error": ov_error}
 
         # Resolve + narrow the agent. A name must exist; with no name the child
         # inherits the caller's identity and scope.
@@ -3750,6 +3794,8 @@ class AgentCore:
             max_steps=resolve_cap(max_steps, cfg.max_steps),
             token_budget=resolve_cap(token_budget, cfg.token_budget, floor=1000),
             effort=normalize_effort(thinking_effort),
+            provider=ov_provider,
+            model=ov_model,
             origin_channel=origin_channel,
             origin_user_id=origin_user_id,
             origin_chat_id=origin_chat_id,
@@ -3898,7 +3944,14 @@ class AgentCore:
         # "senior" subagent gets its bigger model); an explicit spawn effort
         # still wins over the inherited/overridden thinking level.
         llm, model, max_tokens = self._agent_llm(child_agent)
-        if run.effort is not None:
+        if run.provider or run.model:
+            # A per-spawn model (#299) — same key/base-URL resolution every other
+            # off-provider inference uses, so a foreign provider gets its own
+            # configured credentials. Effort defaults to the level we'd inherit.
+            level = run.effort if run.effort is not None else llm.thinking_level
+            llm = self._background_llm(run.provider or llm.provider, level)
+            model = run.model or model
+        elif run.effort is not None:
             clone = copy.copy(llm)
             clone.thinking_level = run.effort
             llm = clone

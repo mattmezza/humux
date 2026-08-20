@@ -2136,6 +2136,14 @@ def create_admin_app(
         sub_steps = await config_store.get("subagents.max_steps") or "12"
         sub_tokens = await config_store.get("subagents.token_budget") or "100000"
         sub_concurrent = await config_store.get("subagents.max_concurrent") or "3"
+        # Allowed "provider:model" overrides (#299) — stored as a JSON list,
+        # edited as one entry per line.
+        try:
+            sub_allowed = "\n".join(
+                json.loads(await config_store.get("subagents.allowed_models") or "[]")
+            )
+        except json.JSONDecodeError, TypeError:
+            sub_allowed = ""
         # Result-summary inference (notification + context digest) for finished
         # background batches — fast/cheap model by default.
         ss_enabled = await config_store.get("subagent_summary.enabled")
@@ -2201,6 +2209,7 @@ def create_admin_app(
             subagents_max_steps=sub_steps,
             subagents_token_budget=sub_tokens,
             subagents_max_concurrent=sub_concurrent,
+            subagents_allowed_models=sub_allowed,
             summary_enabled=ss_enabled,
             summary_provider=ss_provider,
             summary_model=ss_model,
