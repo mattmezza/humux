@@ -177,14 +177,20 @@ https://your-agent.example/t/<token>
 - **Read-only** — there is no way to send a message, change settings, or reach any
   other part of the admin app from it. The system prompt is never included.
 - **Reading view** — user turns as tinted bubbles, agent turns as plain prose with
-  light markdown (code blocks, bold/italic, links), automatic light/dark, and a live
-  dot that greys out and says "reconnecting…" while polling fails.
+  light markdown (code blocks, bold/italic, links), automatic light/dark, and a small
+  floating pill at the bottom of the screen that says "updating live" — it greys out
+  and says "reconnecting…" while polling fails, and steps aside when the
+  "↓ new messages" pill appears. A share button in the top right copies the page link
+  to the clipboard.
 - **Progressive disclosure** — the agent's chain-of-thought and tool activity sit
   between messages as muted one-line chips ("💭 thinking", "🔧 web_search (+2 more)").
-  Click one to expand reasoning as quiet prose and tool calls as monospace blocks
-  with pretty-printed arguments and truncated results; the primary reading flow stays
-  clean. These only exist in `session` history mode, which is what records the tool
-  round-trips — in `injection` mode the page shows the text turns and no chips.
+  Click one to expand reasoning as quiet prose and tool calls as a collapsible JSON
+  tree — arguments and results render as an indented, colour-coded structure you can
+  fold open a level at a time (nested objects start collapsed, showing `{…} 4 keys`),
+  with long strings clipped behind a "more" toggle; non-JSON results stay as wrapped
+  monospace text. The primary reading flow stays clean. These only exist in `session`
+  history mode, which is what records the tool round-trips — in `injection` mode the
+  page shows the text turns and no chips.
 
 Set `HUMUX_BASE_URL` to the agent's public URL so the link is reachable from your
 phone; without it the reply points at `localhost` and says so.
