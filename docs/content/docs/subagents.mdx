@@ -75,9 +75,11 @@ it. Omit both and the subagent inherits the caller's model, as it always has.
 **Files hand back automatically.** The subagent shares the agent's filesystem,
 so any file it writes is already on disk where the caller can reach it — it just
 reports the absolute paths in its result, which the spawning agent then reads,
-sends, or attaches. This is also how generated media travels: a subagent that
-calls `generate_image` hands back the saved image's path, and the spawning agent
-delivers it.
+sends, or attaches. Generated media travels differently depending on mode: a
+**synchronous** spawn's `generate_image` rides out natively with the spawning
+turn's reply (it shares the parent turn's attachment queue), while a
+**background** run has no live turn to deliver through, so it hands back the
+saved image's absolute path via the `Files:` convention instead.
 
 ## Fan-out & orchestration
 
@@ -110,7 +112,7 @@ notification per subtask.
 **Failure is per-subtask, never all-or-nothing.** Results come back in request
 order, one entry per task, each with `status` (`done` / `error` / `cancelled`),
 `steps`, `tokens_used`, `stopped_reason` (`complete` / `max_steps` /
-`token_budget` / `truncated` / `aborted`), a `summary`, and the full `result`.
+`token_budget` / `turn_budget` / `truncated` / `aborted`), a `summary`, and the full `result`.
 One subtask failing or being cancelled doesn't stop the others from completing.
 
 **Fan-out doesn't nest.** `spawn_subagents` is only offered to the top-level
@@ -212,14 +214,15 @@ limit, applied live without a restart), or under `subagents` in `config.yml`:
 | `max_concurrent` | `4` | Per-chat concurrency gate covering **every** subagent run, sync or background. Extra spawns queue instead of failing; each chat has its own pool, so one chat's fan-out can't starve another chat's spawn. A background `spawn_subagent` still refuses outright when the chat is already at the cap |
 | `max_fanout` | `6` | Max tasks in one `spawn_subagents` call |
 | `max_spawns_per_turn` | `12` | Max subagent spawns across the whole subagent tree, per turn |
-| `turn_token_budget` | `400000` | Max subagent tokens across the whole tree, per turn. Reserve-then-refund: each run reserves its `token_budget` up front and refunds the unspent part when it finishes. The pool is never smaller than one default run (`token_budget`), and fan-out tasks that don't set a budget split the pool across the width |
+| `turn_token_budget` | `400000` | Max subagent tokens across the whole tree, per turn. Charged as spent, one LLM round at a time — never reserved up front, so a spawn is never refused for tokens before it starts. Once the pool drains, runs stop gracefully between rounds with `stopped_reason: "turn_budget"`; concurrent runs can overshoot by at most one round each, a bounded tradeoff for the simplicity |
 | `allowed_models` | *(empty)* | `provider:model` entries a spawn may pick instead of inheriting the caller's model — one per line in the admin card. Empty means overrides are off entirely |
 
 When disabled, the tool is hidden from the assistant and from the Agents tool
 scope. Assign it per agent in the **Agents** editor. A run that hits its step
 or token budget stops and returns what it has, with a note that the budget was
-reached. A turn that would exceed `max_spawns_per_turn` or `turn_token_budget`
-gets a budget-refusal the model can read, instead of spawning without limit.
+reached. A spawn is refused only once `max_spawns_per_turn` is used up or
+`turn_token_budget` is already fully drained — never pre-emptively for
+tokens — with a message the model can read instead of spawning without limit.
 
 ## Result summary
 

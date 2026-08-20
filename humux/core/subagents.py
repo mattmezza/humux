@@ -140,36 +140,41 @@ def derive_label(label: str, task: str, index: int = 0) -> str:
 
 @dataclass(slots=True)
 class FanoutBudget:
-    """Whole-tree subagent spend guard for one turn, shared by reference
+    """Whole-tree subagent spend pool for one turn, shared by reference
     parent → child so a depth-2 grandchild draws from the same pool.
 
-    Reserve-then-refund, not spend-then-check: each run reserves its full token
-    budget at spawn (so concurrent runs can't all observe the same "plenty
-    left") and refunds the unspent remainder when it completes. A crashed run
-    simply doesn't refund — fails safe.
+    Spend is charged as it happens (once per LLM round), not reserved up
+    front: a spawn is never refused for tokens — runs stop gracefully between
+    rounds once the pool drains. Concurrent runs can overshoot by at most one
+    round each, which is bounded and far simpler than reserve-then-refund
+    (whose upfront refusals also confused the model whenever the per-run
+    ceiling approached the pool size).
     """
 
     tokens_left: int
     spawns_left: int
 
-    def reserve(self, tokens: int) -> str | None:
-        """Take a run's worth up front; an error message when there isn't one."""
+    def take_spawn(self) -> str | None:
+        """Claim one spawn from the pool; an error message when none is left."""
         if self.spawns_left <= 0:
             return (
                 "Spawn budget for this turn is exhausted — finish with what "
                 "you have instead of delegating more."
             )
-        if tokens > self.tokens_left:
+        if self.exhausted:
             return (
-                f"Only ~{self.tokens_left} subagent tokens are left this turn; "
-                "size the run smaller or do the work yourself."
+                "The turn's subagent token budget is exhausted — finish with "
+                "what you have instead of delegating more."
             )
         self.spawns_left -= 1
-        self.tokens_left -= tokens
         return None
 
-    def refund(self, unspent: int) -> None:
-        self.tokens_left += max(0, int(unspent))
+    def charge(self, tokens: int) -> None:
+        self.tokens_left -= max(0, int(tokens))
+
+    @property
+    def exhausted(self) -> bool:
+        return self.tokens_left <= 0
 
 
 def resolve_cap(value: object, ceiling: int, floor: int = 1) -> int:
@@ -516,16 +521,17 @@ def _selfcheck() -> None:
     assert resolve_model_override("a", "b", ["a:b", "c:d"]) == ("a", "b", "")
     assert resolve_model_override("a", "d", ["a:b", "c:d"])[2]  # wrong pairing → refused
 
-    # FanoutBudget: reserve-then-refund, fails closed on exhaustion.
+    # FanoutBudget: charge-as-you-go, spawns refused only on exhausted pools.
     b = FanoutBudget(tokens_left=100, spawns_left=2)
-    assert b.reserve(60) is None and b.tokens_left == 40 and b.spawns_left == 1
-    assert b.reserve(60)  # over the token pool → message, not exception
-    b.refund(30)
-    assert b.tokens_left == 70
-    assert b.reserve(60) is None and b.spawns_left == 0
-    assert b.reserve(1)  # spawn pool exhausted
-    b.refund(-5)  # a bogus negative refund never shrinks the pool
-    assert b.tokens_left == 10
+    assert b.take_spawn() is None and b.spawns_left == 1
+    b.charge(60)
+    assert b.tokens_left == 40 and not b.exhausted
+    assert b.take_spawn() is None and b.spawns_left == 0
+    assert b.take_spawn()  # spawn pool exhausted → message, not exception
+    b.charge(-5)  # a bogus negative charge never grows the pool back
+    b.charge(50)
+    assert b.tokens_left == -10 and b.exhausted  # bounded overshoot is fine
+    assert FanoutBudget(tokens_left=0, spawns_left=5).take_spawn()  # token pool dry
 
     # Labels: model-picked wins, else derived from the task, always bounded.
     assert derive_label("pricing", "whatever task") == "pricing"

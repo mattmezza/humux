@@ -152,18 +152,18 @@ guessed column is worse than a table with a visible gap.
 
 Every spawn — singular, plural, and any nested subagent — draws from one shared
 pool for the whole turn: `max_spawns_per_turn` (default 12) and
-`turn_token_budget` (default 400000). Each run reserves its `token_budget` up
-front and refunds the unused part on completion — so a generous budget on a
-short task is cheap; generous budgets on many tasks are not. In a fan-out,
-prefer omitting `token_budget`: unsized tasks split the pool fairly. If you
-do size one, remember every round re-reads the prompt (10-20k tokens a
-round) — budgets under ~20k rarely finish real work.
+`turn_token_budget` (default 400000). Spend is counted as it happens, one round
+at a time — you are never refused for tokens up front, only once the pool is
+already drained or the spawn count is used up. Remember every round re-reads
+the prompt (10-20k tokens a round) — budgets under ~20k rarely finish real
+work.
 
-Two or three well-briefed subtasks beat six vague ones, every time. A spawn
-refused with a budget error is the signal to finish with what you have and tell
-the user what you skipped — not to retry the fan-out in smaller pieces until
-the pool drains. Note also that only `max_concurrent` (default 4) runs execute
-at once per chat, so a width-6 fan-out is two waves, not one.
+Two or three well-briefed subtasks beat six vague ones, every time. A run that
+comes back with `stopped_reason: "turn_budget"` means the turn's shared pool is
+drained — finish with what you have and tell the user what you skipped;
+retrying or sizing the budget up won't help, there is nothing left to spend.
+Note also that only `max_concurrent` (default 4) runs execute at once per
+chat, so a width-6 fan-out is two waves, not one.
 
 ## Anti-patterns
 

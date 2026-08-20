@@ -902,9 +902,9 @@ TOOLS = [
                             "token_budget": {
                                 "type": "integer",
                                 "description": (
-                                    "Omit it: unsized tasks share the turn's pool "
-                                    "fairly. If set, one round costs 10-20k tokens — "
-                                    "below ~20000 a run rarely finishes."
+                                    "Usually omit it — the shared turn pool already "
+                                    "bounds total spend. If set, one round costs "
+                                    "10-20k tokens; below ~20000 a run rarely finishes."
                                 ),
                             },
                             "thinking_effort": {
@@ -3875,16 +3875,8 @@ class AgentCore:
         group_id = f"grp_{uuid.uuid4().hex[:6]}"
         started_at = time.time()
 
-        # An unsized fan-out task must not reserve the full per-run ceiling —
-        # width × ceiling rarely fits the pool (it never does when the owner
-        # raised token_budget near turn_token_budget), and reserve-then-refund
-        # would refuse most of the group. Split what's left across the width
-        # instead, still capped at the per-run ceiling; an explicit
-        # token_budget is honoured (or refused) as requested.
-        default_tb = min(cfg.token_budget, max(10_000, budget.tokens_left // len(tasks)))
-
-        # Prepare + reserve per index; a refusal becomes that index's error
-        # entry, never an all-or-nothing failure.
+        # Prepare + claim a spawn per index; a refusal becomes that index's
+        # error entry, never an all-or-nothing failure.
         entries: list[dict] = []
         for i, item in enumerate(tasks):
             item = item if isinstance(item, dict) else {}
@@ -3904,7 +3896,7 @@ class AgentCore:
                 parent_state=request_state,
                 background=background,
                 max_steps=item.get("max_steps"),
-                token_budget=item.get("token_budget") or default_tb,
+                token_budget=item.get("token_budget"),
                 thinking_effort=item.get("thinking_effort"),
                 model=str(item.get("model", "")),
                 provider=str(item.get("provider", "")),
@@ -3917,7 +3909,7 @@ class AgentCore:
                 )
                 continue
             run, child_agent, child_state = prepared
-            err = budget.reserve(run.token_budget)
+            err = budget.take_spawn()
             if err:
                 entries.append({"index": i, "label": label, "error": err})
                 continue
@@ -4153,7 +4145,7 @@ class AgentCore:
                         "it via /subagents."
                     )
                 }
-            err = budget.reserve(run.token_budget)
+            err = budget.take_spawn()
             if err:
                 return {"error": err}
             self._start_subagent(run)
@@ -4177,7 +4169,7 @@ class AgentCore:
             }
 
         # Synchronous: run to completion and return the result to the caller.
-        err = budget.reserve(run.token_budget)
+        err = budget.take_spawn()
         if err:
             return {"error": err}
         self._start_subagent(run)
@@ -4223,8 +4215,8 @@ class AgentCore:
         The one preparation path behind the singular tool, the plural fan-out,
         and scheduled jobs. Returns an ``{"error": ...}`` dict (for the calling
         model to read) on any refusal; never raises. Does NOT register the run
-        or reserve budget — the caller does, so a fan-out can report per-index
-        refusals and refuse-vs-queue stays a caller decision.
+        or claim a spawn from the pool — the caller does, so a fan-out can
+        report per-index refusals and refuse-vs-queue stays a caller decision.
         """
         cfg = self.config.subagents
         if not cfg.enabled:
@@ -4301,6 +4293,16 @@ class AgentCore:
         # The whole subagent tree of one turn draws from a single budget pool —
         # shared by reference parent → child, so a grandchild's spend counts too.
         child_state["fanout_budget"] = self._turn_budget(parent_state)
+        # A sync child's generated media must reach the user: share the parent
+        # turn's pending_attachments by reference, so anything the child queues
+        # (e.g. generate_image) rides out on the parent's reply natively. A
+        # background run has no live turn to deliver through — it hands files
+        # back via the Files: path convention instead.
+        parent_attachments = parent_state.get("pending_attachments")
+        reaches_user = parent_depth == 0 or bool(parent_state.get("attachments_reach_user"))
+        if not background and parent_attachments is not None and reaches_user:
+            child_state["pending_attachments"] = parent_attachments
+            child_state["attachments_reach_user"] = True
         run = SubagentRun(
             run_id=run_id,
             agent=child_agent.name if child_agent else "",
@@ -4322,19 +4324,12 @@ class AgentCore:
         return run, child_agent, child_state
 
     def _turn_budget(self, parent_state: dict) -> FanoutBudget:
-        """The turn's shared subagent spend pool, created lazily on first spawn.
-
-        The pool is never smaller than one default-sized run: an owner who
-        raised ``token_budget`` past ``turn_token_budget`` (the per-run knob
-        predates the pool) would otherwise find every unsized spawn refused
-        out of the box.
-        """
+        """The turn's shared subagent spend pool, created lazily on first spawn."""
         budget = parent_state.get("fanout_budget")
         if budget is None:
             cfg = self.config.subagents
             budget = parent_state["fanout_budget"] = FanoutBudget(
-                tokens_left=max(cfg.turn_token_budget, cfg.token_budget),
-                spawns_left=cfg.max_spawns_per_turn,
+                tokens_left=cfg.turn_token_budget, spawns_left=cfg.max_spawns_per_turn
             )
         return budget
 
@@ -4433,12 +4428,6 @@ class AgentCore:
                         )
                 else:
                     text = await self._run_subagent_loop_inner(task, child_agent, child_state, run)
-            # Reserve-then-refund (FanoutBudget): a run that finished cleanly
-            # hands its unspent reservation back to the turn's pool. A crashed
-            # or cancelled run deliberately doesn't refund — fails safe.
-            budget = child_state.get("fanout_budget")
-            if budget is not None:
-                budget.refund(run.token_budget - run.tokens_used)
             return text
         finally:
             if usage_token is not None:
@@ -4509,6 +4498,13 @@ class AgentCore:
         steps = 0
         tokens = self._usage_total(response.usage)
         run.tokens_used = tokens
+        # The turn's shared pool is charged as spend happens, one round at a
+        # time — no reservations, so a spawn always starts and stops gracefully
+        # between rounds once the pool drains (bounded overshoot: ≤1 round per
+        # concurrent child).
+        pool: FanoutBudget | None = child_state.get("fanout_budget")
+        if pool is not None:
+            pool.charge(tokens)
         aborted = False
         # ``steps == 0 or``: the first tool round always runs. The opening
         # generate alone can cost more than a small budget (system prompt +
@@ -4517,7 +4513,10 @@ class AgentCore:
         while (
             response.tool_calls
             and steps < run.max_steps
-            and (steps == 0 or tokens < run.token_budget)
+            and (
+                steps == 0
+                or (tokens < run.token_budget and not (pool is not None and pool.exhausted))
+            )
         ):
             if abort and abort.is_set():
                 aborted = True
@@ -4551,8 +4550,11 @@ class AgentCore:
                 messages=messages,
                 tools=cast(Any, tools),
             )
-            tokens += self._usage_total(response.usage)
+            spent = self._usage_total(response.usage)
+            tokens += spent
             run.tokens_used = tokens
+            if pool is not None:
+                pool.charge(spent)
 
         text = response.text or ""
         # stopped_reason is a field the calling model can act on (retry, size up,
@@ -4561,8 +4563,20 @@ class AgentCore:
             run.stopped_reason = "aborted"
             text = (text + "\n\n[subagent stopped: the user stopped this turn]").strip()
         elif response.tool_calls:
-            run.stopped_reason = "max_steps" if steps >= run.max_steps else "token_budget"
-            text = (text + "\n\n[subagent stopped: reached its step/token budget]").strip()
+            if steps >= run.max_steps:
+                run.stopped_reason = "max_steps"
+            elif pool is not None and pool.exhausted:
+                # Wins the tie with the run's own cap: a drained pool means
+                # retrying or sizing up won't help — stop delegating.
+                run.stopped_reason = "turn_budget"
+            else:
+                run.stopped_reason = "token_budget"
+            suffix = (
+                "[subagent stopped: the turn's subagent token budget is exhausted]"
+                if run.stopped_reason == "turn_budget"
+                else "[subagent stopped: reached its step/token budget]"
+            )
+            text = (text + f"\n\n{suffix}").strip()
         elif response.truncated:
             run.stopped_reason = "truncated"
         else:
@@ -5022,23 +5036,27 @@ class AgentCore:
                 )
             }
         await self.image_budget.record()
-        path = imagegen.save(data, mime)
+        # imagegen.save returns a cwd-relative path; resolve it so a subagent's
+        # Files: report actually names a findable file.
+        path = str(Path(imagegen.save(data, mime)).resolve())
         request_state.setdefault("pending_attachments", []).append(
             Attachment(data=data, mime_type=mime, filename=Path(path).name)
         )
         log.info("Generated image (%d bytes, %s) → %s", len(data), mime, path)
-        # A subagent has no native-media delivery path of its own (#55): its
-        # pending_attachments die with the run. The file is on the shared
-        # filesystem, so the path IS the delivery — report it via the Files:
-        # handoff and let the spawning agent send it.
-        in_subagent = int(request_state.get("depth", 0) or 0) > 0
+        # A sync subagent shares the spawning turn's pending_attachments, so its
+        # image is queued for native delivery like the main turn's. A background
+        # run has no live turn to deliver through — there the saved file's path
+        # IS the delivery, reported via the Files: handoff.
+        orphaned = int(request_state.get("depth", 0) or 0) > 0 and not request_state.get(
+            "attachments_reach_user"
+        )
         result = {
             "ok": True,
             "path": path,
             "note": (
                 "Image generated and saved. Report this absolute path in your "
                 "'Files:' line so the agent that spawned you can deliver it."
-                if in_subagent
+                if orphaned
                 else "Image generated and queued for delivery to the user as a photo. "
                 "Do not include the path or base64 in your reply — just say briefly "
                 "what you made."

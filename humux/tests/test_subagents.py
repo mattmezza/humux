@@ -4,6 +4,7 @@ scheduled-job wiring (issue #15)."""
 from __future__ import annotations
 
 import asyncio
+import os
 import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -921,23 +922,23 @@ async def test_subagent_loop_is_not_offered_the_fanout_tool(agent) -> None:
 
 
 # ---------------------------------------------------------------------------
-# FanoutBudget — one reserve-then-refund pool per turn, shared by the whole tree
+# FanoutBudget — one charge-as-you-go pool per turn, shared by the whole tree
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_fanout_token_pool_starts_only_what_fits(agent, monkeypatch) -> None:
+async def test_fanout_never_refused_for_tokens_upfront(agent, monkeypatch) -> None:
+    """Nothing is reserved, so a small pool never refuses a spawn up front — the
+    whole group starts and runs stop between rounds once the pool drains."""
     agent.config.subagents.turn_token_budget = 2500
-    agent.config.subagents.token_budget = 1000  # keep the pool at 2500 (max() floor)
+    agent.config.subagents.token_budget = 1000
     _install_overlap_loop(agent, monkeypatch, delay=0.0)
     tasks = [{"task": f"t{i}", "label": f"l{i}", "token_budget": 1000} for i in range(3)]
 
     out = await agent._tool_spawn_subagents({"tasks": tasks}, "cli", "u", _fanout_state(agent))
 
-    assert out["succeeded"] == 2 and out["failed"] == 1
-    refused = out["results"][2]
-    assert refused["status"] == "error"
-    assert "tokens" in refused["error"] and "left this turn" in refused["error"]
+    assert out["succeeded"] == 3 and out["failed"] == 0
+    assert {r["status"] for r in out["results"]} == {"done"}
 
 
 @pytest.mark.asyncio
@@ -964,10 +965,11 @@ async def test_fanout_spawn_pool_is_shared_across_spawns_in_one_turn(agent, monk
 
 
 @pytest.mark.asyncio
-async def test_completed_run_refunds_its_unspent_reservation(agent) -> None:
-    """Reserve the full budget up front, hand back what the run didn't spend."""
+async def test_pool_is_charged_actual_spend(agent) -> None:
+    """Spend is charged as it happens: the pool drops by what the run really
+    used, never by its (much larger) per-run ceiling."""
     agent.config.subagents.turn_token_budget = 50_000
-    agent.config.subagents.token_budget = 5000  # keep the pool at 50k (max() floor)
+    agent.config.subagents.token_budget = 5000
     agent.llm = _ScriptedLLM(
         [LLMResponse(text="done", tool_calls=[], usage={"input_tokens": 30, "output_tokens": 20})]
     )
@@ -977,38 +979,61 @@ async def test_completed_run_refunds_its_unspent_reservation(agent) -> None:
 
     assert res["ok"] is True
     budget = state["fanout_budget"]
-    assert budget.tokens_left == 50_000 - 50  # 5000 reserved, 4950 refunded
+    assert budget.tokens_left == 50_000 - 50  # the 5000 ceiling is never taken
     assert budget.spawns_left == agent.config.subagents.max_spawns_per_turn - 1
 
 
 @pytest.mark.asyncio
-async def test_fanout_unsized_tasks_share_the_pool(agent, monkeypatch) -> None:
-    """Omitted token_budgets split the pool across the width instead of each
-    demanding the full per-run ceiling (which would refuse most of the group
-    whenever ceiling × width exceeds the pool)."""
-    agent.config.subagents.token_budget = 100_000
-    agent.config.subagents.turn_token_budget = 150_000
-    _install_overlap_loop(agent, monkeypatch, delay=0.0)
-    tasks = [{"task": f"t{i}", "label": f"l{i}"} for i in range(3)]
+async def test_run_bigger_than_the_pool_still_starts(agent) -> None:
+    """An owner who raised token_budget past turn_token_budget (the per-run knob
+    predates the pool) still gets their unsized spawn — nothing is reserved, so
+    there is no upfront refusal to trip over."""
+    agent.config.subagents.token_budget = 500_000
+    agent.config.subagents.turn_token_budget = 400_000
+    agent.llm = _ScriptedLLM(
+        [LLMResponse(text="done", tool_calls=[], usage={"input_tokens": 10, "output_tokens": 5})]
+    )
+    state = _fanout_state(agent)
 
-    out = await agent._tool_spawn_subagents({"tasks": tasks}, "cli", "u", _fanout_state(agent))
+    res = await agent.run_subagent(task="x", parent_state=state)
 
-    assert out["succeeded"] == 3
-    for row in out["results"]:
-        assert agent.subagents.get(row["run_id"]).token_budget == 50_000
+    assert res["ok"] is True and res["stopped_reason"] == "complete"
+    assert state["fanout_budget"].tokens_left == 400_000 - 15
 
 
 @pytest.mark.asyncio
-async def test_pool_is_never_smaller_than_one_default_run(agent) -> None:
-    """An owner who raised token_budget past turn_token_budget (the per-run
-    knob predates the pool) must still be able to run one unsized spawn."""
-    agent.config.subagents.token_budget = 500_000
-    agent.config.subagents.turn_token_budget = 400_000
-    agent.llm = _ScriptedLLM([LLMResponse(text="done", tool_calls=[])])
+async def test_drained_pool_stops_the_run_between_rounds(agent) -> None:
+    """The shared pool, not the run's own ceiling, ends the loop — and says so."""
+    agent.config.subagents.turn_token_budget = 100
+    agent.config.subagents.max_steps = 10
+    call = LLMToolCall(id="1", name="web_search", arguments={"query": "q"})
+    agent.llm = _ScriptedLLM(
+        [
+            LLMResponse(text="", tool_calls=[call], usage={"input_tokens": 80, "output_tokens": 0})
+            for _ in range(10)
+        ]
+    )
+    state = _fanout_state(agent)
 
-    res = await agent.run_subagent(task="x")
+    res = await agent.run_subagent(task="loop", token_budget=100_000, parent_state=state)
 
     assert res["ok"] is True
+    assert res["stopped_reason"] == "turn_budget"
+    assert "turn's subagent token budget" in res["result"]
+    assert res["steps"] == 1  # round one always runs, then the drained pool stops it
+    assert state["fanout_budget"].exhausted
+
+
+@pytest.mark.asyncio
+async def test_spawn_on_an_exhausted_pool_is_refused(agent) -> None:
+    """Once the pool IS dry, no further spawn starts (the only token refusal)."""
+    state = _fanout_state(agent)
+    agent._turn_budget(state).charge(agent.config.subagents.turn_token_budget)
+
+    res = await agent.run_subagent(task="x", parent_state=state)
+
+    assert "token budget is exhausted" in res["error"]
+    assert agent.subagents.list_runs() == []  # refused before anything ran
 
 
 @pytest.mark.asyncio
@@ -1249,12 +1274,48 @@ async def test_roster_with_a_team_lists_only_teammates(agent, monkeypatch) -> No
 
 
 # ---------------------------------------------------------------------------
-# generate_image in a subagent — no delivery path, so the path IS the handoff
+# Media from a subagent: a sync child rides the parent turn's attachments; an
+# orphaned (background/nested) one hands the file back by path instead.
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_generate_image_note_branches_on_subagent_depth(agent, monkeypatch) -> None:
+async def test_sync_child_shares_the_parent_turns_attachments(agent) -> None:
+    state = _fanout_state(agent)
+
+    _, _, child_state = await agent._prepare_subagent_run(task="t", parent_state=state)
+
+    # The SAME list object, so anything the child queues rides out on the reply.
+    assert child_state["pending_attachments"] is state["pending_attachments"]
+    assert child_state["attachments_reach_user"] is True
+
+
+@pytest.mark.asyncio
+async def test_background_child_never_shares_attachments(agent) -> None:
+    state = _fanout_state(agent)
+
+    _, _, child_state = await agent._prepare_subagent_run(
+        task="t", parent_state=state, background=True
+    )
+
+    assert child_state["pending_attachments"] is not state["pending_attachments"]
+    assert child_state["pending_attachments"] == []
+    assert child_state.get("attachments_reach_user") is None
+
+
+@pytest.mark.asyncio
+async def test_child_of_an_orphaned_run_stays_orphaned(agent) -> None:
+    """A parent whose own media can't reach the user can't hand a path down."""
+    orphan = agent._new_request_state(None, depth=1)  # no attachments_reach_user
+
+    _, _, child_state = await agent._prepare_subagent_run(task="t", parent_state=orphan)
+
+    assert child_state["pending_attachments"] is not orphan["pending_attachments"]
+    assert child_state.get("attachments_reach_user") is None
+
+
+@pytest.mark.asyncio
+async def test_generate_image_note_branches_on_delivery_reach(agent, monkeypatch) -> None:
     agent.config.tools.imagegen.enabled = True
 
     async def fake_generate(_config, _prompt, _size):
@@ -1265,12 +1326,22 @@ async def test_generate_image_note_branches_on_subagent_depth(agent, monkeypatch
     top = await agent._tool_generate_image({"prompt": "a cat"}, agent._new_request_state(None))
     assert top["ok"] is True
     assert "queued for delivery" in top["note"]
+    assert os.path.isabs(top["path"])  # a relative path is unfindable from a subagent
 
-    child = await agent._tool_generate_image(
+    # A sync child sharing the turn's attachments delivers natively, like the top.
+    shared = agent._new_request_state(None, depth=1)
+    shared["attachments_reach_user"] = True
+    child = await agent._tool_generate_image({"prompt": "a cat"}, shared)
+    assert "queued for delivery" in child["note"]
+    assert len(shared["pending_attachments"]) == 1
+
+    # Orphaned (background / nested): the absolute path IS the handoff.
+    orphan = await agent._tool_generate_image(
         {"prompt": "a cat"}, agent._new_request_state(None, depth=1)
     )
-    assert "Files:" in child["note"]  # the spawner delivers it from the path
-    assert "queued for delivery" not in child["note"]
+    assert "Files:" in orphan["note"]
+    assert "queued for delivery" not in orphan["note"]
+    assert os.path.isabs(orphan["path"])
 
 
 def test_derive_label_prefers_the_model_label_then_the_task() -> None:
