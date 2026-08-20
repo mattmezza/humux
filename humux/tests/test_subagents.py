@@ -240,14 +240,56 @@ async def test_background_subagent_notifies_user_digests_context(agent, monkeypa
     await run._task
 
     assert run.status == "done"
-    # Chat: the one-line NOTIFICATION only — never the raw output.
-    channel.send.assert_awaited_once_with("555", "Cheapest is CHF 599.")
+    # Chat: ONLY the one-line NOTIFICATION — no per-run completion note (the
+    # last/only finisher's note is suppressed; the digest speaks for it), and
+    # never the raw output.
+    assert _sent(channel) == ["Cheapest is CHF 599."]
     # Context: the concise digest is kept (merged), the raw output never is.
     turns = await agent.history.get_messages("telegram", "u1", "555")
     blob = str(turns[-1]["content"])
     assert [t["role"] for t in turns] == ["user", "assistant"]  # still alternating
     assert "iPhone 17e 256GB at CHF 599" in blob
     assert "raw verbose findings" not in blob
+
+
+@pytest.mark.asyncio
+async def test_midbatch_background_finisher_posts_a_note(agent, monkeypatch) -> None:
+    """While siblings are still running, a background finisher notes its
+    completion; the LAST finisher stays silent — the batch digest follows."""
+    channel = AsyncMock()
+    agent.channels["telegram"] = channel
+
+    async def fake_summary(batch):
+        return "All done.", "digest"
+
+    monkeypatch.setattr(agent, "_summarize_subagent_batch", fake_summary)
+    # A second background run for the same chat is still "running", so the
+    # first finisher is mid-batch.
+    agent.subagents.register(
+        SubagentRun(
+            run_id="sub_pending",
+            agent="",
+            task="slow sibling",
+            background=True,
+            origin_channel="telegram",
+            origin_chat_id="555",
+        )
+    )
+    agent.llm = _ScriptedLLM([LLMResponse(text="findings", tool_calls=[])])
+    result = await agent.run_subagent(
+        task="quick check",
+        origin_channel="telegram",
+        origin_user_id="u1",
+        origin_chat_id="555",
+        background=True,
+    )
+    run = agent.subagents.get(result["run_id"])
+    await run._task
+
+    notes = [t for t in _sent(channel) if t.startswith("✅ Subagent")]
+    assert len(notes) == 1 and run.label in notes[0]
+    # And no batch digest yet — the sibling is still running.
+    assert "All done." not in _sent(channel)
 
 
 @pytest.mark.asyncio
@@ -871,6 +913,81 @@ async def test_fanout_reports_partial_failure_per_index(agent, monkeypatch) -> N
     assert statuses == ["done", "error", "done"]
     assert "Agent not found" in out["results"][1]["error"]
     assert "note" in out and "did not complete" in out["note"]
+
+
+def _sent(channel) -> list[str]:
+    """Texts the fake channel was asked to send."""
+    return [c.args[1] for c in channel.send.await_args_list]
+
+
+@pytest.mark.asyncio
+async def test_fanout_child_completion_notes(agent, monkeypatch) -> None:
+    """Each child posts exactly one completion note to the originating chat."""
+    channel = AsyncMock()
+    agent.channels["cli"] = channel
+    _install_overlap_loop(agent, monkeypatch, delay=0.0)
+    tasks = [{"task": f"t{i}", "label": f"l{i}"} for i in range(3)]
+
+    await agent._tool_spawn_subagents({"tasks": tasks}, "cli", "u", _fanout_state(agent))
+
+    for label in ("l0", "l1", "l2"):
+        notes = [t for t in _sent(channel) if t.startswith(f"✅ Subagent {label} ")]
+        assert len(notes) == 1, notes
+        assert "done" in notes[0]
+    # Notification only: nothing reached the conversation history.
+    msgs = await agent.history.get_messages("cli", "u", "c1")
+    assert not any("Subagent" in str(m.get("content", "")) for m in msgs)
+
+
+@pytest.mark.asyncio
+async def test_fanout_failed_child_notes_the_failure(agent, monkeypatch) -> None:
+    channel = AsyncMock()
+    agent.channels["cli"] = channel
+
+    async def fake_inner(task, child_agent, child_state, run):
+        if task == "boom":
+            raise RuntimeError("nope")
+        run.stopped_reason = "complete"
+        return "fine"
+
+    monkeypatch.setattr(agent, "_run_subagent_loop_inner", fake_inner)
+    tasks = [{"task": "boom", "label": "bad"}, {"task": "ok", "label": "good"}]
+
+    await agent._tool_spawn_subagents({"tasks": tasks}, "cli", "u", _fanout_state(agent))
+
+    sent = _sent(channel)
+    assert [t for t in sent if "bad" in t and "failed" in t]
+    assert [t for t in sent if "good" in t and "done" in t]
+
+
+@pytest.mark.asyncio
+async def test_fast_sync_spawn_posts_no_completion_note(agent) -> None:
+    """A sync result lands in the very next reply — a 0s run needs no note."""
+    channel = AsyncMock()
+    agent.channels["cli"] = channel
+    agent.llm = _ScriptedLLM([LLMResponse(text="quick", tool_calls=[])])
+
+    res = await agent.run_subagent(task="x", origin_channel="cli", origin_chat_id="c1")
+
+    assert res["ok"] is True
+    assert not [t for t in _sent(channel) if "Subagent" in t]
+
+
+@pytest.mark.asyncio
+async def test_system_origin_run_posts_no_note(agent, monkeypatch) -> None:
+    """Scheduler/system runs have no chat to notify."""
+    channel = AsyncMock()
+    agent.channels["system"] = channel  # present, but the run has no chat_id
+    _install_overlap_loop(agent, monkeypatch, delay=0.0)
+
+    await agent._tool_spawn_subagents(
+        {"tasks": [{"task": "t", "label": "l"}]},
+        "system",
+        "u",
+        _fanout_state(agent, channel="system", chat=""),
+    )
+
+    channel.send.assert_not_awaited()
 
 
 @pytest.mark.asyncio

@@ -157,6 +157,10 @@ _LOOP_ABORT_MESSAGE = (
     "Could you rephrase, or break the request into smaller steps?"
 )
 
+# A sync spawn's result lands in the very next reply, so a completion note only
+# earns its noise when the run kept the user waiting this long.
+_SUBAGENT_NOTE_MIN_SECONDS = 10.0
+
 
 def _failure_signature(name: str, params: object) -> str:
     """Stable key identifying a tool call, for the repeat-failure breaker (#78)."""
@@ -3983,13 +3987,18 @@ class AgentCore:
             try:
                 text = await self._run_subagent_loop(run.task, e["agent_obj"], e["state"], run)
             except asyncio.CancelledError:
+                # No note: cancellation is the user's own /stop (or an explicit
+                # per-run cancel, which shows its own notice) — a wide fan-out
+                # would otherwise spam one 🚫 bubble per child.
                 self.subagents.finish(run.run_id, "cancelled")
                 raise
             except Exception as exc:
                 log.exception("Subagent %s failed", run.run_id)
                 self.subagents.finish(run.run_id, "error", error=str(exc))
+                await self._notify_run_finished(run)
                 return
             self.subagents.finish(run.run_id, "done", result=text)
+            await self._notify_run_finished(run)
 
         child_tasks: dict[str, asyncio.Task] = {}
         for e in live:
@@ -4079,6 +4088,35 @@ class AgentCore:
             await ch.send(chat_id, text)
         except Exception:
             log.exception("Failed to send progress note (chat=%s)", chat_id)
+
+    async def _notify_background_progress(self, run: SubagentRun) -> None:
+        """Completion note for a background run, but only mid-batch: the last
+        finisher's note would land right next to the batch digest — one event,
+        two bubbles — so it is skipped and the digest speaks for it. The check
+        mirrors _maybe_deliver_subagent_batch's barrier (background runs only),
+        so note-or-digest is exhaustive and exclusive."""
+        still_running = any(
+            r.background
+            and r.status == "running"
+            and r.origin_channel == run.origin_channel
+            and r.origin_chat_id == run.origin_chat_id
+            for r in self.subagents.list_runs()
+        )
+        if still_running:
+            await self._notify_run_finished(run)
+
+    async def _notify_run_finished(self, run: SubagentRun) -> None:
+        """One-line status note when a subagent run ends. Notification only: it
+        goes out over the channel, so it is never recorded in history and never
+        reaches the model as input."""
+        name = run.label or run.agent or run.run_id
+        if run.status == "error":
+            text = f"⚠️ Subagent {name} — failed ({run.elapsed_str})"
+        else:
+            used = run.tokens_used
+            tokens = f"{round(used / 1000)}k" if used >= 1000 else str(used)
+            text = f"✅ Subagent {name} — done ({run.elapsed_str}, {tokens} tokens)"
+        await self._notify_origin_chat(run.origin_channel, run.origin_chat_id, text)
 
     async def run_subagent(
         self,
@@ -4179,8 +4217,12 @@ class AgentCore:
         except Exception as exc:
             log.exception("Subagent %s failed", run_id)
             self.subagents.finish(run_id, "error", error=str(exc))
+            if run.elapsed >= _SUBAGENT_NOTE_MIN_SECONDS:
+                await self._notify_run_finished(run)
             return {"error": f"Subagent failed: {exc}", "run_id": run_id}
         self.subagents.finish(run_id, "done", result=text)
+        if run.elapsed >= _SUBAGENT_NOTE_MIN_SECONDS:
+            await self._notify_run_finished(run)
         return {
             "ok": True,
             "run_id": run_id,
@@ -4597,6 +4639,8 @@ class AgentCore:
             # finish() is a no-op here). Mark it synthesised so a sibling's batch
             # doesn't report on a run the user deliberately cancelled.
             self.subagents.finish(run.run_id, "cancelled")
+            # No completion note here: a user-initiated cancel already shows its
+            # own notice (the /subagents button message becomes "Cancelled.").
             run.synthesized = True
             # This may have been the last running sibling: a done/error run that
             # deferred earlier would otherwise be orphaned (its reply lost), since
@@ -4608,11 +4652,13 @@ class AgentCore:
         except Exception as exc:
             log.exception("Background subagent %s failed", run.run_id)
             if self.subagents.finish(run.run_id, "error", error=str(exc)):
+                await self._notify_background_progress(run)
                 await self._maybe_deliver_subagent_batch(run)
             return
         # finish() returns False if a late cancellation already finalised the run,
         # in which case this completion must not also trigger a reply.
         if self.subagents.finish(run.run_id, "done", result=text):
+            await self._notify_background_progress(run)
             await self._maybe_deliver_subagent_batch(run)
 
     async def _maybe_deliver_subagent_batch(self, run: SubagentRun) -> None:
