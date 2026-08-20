@@ -475,6 +475,38 @@ class TestVoicePreview:
             assert resp.status_code == 401, f"{path} should require auth"
 
 
+class TestVoiceTestStt:
+    def test_test_stt_local_round_trip(self):
+        # #297: the endpoint synthesizes the fixed test phrase via edge-tts,
+        # then feeds it through the pipeline's local transcription method —
+        # the same one real voice messages use.
+        class _VoiceStub:
+            stt_api_base_url = ""
+            stt_model = "base"
+            _whisper = object()  # non-None stand-in: "local STT is loaded"
+
+            async def _synthesize_edge(self, text, voice):
+                assert "quick brown fox" in text.lower()
+                return b"FAKE-MP3"
+
+            def _transcribe_sync(self, audio_bytes):
+                assert audio_bytes == b"FAKE-MP3"
+                return "the quick brown fox jumps over the lazy dog"
+
+        client = _client(agent=cast(Any, SimpleNamespace(voice=_VoiceStub())))
+        resp = client.post("/voice/test-stt", json={"mode": "local"}, headers=AUTH)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data == {
+            "ok": True,
+            "mode": "local",
+            "text": "the quick brown fox jumps over the lazy dog",
+            "duration_ms": data["duration_ms"],
+            "model": "base",
+        }
+        assert isinstance(data["duration_ms"], int)
+
+
 # ---------------------------------------------------------------------------
 # Setup wizard
 # ---------------------------------------------------------------------------

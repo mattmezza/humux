@@ -1142,6 +1142,15 @@ class VoicePreviewIn(BaseModel):
     lang: str = Field("", max_length=16)  # Kokoro pronunciation override; "" = derive from voice
 
 
+class STTTestIn(BaseModel):
+    mode: str = Field("local", max_length=16)  # "local" or "remote"; anything else → local
+
+
+# Fixed phrase for the STT round-trip test (#297) — same text every run so
+# results (accuracy, timing) are comparable across local/remote and over time.
+_STT_TEST_PHRASE = "The quick brown fox jumps over the lazy dog"
+
+
 # ---------------------------------------------------------------------------
 # Auth dependency
 # ---------------------------------------------------------------------------
@@ -3196,6 +3205,63 @@ def create_admin_app(
         except Exception as exc:
             raise HTTPException(503, f"Preview failed: {exc}") from exc
         return Response(content=audio, media_type=mime)
+
+    @app.post("/voice/test-stt", dependencies=[Depends(auth)])
+    async def voice_test_stt(body: STTTestIn) -> dict:
+        """Round-trip STT test (#297): synthesize a fixed phrase via edge-tts,
+        then transcribe it through the same VoicePipeline methods that process
+        real voice messages, forced to the requested mode — so a misconfigured
+        remote STT (bad URL, unreachable sidecar, format mismatch) surfaces here
+        instead of at the next real voice message."""
+        agent = agent_state.agent
+        pipeline = getattr(agent, "voice", None) if agent else None
+        if pipeline is None:
+            raise HTTPException(
+                503, "Voice pipeline not loaded — enable TTS and restart the agent."
+            )
+        mode = "remote" if body.mode == "remote" else "local"
+
+        try:
+            audio = await pipeline._synthesize_edge(_STT_TEST_PHRASE, None)
+        except Exception as exc:
+            raise HTTPException(
+                503, f"Couldn't generate test audio (edge-tts unavailable): {exc}"
+            ) from exc
+
+        start = time.monotonic()
+        try:
+            if mode == "remote":
+                if not pipeline.stt_api_base_url:
+                    raise HTTPException(
+                        400, "Remote STT URL isn't configured — set it above and save first."
+                    )
+                text = await pipeline._transcribe_remote(audio)
+            else:
+                if pipeline._whisper is None:
+                    raise HTTPException(
+                        400,
+                        "Local STT (Whisper) isn't loaded — install faster-whisper or switch "
+                        "to remote.",
+                    )
+                loop = asyncio.get_running_loop()
+                text = await loop.run_in_executor(None, pipeline._transcribe_sync, audio)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            return {
+                "ok": False,
+                "mode": mode,
+                "error": str(exc),
+                "duration_ms": int((time.monotonic() - start) * 1000),
+            }
+
+        return {
+            "ok": True,
+            "mode": mode,
+            "text": text,
+            "duration_ms": int((time.monotonic() - start) * 1000),
+            "model": pipeline.stt_model if mode == "local" else None,
+        }
 
     @app.post("/debug/system-prompt/preview", dependencies=[Depends(auth)])
     async def system_prompt_preview(body: PromptPreviewIn) -> dict:

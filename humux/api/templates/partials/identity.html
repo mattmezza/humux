@@ -20,7 +20,26 @@
   get sttMode() { return this._sttMode; },
   set sttMode(val) { this._sttMode = val; },
   get ttsMode() { return this._ttsMode; },
-  set ttsMode(val) { this._ttsMode = val; }
+  set ttsMode(val) { this._ttsMode = val; },
+  sttTestResult: '',
+  sttTestOk: false,
+  testStt() {
+    const key = localStorage.getItem('admin_api_key') || '';
+    return fetch('/voice/test-stt', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
+      body: JSON.stringify({ mode: this.sttMode })
+    })
+      .then(async r => {
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.detail || 'STT test failed');
+        this.sttTestOk = d.ok;
+        this.sttTestResult = d.ok
+          ? `✓ ${d.mode} STT: \"${d.text}\" (${(d.duration_ms / 1000).toFixed(1)}s)`
+          : `✗ ${d.mode} STT: ${d.error || 'failed'}`;
+      })
+      .catch(e => { this.sttTestOk = false; this.sttTestResult = e.message; });
+  }
 }">
   <h2 class="text-base mb-1">Voice</h2>
   <p class="text-muted text-xs mb-3">Configure speech-to-text (STT) and text-to-speech (TTS) used for voice messages.</p>
@@ -61,6 +80,14 @@
       <input type="text" class="input-sm" style="max-width:360px" x-model="sttApiBaseUrl"
              placeholder="http://whisper:8000/v1" id="voice-stt-url">
       <p class="text-muted text-xs mt-1">OpenAI-compatible STT endpoint (e.g. whisper sidecar, OpenAI, Groq). The model is chosen by the remote service.</p>
+    </div>
+
+    <div>
+      <button type="button" class="btn btn-sm" @click="withLoading($event.currentTarget, () => testStt())">Test STT</button>
+      <p class="text-muted text-xs mt-1">Speaks a fixed test phrase with edge-tts, then transcribes it with the selected STT engine above — no need to send a real voice message.</p>
+      <template x-if="sttTestResult">
+        <div :class="sttTestOk ? 'alert-success' : 'alert-error'" class="mt-2 text-xs" x-text="sttTestResult"></div>
+      </template>
     </div>
 
     {# ── TTS ── #}
