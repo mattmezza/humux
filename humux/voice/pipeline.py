@@ -230,6 +230,7 @@ class VoicePipeline:
         self.tts_voice = tts_voice
         self.tts_enabled = tts_enabled
         self.backend = backend
+        self.stt_model = stt_model
         self.kokoro_default_voice = kokoro_default_voice
         self.tts_api_base_url = tts_api_base_url.rstrip("/") if tts_api_base_url else ""
         self.stt_api_base_url = stt_api_base_url.rstrip("/") if stt_api_base_url else ""
