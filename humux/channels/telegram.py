@@ -657,8 +657,9 @@ class TelegramChannel:
             await message.reply_text("No active subagent runs.")
             return
         for r in runs:
+            name = r.label or r.agent or "default"
             text = (
-                f"🤖 <b>{r.agent or 'default'}</b> · {r.status} · {r.elapsed_str}\n"
+                f"🤖 <b>{name}</b> · {r.status} · {r.elapsed_str}\n"
                 f"{(r.progress or '—')}\n"
                 f"<i>{r.task[:160]}</i>"
             )

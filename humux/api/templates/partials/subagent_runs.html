@@ -1,35 +1,71 @@
-{# Subagent runs — responsive card grid, polled live by the Jobs tab (#15) #}
-{% if runs %}
-<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-  {% for r in runs %}
-  <div class="card">
-    <div class="flex items-center justify-between gap-2">
-      <span class="font-medium text-xs break-all">{{ r.agent or 'default' }}</span>
-      <span class="{% if r.status in ('running', 'done') %}badge-ok{% elif r.status == 'error' %}badge-warn{% else %}badge-off{% endif %}">
-        {{ r.status }}
-      </span>
-    </div>
-    <div class="text-muted text-[0.7rem] mt-1 break-words">{{ r.task[:140] }}{{ '…' if r.task|length > 140 else '' }}</div>
-    <div class="flex items-center justify-between text-muted text-[0.65rem] mt-2 gap-2">
-      <span title="elapsed">⏱ {{ r.elapsed_str }}</span>
-      <span class="truncate" title="{{ r.progress }}">{{ r.progress or '—' }}</span>
-    </div>
-    {% if r.depth and r.depth > 1 %}
-    <div class="text-muted text-[0.6rem] mt-1">depth {{ r.depth }}</div>
-    {% endif %}
-    {% if r.status == 'running' %}
-    <button class="btn-danger btn-sm mt-2 w-full"
-            hx-post="/subagents/cancel" hx-target="#subagent-runs" hx-swap="innerHTML"
-            hx-vals='{"run_id": {{ r.run_id|tojson }} }'
-            hx-confirm="Cancel subagent {{ r.run_id }}?">
-      Cancel
-    </button>
-    {% endif %}
+{# Subagent runs — responsive card grid, polled live by the Jobs tab (#15).
+   Siblings of one spawn_subagents fan-out share a group_id and render under a
+   group header; a child run (parent_run_id set) is indented and names its
+   parent, so the run tree is visible. #}
+{% macro status_badge(status) -%}
+  {%- if status == 'running' -%}
+    <span class="badge-warn">running</span>
+  {%- elif status == 'done' -%}
+    <span class="badge-ok">done</span>
+  {%- elif status == 'error' -%}
+    <span class="badge-off" style="color:var(--color-danger); background-color:color-mix(in oklab, var(--color-danger-dim) 40%, transparent)">error</span>
+  {%- else -%}
+    <span class="badge-off">{{ status }}</span>
+  {%- endif -%}
+{%- endmacro %}
+
+{% macro run_card(r, labels) %}
+<div class="card{% if r.parent_run_id %} border-l-2 border-accent ml-2{% endif %}">
+  <div class="flex items-center justify-between gap-2">
+    <span class="font-medium text-xs break-all">{{ r.label or r.agent or r.run_id }}</span>
+    {{ status_badge(r.status) }}
   </div>
-  {% endfor %}
+  {% if r.parent_run_id %}
+  <div class="text-muted text-[0.6rem] mt-0.5 break-all">└ child of {{ labels.get(r.parent_run_id, r.parent_run_id) }}</div>
+  {% endif %}
+  <div class="text-muted text-[0.7rem] mt-1 break-words">{{ r.task[:140] }}{{ '…' if r.task|length > 140 else '' }}</div>
+  <div class="flex items-center justify-between text-muted text-[0.65rem] mt-2 gap-2">
+    <span title="elapsed">⏱ {{ r.elapsed_str }}</span>
+    <span class="truncate" title="{{ r.progress }}">{{ r.progress or '—' }}</span>
+  </div>
+  <div class="flex flex-wrap items-center gap-2 text-muted text-[0.6rem] mt-1">
+    {% if r.depth and r.depth > 1 %}<span>depth {{ r.depth }}</span>{% endif %}
+    {% if r.steps %}<span title="tool-call rounds">{{ r.steps }} steps</span>{% endif %}
+    {% if r.tokens_used %}<span title="approx tokens used">{{ '{:,}'.format(r.tokens_used) }} tok</span>{% endif %}
+    {% if r.children %}<span title="child runs">{{ r.children|length }} child{{ '' if r.children|length == 1 else 'ren' }}</span>{% endif %}
+    {% if r.stopped_reason and r.status != 'running' %}<span title="why it stopped">stopped: {{ r.stopped_reason }}</span>{% endif %}
+  </div>
+  {% if r.status == 'running' %}
+  <button class="btn-danger btn-sm mt-2 w-full"
+          hx-post="/subagents/cancel" hx-target="#subagent-runs" hx-swap="innerHTML"
+          hx-vals='{"run_id": {{ r.run_id|tojson }} }'
+          hx-confirm="Cancel subagent {{ r.run_id }}?">
+    Cancel
+  </button>
+  {% endif %}
 </div>
+{% endmacro %}
+
+{% if groups %}
+{% for g in groups %}
+  {% if g.group_id %}
+  <div class="flex items-center gap-2 mt-3 mb-1">
+    <span class="text-xs text-accent font-medium">fan-out {{ g.group_id }}</span>
+    <span class="text-muted text-[0.65rem]">{{ g.runs|length }} run{{ '' if g.runs|length == 1 else 's' }}</span>
+    <span class="flex-1 border-t border-border"></span>
+  </div>
+  {% endif %}
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3{% if not g.group_id %} mt-3{% endif %}">
+    {% for r in g.runs %}{{ run_card(r, labels) }}{% endfor %}
+  </div>
+{% endfor %}
 {% else %}
 <p class="text-muted text-xs">
   {% if agent_running %}No subagent runs yet.{% else %}Agent stopped — no subagent runs.{% endif %}
 </p>
 {% endif %}
+
+{# Live count for the Jobs sub-tab badge — swapped out-of-band on every poll. #}
+<span id="subagent-badge" hx-swap-oob="true"
+      class="inline-flex items-center justify-center ml-1 px-1.5 py-0.5 rounded-full text-[0.65rem] font-bold bg-accent text-black"
+      style="min-width:1.25rem; line-height:1;{% if not running_count %}display:none;{% endif %}">{{ running_count or '' }}</span>

@@ -209,15 +209,20 @@ workspace:
   directory: ""            # e.g. "~/projects/my-repo" — the only dir the agent may touch
 
 # Subagents — the agent can delegate a scoped subtask to a sub-loop running
-# under a chosen agent, on demand (spawn_subagent tool) or on a schedule
-# (a "subagent" job above). A child's tools/skills/secrets are a subset of the
-# caller's — never wider. Defaults work out of the box; tune the guardrails:
+# under a chosen agent, on demand (spawn_subagent tool, or spawn_subagents to
+# fan several out in parallel — top level only, no nested fan-out) or on a
+# schedule (a "subagent" job above). A child's tools/skills/secrets are a
+# subset of the caller's — never wider. Defaults work out of the box; tune
+# the guardrails:
 subagents:
   enabled: true
-  recursion_depth: 3   # max nesting (a top-level spawn is depth 1)
-  max_steps: 12        # max tool-call rounds per run (hard stop)
-  token_budget: 100000 # approx token ceiling per run (best-effort)
-  max_concurrent: 3    # max background runs at once
+  recursion_depth: 3        # max nesting (a top-level spawn is depth 1)
+  max_steps: 12             # max tool-call rounds per run (hard stop)
+  token_budget: 100000      # approx token ceiling per run (best-effort)
+  max_concurrent: 4         # per-chat concurrency gate for ALL runs (sync + background); extras queue, not fail
+  max_fanout: 6             # max tasks in one spawn_subagents call
+  max_spawns_per_turn: 12    # max spawns across the whole subagent tree, per turn
+  turn_token_budget: 400000  # max subagent tokens across the whole tree, per turn (reserve-then-refund)
   # "provider:model" a spawn may pick instead of inheriting the caller's LLM
   # (e.g. a cheap worker under an expensive coordinator). Empty = inherit only.
   allowed_models: []   # e.g. ["deepseek:deepseek-v4-flash"]

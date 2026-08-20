@@ -41,7 +41,7 @@ from core.compaction import effective_window
 from core.config import CompactionConfig, search_ready
 from core.config_store import ConfigStore
 from core.goal_decomposition import classify_complexity, decompose_goal
-from core.llm import LLMClient, get_sent_payload
+from core.llm import LLMClient, get_sent_payload, list_captured
 from core.log_streams import current_stream, current_subagent
 from core.prompt_builder import (
     build_prompt_sections,
@@ -471,6 +471,7 @@ class _BufferHandler(logging.Handler):
                     "name": record.name,
                     "stream": stream,
                     "hue": _stream_hue(stream),
+                    "subagent": sub or "",
                     "message": message,
                     "is_reasoning": record.name == _REASONING_LOGGER,
                 }
@@ -487,17 +488,20 @@ def _filter_log_entries(
     q: str = "",
     since: str = "",
     until: str = "",
+    subagent: str = "",
 ) -> list[dict]:
     """Apply the Logs tab filters. ``stream`` is a regex over the stream name;
     ``level`` is a minimum severity; ``q`` is a case-insensitive substring over
-    the message; ``since``/``until`` are ``datetime-local`` bounds. Each empty
-    filter is a no-op, so the unfiltered case returns everything."""
+    the message; ``since``/``until`` are ``datetime-local`` bounds; ``subagent``
+    is a case-insensitive substring over the emitting subagent's label. Each
+    empty filter is a no-op, so the unfiltered case returns everything."""
     try:
         rx = re.compile(stream, re.IGNORECASE) if stream else None
     except re.error:
         rx = None  # a half-typed regex shouldn't blank the viewer
     minlevel = logging.getLevelName(level) if level in _LOG_LEVELS else 0
     ql = q.strip().lower()
+    subl = subagent.strip().lower()
     lo = _parse_local_dt(since)
     hi = _parse_local_dt(until)
     out = []
@@ -507,6 +511,8 @@ def _filter_log_entries(
         if minlevel and e["levelno"] < minlevel:
             continue
         if ql and ql not in e["message"].lower() and ql not in e["name"].lower():
+            continue
+        if subl and subl not in (e.get("subagent") or "").lower():
             continue
         if lo is not None and e["ts"] < lo:
             continue
@@ -2135,7 +2141,10 @@ def create_admin_app(
         sub_recursion = await config_store.get("subagents.recursion_depth") or "3"
         sub_steps = await config_store.get("subagents.max_steps") or "12"
         sub_tokens = await config_store.get("subagents.token_budget") or "100000"
-        sub_concurrent = await config_store.get("subagents.max_concurrent") or "3"
+        sub_concurrent = await config_store.get("subagents.max_concurrent") or "4"
+        sub_fanout = await config_store.get("subagents.max_fanout") or "6"
+        sub_spawns_turn = await config_store.get("subagents.max_spawns_per_turn") or "12"
+        sub_turn_tokens = await config_store.get("subagents.turn_token_budget") or "400000"
         # Allowed "provider:model" overrides (#299) — stored as a JSON list,
         # edited as one entry per line.
         try:
@@ -2209,6 +2218,9 @@ def create_admin_app(
             subagents_max_steps=sub_steps,
             subagents_token_budget=sub_tokens,
             subagents_max_concurrent=sub_concurrent,
+            subagents_max_fanout=sub_fanout,
+            subagents_max_spawns_per_turn=sub_spawns_turn,
+            subagents_turn_token_budget=sub_turn_tokens,
             subagents_allowed_models=sub_allowed,
             summary_enabled=ss_enabled,
             summary_provider=ss_provider,
@@ -2745,12 +2757,20 @@ def create_admin_app(
         q: str = "",
         since: str = "",
         until: str = "",
+        subagent: str = "",
     ) -> HTMLResponse:
         """Filtered log lines for HTMX swap (#75). Filters: stream (regex), level
-        (min severity), q (text), since/until (time range)."""
+        (min severity), q (text), since/until (time range), subagent (label
+        substring — lines emitted inside one subagent run)."""
         snapshot = list(_LOG_BUFFER)
         entries = _filter_log_entries(
-            snapshot, stream=stream, level=level, q=q, since=since, until=until
+            snapshot,
+            stream=stream,
+            level=level,
+            q=q,
+            since=since,
+            until=until,
+            subagent=subagent,
         )[-300:]
         # All stream names ever seen (not just the filtered slice) for the picker.
         streams = sorted({e["stream"] for e in snapshot})
@@ -3085,12 +3105,33 @@ def create_admin_app(
             return []
         return agent.subagents.list_runs()
 
+    def _subagent_groups(runs: list) -> list[dict]:
+        """Bucket runs by ``group_id`` (siblings of one fan-out), newest bucket
+        first; an ungrouped run is its own bucket. Order inside a bucket keeps
+        list_runs' newest-first order."""
+        groups: list[dict] = []
+        index: dict[str, dict] = {}
+        for r in runs:
+            gid = getattr(r, "group_id", "") or ""
+            key = gid or f"\0solo:{r.run_id}"
+            g = index.get(key)
+            if g is None:
+                g = {"group_id": gid, "runs": []}
+                index[key] = g
+                groups.append(g)
+            g["runs"].append(r)
+        return groups
+
     @app.get("/partials/subagent-runs", dependencies=[Depends(auth)])
     async def partial_subagent_runs() -> HTMLResponse:
         """Subagent runs card grid — polled by the Jobs tab for live status."""
+        runs = _subagent_runs()
         return _render_partial(
             "partials/subagent_runs.html",
-            runs=_subagent_runs(),
+            groups=_subagent_groups(runs),
+            # run_id → display label, so a child can name its parent.
+            labels={r.run_id: (r.label or r.agent or r.run_id) for r in runs},
+            running_count=sum(1 for r in runs if r.status == "running"),
             agent_running=agent_state.agent is not None,
         )
 
@@ -4207,7 +4248,23 @@ def create_admin_app(
         tz = await config_store.get("agent.timezone") or "UTC"
         now = datetime.now(UTC)
         for c in chats:
+            c["run_id"] = ""
             c["last_active_h"] = _humanize_ts(c.get("last_active", ""), now, tz)
+        # Subagent runs never write to ConversationHistory, so their captured
+        # payloads would be unreachable from the list. Append one synthetic row
+        # per captured key that carries a run id (newest first), leaving the
+        # main-chat rows above untouched.
+        for channel, user_id, chat_id, run_id in list_captured():
+            if run_id:
+                chats.append(
+                    {
+                        "channel": channel,
+                        "user_id": user_id,
+                        "chat_id": chat_id,
+                        "run_id": run_id,
+                        "last_active_h": "",
+                    }
+                )
         return _render_partial("partials/inspect.html", chats=chats)
 
     @app.get("/partials/inspect-tabs", dependencies=[Depends(auth)])
@@ -4227,14 +4284,15 @@ def create_admin_app(
 
     @app.get("/inspect/payload", dependencies=[Depends(auth)])
     async def inspect_payload(
-        channel: str = "", user_id: str = "", chat_id: str = ""
+        channel: str = "", user_id: str = "", chat_id: str = "", run_id: str = ""
     ) -> HTMLResponse:
         """Render the last-sent inference payload for one context (#99).
 
-        Reads the in-memory capture keyed by (channel, user_id, chat_id) — the
-        exact system/messages/tools/model that generate() last sent. Empty until
-        the context has had a turn since the agent started."""
-        payload = get_sent_payload((channel, user_id, chat_id))
+        Reads the in-memory capture keyed by (channel, user_id, chat_id, run_id)
+        — run_id "" for a main turn, a subagent run id otherwise — the exact
+        system/messages/tools/model that generate() last sent. Empty until the
+        context has had a turn since the agent started."""
+        payload = get_sent_payload((channel, user_id, chat_id, run_id))
         meta: dict[str, object] | None = None
         system = ""
         messages: list = []
@@ -5291,6 +5349,7 @@ GATEABLE_TOOLS = [
     "deep_research",
     "manage_jobs",
     "spawn_subagent",
+    "spawn_subagents",
     "generate_image",
     "read",
     "write",
@@ -5318,6 +5377,7 @@ TOOL_DESCRIPTIONS = {
     "deep_research": "Multi-step web research with a synthesized, cited report.",
     "manage_jobs": "Schedule, list and cancel the agent's own jobs.",
     "spawn_subagent": "Delegate a scoped subtask to a child agent.",
+    "spawn_subagents": "Fan out several subtasks to parallel subagents.",
     "generate_image": "Generate images and send them as photos.",
     "read": "Read a file inside the workspace.",
     "write": "Create or overwrite a file inside the workspace.",
@@ -5333,7 +5393,7 @@ def gateable_tools_for(
     """GATEABLE_TOOLS minus tools whose feature is globally disabled."""
     out = list(GATEABLE_TOOLS)
     if not subagents_enabled:
-        out = [t for t in out if t != "spawn_subagent"]
+        out = [t for t in out if t not in ("spawn_subagent", "spawn_subagents")]
     if not imagegen_enabled:
         out = [t for t in out if t != "generate_image"]
     if not workspace_enabled:

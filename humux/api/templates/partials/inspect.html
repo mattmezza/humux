@@ -26,14 +26,20 @@
                 x-show="!filter
                         || {{ c.channel|tojson|forceescape }}.toLowerCase().includes(filter.toLowerCase())
                         || {{ c.user_id|tojson|forceescape }}.toLowerCase().includes(filter.toLowerCase())
-                        || {{ c.chat_id|tojson|forceescape }}.toLowerCase().includes(filter.toLowerCase())"
-                hx-get="/inspect/payload?channel={{ c.channel|urlencode }}&user_id={{ c.user_id|urlencode }}&chat_id={{ c.chat_id|urlencode }}"
+                        || {{ c.chat_id|tojson|forceescape }}.toLowerCase().includes(filter.toLowerCase())
+                        || {{ c.run_id|tojson|forceescape }}.toLowerCase().includes(filter.toLowerCase())"
+                hx-get="/inspect/payload?channel={{ c.channel|urlencode }}&user_id={{ c.user_id|urlencode }}&chat_id={{ c.chat_id|urlencode }}&run_id={{ c.run_id|urlencode }}"
                 hx-target="#inspect-detail" hx-swap="innerHTML"
                 hx-trigger="click{% if loop.first %}, load{% endif %}">
           <div class="flex items-center gap-1.5 min-w-0">
-            <span class="badge-ok whitespace-nowrap">{{ c.channel }}</span>
-            <span class="text-sm font-semibold break-all flex-1 min-w-0">{{ c.chat_id or '(default)' }}</span>
+            <span class="{{ 'badge-warn' if c.run_id else 'badge-ok' }} whitespace-nowrap">{{ c.channel }}</span>
+            <span class="text-sm font-semibold break-all flex-1 min-w-0">
+              {%- if c.run_id %}⚙ subagent {{ c.run_id }}{% else %}{{ c.chat_id or '(default)' }}{% endif -%}
+            </span>
           </div>
+          {% if c.run_id %}
+          <div class="text-muted text-xs break-all">chat {{ c.chat_id or '(default)' }}</div>
+          {% endif %}
           <div class="flex items-center justify-between gap-2">
             <span class="text-muted text-xs break-all">user {{ c.user_id }}</span>
             {% if c.last_active_h %}

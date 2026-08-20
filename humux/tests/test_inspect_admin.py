@@ -76,7 +76,7 @@ def test_inspect_partial_lists_active_contexts(tmp_path) -> None:
 
 def test_capture_records_per_context_and_suppresses_when_unset() -> None:
     llm.clear_captured()
-    ctx = ("telegram", "u1", "c1")
+    ctx = ("telegram", "u1", "c1", "")
     tok = llm.set_capture_context(ctx)
     try:
         llm.record_sent_payload(llm._capture_ctx.get(), {"model": "m", "messages": [], "tools": []})
@@ -93,10 +93,10 @@ def test_capture_lru_evicts_oldest() -> None:
     llm.clear_captured()
     cap = llm._CAPTURE_CAP
     for i in range(cap + 5):
-        llm.record_sent_payload(("c", "u", str(i)), {"model": str(i)})
+        llm.record_sent_payload(("c", "u", str(i), ""), {"model": str(i)})
     assert len(llm._LAST_SENT) == cap
-    assert llm.get_sent_payload(("c", "u", "0")) is None  # oldest evicted
-    assert llm.get_sent_payload(("c", "u", str(cap + 4))) is not None
+    assert llm.get_sent_payload(("c", "u", "0", "")) is None  # oldest evicted
+    assert llm.get_sent_payload(("c", "u", str(cap + 4), "")) is not None
     llm.clear_captured()
 
 
@@ -105,7 +105,7 @@ def test_inspect_payload_renders_captured_request(tmp_path) -> None:
     client = _client(tmp_path)
     llm.clear_captured()
     llm.record_sent_payload(
-        ("telegram", "u1", "c1"),
+        ("telegram", "u1", "c1", ""),
         {
             "captured_at": 1_700_000_000.0,
             "provider": "anthropic",
@@ -137,7 +137,7 @@ def test_inspect_payload_shows_context_usage_and_percent(tmp_path) -> None:
     client = _client(tmp_path)
     llm.clear_captured()
     llm.record_sent_payload(
-        ("telegram", "u1", "c1"),
+        ("telegram", "u1", "c1", ""),
         {
             "captured_at": 1_700_000_000.0,
             "provider": "anthropic",
@@ -168,7 +168,7 @@ def test_inspect_payload_omits_usage_when_absent(tmp_path) -> None:
     client = _client(tmp_path)
     llm.clear_captured()
     llm.record_sent_payload(
-        ("telegram", "u1", "c1"),
+        ("telegram", "u1", "c1", ""),
         {
             "captured_at": 1_700_000_000.0,
             "provider": "x",

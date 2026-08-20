@@ -16,8 +16,10 @@ registry is the right scope; nothing here needs to survive a reboot.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import time
 from collections import OrderedDict
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 # Keep at most this many finished runs for after-the-fact inspection.
@@ -126,6 +128,50 @@ def resolve_model_override(
     )
 
 
+def derive_label(label: str, task: str, index: int = 0) -> str:
+    """A short run label for logs/UI: the model's own when supplied, else the
+    first few words of the task (so five siblings of one agent stay tellable
+    apart in the Logs and Jobs tabs)."""
+    lbl = " ".join(str(label or "").split())
+    if not lbl:
+        lbl = " ".join(str(task or "").split()[:4]) or f"task{index}"
+    return lbl[:32]
+
+
+@dataclass(slots=True)
+class FanoutBudget:
+    """Whole-tree subagent spend guard for one turn, shared by reference
+    parent → child so a depth-2 grandchild draws from the same pool.
+
+    Reserve-then-refund, not spend-then-check: each run reserves its full token
+    budget at spawn (so concurrent runs can't all observe the same "plenty
+    left") and refunds the unspent remainder when it completes. A crashed run
+    simply doesn't refund — fails safe.
+    """
+
+    tokens_left: int
+    spawns_left: int
+
+    def reserve(self, tokens: int) -> str | None:
+        """Take a run's worth up front; an error message when there isn't one."""
+        if self.spawns_left <= 0:
+            return (
+                "Spawn budget for this turn is exhausted — finish with what "
+                "you have instead of delegating more."
+            )
+        if tokens > self.tokens_left:
+            return (
+                f"Only ~{self.tokens_left} subagent tokens are left this turn; "
+                "size the run smaller or do the work yourself."
+            )
+        self.spawns_left -= 1
+        self.tokens_left -= tokens
+        return None
+
+    def refund(self, unspent: int) -> None:
+        self.tokens_left += max(0, int(unspent))
+
+
 def resolve_cap(value: object, ceiling: int, floor: int = 1) -> int:
     """Clamp a caller-requested run cap (steps / token budget) into bounds.
 
@@ -205,6 +251,19 @@ class SubagentRun:
     task: str
     depth: int = 1
     background: bool = False
+    # Short display name for logs/UI (model-picked or derived from the task).
+    label: str = ""
+    # Fan-out bookkeeping: siblings of one spawn_subagents call share a
+    # group_id; parent_run_id/children link the run tree so the admin UI can
+    # render it and cancel can cascade.
+    group_id: str = ""
+    parent_run_id: str = ""
+    children: list[str] = field(default_factory=list)
+    # Live spend/outcome telemetry, updated by the run loop as it goes.
+    tokens_used: int = 0
+    steps: int = 0
+    # "" while running; complete | max_steps | token_budget | truncated | aborted.
+    stopped_reason: str = ""
     # Per-run sizing the spawning agent chose, resolved/clamped via resolve_cap
     # before the run starts (so always concrete on a live run; the 0 defaults are
     # only placeholders for direct construction). effort None = inherit caller level.
@@ -245,10 +304,40 @@ class SubagentRegistry:
 
     def __init__(self) -> None:
         self._runs: OrderedDict[str, SubagentRun] = OrderedDict()
+        # Per-chat concurrency gate (see slot()): chat key → depth-1 runs
+        # currently holding a slot. One Condition for all chats — wakeups are
+        # rare and cheap at this scale.
+        self._slots: dict[str, int] = {}
+        self._slots_cond = asyncio.Condition()
 
     def register(self, run: SubagentRun) -> None:
         self._runs[run.run_id] = run
         self._trim()
+
+    @contextlib.asynccontextmanager
+    async def slot(self, chat_key: str, limit: Callable[[], int]):
+        """Acquire a per-chat concurrency slot; queues (never refuses) when the
+        chat is at its cap. ``limit`` is read at every acquire so a live config
+        change to ``max_concurrent`` applies without a restart. Per-chat, so one
+        chat's fan-out never starves another chat's spawn.
+        """
+        async with self._slots_cond:
+            while self._slots.get(chat_key, 0) >= max(1, limit()):
+                await self._slots_cond.wait()
+            self._slots[chat_key] = self._slots.get(chat_key, 0) + 1
+        try:
+            yield
+        finally:
+            async with self._slots_cond:
+                n = self._slots.get(chat_key, 1) - 1
+                if n <= 0:
+                    self._slots.pop(chat_key, None)
+                else:
+                    self._slots[chat_key] = n
+                self._slots_cond.notify_all()
+
+    def slots_in_use(self, chat_key: str) -> int:
+        return self._slots.get(chat_key, 0)
 
     def attach_task(self, run_id: str, task: asyncio.Task) -> None:
         run = self._runs.get(run_id)
@@ -293,12 +382,21 @@ class SubagentRegistry:
         self._trim()
         return True
 
+    def list_group(self, group_id: str) -> list[SubagentRun]:
+        """All runs of one fan-out group, oldest first."""
+        out = [r for r in self._runs.values() if group_id and r.group_id == group_id]
+        return sorted(out, key=lambda r: r.started_at)
+
     def cancel(self, run_id: str) -> bool:
-        """Request cancellation of a running subagent. Returns False if it is not
-        running (unknown id or already finished)."""
+        """Request cancellation of a running subagent, cascading to any children
+        it spawned (a ``create_task`` child survives its parent's cancellation,
+        so without the walk a cancelled orchestrator would orphan its fan-out).
+        Returns False if it is not running (unknown id or already finished)."""
         run = self._runs.get(run_id)
         if not run or run.status != "running":
             return False
+        for child_id in list(run.children):
+            self.cancel(child_id)
         if run._task and not run._task.done():
             run._task.cancel()
         # The task's CancelledError handler flips status to "cancelled"; set it
@@ -410,6 +508,23 @@ def _selfcheck() -> None:
     assert resolve_model_override("", "b", ["a:b"]) == ("a", "b", "")
     assert resolve_model_override("a", "b", ["a:b", "c:d"]) == ("a", "b", "")
     assert resolve_model_override("a", "d", ["a:b", "c:d"])[2]  # wrong pairing → refused
+
+    # FanoutBudget: reserve-then-refund, fails closed on exhaustion.
+    b = FanoutBudget(tokens_left=100, spawns_left=2)
+    assert b.reserve(60) is None and b.tokens_left == 40 and b.spawns_left == 1
+    assert b.reserve(60)  # over the token pool → message, not exception
+    b.refund(30)
+    assert b.tokens_left == 70
+    assert b.reserve(60) is None and b.spawns_left == 0
+    assert b.reserve(1)  # spawn pool exhausted
+    b.refund(-5)  # a bogus negative refund never shrinks the pool
+    assert b.tokens_left == 10
+
+    # Labels: model-picked wins, else derived from the task, always bounded.
+    assert derive_label("pricing", "whatever task") == "pricing"
+    assert derive_label("", "Read the six PRs and summarise") == "Read the six PRs"
+    assert derive_label("", "", 3) == "task3"
+    assert len(derive_label("x" * 99, "")) == 32
     print("subagents.py self-check OK")
 
 

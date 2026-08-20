@@ -260,6 +260,7 @@ DEFAULT_RULES: dict[str, str] = {
     # Delegating to a subagent is approved once per spawn; the subagent then runs
     # autonomously within its narrowed scope (system semantics), like a job.
     "spawn_subagent": "ASK",
+    "spawn_subagents": "ASK",
     # Publishing a web artifact is now just a write under {workspace}/artifacts/
     # (issue #82) — it inherits the write ASK rule, no separate entry.
     # Dangerous — never allow
@@ -573,6 +574,7 @@ class PermissionEngine:
             "schedule_task",
             "manage_jobs",
             "spawn_subagent",
+            "spawn_subagents",
             "write",
             "edit",
         }:

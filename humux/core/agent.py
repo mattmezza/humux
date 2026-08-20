@@ -51,9 +51,11 @@ from core.skills import SkillsEngine
 from core.subagents import (
     FILE_HANDOFF_INSTRUCTION,
     RESULT_FOR_AGENT_INSTRUCTION,
+    FanoutBudget,
     SubagentRegistry,
     SubagentRun,
     allowed_models_hint,
+    derive_label,
     fallback_summary,
     narrow_accounts,
     narrow_scope,
@@ -769,7 +771,9 @@ TOOLS = [
             "or cancel it via /subagents or the admin Jobs page). Use background=false "
             "(default) to block and get the result back in this turn.\n"
             "Subagents are depth-limited, so prefer one focused delegation over "
-            "deep nesting."
+            "deep nesting.\n"
+            "ONE subtask → this tool. TWO OR MORE independent subtasks → "
+            "spawn_subagents (plural), which runs them in parallel."
         ),
         "input_schema": {
             "type": "object",
@@ -838,6 +842,88 @@ TOOLS = [
                 },
             },
             "required": ["task"],
+        },
+    },
+    # Fan-out (plural spawn) — 2+ independent subtasks in parallel.
+    {
+        "name": "spawn_subagents",
+        "description": (
+            "Delegate TWO OR MORE independent subtasks at once — they run in "
+            "PARALLEL and you get every result back in this turn. Use this "
+            "instead of several spawn_subagent calls whenever the subtasks don't "
+            "depend on each other: same wall-clock as the slowest one, not the "
+            "sum.\n"
+            "Only for INDEPENDENT work. If task B needs task A's output, that is "
+            "a pipeline: spawn A, read its result, then spawn B in a later step.\n"
+            "Each subtask is self-contained — a subagent cannot see this "
+            "conversation, so put everything it needs in its own 'task'. Say "
+            "exactly what shape you want back. Give each a short 'label' so runs "
+            "are tellable apart in logs and the admin UI.\n"
+            "Fanning out costs one full agent run per subtask, and all spawns "
+            "this turn share one token/spawn budget pool. Two or three focused "
+            "subtasks beat six vague ones. For quick lookups, just do them "
+            "yourself.\n"
+            "Partial failure is normal: read each result's status and decide "
+            "what to do about the ones that failed — never silently synthesize "
+            "as though you got everything.\n"
+            "Use background=true only for long-running work: you get run ids "
+            "now and one combined result is posted to this chat when all finish."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "tasks": {
+                    "type": "array",
+                    "minItems": 2,
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "task": {
+                                "type": "string",
+                                "description": (
+                                    "Complete, self-contained instruction for this "
+                                    "subagent, including the exact result shape you want."
+                                ),
+                            },
+                            "label": {
+                                "type": "string",
+                                "description": (
+                                    "Short distinctive name for logs/UI, e.g. 'pricing'."
+                                ),
+                            },
+                            "agent": {
+                                "type": "string",
+                                "description": (
+                                    "Agent to run as; omit to run as yourself (default)."
+                                ),
+                            },
+                            "max_steps": {"type": "integer"},
+                            "token_budget": {"type": "integer"},
+                            "thinking_effort": {
+                                "type": "string",
+                                "enum": ["off", "low", "medium", "high"],
+                            },
+                            "model": {
+                                "type": "string",
+                                "description": (
+                                    "Model override; only models named in this tool's "
+                                    "description may be picked."
+                                ),
+                            },
+                            "provider": {"type": "string"},
+                        },
+                        "required": ["task"],
+                    },
+                },
+                "background": {
+                    "type": "boolean",
+                    "description": (
+                        "Default false (block, results return in this turn). True "
+                        "returns run ids now; results post to this chat when done."
+                    ),
+                },
+            },
+            "required": ["tasks"],
         },
     },
     # Secrets vault (issue #19) — discover + request secrets by NAME only.
@@ -1019,7 +1105,7 @@ def apply_feature_gates(
     if not secrets_available:
         out = [t for t in out if t["name"] not in ("list_secrets", "request_secret")]
     if not subagents_enabled:
-        out = [t for t in out if t["name"] != "spawn_subagent"]
+        out = [t for t in out if t["name"] not in ("spawn_subagent", "spawn_subagents")]
     if not imagegen_enabled:
         out = [t for t in out if t["name"] != "generate_image"]
     if not search_enabled:
@@ -1543,7 +1629,7 @@ class AgentCore:
         # Record every generate() this turn under this context so the admin
         # Inspect tab can show the exact last-sent payload (#99). Reset in finally
         # so a context never leaks onto an unrelated later turn on the same task.
-        cap_token = set_capture_context((channel, user_id, chat_id))
+        cap_token = set_capture_context((channel, user_id, chat_id, ""))
         # Attribute this turn's token usage to the serving agent (#199 flw).
         agent_token = set_usage_agent(agent.name if agent else "")
         try:
@@ -1699,13 +1785,21 @@ class AgentCore:
         # scope withholds web_search (#293); the handler refuses too.
         if agent and agent.tools and not agent.allows_tool("web_search"):
             tools = [t for t in tools if t["name"] != "deep_research"]
+        # Legacy allowlists predate the plural tool: an agent scoped to
+        # ["spawn_subagent"] may fan out too — gate the plural on the singular
+        # here rather than special-casing allows_tool (a hot path).
+        names = {t["name"] for t in tools}
+        if "spawn_subagent" in names and "spawn_subagents" not in names:
+            plural = next((t for t in TOOLS if t["name"] == "spawn_subagents"), None)
+            if plural:
+                tools = [*tools, plural]
         # Name the models a spawn may pick (#299), else the agent can't know them.
         # Copy the schema — the module-level list is shared across turns.
         hint = allowed_models_hint(self.config.subagents.allowed_models)
         if hint:
             tools = [
                 {**t, "description": f"{t['description']}\nSubagent models — {hint}."}
-                if t["name"] == "spawn_subagent"
+                if t["name"] in ("spawn_subagent", "spawn_subagents")
                 else t
                 for t in tools
             ]
@@ -1903,7 +1997,8 @@ class AgentCore:
             return ""
         lines = []
         for r in runs:
-            who = f"- [{r.run_id}] {r.agent or 'default'} — running ({r.elapsed_str})"
+            name = r.label or r.agent or "default"
+            who = f"- [{r.run_id}] {name} — running ({r.elapsed_str})"
             lines.append(f"{who}; {r.progress}" if r.progress else who)
         body = "\n".join(lines)
         return (
@@ -2579,7 +2674,7 @@ class AgentCore:
         # in a turn is legitimate (it is a write action only so it always asks).
         if (
             is_write_action
-            and name not in ("manage_jobs", "spawn_subagent")
+            and name not in ("manage_jobs", "spawn_subagent", "spawn_subagents")
             and not unlisted_bash
             and write_sig in executed_writes
         ):
@@ -2816,6 +2911,12 @@ class AgentCore:
 
         if name == "spawn_subagent":
             result = await self._tool_spawn_subagent(params, channel, user_id, request_state)
+            if is_write_action and self._is_tool_success(result):
+                executed_writes.add(write_sig)
+            return result
+
+        if name == "spawn_subagents":
+            result = await self._tool_spawn_subagents(params, channel, user_id, request_state)
             if is_write_action and self._is_tool_success(result):
                 executed_writes.add(write_sig)
             return result
@@ -3703,6 +3804,259 @@ class AgentCore:
             provider=str(params.get("provider", "")),
         )
 
+    async def _tool_spawn_subagents(
+        self, params: dict, channel: str, user_id: str, request_state: dict
+    ) -> dict:
+        """``spawn_subagents``: fan out 2+ independent subtasks in parallel.
+
+        One call, gathered internally — provider-independent (works even when
+        the model emits one tool call per round), one place to enforce width /
+        concurrency / budget, and one aggregate result with explicit per-index
+        status the model can reason over. Wall-clock ≈ the slowest subtask.
+        """
+        cfg = self.config.subagents
+        if not cfg.enabled:
+            return {"error": "Subagents are disabled."}
+        tasks = params.get("tasks")
+        if not isinstance(tasks, list) or not tasks:
+            return {"error": "Provide 'tasks': a list of subtask objects, each with 'task'."}
+        # Belt and braces with the tool strip in the subagent loop: fan-out is
+        # top-level only — nested fan-out is where the multiplication lives.
+        if int(request_state.get("depth", 0) or 0) >= 1:
+            return {
+                "error": (
+                    "Nested fan-out is not allowed — use spawn_subagent for a "
+                    "single delegation instead."
+                )
+            }
+        if len(tasks) > cfg.max_fanout:
+            return {
+                "error": (
+                    f"Too many subtasks ({len(tasks)}): max_fanout is "
+                    f"{cfg.max_fanout}. Merge related subtasks or drop the least "
+                    "important ones."
+                )
+            }
+        background = bool(params.get("background", False))
+        if len(tasks) == 1:
+            one = tasks[0] if isinstance(tasks[0], dict) else {}
+            return await self._tool_spawn_subagent(
+                {**one, "background": background}, channel, user_id, request_state
+            )
+
+        origin = request_state.get("origin") or {}
+        o_channel = str(origin.get("channel", channel))
+        o_user = str(origin.get("user_id", user_id))
+        o_chat = str(origin.get("chat_id", ""))
+        budget = self._turn_budget(request_state)
+        group_id = f"grp_{uuid.uuid4().hex[:6]}"
+        started_at = time.time()
+
+        # Prepare + reserve per index; a refusal becomes that index's error
+        # entry, never an all-or-nothing failure.
+        entries: list[dict] = []
+        for i, item in enumerate(tasks):
+            item = item if isinstance(item, dict) else {}
+            label = derive_label(str(item.get("label", "")), str(item.get("task", "")), i)
+            task_text = str(item.get("task", "")).strip()
+            if not task_text:
+                entries.append(
+                    {"index": i, "label": label, "error": "Missing 'task' for this subtask."}
+                )
+                continue
+            prepared = await self._prepare_subagent_run(
+                task=task_text,
+                agent_name=str(item.get("agent", "")).strip(),
+                origin_channel=o_channel,
+                origin_user_id=o_user,
+                origin_chat_id=o_chat,
+                parent_state=request_state,
+                background=background,
+                max_steps=item.get("max_steps"),
+                token_budget=item.get("token_budget"),
+                thinking_effort=item.get("thinking_effort"),
+                model=str(item.get("model", "")),
+                provider=str(item.get("provider", "")),
+                label=label,
+                group_id=group_id,
+            )
+            if isinstance(prepared, dict):
+                entries.append(
+                    {"index": i, "label": label, "error": prepared.get("error", "spawn refused")}
+                )
+                continue
+            run, child_agent, child_state = prepared
+            err = budget.reserve(run.token_budget)
+            if err:
+                entries.append({"index": i, "label": label, "error": err})
+                continue
+            self._start_subagent(run)
+            entries.append(
+                {
+                    "index": i,
+                    "label": label,
+                    "run": run,
+                    "agent_obj": child_agent,
+                    "state": child_state,
+                }
+            )
+
+        live = [e for e in entries if "run" in e]
+        if not live:
+            return {
+                "ok": False,
+                "group_id": group_id,
+                "count": len(entries),
+                "succeeded": 0,
+                "failed": len(entries),
+                "results": [self._fanout_result_entry(e) for e in entries],
+                "note": "No subtask could be started — read each result's error.",
+            }
+
+        # One progress note so a several-minute silent fan-out doesn't look
+        # hung, and so the steering semantics are visible: messages sent
+        # meanwhile are read after the fan-out returns (👀 still means "seen").
+        labels = ", ".join(e["run"].label for e in live)
+        await self._notify_origin_chat(
+            o_channel,
+            o_chat,
+            f"🧩 Delegating {len(live)} subtasks in parallel: {labels}. "
+            "I'll read any new messages here once they're done.",
+        )
+
+        if background:
+            # Unlike a singular background spawn, a background fan-out never
+            # refuses at the chat cap — refusing half a requested group is a
+            # worse answer than letting the excess queue on the per-chat slots.
+            for e in live:
+                run = e["run"]
+                bg = asyncio.create_task(
+                    self._run_subagent_background(run, e["agent_obj"], e["state"]),
+                    name=f"subagent-{run.run_id}",
+                )
+                self.subagents.attach_task(run.run_id, bg)
+            return {
+                "ok": True,
+                "group_id": group_id,
+                "background": True,
+                "count": len(entries),
+                "started": len(live),
+                "runs": [
+                    {"index": e["index"], "run_id": e["run"].run_id, "label": e["run"].label}
+                    for e in live
+                ],
+                "results": [self._fanout_result_entry(e) for e in entries if "run" not in e],
+                "note": (
+                    "Running in the background; one combined result is posted to "
+                    "this chat when the whole group finishes — you don't relay it."
+                ),
+            }
+
+        # Synchronous: drive every child concurrently (per-chat max_concurrent
+        # queues the excess), racing the whole group against the turn's abort
+        # Event so /stop cancels the fan-out instead of letting it run out.
+        async def drive(e: dict) -> None:
+            run = e["run"]
+            try:
+                text = await self._run_subagent_loop(run.task, e["agent_obj"], e["state"], run)
+            except asyncio.CancelledError:
+                self.subagents.finish(run.run_id, "cancelled")
+                raise
+            except Exception as exc:
+                log.exception("Subagent %s failed", run.run_id)
+                self.subagents.finish(run.run_id, "error", error=str(exc))
+                return
+            self.subagents.finish(run.run_id, "done", result=text)
+
+        child_tasks: dict[str, asyncio.Task] = {}
+        for e in live:
+            t = asyncio.create_task(drive(e), name=f"subagent-{e['run'].run_id}")
+            child_tasks[e["run"].run_id] = t
+            self.subagents.attach_task(e["run"].run_id, t)
+        log.info("Fan-out %s: %d subtasks (%s)", group_id, len(live), labels)
+
+        abort = self._active_turns_map().get((o_channel, o_user, o_chat))
+        abort_waiter = asyncio.create_task(abort.wait()) if abort else None
+        try:
+            children = set(child_tasks.values())
+            pending = children | ({abort_waiter} if abort_waiter else set())
+            while pending & children:
+                done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
+                if abort_waiter and abort_waiter in done:
+                    for rid, t in child_tasks.items():
+                        if not t.done():
+                            self.subagents.cancel(rid)  # cascades to grandchildren
+                    await asyncio.gather(*children, return_exceptions=True)
+                    break
+        finally:
+            if abort_waiter and not abort_waiter.done():
+                abort_waiter.cancel()
+
+        results = [self._fanout_result_entry(e) for e in entries]
+        succeeded = sum(1 for r in results if r.get("status") == "done")
+        failed = len(results) - succeeded
+        out = {
+            "ok": failed == 0,
+            "group_id": group_id,
+            "count": len(results),
+            "succeeded": succeeded,
+            "failed": failed,
+            "tokens_used": sum(r.get("tokens_used", 0) or 0 for r in results),
+            "elapsed_s": round(time.time() - started_at, 1),
+            "results": results,
+        }
+        notes = []
+        if failed:
+            notes.append(
+                f"{failed} of {len(results)} subtasks did not complete. Decide per "
+                "subtask whether to retry, work around it, or tell the user — do "
+                "not silently drop them."
+            )
+        capped = sum(1 for r in results if r.get("stopped_reason") in ("max_steps", "token_budget"))
+        if capped:
+            notes.append(f"{capped} hit a step/token budget — their results may be partial.")
+        if notes:
+            out["note"] = " ".join(notes)
+        return out
+
+    @staticmethod
+    def _fanout_result_entry(e: dict) -> dict:
+        """One per-index result row (request order) for the fan-out tool result."""
+        run: SubagentRun | None = e.get("run")
+        if run is None:
+            return {
+                "index": e["index"],
+                "label": e.get("label", ""),
+                "status": "error",
+                "error": e.get("error", ""),
+            }
+        out = {
+            "index": e["index"],
+            "label": run.label,
+            "run_id": run.run_id,
+            "agent": run.agent,
+            "status": run.status,
+            "steps": run.steps,
+            "tokens_used": run.tokens_used,
+            "stopped_reason": run.stopped_reason,
+        }
+        if run.status == "done":
+            out["summary"] = short_summary(run.result)
+            out["result"] = run.result
+        elif run.error:
+            out["error"] = run.error
+        return out
+
+    async def _notify_origin_chat(self, channel: str, chat_id: str, text: str) -> None:
+        """Best-effort one-line progress note to the originating chat."""
+        ch = self.channels.get(channel)
+        if not (ch and chat_id):
+            return
+        try:
+            await ch.send(chat_id, text)
+        except Exception:
+            log.exception("Failed to send progress note (chat=%s)", chat_id)
+
     async def run_subagent(
         self,
         *,
@@ -3733,9 +4087,117 @@ class AgentCore:
         ``subagents.allowed_models`` allowlist or the spawn is refused.
         """
         cfg = self.config.subagents
+        parent_state = parent_state or {}
+        prepared = await self._prepare_subagent_run(
+            task=task,
+            agent_name=agent_name,
+            origin_channel=origin_channel,
+            origin_user_id=origin_user_id,
+            origin_chat_id=origin_chat_id,
+            parent_state=parent_state,
+            background=background,
+            max_steps=max_steps,
+            token_budget=token_budget,
+            thinking_effort=thinking_effort,
+            model=model,
+            provider=provider,
+        )
+        if isinstance(prepared, dict):
+            return prepared
+        run, child_agent, child_state = prepared
+        run_id = run.run_id
+        budget: FanoutBudget = child_state["fanout_budget"]
+
+        if background:
+            # Background must return a run id immediately, so it refuses at the
+            # chat's cap instead of queueing like a sync spawn does. Best-effort:
+            # slots are counted at loop entry, so same-tick spawns can slip past
+            # the check — they then queue on the slot, never over-run the cap.
+            chat_key = self._subagent_chat_key(origin_channel, origin_chat_id)
+            if self.subagents.slots_in_use(chat_key) >= cfg.max_concurrent:
+                return {
+                    "error": (
+                        f"Too many subagents running in this chat (max "
+                        f"{cfg.max_concurrent}). Wait for one to finish or cancel "
+                        "it via /subagents."
+                    )
+                }
+            err = budget.reserve(run.token_budget)
+            if err:
+                return {"error": err}
+            self._start_subagent(run)
+            bg = asyncio.create_task(
+                self._run_subagent_background(run, child_agent, child_state),
+                name=f"subagent-{run_id}",
+            )
+            self.subagents.attach_task(run_id, bg)
+            log.info("Spawned background subagent %s (agent=%s)", run_id, run.agent or "default")
+            return {
+                "ok": True,
+                "run_id": run_id,
+                "background": True,
+                "status": "running",
+                "agent": run.agent,
+                "note": (
+                    "Running in the background; its result is posted to this chat "
+                    "automatically when done — you don't relay it. Each later turn "
+                    "shows this run's status until it finishes."
+                ),
+            }
+
+        # Synchronous: run to completion and return the result to the caller.
+        err = budget.reserve(run.token_budget)
+        if err:
+            return {"error": err}
+        self._start_subagent(run)
+        log.info("Running subagent %s (agent=%s)", run_id, run.agent or "default")
+        try:
+            text = await self._run_subagent_loop(task, child_agent, child_state, run)
+        except Exception as exc:
+            log.exception("Subagent %s failed", run_id)
+            self.subagents.finish(run_id, "error", error=str(exc))
+            return {"error": f"Subagent failed: {exc}", "run_id": run_id}
+        self.subagents.finish(run_id, "done", result=text)
+        return {
+            "ok": True,
+            "run_id": run_id,
+            "agent": run.agent,
+            "steps": run.steps,
+            "tokens_used": run.tokens_used,
+            "stopped_reason": run.stopped_reason,
+            "summary": short_summary(text),
+            "result": text,
+        }
+
+    async def _prepare_subagent_run(
+        self,
+        *,
+        task: str,
+        agent_name: str = "",
+        origin_channel: str = "",
+        origin_user_id: str = "",
+        origin_chat_id: str = "",
+        parent_state: dict,
+        background: bool = False,
+        max_steps: object = None,
+        token_budget: object = None,
+        thinking_effort: str | None = None,
+        model: str = "",
+        provider: str = "",
+        label: str = "",
+        group_id: str = "",
+    ) -> dict | tuple[SubagentRun, Agent | None, dict]:
+        """Validate a spawn and build its ``(run, child_agent, child_state)``.
+
+        The one preparation path behind the singular tool, the plural fan-out,
+        and scheduled jobs. Returns an ``{"error": ...}`` dict (for the calling
+        model to read) on any refusal; never raises. Does NOT register the run
+        or reserve budget — the caller does, so a fan-out can report per-index
+        refusals and refuse-vs-queue stays a caller decision.
+        """
+        cfg = self.config.subagents
         if not cfg.enabled:
             return {"error": "Subagents are disabled."}
-        parent_state = parent_state or {}
         parent_depth = int(parent_state.get("depth", 0) or 0)
         if parent_depth >= cfg.recursion_depth:
             return {
@@ -3785,12 +4247,18 @@ class AgentCore:
             },
             run_id=run_id,
         )
+        # The whole subagent tree of one turn draws from a single budget pool —
+        # shared by reference parent → child, so a grandchild's spend counts too.
+        child_state["fanout_budget"] = self._turn_budget(parent_state)
         run = SubagentRun(
             run_id=run_id,
             agent=child_agent.name if child_agent else "",
             task=task,
             depth=parent_depth + 1,
             background=background,
+            label=derive_label(label, task),
+            group_id=group_id,
+            parent_run_id=str(parent_state.get("run_id") or ""),
             max_steps=resolve_cap(max_steps, cfg.max_steps),
             token_budget=resolve_cap(token_budget, cfg.token_budget, floor=1000),
             effort=normalize_effort(thinking_effort),
@@ -3800,52 +4268,29 @@ class AgentCore:
             origin_user_id=origin_user_id,
             origin_chat_id=origin_chat_id,
         )
+        return run, child_agent, child_state
 
-        if background:
-            if self.subagents.active_count() >= cfg.max_concurrent:
-                return {
-                    "error": (
-                        f"Too many subagents running (max {cfg.max_concurrent}). "
-                        "Wait for one to finish or cancel it via /subagents."
-                    )
-                }
-            self.subagents.register(run)
-            bg = asyncio.create_task(
-                self._run_subagent_background(run, child_agent, child_state),
-                name=f"subagent-{run_id}",
+    def _turn_budget(self, parent_state: dict) -> FanoutBudget:
+        """The turn's shared subagent spend pool, created lazily on first spawn."""
+        budget = parent_state.get("fanout_budget")
+        if budget is None:
+            cfg = self.config.subagents
+            budget = parent_state["fanout_budget"] = FanoutBudget(
+                tokens_left=cfg.turn_token_budget, spawns_left=cfg.max_spawns_per_turn
             )
-            self.subagents.attach_task(run_id, bg)
-            log.info("Spawned background subagent %s (agent=%s)", run_id, run.agent or "default")
-            return {
-                "ok": True,
-                "run_id": run_id,
-                "background": True,
-                "status": "running",
-                "agent": run.agent,
-                "note": (
-                    "Running in the background; its result is posted to this chat "
-                    "automatically when done — you don't relay it. Each later turn "
-                    "shows this run's status until it finishes."
-                ),
-            }
+        return budget
 
-        # Synchronous: run to completion and return the result to the caller.
+    def _start_subagent(self, run: SubagentRun) -> None:
+        """Register a prepared run and link it into its parent's run tree."""
         self.subagents.register(run)
-        log.info("Running subagent %s (agent=%s)", run_id, run.agent or "default")
-        try:
-            text = await self._run_subagent_loop(task, child_agent, child_state, run)
-        except Exception as exc:
-            log.exception("Subagent %s failed", run_id)
-            self.subagents.finish(run_id, "error", error=str(exc))
-            return {"error": f"Subagent failed: {exc}", "run_id": run_id}
-        self.subagents.finish(run_id, "done", result=text)
-        return {
-            "ok": True,
-            "run_id": run_id,
-            "agent": run.agent,
-            "summary": short_summary(text),
-            "result": text,
-        }
+        parent_run = self.subagents.get(run.parent_run_id) if run.parent_run_id else None
+        if parent_run and run.run_id not in parent_run.children:
+            parent_run.children.append(run.run_id)
+
+    @staticmethod
+    def _subagent_chat_key(channel: str, chat_id: str) -> str:
+        """Key for the per-chat concurrency pool (same shape as _yolo_scope)."""
+        return f"{channel}\x1f{chat_id}"
 
     def _narrow_agent(self, requested: Agent, parent_state: dict) -> Agent:
         """Build a child agent whose scopes are a subset of the caller's."""
@@ -3889,14 +4334,17 @@ class AgentCore:
     ) -> str:
         """Route this subagent's log records into its spawner's stream (#75).
 
-        The label (agent slug, else run id) prefixes each line as
-        ``[subagent:<label>]`` so it filters out of the shared stream; ``fallback``
-        names the stream for a top-level scheduled run that inherited none.
+        The label (run label or agent slug, made unique with a run-id suffix so
+        N fan-out siblings stay tellable apart) prefixes each line as
+        ``[subagent:<label>]``; ``fallback`` names the stream for a top-level
+        scheduled run that inherited none.
         """
-        # Suppress Inspect capture (#99): a subagent runs inside the spawner's
-        # contextvar but is a different conversation — don't clobber the parent's
-        # last-sent payload with the child's.
-        cap_token = set_capture_context(None)
+        # Inspect capture (#99): a subagent is captured under its own run id —
+        # the 4-tuple key means it can't clobber the parent's last-sent payload,
+        # and a fan-out's children each stay individually inspectable.
+        cap_token = set_capture_context(
+            (run.origin_channel, run.origin_user_id, run.origin_chat_id, run.run_id)
+        )
         # Attribute the subagent's token usage to the child agent (#199 flw) so its
         # (often heavy) generate() calls don't land in the parent's bucket or, for a
         # scheduled/background spawn that ran outside any turn, in "(unknown)". Only
@@ -3904,9 +4352,30 @@ class AgentCore:
         # yourself", so it should keep the spawner's inherited attribution.
         child_name = run.agent or (child_agent.name if child_agent else "")
         usage_token = set_usage_agent(child_name) if child_name else None
+        base_label = run.label or run.agent
+        stream_label = f"{base_label}#{run.run_id[4:8]}" if base_label else run.run_id
         try:
-            with subagent_stream(run.agent or run.run_id, fallback=run.agent):
-                return await self._run_subagent_loop_inner(task, child_agent, child_state, run)
+            with subagent_stream(stream_label, fallback=run.agent):
+                # Per-chat concurrency gate: only a top-level (depth-1) run holds
+                # a slot — a nested child runs under its parent's slot, else a
+                # parent blocked awaiting its own child could deadlock the pool.
+                if run.depth <= 1:
+                    async with self.subagents.slot(
+                        self._subagent_chat_key(run.origin_channel, run.origin_chat_id),
+                        lambda: self.config.subagents.max_concurrent,
+                    ):
+                        text = await self._run_subagent_loop_inner(
+                            task, child_agent, child_state, run
+                        )
+                else:
+                    text = await self._run_subagent_loop_inner(task, child_agent, child_state, run)
+            # Reserve-then-refund (FanoutBudget): a run that finished cleanly
+            # hands its unspent reservation back to the turn's pool. A crashed
+            # or cancelled run deliberately doesn't refund — fails safe.
+            budget = child_state.get("fanout_budget")
+            if budget is not None:
+                budget.refund(run.token_budget - run.tokens_used)
+            return text
         finally:
             if usage_token is not None:
                 reset_usage_agent(usage_token)
@@ -3928,6 +4397,10 @@ class AgentCore:
         # At the depth ceiling a subagent may not spawn further — don't even offer it.
         if child_state["depth"] >= cfg.recursion_depth:
             tools = [t for t in tools if t["name"] != "spawn_subagent"]
+        # Fan-out is top-level only: nested fan-out is where the multiplication
+        # lives. A child may still spawn serially below the ceiling (the shared
+        # FanoutBudget bounds its spend either way).
+        tools = [t for t in tools if t["name"] != "spawn_subagents"]
         # Subagents have no native-media delivery path (#55): a subagent returns
         # only text, so a generated image would be billed + saved + silently
         # dropped. Don't offer the tool at all.
@@ -3955,6 +4428,17 @@ class AgentCore:
             clone = copy.copy(llm)
             clone.thinking_level = run.effort
             llm = clone
+        # /stop must reach a running child (same origin-Event resolution as
+        # deep_research): polled between steps, so even a singular sync spawn is
+        # stoppable mid-run instead of running its full budget after /stop.
+        origin = child_state.get("origin") or {}
+        abort = self._active_turns_map().get(
+            (
+                str(origin.get("channel", "")),
+                str(origin.get("user_id", "")),
+                str(origin.get("chat_id", "")),
+            )
+        )
         response = await llm.generate(
             model=model,
             max_tokens=max_tokens,
@@ -3964,8 +4448,14 @@ class AgentCore:
         )
         steps = 0
         tokens = self._usage_total(response.usage)
+        run.tokens_used = tokens
+        aborted = False
         while response.tool_calls and steps < run.max_steps and tokens < run.token_budget:
+            if abort and abort.is_set():
+                aborted = True
+                break
             steps += 1
+            run.steps = steps
             run.progress = f"step {steps}: {', '.join(c.name for c in response.tool_calls)}"[:120]
             # A truncated round (issue #77) has half-built call args; skip
             # execution and feed back the notice. steps caps the retries here.
@@ -3994,10 +4484,21 @@ class AgentCore:
                 tools=cast(Any, tools),
             )
             tokens += self._usage_total(response.usage)
+            run.tokens_used = tokens
 
         text = response.text or ""
-        if response.tool_calls:
+        # stopped_reason is a field the calling model can act on (retry, size up,
+        # accept partial); the text suffix stays too — belt and braces.
+        if aborted:
+            run.stopped_reason = "aborted"
+            text = (text + "\n\n[subagent stopped: the user stopped this turn]").strip()
+        elif response.tool_calls:
+            run.stopped_reason = "max_steps" if steps >= run.max_steps else "token_budget"
             text = (text + "\n\n[subagent stopped: reached its step/token budget]").strip()
+        elif response.truncated:
+            run.stopped_reason = "truncated"
+        else:
+            run.stopped_reason = "complete"
         run.progress = "done"
         return text
 

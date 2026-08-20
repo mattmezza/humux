@@ -67,7 +67,10 @@
     recursion: {{ subagents_recursion_depth|default('3', true)|tojson|forceescape }},
     steps: {{ subagents_max_steps|default('12', true)|tojson|forceescape }},
     tokens: {{ subagents_token_budget|default('100000', true)|tojson|forceescape }},
-    concurrent: {{ subagents_max_concurrent|default('3', true)|tojson|forceescape }},
+    concurrent: {{ subagents_max_concurrent|default('4', true)|tojson|forceescape }},
+    fanout: {{ subagents_max_fanout|default('6', true)|tojson|forceescape }},
+    spawnsPerTurn: {{ subagents_max_spawns_per_turn|default('12', true)|tojson|forceescape }},
+    turnTokens: {{ subagents_turn_token_budget|default('400000', true)|tojson|forceescape }},
     allowedModels: {{ subagents_allowed_models|default('', true)|tojson|forceescape }},
     summaryEnabled: {{ summary_enabled|default('true', true)|tojson|forceescape }},
     summaryProvider: {{ summary_provider|default('deepseek', true)|tojson|forceescape }},
@@ -81,6 +84,9 @@
         'subagents.max_steps': String(parseInt(this.steps) || 1),
         'subagents.token_budget': String(parseInt(this.tokens) || 1),
         'subagents.max_concurrent': String(parseInt(this.concurrent) || 1),
+        'subagents.max_fanout': String(parseInt(this.fanout) || 1),
+        'subagents.max_spawns_per_turn': String(parseInt(this.spawnsPerTurn) || 1),
+        'subagents.turn_token_budget': String(parseInt(this.turnTokens) || 1),
         'subagents.allowed_models': JSON.stringify(String(this.allowedModels || '').split('\n').map(s => s.trim()).filter(Boolean)),
         'subagent_summary.enabled': String(this.summaryEnabled === true || this.summaryEnabled === 'true'),
         'subagent_summary.provider': String(this.summaryProvider || 'deepseek').trim(),
@@ -133,9 +139,24 @@
         <p class="text-muted text-xs mt-1">Approx token ceiling per run (best-effort).</p>
       </div>
       <div>
-        <label class="label" for="tools-sub-concurrent">Max concurrent</label>
+        <label class="label" for="tools-sub-concurrent">Max concurrent (per chat)</label>
         <input type="number" min="1" class="input-sm" style="max-width:200px" x-model="concurrent" id="tools-sub-concurrent">
-        <p class="text-muted text-xs mt-1">Background runs allowed at once.</p>
+        <p class="text-muted text-xs mt-1">Runs executing at once in one chat, all paths.</p>
+      </div>
+      <div>
+        <label class="label" for="tools-sub-fanout">Max fan-out</label>
+        <input type="number" min="1" class="input-sm" style="max-width:200px" x-model="fanout" id="tools-sub-fanout">
+        <p class="text-muted text-xs mt-1">Max tasks in one <code>spawn_subagents</code> call.</p>
+      </div>
+      <div>
+        <label class="label" for="tools-sub-spawns-turn">Max spawns per turn</label>
+        <input type="number" min="1" class="input-sm" style="max-width:200px" x-model="spawnsPerTurn" id="tools-sub-spawns-turn">
+        <p class="text-muted text-xs mt-1">Whole tree — parents and children combined.</p>
+      </div>
+      <div>
+        <label class="label" for="tools-sub-turn-tokens">Turn token budget</label>
+        <input type="number" min="1" class="input-sm" style="max-width:200px" x-model="turnTokens" id="tools-sub-turn-tokens">
+        <p class="text-muted text-xs mt-1">Subagent tokens one turn may spend, tree-wide.</p>
       </div>
     </div>
     <div class="mt-3" x-show="enabled === 'true' || enabled === true">

@@ -77,6 +77,55 @@ so any file it writes is already on disk where the caller can reach it — it ju
 reports the absolute paths in its result, which the spawning agent then reads,
 sends, or attaches.
 
+## Fan-out & orchestration
+
+For work that splits into independent pieces, `spawn_subagents` (plural) runs
+several subtasks **in parallel** in one call instead of one `spawn_subagent`
+call per piece. Wall-clock is roughly that of the slowest subtask, not the sum
+of them.
+
+```jsonc
+// spawn_subagents tool input
+{
+  "tasks": [
+    { "task": "Summarise open PRs in repo A", "label": "repo-a", "agent": "coding-helper" },
+    { "task": "Summarise open PRs in repo B", "label": "repo-b", "agent": "coding-helper" }
+  ],
+  "background": false   // true → return run ids immediately, results posted when all finish
+}
+```
+
+Each entry in `tasks` takes the same fields as `spawn_subagent` (`task`, `agent`,
+`max_steps`, `token_budget`, `thinking_effort`, `model`, `provider`) plus a
+short `label` used in logs and the [admin UI](/docs/admin-ui) — the agent
+derives one from the task text when it's omitted. A call may name 2 up to
+`max_fanout` tasks (see [Guardrails](#guardrails)).
+
+`background: true` runs the whole batch off-turn: results are posted to the
+chat as **one grouped notification** once every subtask has finished, not one
+notification per subtask.
+
+**Failure is per-subtask, never all-or-nothing.** Results come back in request
+order, one entry per task, each with `status` (`done` / `error` / `cancelled`),
+`steps`, `tokens_used`, `stopped_reason` (`complete` / `max_steps` /
+`token_budget` / `truncated` / `aborted`), a `summary`, and the full `result`.
+One subtask failing or being cancelled doesn't stop the others from completing.
+
+**Fan-out doesn't nest.** `spawn_subagents` is only offered to the top-level
+agent; a subagent it spawns can still delegate further with the singular
+`spawn_subagent`, up to `recursion_depth` — it just can't start a fan-out of
+its own.
+
+When a fan-out starts, the agent posts a one-line progress note to the chat
+(`🧩 Delegating N subtasks…`) so a long parallel run doesn't look hung. Anything
+you send meanwhile is picked up once the fan-out completes — the 👀 steering
+ack still just means "the model has seen it", not "the fan-out is done".
+
+All spawns, singular or plural, draw from the same [per-turn budget
+pool](#guardrails) — a big fan-out can exhaust it and leave less room for
+further delegation later in the turn. The bundled `subagent-orchestration`
+skill covers when fanning out is worth it versus a single sequential spawn.
+
 ## Scheduled
 
 Run a subagent on a cron or one-shot schedule by giving a job `type: "subagent"`
@@ -128,13 +177,17 @@ limit, applied live without a restart), or under `subagents` in `config.yml`:
 | `recursion_depth` | `3` | Max nesting (a top-level spawn is depth 1) |
 | `max_steps` | `12` | Ceiling on tool-call rounds per run — a hard stop; the agent may request fewer per spawn, never more |
 | `token_budget` | `100000` | Ceiling on tokens per run (best-effort); the agent may request fewer per spawn, never more |
-| `max_concurrent` | `3` | Max background runs at once |
+| `max_concurrent` | `4` | Per-chat concurrency gate covering **every** subagent run, sync or background. Extra spawns queue instead of failing; each chat has its own pool, so one chat's fan-out can't starve another chat's spawn. A background `spawn_subagent` still refuses outright when the chat is already at the cap |
+| `max_fanout` | `6` | Max tasks in one `spawn_subagents` call |
+| `max_spawns_per_turn` | `12` | Max subagent spawns across the whole subagent tree, per turn |
+| `turn_token_budget` | `400000` | Max subagent tokens across the whole tree, per turn. Reserve-then-refund: each run reserves its `token_budget` up front and refunds the unspent part when it finishes |
 | `allowed_models` | *(empty)* | `provider:model` entries a spawn may pick instead of inheriting the caller's model — one per line in the admin card. Empty means overrides are off entirely |
 
 When disabled, the tool is hidden from the assistant and from the Agents tool
 scope. Assign it per agent in the **Agents** editor. A run that hits its step
 or token budget stops and returns what it has, with a note that the budget was
-reached.
+reached. A turn that would exceed `max_spawns_per_turn` or `turn_token_budget`
+gets a budget-refusal the model can read, instead of spawning without limit.
 
 ## Result summary
 
@@ -165,7 +218,9 @@ Background subagents are first-class runs you can watch and stop:
   single column at phone width.
 
 Cancelling stops the run; if it was a background run, a cancellation notice is
-posted back to the originating chat.
+posted back to the originating chat. `/stop` cancels in-flight subagents too —
+for a fan-out that means the whole batch, cascading to any children it spawned
+— instead of letting them run to completion after the main turn has aborted.
 
 > Runs live in memory, so a restart clears the registry (and stops any in-flight
 > background runs) — there is nothing to resume after a reboot.

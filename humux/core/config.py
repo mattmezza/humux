@@ -524,7 +524,15 @@ class SubagentsConfig(BaseModel):
     recursion_depth: int = 3  # max nesting; spawns are refused beyond this
     max_steps: int = 12  # max tool-call rounds per run (hard stop)
     token_budget: int = 100_000  # approx token ceiling per run (best-effort)
-    max_concurrent: int = 3  # max background runs at once
+    # Runs executing at once, PER CHAT, all paths (sync fan-out queues at the
+    # cap; a single background spawn still refuses). Was a background-only
+    # process-wide counter before the fan-out work.
+    max_concurrent: int = 4
+    max_fanout: int = 6  # max tasks in one spawn_subagents call
+    # Whole-tree per-turn pools (see FanoutBudget): total spawns and total
+    # subagent tokens a single turn may consume, parents and children combined.
+    max_spawns_per_turn: int = 12
+    turn_token_budget: int = 400_000
     # "provider:model" entries a spawn may pick instead of inheriting the
     # caller's LLM (#299). Empty = no overrides; a subagent always inherits.
     allowed_models: list[str] = []
@@ -543,6 +551,7 @@ class SubagentSummaryConfig(BaseModel):
     provider: str = "deepseek"  # fast + cheap is ideal for this distillation
     model: str = "deepseek-v4-flash"
     thinking_level: str = ""  # "" (off) | "low" | "medium" | "high" | "max"
+
 
 class Config(BaseModel):
     agent: AgentConfig = AgentConfig()

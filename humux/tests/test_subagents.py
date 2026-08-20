@@ -3,6 +3,8 @@ scheduled-job wiring (issue #15)."""
 
 from __future__ import annotations
 
+import asyncio
+import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -16,6 +18,7 @@ from core.subagents import (
     FILE_HANDOFF_INSTRUCTION,
     SubagentRegistry,
     SubagentRun,
+    derive_label,
     narrow_scope,
     normalize_effort,
     resolve_cap,
@@ -345,11 +348,22 @@ async def test_summarize_batch_calls_llm_and_parses() -> None:
 
 @pytest.mark.asyncio
 async def test_run_subagent_background_respects_concurrency(agent) -> None:
+    """Background refuses (never queues) when the *chat* is at its slot cap —
+    the gate counts runs actually executing, not merely registered."""
     agent.config.subagents.max_concurrent = 1
-    # Pre-fill one running slot.
-    agent.subagents.register(SubagentRun(run_id="busy", agent="", task="t"))
-    result = await agent.run_subagent(task="x", background=True)
-    assert "concurrent" in result["error"].lower() or "max" in result["error"].lower()
+    chat_key = agent._subagent_chat_key("telegram", "c1")
+    async with agent.subagents.slot(chat_key, lambda: 1):
+        assert agent.subagents.slots_in_use(chat_key) == 1
+        result = await agent.run_subagent(
+            task="x",
+            background=True,
+            origin_channel="telegram",
+            origin_chat_id="c1",
+        )
+    assert "error" in result
+    assert "max 1" in result["error"].lower()
+    # Another chat is unaffected by this chat's cap.
+    assert agent.subagents.slots_in_use(agent._subagent_chat_key("telegram", "other")) == 0
 
 
 @pytest.mark.asyncio
@@ -706,3 +720,348 @@ async def test_run_subagent_unknown_agent_lists_available(agent, monkeypatch) ->
     result = await agent.run_subagent(task="x", agent_name="nope")
     assert "not found" in result["error"].lower()
     assert "coding-helper" in result["error"] and "analyst" in result["error"]
+
+
+# ---------------------------------------------------------------------------
+# Fan-out — spawn_subagents: concurrency, per-chat cap, budgets, abort
+# ---------------------------------------------------------------------------
+
+
+def _fanout_state(agent, channel: str = "cli", user: str = "u", chat: str = "c1", depth: int = 0):
+    """A request_state shaped like a live turn's, so the fan-out finds its origin."""
+    return agent._new_request_state(
+        None,
+        depth=depth,
+        origin={"channel": channel, "user_id": user, "chat_id": chat},
+    )
+
+
+def _install_overlap_loop(agent, monkeypatch, delay: float = 0.02, per_task: dict | None = None):
+    """Replace the subagent's inner loop with a sleeper that records peak overlap.
+
+    Patched *inside* the per-chat slot gate (``_run_subagent_loop`` still runs),
+    so the peak concurrent count is exactly what the gate allowed.
+    """
+    tracker = {"active": 0, "peak": 0, "finished": []}
+
+    async def fake_inner(task, child_agent, child_state, run):
+        tracker["active"] += 1
+        tracker["peak"] = max(tracker["peak"], tracker["active"])
+        await asyncio.sleep((per_task or {}).get(task, delay))
+        tracker["active"] -= 1
+        tracker["finished"].append(run.label)
+        run.stopped_reason = "complete"
+        return f"result:{task}"
+
+    monkeypatch.setattr(agent, "_run_subagent_loop_inner", fake_inner)
+    return tracker
+
+
+@pytest.mark.asyncio
+async def test_fanout_runs_children_concurrently(agent, monkeypatch) -> None:
+    """Wall clock ≈ one child, not the sum — and all four overlap."""
+    agent.config.subagents.max_concurrent = 4
+    tracker = _install_overlap_loop(agent, monkeypatch, delay=0.05)
+    tasks = [{"task": f"t{i}", "label": f"l{i}"} for i in range(4)]
+
+    started = time.monotonic()
+    out = await agent._tool_spawn_subagents({"tasks": tasks}, "cli", "u", _fanout_state(agent))
+    elapsed = time.monotonic() - started
+
+    assert out["ok"] is True
+    assert out["succeeded"] == 4 and out["failed"] == 0
+    assert tracker["peak"] == 4  # genuinely parallel, not a serial loop
+    assert elapsed < 0.05 * 3  # ≈ one child; the serial cost would be 4×
+
+
+@pytest.mark.asyncio
+async def test_fanout_queues_at_the_per_chat_cap(agent, monkeypatch) -> None:
+    """Over the cap the excess queues (never refuses): peak == max_concurrent,
+    every subtask still completes."""
+    agent.config.subagents.max_concurrent = 2
+    tracker = _install_overlap_loop(agent, monkeypatch, delay=0.02)
+    tasks = [{"task": f"t{i}", "label": f"l{i}"} for i in range(4)]
+
+    out = await agent._tool_spawn_subagents({"tasks": tasks}, "cli", "u", _fanout_state(agent))
+
+    assert tracker["peak"] == 2
+    assert out["succeeded"] == 4
+    assert {r["status"] for r in out["results"]} == {"done"}
+
+
+@pytest.mark.asyncio
+async def test_slots_are_per_chat_not_global(agent, monkeypatch) -> None:
+    """A chat sitting at its cap blocks only itself — another chat runs at once."""
+    agent.config.subagents.max_concurrent = 1
+    _install_overlap_loop(agent, monkeypatch, delay=0.0)
+    key_a = agent._subagent_chat_key("cli", "A")
+
+    async with agent.subagents.slot(key_a, lambda: 1):
+        # Chat B is unaffected by chat A's full pool.
+        res = await asyncio.wait_for(
+            agent.run_subagent(task="x", origin_channel="cli", origin_chat_id="B"), timeout=2
+        )
+        assert res["ok"] is True
+        # Chat A itself queues behind the held slot instead of running.
+        with pytest.raises(TimeoutError):
+            await asyncio.wait_for(
+                agent.run_subagent(task="y", origin_channel="cli", origin_chat_id="A"),
+                timeout=0.05,
+            )
+
+
+@pytest.mark.asyncio
+async def test_fanout_results_are_ordered_by_index(agent, monkeypatch) -> None:
+    """Children finishing out of order still come back in request order."""
+    agent.config.subagents.max_concurrent = 4
+    per_task = {"t0": 0.04, "t1": 0.02, "t2": 0.0}
+    tracker = _install_overlap_loop(agent, monkeypatch, per_task=per_task)
+    tasks = [{"task": f"t{i}", "label": f"l{i}"} for i in range(3)]
+
+    out = await agent._tool_spawn_subagents({"tasks": tasks}, "cli", "u", _fanout_state(agent))
+
+    assert tracker["finished"] == ["l2", "l1", "l0"]  # completion order is reversed
+    assert [r["index"] for r in out["results"]] == [0, 1, 2]
+    assert [r["label"] for r in out["results"]] == ["l0", "l1", "l2"]
+    assert [r["result"] for r in out["results"]] == ["result:t0", "result:t1", "result:t2"]
+
+
+@pytest.mark.asyncio
+async def test_fanout_labels_derive_from_the_task_when_unset(agent, monkeypatch) -> None:
+    _install_overlap_loop(agent, monkeypatch, delay=0.0)
+    tasks = [
+        {"task": "check the swiss iPhone price today"},
+        {"task": "summarise the release notes", "label": "notes"},
+    ]
+
+    out = await agent._tool_spawn_subagents({"tasks": tasks}, "cli", "u", _fanout_state(agent))
+
+    assert [r["label"] for r in out["results"]] == ["check the swiss iPhone", "notes"]
+
+
+@pytest.mark.asyncio
+async def test_fanout_reports_partial_failure_per_index(agent, monkeypatch) -> None:
+    """A bad subtask fails its own index; the siblings still run and the
+    aggregate carries a note so the model can't silently drop it."""
+    _install_overlap_loop(agent, monkeypatch, delay=0.0)
+    tasks = [
+        {"task": "good one", "label": "a"},
+        {"task": "bad one", "label": "b", "agent": "does-not-exist"},
+        {"task": "good two", "label": "c"},
+    ]
+
+    out = await agent._tool_spawn_subagents({"tasks": tasks}, "cli", "u", _fanout_state(agent))
+
+    assert out["ok"] is False
+    assert out["succeeded"] == 2 and out["failed"] == 1
+    statuses = [r["status"] for r in out["results"]]
+    assert statuses == ["done", "error", "done"]
+    assert "Agent not found" in out["results"][1]["error"]
+    assert "note" in out and "did not complete" in out["note"]
+
+
+@pytest.mark.asyncio
+async def test_fanout_refuses_beyond_max_fanout(agent) -> None:
+    agent.config.subagents.max_fanout = 2
+    out = await agent._tool_spawn_subagents(
+        {"tasks": [{"task": f"t{i}"} for i in range(3)]}, "cli", "u", _fanout_state(agent)
+    )
+    assert "max_fanout" in out["error"]
+    assert "2" in out["error"]
+
+
+@pytest.mark.asyncio
+async def test_nested_fanout_is_refused(agent) -> None:
+    """A subagent (depth ≥ 1) may delegate singly but never fan out again."""
+    out = await agent._tool_spawn_subagents(
+        {"tasks": [{"task": "a"}, {"task": "b"}]},
+        "system",
+        "u",
+        _fanout_state(agent, depth=1),
+    )
+    assert "Nested fan-out" in out["error"]
+
+
+@pytest.mark.asyncio
+async def test_subagent_loop_is_not_offered_the_fanout_tool(agent) -> None:
+    """Belt to the handler's braces: the plural tool is stripped from the schemas
+    a subagent's loop sends, while the singular stays below the depth ceiling."""
+
+    class _ToolCapturingLLM(_ScriptedLLM):
+        def __init__(self, responses):
+            super().__init__(responses)
+            self.offered: list[set[str]] = []
+
+        async def generate(self, *, tools=(), **kw) -> LLMResponse:
+            self.offered.append({t["name"] for t in tools})
+            return await super().generate()
+
+    agent.llm = _ToolCapturingLLM([LLMResponse(text="ok", tool_calls=[])])
+    await agent.run_subagent(task="x")
+
+    offered = agent.llm.offered[0]
+    assert "spawn_subagents" not in offered
+    assert "spawn_subagent" in offered  # depth 1 < recursion_depth, so still allowed
+    assert "generate_image" not in offered
+
+
+# ---------------------------------------------------------------------------
+# FanoutBudget — one reserve-then-refund pool per turn, shared by the whole tree
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_fanout_token_pool_starts_only_what_fits(agent, monkeypatch) -> None:
+    agent.config.subagents.turn_token_budget = 2500
+    _install_overlap_loop(agent, monkeypatch, delay=0.0)
+    tasks = [{"task": f"t{i}", "label": f"l{i}", "token_budget": 1000} for i in range(3)]
+
+    out = await agent._tool_spawn_subagents({"tasks": tasks}, "cli", "u", _fanout_state(agent))
+
+    assert out["succeeded"] == 2 and out["failed"] == 1
+    refused = out["results"][2]
+    assert refused["status"] == "error"
+    assert "tokens" in refused["error"] and "left this turn" in refused["error"]
+
+
+@pytest.mark.asyncio
+async def test_fanout_spawn_pool_is_shared_across_spawns_in_one_turn(agent, monkeypatch) -> None:
+    """One pool per turn, carried on request_state — a later spawn draws from
+    what the earlier one already took."""
+    agent.config.subagents.max_spawns_per_turn = 2
+    _install_overlap_loop(agent, monkeypatch, delay=0.0)
+    state = _fanout_state(agent)
+
+    first = await agent._tool_spawn_subagents(
+        {"tasks": [{"task": "a"}, {"task": "b"}]}, "cli", "u", state
+    )
+    assert first["succeeded"] == 2
+    assert state["fanout_budget"].spawns_left == 0
+
+    second = await agent._tool_spawn_subagents(
+        {"tasks": [{"task": "c"}, {"task": "d"}]}, "cli", "u", state
+    )
+    assert second["ok"] is False
+    assert second["failed"] == 2
+    assert all("Spawn budget" in r["error"] for r in second["results"])
+    assert "No subtask could be started" in second["note"]
+
+
+@pytest.mark.asyncio
+async def test_completed_run_refunds_its_unspent_reservation(agent) -> None:
+    """Reserve the full budget up front, hand back what the run didn't spend."""
+    agent.config.subagents.turn_token_budget = 50_000
+    agent.llm = _ScriptedLLM(
+        [LLMResponse(text="done", tool_calls=[], usage={"input_tokens": 30, "output_tokens": 20})]
+    )
+    state = _fanout_state(agent)
+
+    res = await agent.run_subagent(task="x", token_budget=5000, parent_state=state)
+
+    assert res["ok"] is True
+    budget = state["fanout_budget"]
+    assert budget.tokens_left == 50_000 - 50  # 5000 reserved, 4950 refunded
+    assert budget.spawns_left == agent.config.subagents.max_spawns_per_turn - 1
+
+
+# ---------------------------------------------------------------------------
+# Run telemetry: steps / tokens_used / stopped_reason
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_run_reports_steps_tokens_and_stopped_reason(agent) -> None:
+    agent.config.subagents.max_steps = 2
+    call = LLMToolCall(id="1", name="web_search", arguments={"query": "q"})
+    agent.llm = _ScriptedLLM(
+        [
+            LLMResponse(text="", tool_calls=[call], usage={"input_tokens": 40, "output_tokens": 10})
+            for _ in range(6)
+        ]
+    )
+
+    res = await agent.run_subagent(task="loop")
+
+    run = agent.subagents.get(res["run_id"])
+    assert run.stopped_reason == "max_steps" == res["stopped_reason"]
+    assert res["steps"] == run.steps == 2
+    assert res["tokens_used"] == run.tokens_used == 150  # 3 rounds × 50
+
+
+@pytest.mark.asyncio
+async def test_sync_result_carries_telemetry_on_a_clean_run(agent) -> None:
+    agent.llm = _ScriptedLLM(
+        [
+            LLMResponse(
+                text="the answer", tool_calls=[], usage={"input_tokens": 7, "output_tokens": 3}
+            )
+        ]
+    )
+    res = await agent.run_subagent(task="x")
+    assert res["stopped_reason"] == "complete"
+    assert res["steps"] == 0
+    assert res["tokens_used"] == 10
+
+
+# ---------------------------------------------------------------------------
+# Cancellation — /stop mid-fan-out, and cascade to a run's children
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_abort_mid_fanout_cancels_every_child(agent, monkeypatch) -> None:
+    abort = asyncio.Event()
+    agent._active_turns_map()[("cli", "u", "c1")] = abort
+
+    async def fake_inner(task, child_agent, child_state, run):
+        abort.set()  # the user hits /stop once the fan-out is under way
+        await asyncio.sleep(5)
+        raise AssertionError("child should have been cancelled")
+
+    monkeypatch.setattr(agent, "_run_subagent_loop_inner", fake_inner)
+
+    out = await agent._tool_spawn_subagents(
+        {"tasks": [{"task": "a", "label": "a"}, {"task": "b", "label": "b"}]},
+        "cli",
+        "u",
+        _fanout_state(agent),
+    )
+
+    assert [r["status"] for r in out["results"]] == ["cancelled", "cancelled"]
+    assert out["ok"] is False and out["succeeded"] == 0
+
+
+def test_cancel_cascades_to_child_runs() -> None:
+    """A create_task child outlives its parent's cancellation, so cancel walks
+    the tree instead of orphaning the fan-out."""
+    reg = SubagentRegistry()
+    reg.register(SubagentRun(run_id="p", agent="", task="t", children=["c1", "c2"]))
+    reg.register(_run("c1"))
+    reg.register(_run("c2"))
+
+    assert reg.cancel("p") is True
+    assert [reg.get(rid).status for rid in ("p", "c1", "c2")] == ["cancelled"] * 3
+
+
+# ---------------------------------------------------------------------------
+# Tool exposure + labels
+# ---------------------------------------------------------------------------
+
+
+def test_legacy_spawn_subagent_allowlist_also_gets_the_plural(agent) -> None:
+    """Agents scoped before the plural tool existed may still fan out."""
+    scoped = Agent(name="legacy", tools=["spawn_subagent"])
+    names = {t["name"] for t in agent._tools_for_turn(scoped)}
+    assert {"spawn_subagent", "spawn_subagents"} <= names
+    # An agent scoped away from spawning gets neither.
+    assert "spawn_subagents" not in {
+        t["name"] for t in agent._tools_for_turn(Agent(name="x", tools=["web_search"]))
+    }
+
+
+def test_derive_label_prefers_the_model_label_then_the_task() -> None:
+    assert derive_label("pricing", "look up the price") == "pricing"
+    assert derive_label("  spaced  out ", "task") == "spaced out"
+    assert derive_label("", "look up the swiss price of an iPhone") == "look up the swiss"
+    assert derive_label("", "", 2) == "task2"
+    assert len(derive_label("z" * 99, "")) == 32

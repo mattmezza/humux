@@ -66,11 +66,11 @@ Manage every agent on one tab (#115). Each is a card with its own character, ski
 
 ### Inspect
 
-The last tab — a developer view of every active context, laid out **master/detail**. The left pane lists each conversation by `channel · user · chat`, **most recently used first**, with a relative "last active" time; the one you just messaged floats to the top. Filter the list by channel, user, or chat. Selecting a context loads its detail on the right (the most recent context is selected automatically).
+The last tab — a developer view of every active context, laid out **master/detail**. The left pane lists each conversation by `channel · user · chat`, **most recently used first**, with a relative "last active" time; the one you just messaged floats to the top. [Subagent](/docs/subagents) runs are listed too, by run id, alongside the main chats. Filter the list by channel, user, or chat. Selecting a context loads its detail on the right (the most recent context is selected automatically).
 
 The detail pane shows the **exact payload the agent last sent to the model** for that context — the assembled system prompt/identity, the full tool definitions, and the history window rendered as a transcript (user / assistant / tool-use / tool-result blocks), plus the model and `max_tokens`. A **Context usage** meter shows the real prompt size the provider reported for that request against the model's context window — e.g. `12,480 / 200,000 tokens — 6.2% of context window` — so you can see how close a conversation is to its limit at a glance (the bar turns amber past 70% and red past 90%). The window comes from the same per-model map that drives compaction; unknown models fall back to the compaction context-window setting. A **Raw JSON** section gives the verbatim serialized request for power users (base64 image bytes are elided so the view stays light).
 
-This is the real inference payload, captured in memory at send time, so it shows exactly what ran — no guessing. It is empty until a context has had a turn since the agent started, and reselecting a context refreshes to the latest. Subagent turns are not captured here, only the conversation's own requests. The view is admin-only and shows the payload verbatim; the assembled prompt references secrets by name, not value. The page is responsive at phone width.
+This is the real inference payload, captured in memory at send time, so it shows exactly what ran — no guessing. It is empty until a context has had a turn since the agent started, and reselecting a context refreshes to the latest. Subagent runs are captured too — each run's last-sent payload is inspectable per run id, the same way a chat's is. The view is admin-only and shows the payload verbatim; the assembled prompt references secrets by name, not value. The page is responsive at phone width.
 
 ### Memory
 
@@ -100,6 +100,14 @@ Manage scheduled tasks:
 - Delete jobs
 - View job execution history
 
+Live [subagent](/docs/subagents) runs get a card each (agent, status, elapsed
+time, current step) with a cancel button, in a badge colour that distinguishes
+running from finished. Every card carries its run id, label, tokens used, and
+steps taken, plus — once it finishes — the stopped reason. The runs from one
+`spawn_subagents` fan-out are grouped under that batch, and a run's
+parent/children links let you walk the session tree (subagents spawning
+subagents). The tab shows a live count badge for jobs currently running.
+
 ### History
 
 A sub-tab of the **LLM** tab (LLM → History). Configure conversation history and browse stored turns:
@@ -124,12 +132,14 @@ tagged with the **stream** it belongs to — the active agent's slug, or
 `default` for the base identity — shown as a colour-coded `[stream]` badge so
 concurrent agents are easy to tell apart. A [subagent](/docs/subagents)'s lines
 (its reasoning and tool calls) flow into the **same stream as the agent that
-spawned it**, prefixed `[subagent:<id>]`, so one stream is a full logical session
-regardless of how many subagents were involved.
+spawned it**, tagged with a structured subagent label unique per run — e.g.
+`pricing#a1b2` — so one stream is a full logical session regardless of how
+many subagents were involved.
 
 The filter bar narrows the view:
 
 - **Stream** — pick a name from the live list, or type a **regex** to match several
+- **Subagent** — filter to one run's label to isolate a single fan-out subtask from the rest of its stream
 - **Level** — minimum severity (`DEBUG` → `ERROR`)
 - **Search** — free-text match within the line
 - **From / To** — a timestamp range
