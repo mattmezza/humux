@@ -1530,7 +1530,7 @@ def create_admin_app(
                 "model": (await config_store.get("agent.model")) or "",
                 "thinking_level": (await config_store.get("agent.thinking_level")) or "",
                 "max_tokens": (await config_store.get("agent.max_tokens")) or "16384",
-                "max_tool_rounds": (await config_store.get("agent.max_tool_rounds")) or "50",
+                "max_tool_rounds": (await config_store.get("agent.max_tool_rounds")) or "100",
                 "temperature": (await config_store.get("agent.temperature")) or "0.5",
             },
         }
@@ -1917,7 +1917,7 @@ def create_admin_app(
         openrouter_vaulted = _is_vault_ref(openrouter_api_key)
         model = await config_store.get("agent.model") or "claude-4-6-sonnet"
         max_tokens = await config_store.get("agent.max_tokens") or "16384"
-        max_tool_rounds = await config_store.get("agent.max_tool_rounds") or "50"
+        max_tool_rounds = await config_store.get("agent.max_tool_rounds") or "100"
         thinking_level = await config_store.get("agent.thinking_level") or ""
         temperature = await config_store.get("agent.temperature") or "0.5"
         extraction_provider = await config_store.get("memory.extraction_provider") or "deepseek"
