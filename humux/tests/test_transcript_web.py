@@ -94,6 +94,20 @@ def test_page_renders_with_agent_name(tmp_path) -> None:
     assert "noindex" in resp.headers["x-robots-tag"]
 
 
+def test_page_offers_the_always_expand_thinking_toggle(tmp_path) -> None:
+    """Thinking is collapsed behind a chip per turn; the toggle is what lets a
+    reader who wants all of it stop clicking every one."""
+
+    async def seed():
+        return await _history(tmp_path).web_token("telegram", "u1", "c1")
+
+    token = asyncio.run(seed())
+    body = _client(tmp_path).get(f"/t/{token}").text
+    assert 'id="think-toggle"' in body
+    assert "expand-thinking" in body  # remembered per browser
+    assert "think-sec" in body  # the class the toggle opens in bulk
+
+
 def test_messages_are_scoped_to_the_context_and_respect_after(tmp_path) -> None:
     async def seed():
         h = _history(tmp_path)

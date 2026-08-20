@@ -64,9 +64,8 @@
     align-items: center;
     gap: .6rem;
   }
-  .name { font-weight: 600; letter-spacing: -.01em; }
+  .name { font-weight: 600; letter-spacing: -.01em; margin-right: auto; }
   .share {
-    margin-left: auto;
     display: inline-flex;
     align-items: center;
     gap: .3rem;
@@ -87,6 +86,7 @@
   .share.copied { color: var(--accent); border-color: var(--accent); }
   .share.copied .link { display: none; }
   .share.copied .check, .share.copied .copied-label { display: block; }
+  .share[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
 
   /* Live state — a quiet floating pill, out of the reading column. */
   .live {
@@ -287,6 +287,8 @@
 <header>
   <div class="bar">
     <span class="name">{{ agent_name }}</span>
+    <button class="share" id="think-toggle" type="button" aria-pressed="false"
+            title="Always expand thinking">💭 thinking</button>
     <button class="share" id="share" type="button" aria-label="Copy link to this page">
       <svg class="link" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -511,11 +513,11 @@
   }
 
   /* One collapsible section per group: a chip that toggles a panel below it. */
-  function section(g, icon) {
-    var chip = el("button", "chip");
+  function section(g, icon, cls) {
+    var chip = el("button", "chip " + cls);
     chip.type = "button";
     chip.setAttribute("aria-expanded", "false");
-    var panel = el("div", "panel");
+    var panel = el("div", "panel " + cls);
     var inner = el("div", "inner");
     var box = el("div", "disclosure");
     inner.appendChild(box);
@@ -526,18 +528,21 @@
       var open = panel.classList.toggle("open");
       chip.setAttribute("aria-expanded", open ? "true" : "false");
     });
-    return { chip: chip, box: box, icon: icon, count: 0, names: [] };
+    return { chip: chip, panel: panel, box: box, icon: icon, count: 0, names: [] };
   }
 
   function renderThinking(g, entry) {
-    if (!g.think) g.think = section(g, "💭");
+    if (!g.think) {
+      g.think = section(g, "💭", "think-sec");
+      if (expandThinking) openSection(g.think.chip, g.think.panel, true);
+    }
     g.think.count++;
     g.think.box.appendChild(el("div", "think", md(entry.text)));
     g.think.chip.textContent = "💭 thinking";
   }
 
   function renderTool(g, entry) {
-    if (!g.tools) g.tools = section(g, "🔧");
+    if (!g.tools) g.tools = section(g, "🔧", "tool-sec");
     var t = g.tools;
     var call = el("div", "call");
     if (entry.kind === "tool_call") {
@@ -564,6 +569,33 @@
     var extra = t.count - 1;
     t.chip.textContent = "🔧 " + (t.names[0] || "tool") + (extra > 0 ? " (+" + extra + " more)" : "");
   }
+
+  /* Always-expand thinking: a viewer preference, remembered per browser. New
+     sections open as they stream in; flipping it applies to what is already on
+     screen. localStorage can throw (private mode, blocked site data), so every
+     access is guarded and the feature simply doesn't persist when it does. */
+  var expandThinking = false;
+  try { expandThinking = localStorage.getItem("expand-thinking") === "1"; } catch (e) { /* ok */ }
+  var thinkToggle = document.getElementById("think-toggle");
+
+  function openSection(chip, panel, open) {
+    panel.classList.toggle("open", open);
+    chip.setAttribute("aria-expanded", open ? "true" : "false");
+  }
+
+  function applyThinking() {
+    thinkToggle.setAttribute("aria-pressed", expandThinking ? "true" : "false");
+    var chips = feed.querySelectorAll(".chip.think-sec");
+    var panels = feed.querySelectorAll(".panel.think-sec");
+    for (var i = 0; i < chips.length; i++) openSection(chips[i], panels[i], expandThinking);
+  }
+
+  thinkToggle.addEventListener("click", function () {
+    expandThinking = !expandThinking;
+    try { localStorage.setItem("expand-thinking", expandThinking ? "1" : "0"); } catch (e) { /* ok */ }
+    applyThinking();
+  });
+  applyThinking();
 
   function render(entries) {
     entries.forEach(function (entry) {
