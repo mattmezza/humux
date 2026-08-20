@@ -754,11 +754,10 @@ TOOLS = [
             "that is never wider than yours, and returns a structured result. It "
             "has NO memory of this conversation — put everything it needs in "
             "'task'.\n"
-            "Agent: by DEFAULT omit 'agent' — the subagent runs as YOU (your "
-            "identity, tools, scope). This is almost always what you want. Set "
-            "'agent' ONLY when the user explicitly asked for a named specialist, "
-            "or the subtask plainly belongs to a different one. Never pick a "
-            "agent just because the roster lists some.\n"
+            "Agent: omit 'agent' to run the subagent as YOU (your identity, "
+            "tools, scope). Name an agent from your roster when the subtask "
+            "belongs to that specialist — follow the roster's guidance on when. "
+            "Never pick an agent the roster doesn't list.\n"
             "Sizing: by default the subagent runs at the configured ceilings. Size "
             "it to the job with 'max_steps', 'token_budget', and 'thinking_effort' "
             "— smaller for a quick lookup, larger / 'high' effort for hard "
@@ -1942,6 +1941,13 @@ class AgentCore:
             log.exception("Failed to list agents for the subagent roster")
             return ""
         current = agent.name if agent else ""
+        # A curated team (spawnable_agents) narrows the roster to the trusted
+        # teammates — the owner explicitly wants delegation to them, and they
+        # run with their OWN capabilities, so the guidance flips from "only if
+        # asked" to "pick the best-equipped teammate".
+        team = list(agent.spawnable_agents) if agent and agent.spawnable_agents else []
+        if team:
+            agents = [a for a in agents if a.name in team or a.name == current]
         lines = []
         for p in agents:
             role = p.role.strip().splitlines()[0].strip() if (p.role or "").strip() else ""
@@ -1950,15 +1956,23 @@ class AgentCore:
         if not lines:
             return ""
         body = "\n".join(lines)
-        return (
-            "<agents>\n"
-            "These agents exist ONLY so you can honour an explicit request for a "
-            "specialist. By default, spawn_subagent with NO 'agent' so the "
-            "subagent runs as you — do not assign one of these unless the user "
-            "asked for it or the subtask plainly belongs to it.\n"
-            f"{body}\n"
-            "</agents>"
-        )
+        if team:
+            intro = (
+                "Your team. When a subtask plainly belongs to one of these "
+                "specialists, name it in spawn_subagent(s) — it runs with its "
+                "own tools, skills, accounts and memory, so it is better "
+                "equipped there than you. Omit 'agent' to run a subtask as "
+                "yourself. You may not name agents outside this list."
+            )
+        else:
+            intro = (
+                "These agents exist ONLY so you can honour an explicit request "
+                "for a specialist. By default, spawn_subagent with NO 'agent' "
+                "so the subagent runs as you — do not assign one of these "
+                "unless the user asked for it or the subtask plainly belongs "
+                "to it."
+            )
+        return f"<agents>\n{intro}\n{body}\n</agents>"
 
     async def _skills_block_in_history(self, session_key: tuple[str, str, str], block: str) -> bool:
         """True if the exact ``<available_skills>`` block is already present in the
@@ -4215,9 +4229,23 @@ class AgentCore:
         if ov_error:
             return {"error": ov_error}
 
-        # Resolve + narrow the agent. A name must exist; with no name the child
-        # inherits the caller's identity and scope.
+        # Resolve the agent. With no name the child inherits the caller's
+        # identity and scope. A name is checked against the caller's delegation
+        # trust list (spawnable_agents): a curated list is a trust grant — only
+        # listed agents may be named, and a listed specialist runs with its OWN
+        # capabilities (that is the point of picking it). No list = legacy: any
+        # agent, scoped down to the intersection (inherit-never-widen).
+        parent_agent: Agent | None = parent_state.get("agent_obj")
+        team = list(parent_agent.spawnable_agents) if parent_agent else []
+        trusted = False
         if agent_name:
+            if parent_agent and team and agent_name != parent_agent.name and agent_name not in team:
+                return {
+                    "error": (
+                        f"Agent '{parent_agent.name}' may only delegate to: "
+                        f"{', '.join(team)}. Omit 'agent' to run as yourself."
+                    )
+                }
             requested = await self._load_agent(agent_name)
             if requested is None:
                 try:
@@ -4232,9 +4260,15 @@ class AgentCore:
                 }
             if not requested.enabled:  # kill-switch: can't spawn a disabled agent (#115 flw)
                 return {"error": f"Agent '{agent_name}' is disabled and can't be spawned."}
+            trusted = bool(parent_agent and team and requested.name != parent_agent.name)
         else:
-            requested = parent_state.get("agent_obj")
-        child_agent = self._narrow_agent(requested, parent_state) if requested else None
+            requested = parent_agent
+        if requested is None:
+            child_agent = None
+        elif trusted:
+            child_agent = requested
+        else:
+            child_agent = self._narrow_agent(requested, parent_state)
 
         run_id = f"sub_{uuid.uuid4().hex[:8]}"
         child_state = self._new_request_state(
@@ -4315,6 +4349,12 @@ class AgentCore:
             skills=narrow_scope(p_skills, requested.skills),
             tools=narrow_scope(p_tools, requested.tools),
             secrets=narrow_scope(p_secrets, requested.secrets),
+            # The delegation trust list is a per-identity owner grant — like tool
+            # identity, it travels with the agent. Dropping it would strip an
+            # anonymous child (which IS the caller) of the caller's team, leaving
+            # it in the legacy any-agent regime — an escape from the very
+            # containment the list exists to provide.
+            spawnable_agents=list(requested.spawnable_agents),
             # Tool identity travels verbatim with the agent (#93) — it is who the
             # child IS (its own gh token / browser profile), not a caller-subset
             # scope. Dropping it would silently fall back to the owner's token and
@@ -4401,10 +4441,6 @@ class AgentCore:
         # lives. A child may still spawn serially below the ceiling (the shared
         # FanoutBudget bounds its spend either way).
         tools = [t for t in tools if t["name"] != "spawn_subagents"]
-        # Subagents have no native-media delivery path (#55): a subagent returns
-        # only text, so a generated image would be billed + saved + silently
-        # dropped. Don't offer the tool at all.
-        tools = [t for t in tools if t["name"] != "generate_image"]
 
         system = await self._build_system_prompt(agent=child_agent)
         system = f"{system}\n\n{RESULT_FOR_AGENT_INSTRUCTION}\n\n{FILE_HANDOFF_INSTRUCTION}"
@@ -4959,11 +4995,19 @@ class AgentCore:
             Attachment(data=data, mime_type=mime, filename=Path(path).name)
         )
         log.info("Generated image (%d bytes, %s) → %s", len(data), mime, path)
+        # A subagent has no native-media delivery path of its own (#55): its
+        # pending_attachments die with the run. The file is on the shared
+        # filesystem, so the path IS the delivery — report it via the Files:
+        # handoff and let the spawning agent send it.
+        in_subagent = int(request_state.get("depth", 0) or 0) > 0
         result = {
             "ok": True,
             "path": path,
             "note": (
-                "Image generated and queued for delivery to the user as a photo. "
+                "Image generated and saved. Report this absolute path in your "
+                "'Files:' line so the agent that spawned you can deliver it."
+                if in_subagent
+                else "Image generated and queued for delivery to the user as a photo. "
                 "Do not include the path or base64 in your reply — just say briefly "
                 "what you made."
             ),

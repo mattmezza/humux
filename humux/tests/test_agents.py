@@ -56,6 +56,33 @@ def test_markdown_roundtrip() -> None:
     assert p2.character.strip() == "How."
 
 
+def test_spawnable_agents_roundtrip_and_coercion() -> None:
+    # Frontmatter list, plus the form-input shapes _as_list must coerce.
+    p = parse_markdown("---\nspawnable_agents: [qa, legal]\n---\n", name="boss")
+    assert p.spawnable_agents == ["qa", "legal"]
+    assert parse_markdown("---\nspawnable_agents: qa, legal\n---\n", name="b").spawnable_agents == [
+        "qa",
+        "legal",
+    ]
+    assert parse_markdown(
+        "---\nspawnable_agents: |\n  qa\n  legal\n---\n", name="b"
+    ).spawnable_agents == ["qa", "legal"]
+    assert parse_markdown("---\nrole: X\n---\n", name="b").spawnable_agents == []  # absent = []
+    # Survives the markdown round-trip.
+    back = parse_markdown(to_markdown(p), name="boss")
+    assert back.spawnable_agents == ["qa", "legal"]
+
+
+@pytest.mark.asyncio
+async def test_store_roundtrips_spawnable_agents(tmp_path) -> None:
+    store = AgentStore(db_path=str(tmp_path / "p.db"), seed_dir=tmp_path / "missing")
+    await store.upsert(Agent(name="boss", spawnable_agents=["qa", "legal"]))
+    assert (await store.get("boss")).spawnable_agents == ["qa", "legal"]
+    # Clearing the team sticks (upsert overwrites, not merges).
+    await store.upsert(Agent(name="boss", spawnable_agents=[]))
+    assert (await store.get("boss")).spawnable_agents == []
+
+
 def test_allow_semantics() -> None:
     blank = Agent(name="d")  # empty allowlists = everything
     assert blank.allows_skill("anything") and blank.allows_tool("anything")

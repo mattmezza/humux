@@ -376,6 +376,28 @@
         </div>
       </div>
 
+      {# ── Delegation trust list (spawnable_agents) ── #}
+      <div class="card">
+        <h3 class="text-xs text-muted uppercase tracking-wider mb-2">Delegation</h3>
+        <p class="text-xs text-muted mb-3">
+          None ticked = any agent may be delegated to, scoped down to this agent's own
+          tools and accounts (never widened). Ticking agents means <strong>only</strong>
+          those may be delegated to, and they run with their <strong>own</strong> tools and
+          accounts — a trust grant, so keep this list short for agents exposed to group
+          chats or webhooks.
+        </p>
+        <div class="space-y-2 max-h-[32rem] overflow-y-auto">
+          {% for a in all_agents if a != agent.name %}
+          <label class="flex items-start gap-2 text-xs">
+            <input type="checkbox" value="{{ a }}" x-model="spawnableAgents" class="mt-0.5">
+            <span class="font-semibold break-all">{{ a }}</span>
+          </label>
+          {% else %}
+          <p class="text-xs text-muted">No other agents defined yet.</p>
+          {% endfor %}
+        </div>
+      </div>
+
       {# ── Tool identities (#93) ── #}
       <div class="card">
         <h3 class="text-xs text-muted uppercase tracking-wider mb-2">Tool identities</h3>
@@ -615,7 +637,7 @@
   <div x-show="mode === 'raw'" class="card">
     <label class="label" for="agent-raw">Markdown (YAML frontmatter)</label>
     <textarea class="textarea" x-model="raw" id="agent-raw" style="min-height:460px; font-size:0.8rem; line-height:1.5; tab-size:2"></textarea>
-    <p class="hint">Saving in raw mode parses this document directly — frontmatter keys (role, voice, bot_token, allowed_user_ids, group_chat, llm, skills, tools, secrets, email_accounts, calendar_accounts, contacts_accounts, chat_settings, character).</p>
+    <p class="hint">Saving in raw mode parses this document directly — frontmatter keys (role, voice, bot_token, allowed_user_ids, group_chat, llm, skills, tools, spawnable_agents, secrets, email_accounts, calendar_accounts, contacts_accounts, chat_settings, character).</p>
   </div>
 
   <div class="flex items-center gap-2 mt-3">
@@ -642,6 +664,7 @@
       character: {{ agent.character|tojson }},
       skills: {{ agent.skills|tojson }},
       tools: {{ agent.tools|tojson }},
+      spawnableAgents: {{ agent.spawnable_agents|tojson }},
       secretsText: {{ (agent.secrets|join('\n'))|tojson }},
       raw: {{ raw|tojson }},
       result: '',
@@ -974,6 +997,7 @@
           'allowed_user_ids: ' + list(userIds) + '\n' +
           'skills: ' + list(this.skills) + '\n' +
           'tools: ' + list(this.tools) + '\n' +
+          'spawnable_agents: ' + list(this.spawnableAgents) + '\n' +
           'secrets: ' + list(secrets) + '\n' +
           'tool_config: ' + JSON.stringify(this.buildToolConfig()) + '\n' +
           'email_accounts: ' + JSON.stringify(this.buildEmailAccounts()) + '\n' +
@@ -1003,6 +1027,7 @@
               voice: this.voice,
               character: this.character,
               skills: this.skills, tools: this.tools,
+              spawnable_agents: this.spawnableAgents,
               secrets: this.secretsText.split('\n').map(s => s.trim()).filter(Boolean),
               bot_token: this.bot_token, allowed_user_ids: this.allowedUserIds,
               tool_config: this.buildToolConfig(), gh_token: ghToken,

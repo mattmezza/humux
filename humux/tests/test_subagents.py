@@ -43,7 +43,9 @@ def test_narrow_scope_child_unspecified_inherits_parent() -> None:
 def test_narrow_scope_both_restricted_is_intersection() -> None:
     # The child can never gain a name the parent lacks.
     assert narrow_scope(["a", "b"], ["b", "c"]) == ["b"]
-    assert narrow_scope(["a"], ["b"]) == []
+    # Disjoint non-empty scopes stay restrictive: [] would mean "all", so the
+    # empty intersection becomes a sentinel that matches nothing.
+    assert narrow_scope(["a"], ["b"]) == ["__nothing__"]
 
 
 def test_narrow_scope_both_empty_stays_all() -> None:
@@ -395,6 +397,15 @@ def test_finish_does_not_overwrite_terminal_state() -> None:
     assert reg.get("a").result == ""
 
 
+def test_narrow_agent_keeps_the_trust_list(agent) -> None:
+    # The delegation trust list is a per-identity grant: an anonymous child runs
+    # AS the caller and must keep the caller's team — dropping it would let the
+    # child escape into the legacy any-agent regime.
+    parent = Agent(name="boss", tools=["a"], spawnable_agents=["qa"])
+    child = agent._narrow_agent(parent, {"agent_obj": parent})
+    assert child.spawnable_agents == ["qa"]
+
+
 def test_narrow_agent_intersects_scopes(agent) -> None:
     parent = Agent(name="p", skills=["s1", "s2"], tools=["a", "b"], secrets=["x"])
     requested = Agent(name="child", skills=[], tools=["b", "c"], secrets=["y"])
@@ -402,7 +413,8 @@ def test_narrow_agent_intersects_scopes(agent) -> None:
     assert child.name == "child"
     assert child.skills == ["s1", "s2"]  # child unspecified → inherits parent
     assert child.tools == ["b"]  # intersection, never 'c'
-    assert child.secrets == []  # 'y' not in parent's ['x']
+    # 'y' not in parent's ['x'] → restrictive sentinel, never [] (= all)
+    assert child.secrets == ["__nothing__"]
 
 
 def test_subagent_status_note_lists_only_running_runs(agent) -> None:
@@ -896,13 +908,16 @@ async def test_subagent_loop_is_not_offered_the_fanout_tool(agent) -> None:
             self.offered.append({t["name"] for t in tools})
             return await super().generate()
 
+    agent.config.tools.imagegen.enabled = True
     agent.llm = _ToolCapturingLLM([LLMResponse(text="ok", tool_calls=[])])
     await agent.run_subagent(task="x")
 
     offered = agent.llm.offered[0]
     assert "spawn_subagents" not in offered
     assert "spawn_subagent" in offered  # depth 1 < recursion_depth, so still allowed
-    assert "generate_image" not in offered
+    # #55 follow-up: the generate_image strip is gone — a subagent may draw and
+    # hands the file back by path (see the Files: note below).
+    assert "generate_image" in offered
 
 
 # ---------------------------------------------------------------------------
@@ -1057,6 +1072,152 @@ def test_legacy_spawn_subagent_allowlist_also_gets_the_plural(agent) -> None:
     assert "spawn_subagents" not in {
         t["name"] for t in agent._tools_for_turn(Agent(name="x", tools=["web_search"]))
     }
+
+
+# ---------------------------------------------------------------------------
+# Delegation trust list (spawnable_agents): a curated team is a capability
+# handoff — listed agents run verbatim, unlisted ones are refused.
+# ---------------------------------------------------------------------------
+
+QA_ACCOUNTS = [{"account": "qa-inbox", "access_level": "read_write"}]
+
+
+async def _seed_qa(agent) -> Agent:
+    """A specialist with tools and an account the parent below does NOT have."""
+    qa = Agent(
+        name="qa", role="Reviews changes", tools=["read", "edit"], email_accounts=QA_ACCOUNTS
+    )
+    await agent.agents.upsert(qa)
+    return qa
+
+
+@pytest.mark.asyncio
+async def test_spawn_off_the_trust_list_is_refused(agent) -> None:
+    parent = Agent(name="boss", tools=["web_search", "spawn_subagent"], spawnable_agents=["qa"])
+    await _seed_qa(agent)
+
+    out = await agent._prepare_subagent_run(
+        task="t", agent_name="legal", parent_state=agent._new_request_state(parent)
+    )
+
+    assert "may only delegate to" in out["error"]
+    assert "qa" in out["error"]
+    assert agent.subagents.list_runs() == []  # refused before anything was registered
+
+
+@pytest.mark.asyncio
+async def test_listed_teammate_runs_with_its_own_capabilities(agent) -> None:
+    """The list IS the trust grant: a named teammate is NOT intersected down to
+    the parent's scope, it runs as itself (tools, skills, accounts)."""
+    parent = Agent(name="boss", tools=["web_search", "spawn_subagent"], spawnable_agents=["qa"])
+    await _seed_qa(agent)
+
+    run, child, state = await agent._prepare_subagent_run(
+        task="t", agent_name="qa", parent_state=agent._new_request_state(parent)
+    )
+
+    assert run.agent == "qa"
+    assert child.tools == ["read", "edit"]  # verbatim — the intersection would be empty
+    # Its own account grant is kept; narrowing against a parent with none ([])
+    # would have stripped it.
+    assert [e["account"] for e in child.email_accounts] == ["qa-inbox"]
+    assert state["depth"] == 1
+
+
+@pytest.mark.asyncio
+async def test_no_trust_list_still_narrows_to_the_intersection(agent) -> None:
+    """Legacy behaviour is intact: with no curated team any agent may be named,
+    scoped down to what the caller itself has (inherit-never-widen)."""
+    parent = Agent(name="boss", tools=["read", "web_search"])  # spawnable_agents empty
+    await _seed_qa(agent)
+
+    run, child, _ = await agent._prepare_subagent_run(
+        task="t", agent_name="qa", parent_state=agent._new_request_state(parent)
+    )
+
+    assert run.agent == "qa"
+    assert child.tools == ["read"]  # intersection, never 'edit'
+    assert child.email_accounts == []  # parent has none → the child gets none
+
+
+@pytest.mark.asyncio
+async def test_anonymous_spawn_still_runs_as_the_parent(agent) -> None:
+    """A trust list changes only *named* spawns — omitting 'agent' is unchanged."""
+    parent = Agent(name="boss", tools=["web_search", "spawn_subagent"], spawnable_agents=["qa"])
+    await _seed_qa(agent)
+
+    run, child, _ = await agent._prepare_subagent_run(
+        task="t", parent_state=agent._new_request_state(parent)
+    )
+
+    assert run.agent == "boss"
+    assert child.tools == ["web_search", "spawn_subagent"]
+    assert child.email_accounts == []
+
+
+@pytest.mark.asyncio
+async def test_fanout_refuses_only_the_off_team_subtask(agent, monkeypatch) -> None:
+    """The trust list is enforced per index in the plural tool: the unlisted
+    agent's subtask errors, the listed sibling still runs."""
+    _install_overlap_loop(agent, monkeypatch, delay=0.0)
+    await _seed_qa(agent)
+    parent = Agent(name="boss", tools=["web_search", "spawn_subagent"], spawnable_agents=["qa"])
+    state = agent._new_request_state(
+        parent, origin={"channel": "cli", "user_id": "u", "chat_id": "c1"}
+    )
+
+    out = await agent._tool_spawn_subagents(
+        {"tasks": [{"task": "a", "agent": "qa"}, {"task": "b", "agent": "legal"}]},
+        "cli",
+        "u",
+        state,
+    )
+
+    assert [r["status"] for r in out["results"]] == ["done", "error"]
+    assert "may only delegate to" in out["results"][1]["error"]
+    assert out["succeeded"] == 1 and out["failed"] == 1
+
+
+@pytest.mark.asyncio
+async def test_roster_with_a_team_lists_only_teammates(agent, monkeypatch) -> None:
+    roster = [Agent(name="me", role="r0"), Agent(name="qa", role="r1"), Agent(name="legal")]
+    monkeypatch.setattr(agent.agents, "list_agents", AsyncMock(return_value=roster))
+
+    block = await agent._agents_roster_block(Agent(name="me", role="r0", spawnable_agents=["qa"]))
+    assert "- me (you) — r0" in block  # self stays, so anonymous spawns still make sense
+    assert "- qa — r1" in block
+    assert "legal" not in block
+    assert "may not name agents outside this list" in block
+
+    # No team → the old, deliberately restrictive guidance.
+    plain = await agent._agents_roster_block(Agent(name="me", role="r0"))
+    assert "ONLY so you can honour an explicit request" in plain
+    assert "legal" in plain  # the whole roster is visible again
+
+
+# ---------------------------------------------------------------------------
+# generate_image in a subagent — no delivery path, so the path IS the handoff
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_generate_image_note_branches_on_subagent_depth(agent, monkeypatch) -> None:
+    agent.config.tools.imagegen.enabled = True
+
+    async def fake_generate(_config, _prompt, _size):
+        return b"PNG", "image/png"
+
+    monkeypatch.setattr("core.agent.imagegen.generate", fake_generate)
+
+    top = await agent._tool_generate_image({"prompt": "a cat"}, agent._new_request_state(None))
+    assert top["ok"] is True
+    assert "queued for delivery" in top["note"]
+
+    child = await agent._tool_generate_image(
+        {"prompt": "a cat"}, agent._new_request_state(None, depth=1)
+    )
+    assert "Files:" in child["note"]  # the spawner delivers it from the path
+    assert "queued for delivery" not in child["note"]
 
 
 def test_derive_label_prefers_the_model_label_then_the_task() -> None:

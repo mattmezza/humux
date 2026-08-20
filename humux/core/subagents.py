@@ -205,7 +205,12 @@ def narrow_scope(parent: list[str] | None, child: list[str] | None) -> list[str]
         return list(c)
     if not c:
         return list(p)
-    return [x for x in c if x in p]
+    # An empty intersection must stay restrictive: [] means *all*, so collapsing
+    # two disjoint non-empty scopes to it would WIDEN the child to everything —
+    # the exact inversion of inherit-never-widen. The sentinel matches no real
+    # tool/skill/secret, so it grants nothing (mirrors Agent.__post_init__'s
+    # legacy-migration rule of keeping a scope non-empty).
+    return [x for x in c if x in p] or ["__nothing__"]
 
 
 def narrow_accounts(parent: list[dict] | None, child: list[dict] | None) -> list[dict]:
@@ -484,6 +489,8 @@ def _selfcheck() -> None:
     assert narrow_scope([], ["a"]) == ["a"]  # empty parent = no restriction
     assert narrow_scope(["a", "b"], []) == ["a", "b"]  # empty child inherits
     assert narrow_scope(["a", "b"], ["b", "c"]) == ["b"]  # intersection, never widen
+    # Disjoint non-empty scopes must NOT collapse to [] ("all") — that would widen.
+    assert narrow_scope(["a"], ["b"]) == ["__nothing__"]
 
     rw = {"account": "x", "access_level": "read_write", "is_sender_identity": True}
     ro = {"account": "x", "access_level": "read", "is_sender_identity": False}

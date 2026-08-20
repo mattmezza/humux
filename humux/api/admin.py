@@ -1071,6 +1071,7 @@ class AgentUpsertIn(BaseModel):
     character: str = ""
     skills: list[str] = []
     tools: list[str] = []
+    spawnable_agents: list[str] = []  # delegation trust list; empty = any agent
     secrets: list[str] = []
     bot_token: str = ""  # per-agent Telegram bot (#29); empty = no own bot
     allowed_user_ids: str = ""  # comma/newline-separated; empty = inherit global
@@ -1519,6 +1520,10 @@ def create_admin_app(
                 {"key": s.key, "label": s.label, "summary": s.summary}
                 for s in tool_registry()
                 if (await config_store.get(f"tools.{s.key}.enabled")) == "true"
+            ],
+            # Agent slugs offerable as a delegation trust list (spawnable_agents).
+            "all_agents": [
+                a.name for a in await (await _agent_store_from_config(config_store)).list_agents()
             ],
             "infra_available": bool(secret_store and secret_store.infra.available),
             # Existing infra-vault secret names an agent can reuse as its gh token
@@ -4107,6 +4112,7 @@ def create_admin_app(
                 character=body.character,
                 skills=[s.strip() for s in body.skills if s.strip()],
                 tools=[t.strip() for t in body.tools if t.strip()],
+                spawnable_agents=[a.strip() for a in body.spawnable_agents if a.strip()],
                 secrets=[s.strip() for s in body.secrets if s.strip()],
                 bot_token=body.bot_token.strip(),
                 allowed_user_ids=_as_int_list(body.allowed_user_ids),

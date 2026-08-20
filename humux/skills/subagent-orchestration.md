@@ -47,6 +47,15 @@ message. Everything it needs goes in `task`. Include:
 If a brief is hard to write self-contained, that is a signal the task is not
 independent — pipeline it.
 
+## Delegating to specialists
+
+Omit `agent` to run a subtask as yourself — the right default. Name an agent
+only when your roster lists it and the subtask plainly belongs to it: a listed
+teammate runs with its *own* tools, skills, accounts and memory, which is
+exactly why you pick it (a legal question to the legal agent, a code review to
+the QA agent). Never name an agent your roster doesn't show — the spawn will be
+refused.
+
 ## Labels
 
 Always give every fan-out task a short distinctive `label`, 1–3 words:

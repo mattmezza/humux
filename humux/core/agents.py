@@ -84,6 +84,7 @@ _MIGRATIONS = (
     "ALTER TABLE agents ADD COLUMN cot_feedback TEXT DEFAULT ''",  # Telegram CoT feedback mode
     "ALTER TABLE agents ADD COLUMN is_default INTEGER NOT NULL DEFAULT 0",  # #115 flw
     "ALTER TABLE agents ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1",  # #115 flw kill-switch
+    "ALTER TABLE agents ADD COLUMN spawnable_agents TEXT DEFAULT ''",  # delegation trust list
     # #98: personalia merged into character. Prepend any existing personalia to
     # character (idempotent — the WHERE guard empties it, so a re-run is a no-op),
     # then drop the now-unused column. On a fresh DB (no such column) both raise
@@ -134,6 +135,15 @@ class Agent:
     skills: list[str] = field(default_factory=list)  # allowlist; [] = all
     tools: list[str] = field(default_factory=list)  # allowlist; [] = all
     secrets: list[str] = field(default_factory=list)  # vault scope; stored only (#19)
+    # Delegation trust list: the agents this one may name in spawn_subagent(s).
+    # [] = no curated team (legacy): any agent may be named, scoped down to the
+    # intersection with this agent's own capabilities (inherit-never-widen).
+    # Non-empty = ONLY these may be named, and a listed specialist runs with its
+    # OWN tools/skills/secrets/accounts — the list itself is the trust grant, so
+    # delegation to it is capability handoff, not capability leakage. Naming an
+    # agent off the list is refused. Anonymous spawns (no name) always run as
+    # this agent itself, list or no list.
+    spawnable_agents: list[str] = field(default_factory=list)
     # Own Telegram bot token; empty = no bot. The default agent's bot runs as the
     # bare "telegram" channel, every other agent's as "telegram:<slug>" (#29/#133).
     bot_token: str = ""
@@ -517,6 +527,7 @@ def parse_markdown(text: str, *, name: str) -> Agent:
         skills=_as_list(fm.get("skills")),
         tools=_as_list(fm.get("tools")),
         secrets=_as_list(fm.get("secrets")),
+        spawnable_agents=_as_list(fm.get("spawnable_agents")),
         bot_token=str(fm.get("bot_token", "") or ""),
         allowed_user_ids=_as_int_list(fm.get("allowed_user_ids")),
         tool_config=_as_tool_config(fm.get("tool_config")),
@@ -541,6 +552,7 @@ def to_markdown(a: Agent) -> str:
         "skills": a.skills,
         "tools": a.tools,
         "secrets": a.secrets,
+        "spawnable_agents": a.spawnable_agents,
         "tool_config": a.tool_config,
         "email_accounts": a.email_accounts,
         "calendar_accounts": a.calendar_accounts,
@@ -727,14 +739,15 @@ class AgentStore:
         await db.execute(
             "INSERT INTO agents "
             "(name, agent_name, role, voice, character, skills, tools, "
-            "secrets, bot_token, allowed_user_ids, tool_config, "
+            "secrets, spawnable_agents, bot_token, allowed_user_ids, tool_config, "
             "email_accounts, calendar_accounts, contacts_accounts, chat_settings, group_chat, "
             "llm_config, cot_feedback) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(name) DO UPDATE SET "
             "agent_name=excluded.agent_name, role=excluded.role, "
             "voice=excluded.voice, character=excluded.character, "
             "skills=excluded.skills, tools=excluded.tools, secrets=excluded.secrets, "
+            "spawnable_agents=excluded.spawnable_agents, "
             "bot_token=excluded.bot_token, allowed_user_ids=excluded.allowed_user_ids, "
             "tool_config=excluded.tool_config, email_accounts=excluded.email_accounts, "
             "calendar_accounts=excluded.calendar_accounts, "
@@ -751,6 +764,7 @@ class AgentStore:
                 "\n".join(a.skills),
                 "\n".join(a.tools),
                 "\n".join(a.secrets),
+                "\n".join(a.spawnable_agents),
                 a.bot_token,
                 "\n".join(str(i) for i in a.allowed_user_ids),
                 json.dumps(a.tool_config) if a.tool_config else "",
@@ -775,6 +789,9 @@ class AgentStore:
             skills=_as_list(row["skills"]),
             tools=_as_list(row["tools"]),
             secrets=_as_list(row["secrets"]),
+            spawnable_agents=_as_list(
+                row["spawnable_agents"] if "spawnable_agents" in row.keys() else ""
+            ),
             bot_token=(row["bot_token"] if "bot_token" in row.keys() else "") or "",
             allowed_user_ids=_as_int_list(
                 row["allowed_user_ids"] if "allowed_user_ids" in row.keys() else ""

@@ -75,7 +75,9 @@ it. Omit both and the subagent inherits the caller's model, as it always has.
 **Files hand back automatically.** The subagent shares the agent's filesystem,
 so any file it writes is already on disk where the caller can reach it — it just
 reports the absolute paths in its result, which the spawning agent then reads,
-sends, or attaches.
+sends, or attaches. This is also how generated media travels: a subagent that
+calls `generate_image` hands back the saved image's path, and the spawning agent
+delivers it.
 
 ## Fan-out & orchestration
 
@@ -156,6 +158,31 @@ and a scoped caller delegating to an open agent keeps its own limits.
 [Permission rules](/docs/permissions) (`NEVER` in particular) still apply inside
 the subagent, so a blocked action stays blocked at any depth.
 
+### Delegation trust list
+
+Narrowing is the default because the caller has vouched for nobody. The
+`spawnable_agents` field on an [agent](/docs/agents) — a list of agent slugs —
+is how you vouch:
+
+- **Empty** (the default) — legacy behaviour: any agent may be named in
+  `spawn_subagent`/`spawn_subagents`, and the child is narrowed to the
+  intersection described above.
+- **Non-empty** — a curated **team**. Only the listed agents may be named;
+  anything else is refused with a message listing the team, so the model can
+  self-correct. A listed specialist runs with its **own** tools, skills, secrets,
+  and account bindings — the list *is* the owner's trust grant, which makes
+  delegation a deliberate capability handoff rather than a leak.
+
+Naming yourself, or omitting `agent` entirely, still runs the subtask as the
+caller, narrowed exactly as before.
+
+> **Keep the list short on exposed agents.** A subagent runs with system
+> semantics — no per-action approval — so the spawn approval (which names the
+> target agent and the task) is the one human gate on the whole run. On agents
+> reachable by untrusted input, such as group chats or [GitHub
+> webhooks](/docs/channels), every entry in `spawnable_agents` is a capability
+> that input can reach for.
+
 ## Choosing an agent
 
 Selection stays **user-led**: omitting `agent` runs the subagent as the caller
@@ -164,6 +191,11 @@ already chose. To make the *specialist* case an informed choice rather than a
 guess, each turn the agent sees a compact roster of available agents
 (`name — role`) and only names one when the subtask clearly fits it. A wrong
 name is rejected with the list of valid names, so the agent can self-correct.
+
+With a **team** configured, the roster is filtered to that team and the guidance
+flips: instead of "only when the user asked for a specialist", the agent is told
+to pick the best-equipped teammate for the subtask, because you have already
+approved each of them.
 
 ## Guardrails
 

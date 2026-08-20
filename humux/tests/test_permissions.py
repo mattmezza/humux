@@ -405,6 +405,30 @@ def test_format_approval_message_truncates_huge_command() -> None:
     assert "…" in text
 
 
+def test_format_approval_message_spawn_subagent_names_the_agent() -> None:
+    # A subagent runs autonomously afterwards, so this prompt is the only human
+    # gate on the whole run — it must say WHO runs and WHAT.
+    engine = PermissionEngine()
+    text = engine.format_approval_message(
+        "spawn_subagent", {"agent": "qa", "task": "review the pending diff"}
+    )
+    assert "qa" in text
+    assert "review the pending diff" in text
+    # No agent named → the spawn runs as the caller itself.
+    assert "runs as itself" in engine.format_approval_message("spawn_subagent", {"task": "x"})
+
+
+def test_format_approval_message_spawn_subagents_lists_every_task() -> None:
+    engine = PermissionEngine()
+    text = engine.format_approval_message(
+        "spawn_subagents",
+        {"tasks": [{"task": "check prices", "agent": "shopper"}, {"task": "draft the email"}]},
+    )
+    assert "2 subtasks" in text
+    assert "check prices" in text and "→ shopper" in text
+    assert "draft the email" in text  # unassigned subtask still listed, with no arrow
+
+
 def test_readonly_unix_commands_are_default_always() -> None:
     # #148: fresh agent runs common read-only commands without a prompt.
     engine = PermissionEngine()
