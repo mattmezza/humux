@@ -295,3 +295,31 @@ async def test_delete_seeded_agent_does_not_reseed(tmp_path) -> None:
     await store.upsert(Agent(name="fitness-coach", role="Back"))
     assert (await store.get("fitness-coach")).role == "Back"
     assert [p.name for p in await store.list_agents()] == ["fitness-coach"]
+
+
+def _prompt(cfg, agent=None) -> str:
+    return build_prompt_sections(
+        config=cfg,
+        history_mode="injection",
+        skills_index="",
+        memories="",
+        reflections="",
+        decomposed_goal=None,
+        agent=agent,
+    ).full_prompt
+
+
+def test_delegation_block_present_and_gated() -> None:
+    """The tool schemas say HOW to spawn; the orchestration skill says WHEN — but
+    the model only reads that skill if it already suspects fan-out. This block is
+    the trigger, so it has to be in the prompt whenever spawning is possible."""
+    cfg = Config()
+    cfg.subagents.enabled = True
+    assert "<delegation>" in _prompt(cfg)
+
+    cfg.subagents.enabled = False
+    assert "<delegation>" not in _prompt(cfg)
+
+    cfg.subagents.enabled = True
+    walled_off = Agent(name="solo", tools=["bash"])  # allowlist without spawn_subagent
+    assert "<delegation>" not in _prompt(cfg, walled_off)

@@ -204,6 +204,27 @@ def build_prompt_sections(
         "</messages>"
     )
 
+    # Delegation discoverability (#312 flw): the tool schemas say HOW to spawn and
+    # the subagent-orchestration skill says WHEN — but the model has to already
+    # suspect fan-out is relevant to go read that skill. This block is the missing
+    # trigger, so delegation happens without the user asking for it.
+    if getattr(config.subagents, "enabled", False) and (
+        agent is None or agent.allows_tool("spawn_subagent")
+    ):
+        intro += (
+            "\n\n<delegation>\n"
+            "You can hand work to subagents: spawn_subagent for one subtask, "
+            "spawn_subagents for two to six that run in PARALLEL. Reach for them on "
+            "your own — the owner does not have to ask. Delegate when a request has "
+            "parts that each need several tool calls and their own reading and that "
+            "do not depend on each other: separate research threads, several sources "
+            "or files to survey, a few options to produce side by side. Parts that "
+            "chain are a pipeline — spawn one, read its result, then spawn the next. "
+            "Quick lookups and single tool calls: just do them yourself. Read the "
+            "subagent-orchestration skill for briefing, sizing and patterns.\n"
+            "</delegation>"
+        )
+
     character = f"<character>\n{character_text}\n</character>"
     about_user = f"<about_user>\n{about_user_block}\n</about_user>" if about_user_block else ""
     tool_usage = f"<tool_usage>\n{tool_usage_text}\n</tool_usage>"
