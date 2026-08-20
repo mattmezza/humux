@@ -54,6 +54,7 @@ _AGENT_COMMANDS = frozenset(
 _MENU_COMMANDS = [
     BotCommand("new", "Clear the conversation"),
     BotCommand("subagents", "List active subagent runs"),
+    BotCommand("weburl", "Open this chat as a live web page"),
     BotCommand("yolo_on", "Run actions without asking for approval"),
     BotCommand("yolo_off", "Restore approval prompts"),
     BotCommand("stop", "Stop the current turn"),
@@ -184,6 +185,7 @@ class TelegramChannel:
         # falls through to _on_text, which handles those.)
         self.app.add_handler(CommandHandler("subagents", self._on_subagents_command))
         self.app.add_handler(CommandHandler("jobs", self._on_subagents_command))  # compat alias
+        self.app.add_handler(CommandHandler("weburl", self._on_weburl_command))
         self.app.add_handler(MessageHandler(filters.TEXT, self._on_text))
         self.app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, self._on_voice))
         self.app.add_handler(MessageHandler(filters.PHOTO | filters.Document.IMAGE, self._on_photo))
@@ -674,6 +676,34 @@ class TelegramChannel:
                 [[InlineKeyboardButton("Cancel", callback_data=f"{_SUB_CANCEL_PREFIX}{r.run_id}")]]
             )
             await message.reply_text(text, parse_mode="HTML", reply_markup=keyboard)
+
+    async def _on_weburl_command(self, update: Update, context) -> None:
+        """/weburl — reply with this chat's read-only live web transcript link.
+
+        The link carries an unguessable token minted once per conversation, so
+        calling it again returns the same URL rather than invalidating the old one.
+        """
+        user = update.effective_user
+        message = update.message
+        chat = update.effective_chat
+        if not user or not message:
+            return
+        # Same keys the turn itself is stored under, so the page shows this exact
+        # conversation (a forum topic gets its own link, like its own history).
+        folded = self._fold(chat, message)
+        chat_id = str(folded if folded is not None else user.id)
+        convo_user = self._convo_user_id(chat, user.id)
+        if not await self._may_act(user.id, convo_user, chat_id):
+            return
+        token = await self.agent.history.web_token(self.channel_name, convo_user, chat_id)
+        base = self.agent._base_url()
+        text = f"🔗 Live transcript of this chat:\n{base}/t/{token}"
+        if "localhost" in base or "127.0.0.1" in base:
+            text += (
+                "\n\n<i>Set HUMUX_BASE_URL to the agent's public URL — this link "
+                "only opens on the machine running the agent.</i>"
+            )
+        await message.reply_text(text, parse_mode="HTML", disable_web_page_preview=True)
 
     async def _on_approval_callback(self, update: Update, context) -> None:
         """Handle inline keyboard button presses for permission approvals."""

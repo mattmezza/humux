@@ -30,7 +30,13 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import httpx
 import requests as http_requests
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    RedirectResponse,
+    Response,
+)
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
 from jinja2 import Environment, FileSystemLoader
@@ -48,6 +54,7 @@ from core.prompt_builder import (
 )
 from core.tools import gh_token_secret_name, tool_env
 from core.tools import registry as tool_registry
+from core.transcript import to_entries
 from core.wacli import WacliManager
 
 if TYPE_CHECKING:
@@ -1280,6 +1287,44 @@ def create_admin_app(
                 "X-Content-Type-Options": "nosniff",
             },
         )
+
+    # ── Read-only live web transcript (share token from /weburl) ──────────────
+    # No auth dependency: the 32-byte urlsafe token in the path IS the credential,
+    # the same trade the public artifacts route makes. A token maps to exactly one
+    # (channel, user_id, chat_id), so one link never exposes another conversation.
+
+    async def _transcript_context(token: str):
+        history = await _history_from_config(config_store)
+        ctx = await history.resolve_web_token(token)
+        return history, ctx
+
+    @app.get("/t/{token}", response_model=None)
+    async def transcript_page(token: str) -> Response:
+        history, ctx = await _transcript_context(token)
+        if ctx is None:
+            return Response("Not found", status_code=404, media_type="text/plain")
+        channel, user_id, chat_id = ctx
+        name = await history.get_chat_agent(channel, user_id, chat_id)
+        name = name or await config_store.get("agent.name") or "Assistant"
+        page = _render("transcript.html", agent_name=name, token=token)
+        # Not indexable and never cached: the URL is a secret, and a stale copy
+        # would show a frozen transcript.
+        page.headers["X-Robots-Tag"] = "noindex, nofollow"
+        page.headers["Cache-Control"] = "no-store"
+        return page
+
+    @app.get("/t/{token}/messages", response_model=None)
+    async def transcript_messages(token: str, after: int = 0) -> Response:
+        """Typed entries recorded after cursor ``after``, plus the new cursor."""
+        history, ctx = await _transcript_context(token)
+        if ctx is None:
+            return Response("Not found", status_code=404, media_type="text/plain")
+        rows = await history.transcript_rows(*ctx, after=after)
+        payload = {
+            "entries": to_entries(rows),
+            "cursor": rows[-1]["id"] if rows else max(0, after),
+        }
+        return JSONResponse(payload, headers={"Cache-Control": "no-store"})
 
     auth = _make_auth_dependency(config_store, secret_store)
 

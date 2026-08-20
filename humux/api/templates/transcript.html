@@ -1,0 +1,416 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>{{ agent_name }}</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --page: #faf9f7;
+    --ink: #1b1a18;
+    --muted: #7d7a74;
+    --faint: #e6e3dd;
+    --bubble: #eeebe4;
+    --code: #f0ede6;
+    --accent: #3f7d58;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --page: #1a1a1c;
+      --ink: #ecebe7;
+      --muted: #93908a;
+      --faint: #2e2e31;
+      --bubble: #2a2a2e;
+      --code: #232326;
+      --accent: #7fc79b;
+      --shadow: none;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--ink);
+    font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-synthesis-weight: none;
+  }
+  a { color: var(--accent); }
+
+  header {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: color-mix(in srgb, var(--page) 88%, transparent);
+    backdrop-filter: saturate(1.6) blur(10px);
+    border-bottom: 1px solid var(--faint);
+  }
+  .bar {
+    max-width: 46rem;
+    margin: 0 auto;
+    padding: .85rem 1.25rem;
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+  }
+  .name { font-weight: 600; letter-spacing: -.01em; }
+  .live {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: .45rem;
+    font-size: .75rem;
+    color: var(--muted);
+  }
+  .dot {
+    width: .5rem;
+    height: .5rem;
+    border-radius: 50%;
+    background: var(--accent);
+    animation: pulse 2s ease-in-out infinite;
+  }
+  .live.down .dot { background: var(--muted); animation: none; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+  @media (prefers-reduced-motion: reduce) { .dot { animation: none; } }
+
+  main {
+    max-width: 46rem;
+    margin: 0 auto;
+    padding: 2rem 1.25rem 6rem;
+  }
+  .empty {
+    color: var(--muted);
+    text-align: center;
+    padding: 6rem 1rem;
+    font-size: .95rem;
+  }
+
+  .turn { margin: 1.75rem 0; }
+  .turn.enter { animation: rise .28s ease-out both; }
+  @keyframes rise { from { opacity: 0; transform: translateY(.5rem); } to { opacity: 1; transform: none; } }
+  @media (prefers-reduced-motion: reduce) { .turn.enter { animation: none; } }
+
+  .turn.user { display: flex; flex-direction: column; align-items: flex-end; }
+  .turn.user .body {
+    background: var(--bubble);
+    border-radius: 1.15rem;
+    padding: .7rem 1.05rem;
+    max-width: 85%;
+    box-shadow: var(--shadow);
+  }
+  .turn.assistant .body { max-width: 100%; }
+  .body > :first-child { margin-top: 0; }
+  .body > :last-child { margin-bottom: 0; }
+  .body p { margin: .75em 0; overflow-wrap: anywhere; }
+  .time {
+    font-size: .7rem;
+    color: var(--muted);
+    margin: .35rem .3rem 0;
+    font-variant-numeric: tabular-nums;
+  }
+
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .875em;
+    background: var(--code);
+    padding: .12em .35em;
+    border-radius: .3rem;
+  }
+  pre {
+    background: var(--code);
+    border: 1px solid var(--faint);
+    border-radius: .6rem;
+    padding: .85rem 1rem;
+    overflow-x: auto;
+    margin: 1em 0;
+  }
+  pre code { background: none; padding: 0; font-size: .8125rem; line-height: 1.5; }
+
+  /* Progressive disclosure — reasoning + tool activity */
+  .aside { margin: 1.1rem 0; }
+  .chips { display: flex; flex-wrap: wrap; gap: .4rem; }
+  .chip {
+    font: inherit;
+    font-size: .75rem;
+    line-height: 1.4;
+    color: var(--muted);
+    background: none;
+    border: 1px solid var(--faint);
+    border-radius: 999px;
+    padding: .2rem .65rem;
+    cursor: pointer;
+    transition: border-color .15s, color .15s;
+  }
+  .chip:hover { color: var(--ink); border-color: var(--muted); }
+  .chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .chip[aria-expanded="true"] { color: var(--ink); border-color: var(--muted); }
+  .panel {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows .22s ease;
+  }
+  .panel.open { grid-template-rows: 1fr; }
+  .panel > .inner { overflow: hidden; }
+  .panel.open > .inner { overflow: visible; }
+  @media (prefers-reduced-motion: reduce) { .panel { transition: none; } }
+  .disclosure {
+    border-left: 2px solid var(--faint);
+    padding: .1rem 0 .1rem 1rem;
+    margin: .6rem 0 .2rem;
+  }
+  .think { font-style: italic; color: var(--muted); font-size: .9rem; }
+  .call { margin: .75rem 0; }
+  .call:first-child { margin-top: .35rem; }
+  .call-name {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .8125rem;
+    color: var(--ink);
+  }
+  .call pre { margin: .35rem 0 0; font-size: .78rem; }
+  .call .label { font-size: .7rem; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  .more {
+    font: inherit;
+    font-size: .72rem;
+    color: var(--accent);
+    background: none;
+    border: 0;
+    padding: .25rem 0 0;
+    cursor: pointer;
+  }
+  pre.clip { max-height: 11rem; overflow: hidden; }
+
+  #pill {
+    position: fixed;
+    left: 50%;
+    bottom: 1.5rem;
+    transform: translate(-50%, 1rem);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .2s, transform .2s;
+    background: var(--ink);
+    color: var(--page);
+    border: 0;
+    border-radius: 999px;
+    padding: .5rem 1rem;
+    font: inherit;
+    font-size: .8rem;
+    cursor: pointer;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, .18);
+  }
+  #pill.show { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+
+  @media (max-width: 32rem) {
+    main { padding: 1.25rem .9rem 5rem; }
+    .bar { padding: .75rem .9rem; }
+    .turn.user .body { max-width: 92%; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <span class="name">{{ agent_name }}</span>
+    <span class="live" id="live"><span class="dot"></span><span id="live-label">live</span></span>
+  </div>
+</header>
+
+<main id="feed" aria-live="polite">
+  <div class="empty" id="empty">Nothing here yet — messages appear as the conversation happens.</div>
+</main>
+
+<button id="pill" type="button">↓ new messages</button>
+
+<script>
+(function () {
+  "use strict";
+  var TOKEN = {{ token | tojson }};
+  var feed = document.getElementById("feed");
+  var empty = document.getElementById("empty");
+  var pill = document.getElementById("pill");
+  var live = document.getElementById("live");
+  var liveLabel = document.getElementById("live-label");
+  var cursor = 0, first = true, fails = 0, group = null;
+
+  // -- markdown-lite ---------------------------------------------------------
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function inline(s) {
+    return s
+      .replace(/`([^`\n]+)`/g, "<code>$1</code>")
+      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+      .replace(/(^|[^*\w])\*([^*\n]+)\*/g, "$1<em>$2</em>")
+      .replace(/\[([^\]\n]+)\]\((https?:\/\/[^)\s]+)\)/g,
+        '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
+      .replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g,
+        '$1<a href="$2" target="_blank" rel="noopener noreferrer">$2</a>');
+  }
+  function md(src) {
+    // Split on fences: odd chunks are code, even chunks are prose.
+    var out = "", chunks = esc(src).split(/```/);
+    chunks.forEach(function (chunk, i) {
+      if (i % 2) {
+        var code = chunk.replace(/^[^\n]*\n?/, "").replace(/\n+$/, "");
+        out += "<pre><code>" + code + "</code></pre>";
+        return;
+      }
+      chunk.split(/\n{2,}/).forEach(function (para) {
+        if (para.trim()) out += "<p>" + inline(para.trim()).replace(/\n/g, "<br>") + "</p>";
+      });
+    });
+    return out;
+  }
+
+  // -- rendering -------------------------------------------------------------
+  function stamp(at) {
+    if (!at) return "";
+    var d = new Date(at.replace(" ", "T") + "Z");
+    if (isNaN(d)) return "";
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  }
+  function el(tag, cls, html) {
+    var node = document.createElement(tag);
+    if (cls) node.className = cls;
+    if (html !== undefined) node.innerHTML = html;
+    return node;
+  }
+  function pretty(args) {
+    try { return JSON.stringify(args, null, 2); } catch (e) { return String(args); }
+  }
+
+  function renderText(entry) {
+    group = null;
+    var turn = el("div", "turn " + (entry.role === "user" ? "user" : "assistant"));
+    turn.appendChild(el("div", "body", md(entry.text)));
+    var t = stamp(entry.at);
+    if (t) turn.appendChild(el("div", "time", esc(t)));
+    if (!first) turn.classList.add("enter");
+    feed.appendChild(turn);
+  }
+
+  function newGroup() {
+    var wrap = el("div", "aside");
+    var chips = el("div", "chips");
+    wrap.appendChild(chips);
+    var g = { node: wrap, chips: chips, think: null, tools: null };
+    feed.appendChild(wrap);
+    return g;
+  }
+
+  /* One collapsible section per group: a chip that toggles a panel below it. */
+  function section(g, icon) {
+    var chip = el("button", "chip");
+    chip.type = "button";
+    chip.setAttribute("aria-expanded", "false");
+    var panel = el("div", "panel");
+    var inner = el("div", "inner");
+    var box = el("div", "disclosure");
+    inner.appendChild(box);
+    panel.appendChild(inner);
+    g.chips.appendChild(chip);
+    g.node.appendChild(panel);
+    chip.addEventListener("click", function () {
+      var open = panel.classList.toggle("open");
+      chip.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+    return { chip: chip, box: box, icon: icon, count: 0, names: [] };
+  }
+
+  function renderThinking(g, entry) {
+    if (!g.think) g.think = section(g, "💭");
+    g.think.count++;
+    g.think.box.appendChild(el("div", "think", md(entry.text)));
+    g.think.chip.textContent = "💭 thinking";
+  }
+
+  function renderTool(g, entry) {
+    if (!g.tools) g.tools = section(g, "🔧");
+    var t = g.tools;
+    var call = el("div", "call");
+    if (entry.kind === "tool_call") {
+      t.count++;
+      if (t.names.length < 1) t.names.push(entry.name || "tool");
+      call.appendChild(el("div", "call-name", esc(entry.name || "tool")));
+      call.appendChild(el("pre", null, "<code>" + esc(pretty(entry.args)) + "</code>"));
+    } else {
+      call.appendChild(el("div", "label", esc(entry.name ? entry.name + " result" : "result")));
+      var pre = el("pre", null, "<code>" + esc(entry.text) + "</code>");
+      call.appendChild(pre);
+      if (entry.text.length > 400) {
+        pre.classList.add("clip");
+        var more = el("button", "more", "show more");
+        more.type = "button";
+        more.addEventListener("click", function () {
+          var clipped = pre.classList.toggle("clip");
+          more.textContent = clipped ? "show more" : "show less";
+        });
+        call.appendChild(more);
+      }
+    }
+    t.box.appendChild(call);
+    var extra = t.count - 1;
+    t.chip.textContent = "🔧 " + (t.names[0] || "tool") + (extra > 0 ? " (+" + extra + " more)" : "");
+  }
+
+  function render(entries) {
+    entries.forEach(function (entry) {
+      if (entry.kind === "text") { renderText(entry); return; }
+      if (!group) group = newGroup();
+      if (entry.kind === "reasoning") renderThinking(group, entry);
+      else renderTool(group, entry);
+    });
+  }
+
+  // -- scrolling -------------------------------------------------------------
+  function nearBottom() {
+    return window.innerHeight + window.scrollY >= document.body.scrollHeight - 160;
+  }
+  function toBottom(smooth) {
+    window.scrollTo({ top: document.body.scrollHeight, behavior: smooth ? "smooth" : "auto" });
+  }
+  pill.addEventListener("click", function () { pill.classList.remove("show"); toBottom(true); });
+  window.addEventListener("scroll", function () {
+    if (nearBottom()) pill.classList.remove("show");
+  }, { passive: true });
+
+  // -- polling ---------------------------------------------------------------
+  function setLive(ok) {
+    live.classList.toggle("down", !ok);
+    liveLabel.textContent = ok ? "live" : "reconnecting…";
+  }
+
+  async function poll() {
+    try {
+      var resp = await fetch("/t/" + encodeURIComponent(TOKEN) + "/messages?after=" + cursor, {
+        headers: { "Accept": "application/json" }
+      });
+      if (!resp.ok) throw new Error(resp.status);
+      var data = await resp.json();
+      fails = 0;
+      setLive(true);
+      cursor = data.cursor;
+      if (data.entries.length) {
+        var stick = first || nearBottom();
+        empty.remove();
+        render(data.entries);
+        if (stick) toBottom(!first);
+        else pill.classList.add("show");
+      }
+      first = false;
+    } catch (e) {
+      fails++;
+      if (fails >= 3) setLive(false);
+    }
+    setTimeout(poll, fails >= 3 ? 10000 : 2000);
+  }
+
+  poll();
+})();
+</script>
+</body>
+</html>

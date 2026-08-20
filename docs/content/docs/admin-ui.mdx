@@ -156,6 +156,42 @@ The filter bar narrows the view:
 **Auto-refresh** re-polls every few seconds keeping the active filters; model
 chain-of-thought lines render in a distinct style.
 
+## Live transcript (`/weburl`)
+
+Send **`/weburl`** in any Telegram chat with the agent and it replies with a link
+to a read-only web page showing that conversation, updating as it happens:
+
+```
+https://your-agent.example/t/<token>
+```
+
+- **One link per conversation** — the token maps to exactly one
+  (channel, user, chat) triple, so a group, a DM, and a forum topic each get their
+  own page and none of them can see the others' messages. Asking again returns the
+  **same** link rather than invalidating the old one.
+- **The token is the credential** — 32 unguessable url-safe bytes, no login, no
+  admin API key. The page is served with `no-store` and `X-Robots-Tag: noindex`,
+  but anyone holding the URL can read that conversation, so share it deliberately.
+  `/weburl` itself is gated by the same per-chat permissions as any other action,
+  so only people who may talk to the bot there can mint the link.
+- **Read-only** — there is no way to send a message, change settings, or reach any
+  other part of the admin app from it. The system prompt is never included.
+- **Reading view** — user turns as tinted bubbles, agent turns as plain prose with
+  light markdown (code blocks, bold/italic, links), automatic light/dark, and a live
+  dot that greys out and says "reconnecting…" while polling fails.
+- **Progressive disclosure** — the agent's chain-of-thought and tool activity sit
+  between messages as muted one-line chips ("💭 thinking", "🔧 web_search (+2 more)").
+  Click one to expand reasoning as quiet prose and tool calls as monospace blocks
+  with pretty-printed arguments and truncated results; the primary reading flow stays
+  clean. These only exist in `session` history mode, which is what records the tool
+  round-trips — in `injection` mode the page shows the text turns and no chips.
+
+Set `HUMUX_BASE_URL` to the agent's public URL so the link is reachable from your
+phone; without it the reply points at `localhost` and says so.
+
+The page polls `/t/<token>/messages?after=<cursor>` every 2 seconds and backs off to
+10 seconds after repeated failures, resuming as soon as a request succeeds.
+
 ## Setup wizard
 
 On first boot, the admin UI presents a step-by-step setup wizard:

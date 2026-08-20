@@ -41,6 +41,7 @@ agent's row, after which every bot is configured per-agent. See
 - **User ID whitelist** — only allowed users can interact with the bot
 - **Bot-per-agent** — every agent has its own bot token, so it's a separate Telegram contact, all running in one process; see below
 - **Group rooms** — several agent-bots share one group sanely: each replies only when addressed, ignores other bots, and tags who said what; see below
+- **Live web transcript** — `/weburl` replies with a read-only link that shows this chat as a web page, updating live, with the agent's reasoning and tool calls behind click-to-expand chips; see [Live transcript](/docs/admin-ui#live-transcript-weburl)
 
 ### Bot-per-agent
 
