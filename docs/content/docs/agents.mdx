@@ -395,7 +395,7 @@ character: |
 
 The `chat_id` is the runtime key: a group's id (negative) in groups, the sender's id in a DM.
 Enforcement runs in the Telegram channel **on top of** `allowed_user_ids` — a user blocked by
-either gate is ignored — and applies to text, voice, photo, `/jobs`, and the inline
+either gate is ignored — and applies to text, voice, photo, `/subagents`, `/weburl`, and the inline
 approve/deny/cancel buttons. Record-only turns (a group message not addressed to the bot) are
 unaffected: they were never going to reply.
 

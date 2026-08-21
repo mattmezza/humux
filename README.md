@@ -48,6 +48,7 @@ No cloud dependency. No data leaving your server. One `docker compose up` and yo
 - **Reply decision** — in group chats the agent decides per message whether to reply, with a hard rate cap that guarantees runaway loops end
 - **Steerable mid-turn** — redirect a long-running turn by just sending a follow-up; it's folded in before the agent's next step (reacts 👀 to confirm) instead of making you wait for it to finish on the wrong track
 - **Per-chat settings** — gate per Telegram chat who can trigger an agent and who may DM it
+- **Live web transcript** — `/weburl` returns a read-only link that renders the chat as a web page, updating live, with reasoning and tool calls behind click-to-expand chips
 
 </details>
 
@@ -105,7 +106,7 @@ Memories are extracted automatically from conversations. The agent reads AND wri
 
 - Cron-based jobs for morning briefings, email checks, memory consolidation
 - Subagent jobs: delegate recurring work to a named agent
-- One-shot tasks via Telegram (`/jobs`) or the admin UI
+- One-shot tasks via Telegram or the admin UI
 
 </details>
 
@@ -114,9 +115,11 @@ Memories are extracted automatically from conversations. The agent reads AND wri
 <summary><strong>Subagents</strong> — Delegate subtasks to scoped sub-loops</summary>
 
 - Spawn a sub-loop under any agent, on demand or scheduled
-- Scope is a subset of the caller's — **inherit-never-widen** for tools, skills, secrets, and GitHub repo access
-- Runs sync (result returned in-turn) or background (distilled summary)
-- Monitor and cancel from Telegram or admin UI
+- **Fan out** 2–6 independent subtasks in parallel with one call, then synthesize
+- Scope is a subset of the caller's — **inherit-never-widen** for tools, skills, secrets, and GitHub repo access; `spawnable_agents` is the trust list that grants a specialist its own scope instead
+- Runs sync (result returned in-turn) or background — when a background batch lands, the agent itself reads the results and writes the reply
+- Per-turn spawn and token pools, charged as spent, so a fan-out can't run away
+- Monitor and cancel from Telegram (`/subagents`) or the admin UI
 
 </details>
 

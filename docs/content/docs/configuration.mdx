@@ -135,7 +135,7 @@ reply_decision:
 
 #### `agent`
 
-Core agent settings including name, owner, LLM provider, model, and timezone. The `skills_dir` points to the directory containing markdown skill files. `agents_dir` is an optional seed directory for [agents](/docs/agents) — empty by default (no agents ship), but any `.md` files dropped there are auto-seeded. Which agent is the default (the one that answers when nothing else routes) is a per-row flag, not a config key — set it on the Agents tab.
+Core agent settings including name, owner, LLM provider, model, and timezone. `max_tool_rounds` (default `100`) caps how many tool-call rounds one turn may take before the loop is cut off — a runaway-loop rail, not a working limit; it is exposed on the admin **LLM** tab. The `skills_dir` points to the directory containing markdown skill files. `agents_dir` is an optional seed directory for [agents](/docs/agents) — empty by default (no agents ship), but any `.md` files dropped there are auto-seeded. Which agent is the default (the one that answers when nothing else routes) is a per-row flag, not a config key — set it on the Agents tab.
 
 #### `channels`
 
@@ -226,6 +226,28 @@ Memory system settings. `extraction_model` is the cheap/fast model used for post
 #### `workspace`
 
 The [coding harness](/docs/workspace) — file `read`/`write`/`edit` tools confined to `directory`, plus workspace-confined execution of non-allowlisted `bash` commands. Reads are pre-approved; writes and commands ask for approval each time. Paths escaping `directory` (via `..` or a symlink) are blocked. Off by default, and managed from the admin **Workspace** tab; a blank `directory` keeps the tools inert even when `enabled` is true — there is no default root.
+
+#### `subagents`
+
+[Subagent](/docs/subagents) delegation and its guardrails. `enabled` is the
+master switch; the rest bound what a spawn may cost:
+
+```yaml
+subagents:
+  enabled: true
+  recursion_depth: 3          # max nesting (a top-level spawn is depth 1)
+  max_steps: 12               # max tool-call rounds per run
+  token_budget: 300000        # approx token ceiling per run
+  max_concurrent: 4           # per-chat concurrency gate; extras queue
+  max_fanout: 6               # max tasks in one spawn_subagents call
+  max_spawns_per_turn: 12     # spawns across the whole tree, per turn
+  turn_token_budget: 1200000  # subagent tokens across the whole tree, per turn
+  allowed_models: []          # e.g. ["deepseek:deepseek-v4-flash"]
+```
+
+Every key is also editable live from the admin **Tools** tab (the *Subagents*
+card). See [Subagents → Guardrails](/docs/subagents#guardrails) for what each one
+does and how the agent may dial it down per spawn.
 
 #### `reply_decision`
 

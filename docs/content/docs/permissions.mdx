@@ -53,7 +53,13 @@ The read-only Unix commands above (`cat`, `ls`, `echo`, `head`, `tail`, `date`, 
 "bash:himalaya*delete*"       # Deleting emails
 "bash:himalaya*move*"         # Moving emails
 "schedule_task"                      # Scheduling tasks
+"spawn_subagent"                     # Delegating a subtask
+"spawn_subagents"                    # Delegating a parallel fan-out
 ```
+
+The [subagent](/docs/subagents) prompts name the target agent and the task, and
+they are the *only* human gate on the whole run — a subagent runs with system
+semantics, without per-action approval.
 
 ### Never allowed (dangerous operations)
 
@@ -149,6 +155,7 @@ Rules are persisted in the SQLite config store (`data/config.db`) and can be man
 The permission system works alongside other security layers:
 
 - **Command whitelist** — only commands matching `ALLOWED_PREFIXES` can run. A command may pipe into a read-only filter (`jq`, `head`, `tail`, `rg`, `grep`, `wc`, …), but the first segment must be an allowlisted prefix. Subshells and command substitution (`` ` ``, `$(…)`) are rejected unless single-quoted — single quotes make them literal, so quote Markdown bodies (`--body '…'`) to keep backticks intact.
+- **Telegram Bot API is off limits to the shell** — any model-issued command targeting `api.telegram.org` (or carrying a `/bot<id>:<token>` path) is rejected on both shell rails, so the bot token being readable from config can't turn `curl` into an unguarded `pinChatMessage`/`deleteMessage`/`sendMessage`. The structured `set_reaction` and `send_message` tools, which do honour permissions and per-chat settings, are the only way in
 - **User ID whitelist** — only allowed users can interact with the bot
 - **Permission patterns** — glob-based rules control what the agent can do
 - **Approval flow** — interactive confirmation for write operations

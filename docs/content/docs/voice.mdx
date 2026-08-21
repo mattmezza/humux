@@ -61,7 +61,7 @@ voice:
     default_voice: "af_bella"
 ```
 
-You can also set the backend and default voice from the admin UI (**Agents → Default agent → Voice**), and pick a per-agent voice in the agent editor. Both have a **Preview** box: type a few words, optionally pick a **language**, and hear the voice before saving. Because the voice (timbre) and the pronunciation language are independent in Kokoro, any voice can read any language — e.g. an Italian voice reading English.
+You can also set the backend and default voice from the admin UI (**Agents → Default agent → Voice**), and pick a per-agent voice in the agent editor. Both have a **Preview** box: type a few words, optionally pick a **language**, and hear the voice before saving. Next to the STT settings, **Test STT** speaks a fixed phrase with edge-tts and transcribes it back through the selected engine (local or remote), reporting the text and timing — so a misconfigured sidecar surfaces there instead of silently failing on a real voice message. Because the voice (timbre) and the pronunciation language are independent in Kokoro, any voice can read any language — e.g. an Italian voice reading English.
 
 ### Whisper model sizes
 

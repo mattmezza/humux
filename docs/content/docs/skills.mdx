@@ -34,6 +34,11 @@ humux ships with these skills:
 | Scheduling | `scheduling.md` | Task scheduling |
 | Skill Creator | `skill-creator.md` | Creating new skills dynamically |
 | WhatsApp | `wacli-whatsapp.md` | WhatsApp via wacli CLI |
+| GitHub | `gh.md` | Issues, PRs, releases and `gh api` via the `gh` CLI |
+| Browser | `browser.md` | Headless Playwright browsing and page actions |
+| Image generation | `image_generation.md` | `generate_image` conventions |
+| Artifact hosting | `artifact-hosting.md` | Publishing [web artifacts](/docs/artifacts) |
+| Subagent orchestration | `subagent-orchestration.md` | When to fan work out to parallel [subagents](/docs/subagents), and how to brief and reassemble them |
 
 ## Skill file anatomy
 
@@ -184,12 +189,14 @@ show up on the next turn without a `/new`:
 [Current date & time: ...]
 
 <available_skills>
-Skills are reusable instructions for specific tasks. Before acting on a task a
-skill covers, read it with bash: `python3 /app/tools/skills.py show <name>`.
 <skill name="himalaya-email">send and read email over IMAP/SMTP</skill>
 ...
 </available_skills>
 ```
+
+The index is names + one-line summaries only. The instruction to read a skill
+before acting on it is stated once, in the cached `<tool_usage>` block, rather
+than repeated in the index and in each tool's prompt block.
 
 The model picks a skill from the index, then reads its full body on demand via
 `bash` — either the `skills.py show` CLI or a direct `sqlite3` query against the

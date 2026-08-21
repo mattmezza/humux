@@ -17,9 +17,10 @@ There is **one execution primitive** reached by two trigger paths:
 
 A subagent runs with **system semantics**: no goal decomposition, no memory
 extraction, and no per-action approval prompts — the same path
-scheduled jobs already use. You approve the delegation once (the `spawn_subagent`
-call is an [ASK action](/docs/permissions)); the subagent then runs autonomously
-within its scope.
+scheduled jobs already use. You approve the delegation once (`spawn_subagent`
+and `spawn_subagents` are both [ASK actions](/docs/permissions), and the prompt
+names the target agent and the task); the subagent then runs autonomously within
+its scope.
 
 ## On demand
 
@@ -31,12 +32,17 @@ The agent decides to delegate and calls the tool. Two modes:
 - **Background** (`background: true`): the tool returns a run id immediately and
   the subagent runs off-turn. A subagent works **for the agent, not the user** —
   its raw output is never shown to you. When the whole batch of background runs
-  for the chat has finished, a small [summary inference](#result-summary)
-  distils it into **two** things: a one-line *notification* sent to the chat, and
-  a concise *digest* kept in the agent's context so it can answer follow-ups
-  without the raw output polluting the conversation. While a run is in flight,
-  its status is shown to the agent each turn so it never mistakes a pending run
-  for a finished one.
+  for the chat has finished it is handed back to the agent, which reads the
+  results and answers for them in its own words — see [When background work
+  lands](#when-background-work-lands). While a run is in flight, its status is
+  shown to the agent each turn so it never mistakes a pending run for a finished
+  one.
+
+**Delegating is the agent's own call.** It doesn't have to be asked: a standing
+`<delegation>` block in the system prompt tells it to reach for a subagent when a
+request has parts that each need several tool calls and don't depend on each
+other, and to just do quick lookups itself. Which *named* agent runs the subtask
+is the part that stays user-led (see [Choosing an agent](#choosing-an-agent)).
 
 ```jsonc
 // spawn_subagent tool input
@@ -105,9 +111,10 @@ short `label` used in logs and the [admin UI](/docs/admin-ui) — the agent
 derives one from the task text when it's omitted. A call may name 2 up to
 `max_fanout` tasks (see [Guardrails](#guardrails)).
 
-`background: true` runs the whole batch off-turn: results are posted to the
-chat as **one grouped notification** once every subtask has finished, not one
-notification per subtask.
+`background: true` runs the whole batch off-turn: the barrier collapses the
+whole fan-out into **one** hand-back once every subtask has finished, so the
+agent answers for the batch as a whole rather than once per subtask — see [When
+background work lands](#when-background-work-lands).
 
 **Failure is per-subtask, never all-or-nothing.** Results come back in request
 order, one entry per task, each with `status` (`done` / `error` / `cancelled`),
@@ -192,15 +199,16 @@ caller, narrowed exactly as before.
 > semantics — no per-action approval — so the spawn approval (which names the
 > target agent and the task) is the one human gate on the whole run. On agents
 > reachable by untrusted input, such as group chats or [GitHub
-> webhooks](/docs/channels), every entry in `spawnable_agents` is a capability
-> that input can reach for.
+> webhooks](/docs/extending#inbound-webhooks-github-wakes-the-agent), every
+> entry in `spawnable_agents` is a capability that input can reach for.
 
 ## Choosing an agent
 
-Selection stays **user-led**: omitting `agent` runs the subagent as the caller
-itself (the chat's bound agent), so a subtask stays in the identity the user
-already chose. To make the *specialist* case an informed choice rather than a
-guess, each turn the agent sees a compact roster of available agents
+*Whether* to delegate is the agent's call; *which named agent* runs the subtask
+stays **user-led**. Omitting `agent` runs the subagent as the caller itself (the
+chat's bound agent), so a subtask stays in the identity the user already chose.
+To make the *specialist* case an informed choice rather than a guess, each turn
+the agent sees a compact roster of available agents
 (`name — role`) and only names one when the subtask clearly fits it. A wrong
 name is rejected with the list of valid names, so the agent can self-correct.
 
@@ -217,7 +225,7 @@ limit, applied live without a restart), or under `subagents` in `config.yml`:
 
 | Setting | Default | What it does |
 |---------|---------|--------------|
-| `enabled` | `true` | Master switch; off hides the `spawn_subagent` tool everywhere |
+| `enabled` | `true` | Master switch; off hides the `spawn_subagent`/`spawn_subagents` tools everywhere |
 | `recursion_depth` | `3` | Max nesting (a top-level spawn is depth 1) |
 | `max_steps` | `12` | Ceiling on tool-call rounds per run — a hard stop; the agent may request fewer per spawn, never more |
 | `token_budget` | `300000` | Ceiling on tokens per run (best-effort); the agent may request fewer per spawn, never more. A round re-sends the whole prompt, so it costs 15–35k and each round costs more than the last — sized so `max_steps`, not tokens, is what stops a run |
@@ -236,20 +244,35 @@ returning an empty result over the work it already paid for. A spawn is refused 
 `turn_token_budget` is already fully drained — never pre-emptively for
 tokens — with a message the model can read instead of spawning without limit.
 
-## Result summary
+## When background work lands
 
-A finished **background** batch isn't dumped on you raw. A small, fast inference
-(its own provider/model, like memory or compaction) distils the batch into a
-one-line chat **notification** and a concise **digest** that stays in the agent's
-context for follow-ups. Configure it in the **Tools** tab (the *Result summary*
-section of the Subagents card) or under `subagent_summary` in `config.yml`:
+A finished **background** batch goes back to the agent that delegated it, not to
+a summariser. Once every background run for the chat has finished, the whole
+batch is framed as a `<subagent_results>` block — one status line plus the result
+per run — and routed into the conversation through the same steering machinery
+the [GitHub webhook](/docs/extending#inbound-webhooks-github-wakes-the-agent) uses:
 
-| Setting | Default | What it does |
-|---------|---------|--------------|
-| `enabled` | `true` | Off falls back to a crude first-line truncation (no LLM call) |
-| `provider` | `deepseek` | Inference provider for the summary |
-| `model` | `deepseek-v4-flash` | Fast + cheap is ideal for this distillation |
-| `thinking_level` | `""` | `""` (off) / `low` / `medium` / `high` / `max` for reasoning models |
+- a turn **already running** for that chat gets the block injected between tool
+  rounds;
+- an **idle** chat runs it as its own turn.
+
+Either way the agent reads the raw results and **its own reply** is the assistant
+turn, written and delivered by the normal turn path. The block is pre-framed as
+the agent's own delegation returning — never as a fresh instruction from the
+owner — and the standing rules for reading it (check the status on every entry,
+never present a partial or failed batch as a complete answer) live once in the
+cached `<delegation>` prompt block rather than in every batch.
+
+**Wake loops are closed structurally.** A turn started by a landing batch may not
+spawn `background: true` subagents; synchronous spawns stay allowed, since they
+return inside the turn and are already bounded by the per-turn pool and
+`max_tool_rounds`. A wake can only follow a background spawn, and a woken turn
+can't make one, so every chain is at most one wake deep.
+
+Each run's result is clipped at ~80,000 characters before it is folded into the
+conversation — a defensive ceiling on a runaway helper, not a working limit. The
+full text always stays in the registry, so `/subagents` and the [admin
+UI](/docs/admin-ui#inspect) still show it whole.
 
 Synchronous spawns are unaffected — the agent gets the full result inline as the
 tool result and weaves it into its own reply.
@@ -258,8 +281,10 @@ tool result and weaves it into its own reply.
 
 Background subagents are first-class runs you can watch and stop:
 
-- **Telegram** — send `/jobs` to list active runs, each with an inline **Cancel**
-  button. Monitoring and cancelling a long task from your phone needs no web UI.
+- **Telegram** — send `/subagents` (alias `/jobs`) to list active runs, oldest
+  first, each with an inline **Cancel** button. A nested run shows the run that
+  spawned it (`└ spawned by pricing`), so the tree reads top-down. Monitoring and
+  cancelling a long task from your phone needs no web UI.
 - **Admin UI** — the **Inspect** tab shows a live card per run (agent, status,
   elapsed time, current step) with a cancel button, above the context list; the
   layout collapses to a single column at phone width. Each context row has a

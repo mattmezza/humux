@@ -121,7 +121,8 @@ A few details worth knowing:
   (a bare `/yolo-on`, addressed to no bot, toggles nothing). The setting persists across
   restarts until you turn it off.
 - **Command menu** — each bot publishes its commands to Telegram's ☰ menu / `/`
-  autocomplete on startup (`/new`, `/jobs`, `/yolo_on`, `/yolo_off`, `/stop` — Telegram forbids
+  autocomplete on startup (`/new`, `/subagents`, `/weburl`, `/yolo_on`, `/yolo_off`,
+  `/stop` — `/jobs` still works as an alias for `/subagents`; Telegram forbids
   `-` in menu command names, so YOLO shows with an underscore; `/yolo-on` still works too).
   In a group each bot lists its own commands, `@bot`-suffixed, so tapping one targets that
   bot. The menu is a full replace, so the list simply tracks whatever the version ships.
