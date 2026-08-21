@@ -56,6 +56,7 @@
         <div class="hint flex justify-between"><span></span>
           <span class="text-[10px] text-muted" x-text="'~' + window.estimateTokens(character) + ' tokens'"></span>
         </div>
+        <p class="text-muted text-xs mt-1">Personality and voice only — how the agent talks, not how it works. Tool policy, permissions and skill usage already live in the system prompt; repeating them here just adds tokens and risks contradicting them.</p>
       </div>
 
       {# Per-agent voice override — only the voices valid for the active global

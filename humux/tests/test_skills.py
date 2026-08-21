@@ -31,7 +31,8 @@ async def test_get_index_block_lists_seeded_skills(tmp_path) -> None:
 
     assert '<skill name="alpha">Alpha skill</skill>' in index
     assert '<skill name="beta">Beta skill</skill>' in index
-    assert "skills.py show" in index  # loading instructions ride with the index
+    # "Read it first" lives once in DEFAULT_TOOL_USAGE_BLOCK, not repeated here.
+    assert "skills.py show" not in index
 
 
 @pytest.mark.asyncio

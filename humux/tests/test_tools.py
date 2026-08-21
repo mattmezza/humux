@@ -49,7 +49,6 @@ def _sections(cfg: Config):
         history_mode="session",
         skills_index="",
         memories="",
-        reflections="",
         decomposed_goal=None,
     )
 
@@ -70,7 +69,6 @@ def test_skills_index_rendered_when_supplied() -> None:
         history_mode="session",
         skills_index='<skill name="weather">fetch the forecast</skill>',
         memories="",
-        reflections="",
         decomposed_goal=None,
     )
     assert "<available_skills>" in sections.available_skills
@@ -257,19 +255,13 @@ async def test_mid_session_memory_visible_next_turn_without_new(agent) -> None:
     snapshot = await agent._session_system_prompt("telegram", "u1", "")
     assert "Capital of France is Paris" not in snapshot
 
-    # Mid-session extraction stores a new long-term fact + a task reflection
-    # (the issue names all three of compaction/cross-chat/reflection staleness).
+    # Mid-session extraction stores a new long-term fact.
     await agent.memory._insert_long_term("fact", "France", "Capital of France is Paris")
-    await agent.reflections._store_reflection(
-        {"lesson": "Prefer himalaya -o json over scraping text", "category": "tool"}
-    )
 
-    # Next turn's preamble surfaces both — no /new, no snapshot rebuild.
+    # Next turn's preamble surfaces it — no /new, no snapshot rebuild.
     preamble = await agent._turn_preamble(None, query="What's the capital of France?")
     assert "Capital of France is Paris" in preamble
     assert "<memories>" in preamble
-    assert "Prefer himalaya -o json over scraping text" in preamble
-    assert "<task_reflections>" in preamble
 
     # Snapshot is still the frozen one (cache intact, not rebuilt).
     assert await agent._session_system_prompt("telegram", "u1", "") == snapshot
@@ -359,7 +351,8 @@ async def test_preamble_carries_xml_skills_index(agent) -> None:
     preamble = await agent._turn_preamble(None, query="hi")
     assert "<available_skills>" in preamble
     assert '<skill name="weather">fetch the forecast</skill>' in preamble
-    assert "skills.py show" in preamble  # loading instructions ride along
+    # "Read it first" lives once in DEFAULT_TOOL_USAGE_BLOCK, not repeated here.
+    assert "skills.py show" not in preamble
 
 
 @pytest.mark.asyncio

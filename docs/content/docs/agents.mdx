@@ -185,7 +185,7 @@ means the agent inherits everything (existing agents are unchanged on upgrade). 
 and base URLs are **always** the global ones (LLM → Providers): the override picks *which*
 configured provider and model the agent runs on, it never carries its own credentials.
 The override applies to the agent's whole agentic loop, including the subagent runs it
-spawns; background inferences (memory, compaction, reflection, …) keep their own models.
+spawns; background inferences (memory, compaction, …) keep their own models.
 
 ## Delegation trust list
 

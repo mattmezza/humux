@@ -16,7 +16,7 @@ There is **one execution primitive** reached by two trigger paths:
 - **Scheduled** — a `subagent` job fired by the [scheduler](/docs/scheduler).
 
 A subagent runs with **system semantics**: no goal decomposition, no memory
-extraction, no reflection, and no per-action approval prompts — the same path
+extraction, and no per-action approval prompts — the same path
 scheduled jobs already use. You approve the delegation once (the `spawn_subagent`
 call is an [ASK action](/docs/permissions)); the subagent then runs autonomously
 within its scope.

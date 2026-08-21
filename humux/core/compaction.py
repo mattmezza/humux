@@ -33,6 +33,7 @@ CONTEXT_WINDOWS: dict[str, int] = {
     "claude-sonnet-4-5": 200_000,
     "claude-haiku-4-5": 200_000,
     "claude-4-5-haiku": 200_000,
+    "deepseek-v4-flash": 1_000_000,
 }
 
 _SUMMARY_PROMPT = """\

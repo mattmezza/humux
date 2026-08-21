@@ -3,7 +3,7 @@
 A *subagent* is one execution primitive (``AgentCore.run_subagent``) reached by
 two trigger paths: on demand via the ``spawn_subagent`` tool, or on a schedule
 via a ``subagent`` job. Either way it runs the existing agent loop with **system
-semantics** (no goal decomposition / memory / reflection / approval prompts) and
+semantics** (no goal decomposition / memory / approval prompts) and
 an agent whose tool/skill/secret scope is a *subset* of the caller's — never
 wider (``narrow_scope``).
 

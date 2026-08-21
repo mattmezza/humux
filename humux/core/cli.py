@@ -80,7 +80,7 @@ class _SpinnerHandler(logging.Handler):
         color = _DIM if record.name == "core.llm.reasoning" else _CYAN
         line = f"  {color}· {record.getMessage()}{_RESET}"
         sys.stderr.write("\r\033[K" + line + "\n")
-        # A background task (memory/reflection) can log AFTER the input prompt is
+        # A background task (memory/compaction) can log AFTER the input prompt is
         # drawn; the \r\033[K above wiped it, so redraw the prompt + any typed text.
         if self.spinner.awaiting_input:
             buf = readline.get_line_buffer() if readline else ""

@@ -114,8 +114,23 @@ def _fmt_tokens(n: int) -> str:
     return str(n)
 
 
+def _fromjson(value: object) -> object:
+    """Parse a JSON string, or return None if it isn't JSON (Inspect tab #99).
+
+    OpenAI-shaped tool calls carry their arguments as a JSON-encoded *string*;
+    the payload view parses them so they can be rendered as fields instead of
+    one unreadable blob."""
+    if not isinstance(value, str):
+        return value
+    try:
+        return json.loads(value)
+    except Exception:
+        return None
+
+
 _jinja_env.globals["step_ctx"] = {}  # default empty dict for wizard templates
 _jinja_env.globals["fmt_tokens"] = _fmt_tokens
+_jinja_env.filters["fromjson"] = _fromjson
 
 
 def _render(template_name: str, **ctx: object) -> HTMLResponse:
@@ -1145,7 +1160,6 @@ class CalendarTestIn(BaseModel):
 class PromptPreviewIn(BaseModel):
     message: str = ""
     include_memories: bool = True
-    include_reflections: bool = True
 
 
 class VoicePreviewIn(BaseModel):
@@ -2001,13 +2015,7 @@ def create_admin_app(
         gd_enabled = gd_enabled if gd_enabled is not None else "true"
         gd_provider = await config_store.get("goal_decomposition.provider") or "deepseek"
         gd_model = await config_store.get("goal_decomposition.model") or "deepseek-v4-flash"
-        tr_enabled = await config_store.get("task_reflection.enabled")
-        tr_enabled = tr_enabled if tr_enabled is not None else "true"
-        tr_provider = await config_store.get("task_reflection.provider") or "deepseek"
-        tr_model = await config_store.get("task_reflection.model") or "deepseek-v4-flash"
-        tr_max_reflections = await config_store.get("task_reflection.max_reflections") or "12"
         gd_thinking_level = await config_store.get("goal_decomposition.thinking_level") or ""
-        tr_thinking_level = await config_store.get("task_reflection.thinking_level") or ""
         rd_enabled = await config_store.get("reply_decision.enabled")
         rd_enabled = rd_enabled if rd_enabled is not None else "false"
         rd_provider = await config_store.get("reply_decision.provider") or "deepseek"
@@ -2059,11 +2067,6 @@ def create_admin_app(
             gd_provider=gd_provider,
             gd_model=gd_model,
             gd_thinking_level=gd_thinking_level,
-            tr_enabled=tr_enabled,
-            tr_provider=tr_provider,
-            tr_model=tr_model,
-            tr_max_reflections=tr_max_reflections,
-            tr_thinking_level=tr_thinking_level,
             rd_enabled=rd_enabled,
             rd_provider=rd_provider,
             rd_model=rd_model,
@@ -3288,7 +3291,6 @@ def create_admin_app(
                 agent.memory.archive_min_idle_days = mem_cfg.archive_min_idle_days
                 agent.memory.hygiene_enabled = mem_cfg.hygiene_enabled
                 agent.memory.hygiene_similarity_threshold = mem_cfg.hygiene_similarity_threshold
-                agent.reflections.max_reflections = new_config.task_reflection.max_reflections
                 agent.search_enabled = search_ready(new_config.search)
                 if agent.search_enabled and new_config.search.provider == "tavily":
                     from tavily import TavilyClient
@@ -3411,18 +3413,6 @@ def create_admin_app(
                     long_term_limit=config.memory.long_term_limit,
                 ).format_for_prompt(query=query)
 
-        reflections = ""
-        if body.include_reflections and config.task_reflection.enabled:
-            if agent_state.agent:
-                reflections = await agent_state.agent.reflections.format_for_prompt()
-            else:
-                from core.task_reflection import ReflectionStore
-
-                reflections = await ReflectionStore(
-                    db_path=config.task_reflection.db_path,
-                    max_reflections=config.task_reflection.max_reflections,
-                ).format_for_prompt()
-
         decomposed_goal = None
         if message and config.goal_decomposition.enabled:
             try:
@@ -3455,11 +3445,9 @@ def create_admin_app(
             history_mode=history_mode,
             skills_index=skills_index,
             memories=memories,
-            reflections=reflections,
             decomposed_goal=decomposed_goal,
             secrets_available=secret_store is not None,
             include_memories=body.include_memories,
-            include_reflections=body.include_reflections,
         )
         full_prompt = sections.full_prompt
         section_map = sections.as_dict()
@@ -3473,7 +3461,6 @@ def create_admin_app(
             "lengths": {k: len(v or "") for k, v in section_map.items()},
             "flags": {
                 "include_memories": body.include_memories,
-                "include_reflections": body.include_reflections,
                 "decomposition_applied": decomposed_goal is not None,
             },
         }

@@ -64,14 +64,12 @@ def agent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AgentCore:  # noqa
 
 
 @pytest.fixture
-def configured_agent(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> AgentCore:  # noqa: F821
+def configured_agent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AgentCore:  # noqa: F821
     """An AgentCore with common production-like defaults.
 
     - LLM provider: deepseek / deepseek-v4-flash
     - Embeddings disabled (avoids model load)
-    - Task reflection & goal decomposition disabled
+    - Goal decomposition disabled
 
     Most concurrency / steering tests use this profile.
     """
@@ -83,6 +81,5 @@ def configured_agent(
     cfg.agent.llm_provider = "deepseek"
     cfg.agent.model = "deepseek-v4-flash"
     cfg.memory.embedding.enabled = False
-    cfg.task_reflection.enabled = False
     cfg.goal_decomposition.enabled = False
     return AgentCore(cfg)

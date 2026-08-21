@@ -65,7 +65,6 @@ from core.subagents import (
     short_summary,
     summarize_batch,
 )
-from core.task_reflection import ReflectionStore
 from core.tools import _gh_app_configured, effective_tool_env, github_repo_violation
 from voice.pipeline import VoicePipeline
 
@@ -639,7 +638,10 @@ TOOLS = [
             "Save a durable long-term memory — a fact, preference, or relationship about "
             "the owner or their contacts. Use it proactively whenever you learn something "
             "worth keeping. Do NOT store transient action-confirmations (e.g. 'filed issue "
-            "#12', 'created PR #40') — those are not durable facts. Reading is automatic: "
+            "#12', 'created PR #40') — those are not durable facts. Never store a fact the "
+            "<about_user> block already states: the owner's own identity, family, dates, "
+            "addresses and links are already in your prompt, so re-remembering one is pure "
+            "duplication. Reading is automatic: "
             "relevant memories are injected each turn, and recall_memory searches the rest."
         ),
         "input_schema": {
@@ -1212,10 +1214,6 @@ class AgentCore:
             hygiene_enabled=mem_cfg.hygiene_enabled,
             hygiene_similarity_threshold=mem_cfg.hygiene_similarity_threshold,
         )
-        self.reflections = ReflectionStore(
-            db_path=config.task_reflection.db_path,
-            max_reflections=config.task_reflection.max_reflections,
-        )
         self.channels: dict = {}
         self.voice: VoicePipeline | None = None
         self.job_store = JobStore(db_path="data/jobs.db")
@@ -1465,7 +1463,7 @@ class AgentCore:
         ``agent_name`` forces the identity instead of resolving it from the
         channel/binding ladder — used by the scheduler so a ``telegram:<agent>``
         job is generated *as* that agent while keeping the ``system`` execution
-        mode (auto-approved writes, no memory/reflection) (#29).
+        mode (auto-approved writes, no memory) (#29).
 
         ``respond=False`` records the message into history for context but
         generates no reply — the respond-gate for group rooms (#30): a bot stays
@@ -1620,7 +1618,7 @@ class AgentCore:
         if self.config.goal_decomposition.enabled and channel != "system":
             decomposed_goal = await self._maybe_decompose(message)
 
-        # Per-turn preamble: live date/time + fresh memory/reflections + skills
+        # Per-turn preamble: live date/time + fresh memory + skills
         # index + plan. Memory is scoped to the active agent (#42): shared +
         # its private. Skills index is scoped to the agent's allowlist (#46).
         session_key = (channel, user_id, chat_id) if self.history_mode == "session" else None
@@ -1649,7 +1647,7 @@ class AgentCore:
         if self.history_mode == "session":
             system = await self._session_system_prompt(channel, user_id, chat_id, agent=agent)
         else:
-            system = await self._build_system_prompt(agent=agent)
+            system = await self._build_system_prompt(agent=agent, channel=channel)
 
         if self.config.admin.capture_prompts:
             self._record_system_prompt(
@@ -1856,10 +1854,10 @@ class AgentCore:
         """Build the per-turn preamble prepended to the current user message.
 
         Always carries the live date/time (so the agent knows 'now' every turn);
-        also carries fresh, query-relevant memory + reflections, the live skills
-        index, and the execution plan when the request was decomposed.
+        also carries fresh, query-relevant memory, the live skills index, and the
+        execution plan when the request was decomposed.
 
-        Memory/reflections/skills live here, not in the static system prompt: in
+        Memory/skills live here, not in the static system prompt: in
         session mode that prompt is snapshotted once and would freeze any
         mid-session change out of view until ``/new`` (#41, #46) — e.g. a skill
         added via the skill-creator stayed invisible. The preamble is rebuilt
@@ -1944,14 +1942,6 @@ class AgentCore:
             if note:
                 preamble += f"\n\n{note}"
 
-        if self.config.task_reflection.enabled:
-            try:
-                reflections = await self.reflections.format_for_prompt()
-                if reflections:
-                    preamble += f"\n\n<task_reflections>\n{reflections}\n</task_reflections>"
-            except Exception:
-                log.exception("Failed to load task reflections for turn preamble")
-
         if decomposed_goal:
             preamble += (
                 "\n\n<execution_plan>\n"
@@ -2006,11 +1996,11 @@ class AgentCore:
             )
         else:
             intro = (
-                "These agents exist ONLY so you can honour an explicit request "
-                "for a specialist. By default, spawn_subagent with NO 'agent' "
-                "so the subagent runs as you — do not assign one of these "
-                "unless the user asked for it or the subtask plainly belongs "
-                "to it."
+                "Whether to delegate at all is your call — you don't need to be "
+                "asked. Picking one of these named agents is the part that stays "
+                "user-led: default to spawn_subagent with NO 'agent' (the subagent "
+                "then runs as you), and name one of these only when the user asked "
+                "for that specialist or the subtask plainly belongs to it."
             )
         return f"<agents>\n{intro}\n{body}\n</agents>"
 
@@ -2076,13 +2066,13 @@ class AgentCore:
 
         Built fresh after a ``/new`` (when no snapshot exists), then reused for
         the lifetime of the session so the static content is sent only once.
-        The prompt is purely static now — memory/reflections are injected per
+        The prompt is purely static now — memory is injected per
         turn in the preamble (#41), so the snapshot never goes stale.
         """
         cached = await self.history.get_session_system(channel, user_id, chat_id)
         if cached is not None:
             return cached
-        system = await self._build_system_prompt(agent=agent)
+        system = await self._build_system_prompt(agent=agent, channel=channel)
         await self.history.set_session_system(channel, user_id, system, chat_id)
         return system
 
@@ -2282,7 +2272,6 @@ class AgentCore:
         # Resolve the YOLO grant once per turn (channel+chat_id are in scope here
         # but not in _execute_tool); every tool call this turn reads the cached flag.
         request_state["yolo"] = self.permissions.is_yolo(self._yolo_scope(channel, chat_id))
-        tool_log: list[dict] = []
         truncations = 0
         rounds = 0
         abort = self._active_turns_map().get((channel, user_id, chat_id))
@@ -2311,7 +2300,6 @@ class AgentCore:
                         stopped = True
                         break
                     result = await self._execute_tool(call, channel, user_id, request_state)
-                    tool_log.append({"name": call.name, "args": call.arguments, "result": result})
                     tool_results.append(
                         {
                             "type": "tool_result",
@@ -2372,13 +2360,6 @@ class AgentCore:
             asyncio.create_task(
                 self._extract_memories(message, final_text, agent),
                 name=f"memory-extract-{user_id}",
-            )
-
-        # Automatic task reflection (when tools were used)
-        if channel != "system" and self.config.task_reflection.enabled and tool_log:
-            asyncio.create_task(
-                self._reflect_on_task(message, final_text, tool_log),
-                name=f"task-reflect-{user_id}",
             )
 
         return AgentResponse(
@@ -2448,7 +2429,6 @@ class AgentCore:
         # Resolve the YOLO grant once per turn (channel+chat_id are in scope here
         # but not in _execute_tool); every tool call this turn reads the cached flag.
         request_state["yolo"] = self.permissions.is_yolo(self._yolo_scope(channel, chat_id))
-        tool_log: list[dict] = []
         truncations = 0
         rounds = 0
         abort = self._active_turns_map().get((channel, user_id, chat_id))
@@ -2477,7 +2457,6 @@ class AgentCore:
                         stopped = True
                         break
                     result = await self._execute_tool(call, channel, user_id, request_state)
-                    tool_log.append({"name": call.name, "args": call.arguments, "result": result})
                     tool_results.append(
                         {
                             "type": "tool_result",
@@ -2564,13 +2543,6 @@ class AgentCore:
             asyncio.create_task(
                 self._extract_memories(message, final_text, agent),
                 name=f"memory-extract-{user_id}",
-            )
-
-        # Automatic task reflection (when tools were used)
-        if channel != "system" and self.config.task_reflection.enabled and tool_log:
-            asyncio.create_task(
-                self._reflect_on_task(message, final_text, tool_log),
-                name=f"task-reflect-{user_id}",
             )
 
         return AgentResponse(
@@ -4543,7 +4515,7 @@ class AgentCore:
         """The subagent's agentic loop — system semantics, budgeted and depth-capped.
 
         Mirrors the main injection loop but runs from a clean slate (no history),
-        skips approval/decomposition/memory/reflection (channel='system'), and
+        skips approval/decomposition/memory (channel='system'), and
         stops at this run's step/token budget (sized by the spawning agent).
         """
         cfg = self.config.subagents
@@ -4560,7 +4532,7 @@ class AgentCore:
 
         system = await self._build_system_prompt(agent=child_agent)
         system = f"{system}\n\n{RESULT_FOR_AGENT_INSTRUCTION}\n\n{FILE_HANDOFF_INSTRUCTION}"
-        # Memory/reflections inject per-turn via the preamble (#41), scoped to the
+        # Memory injects per-turn via the preamble (#41), scoped to the
         # child agent (#42); query=task keeps the injection relevant.
         # agent=child_agent, not None: the preamble scopes the skills index and the
         # account list to the identity it names, and the child's scopes were already
@@ -5443,7 +5415,7 @@ class AgentCore:
         return llm, o.get("model") or cfg.model, o.get("max_tokens") or cfg.max_tokens
 
     def _background_llm(self, provider: str, thinking_level: str = "") -> LLMClient:
-        """Return an LLM client for background tasks (memory, reflection, etc.).
+        """Return an LLM client for background tasks (memory, compaction, etc.).
 
         Background tasks carry their own thinking level, independent of the
         main inference one. When the provider matches the main client we clone
@@ -5575,49 +5547,27 @@ class AgentCore:
             log.exception("Goal decomposition failed")
             return None
 
-    async def _reflect_on_task(self, user_msg: str, agent_msg: str, tool_log: list[dict]) -> None:
-        """Run task reflection in the background after tool-use.
-
-        Uses a cheap/fast model to analyse the execution and extract
-        lessons learned. Exceptions are logged and swallowed — this must
-        never crash the main agent loop.
-        """
-        try:
-            tr_cfg = self.config.task_reflection
-            llm = self._background_llm(tr_cfg.provider, tr_cfg.thinking_level)
-            stored = await self.reflections.reflect_on_task(
-                llm=llm,
-                model=tr_cfg.model,
-                user_msg=user_msg,
-                agent_msg=agent_msg,
-                tool_log=tool_log,
-            )
-            if stored:
-                log.info("Background task reflection stored a lesson")
-        except Exception:
-            log.exception("Background task reflection failed")
-
     async def _build_system_prompt(
         self,
         decomposed_goal: DecomposedGoal | None = None,
         agent: Agent | None = None,
+        channel: str = "",
     ) -> str:
-        # Memory, reflections AND the skills index are NOT baked into the static
-        # prompt: in session mode it is snapshotted once and would freeze stale —
-        # a skill added mid-session stayed invisible until /new (#41, #46). All
-        # three are injected fresh per turn in the preamble instead (see
+        # Memory AND the skills index are NOT baked into the static prompt: in
+        # session mode it is snapshotted once and would freeze stale — a skill
+        # added mid-session stayed invisible until /new (#41, #46). Both are
+        # injected fresh per turn in the preamble instead (see
         # _turn_preamble), which also makes memory query-relevant every turn.
         sections = build_prompt_sections(
             config=self.config,
             history_mode=self.history_mode,
+            channel=channel,
             skills_index="",
             memories="",
-            reflections="",
             decomposed_goal=decomposed_goal,
             agent=agent,
             secrets_available=self.secret_store is not None,
             include_memories=False,
-            include_reflections=False,
             include_skills=False,
         )
         return sections.full_prompt

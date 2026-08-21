@@ -68,7 +68,7 @@ async def test_anthropic_generate_omits_effort_when_off() -> None:
 
 @pytest.mark.asyncio
 async def test_anthropic_generate_text_sends_effort_when_set() -> None:
-    """Background tasks (memory/reflection/etc.) honor the client's level too."""
+    """Background tasks (memory/compaction/etc.) honor the client's level too."""
     client = LLMClient("anthropic", "x", thinking_level="low")
     create = AsyncMock(return_value=type("R", (), {"content": []})())
     client._client = type("C", (), {"messages": type("M", (), {"create": create})()})()

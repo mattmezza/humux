@@ -302,15 +302,6 @@ class GoalDecompositionConfig(BaseModel):
     thinking_level: str = ""  # "" (off) | "low" | "medium" | "high" | "max"
 
 
-class TaskReflectionConfig(BaseModel):
-    enabled: bool = True
-    provider: str = "deepseek"
-    model: str = "deepseek-v4-flash"
-    thinking_level: str = ""  # "" (off) | "low" | "medium" | "high" | "max"
-    db_path: str = "data/reflections.db"
-    max_reflections: int = 12  # injected per turn; kept small to cut prompt bloat (#5, was 50)
-
-
 class ReplyDecisionConfig(BaseModel):
     """Decide whether to reply in shared/group chats (#36).
 
@@ -549,7 +540,7 @@ class SubagentSummaryConfig(BaseModel):
     Instead of dumping a subagent's raw output to the chat and the agent's
     context, a small inference distils each batch into a one-sentence chat
     *notification* and a concise *digest* for the agent's context. Mirrors the
-    other background inferences (memory / compaction / reflection).
+    other background inferences (memory / compaction).
     """
 
     enabled: bool = True
@@ -567,7 +558,6 @@ class Config(BaseModel):
     history: HistoryConfig = HistoryConfig()
     memory: MemoryConfig = MemoryConfig()
     goal_decomposition: GoalDecompositionConfig = GoalDecompositionConfig()
-    task_reflection: TaskReflectionConfig = TaskReflectionConfig()
     reply_decision: ReplyDecisionConfig = ReplyDecisionConfig()
     compaction: CompactionConfig = CompactionConfig()
     search: SearchConfig = SearchConfig()

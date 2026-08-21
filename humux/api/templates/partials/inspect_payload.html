@@ -1,39 +1,153 @@
-{# Last-sent LLM payload for one context (#99), rendered as a readable transcript:
-   system prompt, tool defs, and the message window, plus a raw-JSON fallback.
+{# Last-sent LLM payload for one context (#99), rendered as a readable turn:
+   sized system prompt + tool defs, then the message window as role-tagged cards
+   with tool calls, tool results and thinking broken out. Handles both wire
+   shapes — OpenAI (assistant.tool_calls with JSON-string arguments, role:"tool"
+   results, reasoning_content) and Anthropic (content blocks: text / tool_use /
+   tool_result / thinking) — and falls back to raw JSON for anything else.
    `meta` summarises; `system`/`messages`/`tools` are the (image-elided) request. #}
 
-{%- macro render_block(b) -%}
-  {%- if b is string -%}
-    <div class="whitespace-pre-wrap break-words">{{ b }}</div>
-  {%- elif b is mapping -%}
-    {%- set t = b.get('type') -%}
-    {%- if t == 'text' -%}
-      <div class="whitespace-pre-wrap break-words">{{ b.get('text', '') }}</div>
-    {%- elif t == 'image' -%}
-      <div class="text-muted italic">[image{% if b.get('source') and b['source'].get('media_type') %}: {{ b['source']['media_type'] }}{% endif %}]</div>
-    {%- elif t == 'tool_use' -%}
-      <div><span class="badge-warn">tool_use</span> <code>{{ b.get('name', '') }}</code>
-        <pre class="log-viewer mt-1" style="max-height:14rem">{{ b.get('input') | tojson(indent=2) }}</pre></div>
-    {%- elif t == 'tool_result' -%}
-      <div><span class="badge-warn">tool_result</span>
-        <div class="mt-1">{{ render_content(b.get('content')) }}</div></div>
-    {%- elif t in ('thinking', 'redacted_thinking') -%}
-      <div class="text-muted italic">[thinking]</div>
-    {%- else -%}
-      <pre class="log-viewer" style="max-height:14rem">{{ b | tojson(indent=2) }}</pre>
-    {%- endif -%}
+{# ── size helpers ──────────────────────────────────────────────────────── #}
+{%- macro size_note(n) -%}
+{{ '{:,}'.format(n) }} chars · ~{{ fmt_tokens((n / 4)|int) }} tokens
+{%- endmacro -%}
+
+{# Plain text: inline when short, collapsed with a preview when long. #}
+{%- macro text_body(text, cls='') -%}
+  {%- set t = text|string -%}
+  {%- if t|length > 1200 -%}
+  <details>
+    <summary class="cursor-pointer text-xs text-muted break-words">
+      {{ t[:180] }}… <span class="whitespace-nowrap">({{ size_note(t|length) }})</span>
+    </summary>
+    <div class="code-block mt-1 {{ cls }}">{{ t }}</div>
+  </details>
   {%- else -%}
-    <div class="whitespace-pre-wrap break-words">{{ b }}</div>
+  <div class="text-xs whitespace-pre-wrap break-words {{ cls }}">{{ t }}</div>
   {%- endif -%}
 {%- endmacro -%}
 
-{%- macro render_content(c) -%}
-  {%- if c is string -%}
-    <div class="whitespace-pre-wrap break-words">{{ c }}</div>
-  {%- elif c is iterable and c is not mapping -%}
-    {%- for b in c %}{{ render_block(b) }}{% endfor -%}
+{# A mapping rendered as labelled fields (tool arguments, structured results).
+   Long values collapse; everything scrolls inside its own box. #}
+{%- macro fields(obj) -%}
+<div class="flex flex-col gap-1.5 min-w-0">
+  {%- for k, v in obj.items() %}
+  {%- set sv = v if v is string else v|tojson(indent=2) %}
+  <div class="min-w-0">
+    <div class="text-muted text-[0.65rem] uppercase tracking-wider">{{ k }}</div>
+    {%- if sv|length > 600 %}
+    <details>
+      <summary class="cursor-pointer text-xs break-words">
+        {{ sv[:160] }}… <span class="text-muted whitespace-nowrap">({{ size_note(sv|length) }})</span>
+      </summary>
+      <pre class="code-block code-block-lg mt-1">{{ sv }}</pre>
+    </details>
+    {%- elif sv|trim %}
+    <pre class="code-block">{{ sv }}</pre>
+    {%- else %}
+    <span class="text-muted text-xs italic">(empty)</span>
+    {%- endif %}
+  </div>
+  {%- endfor %}
+  {%- if not obj %}<div class="text-muted text-xs italic">no arguments</div>{% endif %}
+</div>
+{%- endmacro -%}
+
+{# One tool call: name up front, the headline argument on the same line, the
+   full arguments as fields below. `raw` is the unparsed string (if any). #}
+{%- macro tool_call(id, name, args, raw) -%}
+{%- set head = namespace(v='') -%}
+{%- if args is mapping -%}
+  {%- for key in ['command', 'query', 'prompt', 'task', 'path', 'file_path', 'url', 'content', 'text', 'message'] -%}
+    {%- if not head.v and args.get(key) is string and args.get(key) -%}
+      {%- set head.v = args.get(key) -%}
+    {%- endif -%}
+  {%- endfor -%}
+{%- endif -%}
+<div class="rounded-md border border-warn/40 bg-[#0d0d0d] min-w-0">
+  <div class="flex items-baseline gap-2 px-2 py-1 border-b border-border min-w-0">
+    <span class="text-warn text-xs">→</span>
+    <code class="text-warn text-sm font-semibold break-all">{{ name or 'tool' }}</code>
+    {%- if head.v %}
+    <span class="text-muted text-xs truncate flex-1 min-w-0" title="{{ head.v }}">{{ head.v.split('\n')[0] }}</span>
+    {%- else %}<span class="flex-1"></span>{% endif %}
+    {%- if id %}<span class="text-muted text-[0.6rem] whitespace-nowrap" title="tool call id">{{ id[-8:] }}</span>{% endif %}
+  </div>
+  <div class="p-2 min-w-0">
+    {%- if args is mapping %}{{ fields(args) }}
+    {%- elif args is not none %}<pre class="code-block">{{ args|tojson(indent=2) }}</pre>
+    {%- else %}
+    <div class="text-muted text-[0.65rem] mb-1">arguments (unparseable JSON)</div>
+    <pre class="code-block">{{ raw }}</pre>
+    {%- endif %}
+  </div>
+</div>
+{%- endmacro -%}
+
+{# One tool result — collapsed, with a first-line preview and the size. #}
+{%- macro tool_result(id, name, content, badge=true) -%}
+{%- set text = content if content is string else content|tojson(indent=2) -%}
+{%- set parsed = text|fromjson -%}
+{# Preview the payload a human cares about (stdout/output), not the JSON envelope. #}
+{%- set body = parsed.get('stdout') or parsed.get('stderr') or parsed.get('output') or parsed.get('error') or text if parsed is mapping else text -%}
+{%- set preview = (body|string|trim).split('\n')[0] -%}
+<details class="rounded-md border border-border bg-[#0d0d0d] min-w-0">
+  <summary class="sum-row px-2 py-1">
+    {%- if badge %}<span class="badge-warn">tool result</span>{% endif %}
+    {%- if name %}<code class="text-xs text-muted break-all">{{ name }}</code>{% endif %}
+    {%- if parsed is mapping and parsed.get('exit_code') is not none %}
+    <span class="{{ 'badge-ok' if parsed.get('exit_code') == 0 else 'badge-warn' }}">exit {{ parsed.get('exit_code') }}</span>
+    {%- endif %}
+    <span class="text-muted text-xs truncate flex-1 min-w-0">{{ preview[:200] }}</span>
+    <span class="text-muted text-[0.6rem] whitespace-nowrap">{{ size_note(text|length) }}</span>
+  </summary>
+  <div class="p-2 border-t border-border min-w-0">
+    {%- if parsed is mapping %}{{ fields(parsed) }}
+    {%- else %}<pre class="code-block code-block-lg">{{ text }}</pre>{% endif %}
+    {%- if id %}<div class="text-muted text-[0.6rem] mt-1 break-all">for call {{ id }}</div>{% endif %}
+  </div>
+</details>
+{%- endmacro -%}
+
+{# Chain-of-thought — always collapsed, always visually apart from the reply. #}
+{%- macro thinking(text) -%}
+{%- set t = text|string|trim -%}
+{%- if t -%}
+<details class="rounded-md border border-accent-dim/40 bg-[#0d0d0d] min-w-0">
+  <summary class="sum-row px-2 py-1">
+    <span class="badge-off">thinking</span>
+    <span class="text-muted text-xs italic truncate flex-1 min-w-0">{{ t[:200] }}</span>
+    <span class="text-muted text-[0.6rem] whitespace-nowrap">{{ size_note(t|length) }}</span>
+  </summary>
+  <div class="code-block code-block-lg m-2 text-muted italic">{{ t }}</div>
+</details>
+{%- endif -%}
+{%- endmacro -%}
+
+{# Anthropic-shaped content blocks (also used for stray string content). #}
+{%- macro render_block(b, calls, badge=true) -%}
+  {%- if b is string -%}
+    {{ text_body(b) }}
+  {%- elif b is mapping -%}
+    {%- set t = b.get('type') -%}
+    {%- if t == 'text' -%}
+      {{ text_body(b.get('text', '')) }}
+    {%- elif t == 'image' -%}
+      <div class="text-muted text-xs italic">[image{% if b.get('source') and b['source'].get('media_type') %}: {{ b['source']['media_type'] }}{% endif %}]</div>
+    {%- elif t == 'tool_use' -%}
+      {{ tool_call(b.get('id', ''), b.get('name', ''), b.get('input'), '') }}
+    {%- elif t == 'tool_result' -%}
+      {%- set tid = b.get('tool_use_id', '') -%}
+      {%- set match = calls|selectattr('id', 'equalto', tid)|list -%}
+      {{ tool_result(tid, match[0].name if match else '', b.get('content'), badge=badge) }}
+    {%- elif t == 'thinking' -%}
+      {{ thinking(b.get('thinking') or b.get('text') or '') }}
+    {%- elif t == 'redacted_thinking' -%}
+      <div class="text-muted text-xs italic">[redacted thinking]</div>
+    {%- else -%}
+      <pre class="code-block">{{ b|tojson(indent=2) }}</pre>
+    {%- endif -%}
   {%- else -%}
-    {{ render_block(c) }}
+    {{ text_body(b) }}
   {%- endif -%}
 {%- endmacro -%}
 
@@ -43,17 +157,21 @@
   running, then reselect it here.
 </div>
 {%- else -%}
-<div class="text-xs text-muted mb-2 break-all">
-  <span class="badge-ok">{{ meta.provider }}</span>
-  <code>{{ meta.model }}</code> ·
-  max_tokens {{ meta.max_tokens }} ·
-  {{ meta.n_messages }} message{{ '' if meta.n_messages == 1 else 's' }} ·
-  {{ meta.n_tools }} tool{{ '' if meta.n_tools == 1 else 's' }}
-  {%- if meta.captured_at %} · captured {{ meta.captured_at }}{% endif %}
-  <div class="mt-0.5" style="font-size:0.65rem">
+
+{# ── Request summary ───────────────────────────────────────────────────── #}
+<div class="card mb-2 py-3">
+  <div class="flex flex-wrap items-center gap-x-3 gap-y-1 min-w-0">
+    <span class="badge-ok">{{ meta.provider }}</span>
+    <code class="text-sm break-all">{{ meta.model }}</code>
+    <span class="text-muted text-xs">max_tokens {{ meta.max_tokens }}</span>
+    <span class="text-muted text-xs">{{ meta.n_messages }} message{{ '' if meta.n_messages == 1 else 's' }}</span>
+    <span class="text-muted text-xs">{{ meta.n_tools }} tool{{ '' if meta.n_tools == 1 else 's' }}</span>
+    {%- if meta.captured_at %}<span class="text-muted text-xs">captured {{ meta.captured_at }}</span>{% endif %}
+  </div>
+  <p class="text-muted mt-1" style="font-size:0.65rem">
     The exact request the model last received. Admin-only; the prompt references
     secrets by name, not value.
-  </div>
+  </p>
 </div>
 
 {# Context-window usage meter (#116) — real prompt size the provider reported #}
@@ -61,7 +179,7 @@
 {% set pct = meta.context_pct or 0 %}
 {% set fill = 'var(--color-danger)' if pct >= 90 else ('var(--color-warn)' if pct >= 70 else 'var(--color-accent)') %}
 <div class="card mb-2">
-  <div class="flex items-center justify-between mb-1">
+  <div class="flex items-center justify-between mb-1 gap-2 flex-wrap">
     <span class="text-sm font-semibold">Context usage</span>
     <span class="text-xs text-muted">
       {{ '{:,}'.format(meta.context_tokens) }} / {{ '{:,}'.format(meta.context_window) }} tokens
@@ -74,43 +192,113 @@
 </div>
 {%- endif %}
 
-{# System prompt / identity #}
-<details class="card mb-2" open>
-  <summary class="cursor-pointer text-sm font-semibold">System prompt
-    <span class="text-muted text-xs">({{ system|length }} chars)</span></summary>
-  <pre class="log-viewer mt-2">{{ system }}</pre>
+{# ── System prompt ─────────────────────────────────────────────────────── #}
+<details class="card mb-2">
+  <summary class="sum-row flex-wrap">
+    <span class="text-sm font-semibold">System prompt</span>
+    <span class="text-muted text-xs">{{ size_note(system|length) }}</span>
+  </summary>
+  <pre class="code-block code-block-xl mt-2">{{ system }}</pre>
 </details>
 
-{# Tool definitions offered this turn #}
+{# ── Tool definitions ──────────────────────────────────────────────────── #}
+{%- set tools_json = tools|tojson %}
 <details class="card mb-2">
-  <summary class="cursor-pointer text-sm font-semibold">Tool definitions
-    <span class="text-muted text-xs">({{ tools|length }})</span></summary>
+  <summary class="sum-row flex-wrap">
+    <span class="text-sm font-semibold">Tool definitions</span>
+    <span class="text-muted text-xs">{{ tools|length }} tool{{ '' if tools|length == 1 else 's' }} · {{ size_note(tools_json|length) }}</span>
+  </summary>
   <div class="mt-2 flex flex-col gap-1">
     {% for t in tools %}
-    <details>
-      <summary class="cursor-pointer text-xs"><code>{{ t.get('name', '?') }}</code>
-        <span class="text-muted">— {{ (t.get('description') or '') | truncate(90) }}</span></summary>
-      <pre class="log-viewer mt-1" style="max-height:16rem">{{ t | tojson(indent=2) }}</pre>
+    {%- set schema = t|tojson %}
+    <details class="border-b border-border pb-1">
+      <summary class="sum-row text-xs">
+        <code class="text-accent break-all">{{ t.get('name', '?') }}</code>
+        <span class="text-muted truncate flex-1 min-w-0">{{ (t.get('description') or '')|replace('\n', ' ')|truncate(110) }}</span>
+        <span class="text-muted text-[0.6rem] whitespace-nowrap">~{{ fmt_tokens((schema|length / 4)|int) }} tok</span>
+      </summary>
+      <pre class="code-block code-block-lg mt-1">{{ t|tojson(indent=2) }}</pre>
     </details>
     {% endfor %}
     {% if not tools %}<div class="text-muted text-xs">No tools offered.</div>{% endif %}
   </div>
 </details>
 
-{# The history window, as a transcript #}
+{# ── The history window, as a transcript ───────────────────────────────── #}
 <div class="card mb-2">
   <div class="text-sm font-semibold mb-2">Context window
-    <span class="text-muted text-xs">({{ messages|length }} message{{ '' if messages|length == 1 else 's' }})</span></div>
-  <div class="flex flex-col gap-2">
+    <span class="text-muted text-xs font-normal">({{ messages|length }} message{{ '' if messages|length == 1 else 's' }})</span></div>
+  <div class="flex flex-col gap-2 min-w-0">
+    {# ns.calls carries the last assistant turn's calls forward so a result can
+       name the tool it answers (both wire shapes put results in later messages). #}
+    {% set ns = namespace(calls=[]) %}
     {% for m in messages %}
-    {% set role = m.get('role', '?') %}
-    <div class="border-l-2 pl-2 {% if role == 'assistant' %}border-accent{% else %}border-border{% endif %}">
-      <div class="mb-1">
-        {% if role == 'assistant' %}<span class="badge-ok">{{ role }}</span>
-        {% elif role == 'user' %}<span class="badge-off">{{ role }}</span>
-        {% else %}<span class="badge-warn">{{ role }}</span>{% endif %}
+    {%- set role = m.get('role', '?') -%}
+    {%- set content = m.get('content') -%}
+    {%- set blocks = content if (content is iterable and content is not string and content is not mapping) else none -%}
+    {%- set tcs = m.get('tool_calls') or [] -%}
+    {# Anthropic returns tool results as a user message of tool_result blocks. #}
+    {%- set is_result = role == 'tool' or (blocks and blocks|length and blocks|rejectattr('type', 'equalto', 'tool_result')|list|length == 0) -%}
+    {%- if tcs -%}
+      {%- set ns.calls = [] -%}
+      {%- for tc in tcs -%}
+        {%- set ns.calls = ns.calls + [{'id': tc.get('id', ''), 'name': (tc.get('function') or {}).get('name', '')}] -%}
+      {%- endfor -%}
+    {%- elif blocks and not is_result -%}
+      {%- set found = blocks|selectattr('type', 'equalto', 'tool_use')|list -%}
+      {%- if found -%}
+        {%- set ns.calls = [] -%}
+        {%- for b in found -%}
+          {%- set ns.calls = ns.calls + [{'id': b.get('id', ''), 'name': b.get('name', '')}] -%}
+        {%- endfor -%}
+      {%- endif -%}
+    {%- endif -%}
+    {%- set accent = 'border-l-accent' if role == 'assistant' else ('border-l-warn' if is_result else 'border-l-border-hover') -%}
+    <div class="rounded-md border border-border border-l-2 {{ accent }} overflow-hidden min-w-0">
+      <div class="flex items-center gap-2 px-2 py-1 bg-surface-hover border-b border-border min-w-0">
+        {%- if is_result %}<span class="badge-warn">tool result</span>
+        {%- elif role == 'assistant' %}<span class="badge-ok">assistant</span>
+        {%- elif role == 'user' %}<span class="badge-off">user</span>
+        {%- else %}<span class="badge-off">{{ role }}</span>{% endif %}
+        {%- if tcs or (blocks and blocks|selectattr('type', 'equalto', 'tool_use')|list|length) %}
+        {%- set n = tcs|length or blocks|selectattr('type', 'equalto', 'tool_use')|list|length %}
+        <span class="text-muted text-[0.65rem]">{{ n }} tool call{{ '' if n == 1 else 's' }}</span>
+        {%- endif %}
+        <span class="text-muted text-[0.6rem] ml-auto">#{{ loop.index }}</span>
       </div>
-      <div class="text-xs">{{ render_content(m.get('content')) }}</div>
+      <div class="p-2 flex flex-col gap-2 min-w-0">
+        {# Thinking first, collapsed, never mistakable for the reply. #}
+        {{ thinking(m.get('reasoning_content') or '') }}
+
+        {%- if is_result and blocks %}
+          {# the card header already says "tool result" — don't repeat it inside #}
+          {%- for b in blocks %}{{ render_block(b, ns.calls, badge=false) }}{% endfor %}
+        {%- elif is_result %}
+          {%- set tid = m.get('tool_call_id', '') %}
+          {%- set match = ns.calls|selectattr('id', 'equalto', tid)|list %}
+          {{ tool_result(tid, match[0].name if match else '', content, badge=false) }}
+        {%- elif blocks %}
+          {%- for b in blocks %}{{ render_block(b, ns.calls) }}{% endfor %}
+        {%- elif content is string and content|trim %}
+          {{ text_body(content, 'text-gray-200' if role == 'assistant' else '') }}
+        {%- elif content is mapping %}
+          {{ render_block(content, ns.calls) }}
+        {%- endif %}
+
+        {%- for tc in tcs %}
+        {%- set fn = tc.get('function') or {} %}
+        {%- set raw = fn.get('arguments') %}
+        {{ tool_call(tc.get('id', ''), fn.get('name', ''), raw|fromjson, raw) }}
+        {%- endfor %}
+
+        {# Nothing we recognise — show it verbatim rather than an empty card. #}
+        {%- if not tcs and not blocks and not (content is string and content|trim) and not (content is mapping) %}
+        <details>
+          <summary class="cursor-pointer text-muted text-xs italic">empty content — show raw message</summary>
+          <pre class="code-block mt-1">{{ m|tojson(indent=2) }}</pre>
+        </details>
+        {%- endif %}
+      </div>
     </div>
     {% endfor %}
     {% if not messages %}<div class="text-muted text-xs">Empty window.</div>{% endif %}
@@ -120,12 +308,12 @@
 {# Exact serialized request, for power users #}
 <details class="card">
   <summary class="cursor-pointer text-sm font-semibold">Raw JSON
-    <span class="text-muted text-xs">(image bytes elided)</span></summary>
+    <span class="text-muted text-xs font-normal">(image bytes elided)</span></summary>
   <div class="flex gap-2 mt-2">
     <button type="button" class="btn-sm" onclick="inspectCopyJSON(this)">Copy JSON</button>
     <button type="button" class="btn-sm" data-filename="{{ download_name }}"
             onclick="inspectDownloadJSON(this)">Download</button>
   </div>
-  <pre data-raw class="log-viewer mt-2">{{ pretty }}</pre>
+  <pre data-raw class="code-block code-block-xl mt-2">{{ pretty }}</pre>
 </details>
 {%- endif -%}

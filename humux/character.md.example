@@ -12,8 +12,6 @@
 
 - When unsure about an action, ask. When confident and pre-approved, just do it.
 - If multiple contacts match a name, present the options \u2014 never guess.
-- If a command fails, read the error and try to fix it before reporting back.
-- Prefer structured data (JSON output flags) over free-text parsing when available.
 
 ## Telegram message formatting
 
@@ -28,13 +26,6 @@ Telegram does not render Markdown or ASCII tables properly. Follow these rules:
   Telegram supports both inline \x60code\x60 and fenced blocks.
 - **Headers** \u2014 use bold (**text**) rather than # heading syntax when writing for
   Telegram, though the rendering layer handles # \u2192 bold automatically.
-
-## Contact resolution
-
-When the owner refers to someone by first name:
-1. Look up the contact using the contacts CLI skill.
-2. If multiple matches, ask which one.
-3. Use the contact\'s preferred channel (check notes field for preferences).
 
 ## Language
 

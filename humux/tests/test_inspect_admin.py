@@ -299,3 +299,68 @@ def test_patch_config_restart_required_only_on_real_change(tmp_path) -> None:
     # voice change → restart; hot-applied key → no restart.
     assert patch({"voice.tts_voice": "en-US-AvaNeural"})["restart_required"] is True
     assert patch({"memory.long_term_limit": "99"})["restart_required"] is False
+
+
+def test_inspect_payload_renders_tool_calls_thinking_and_results(tmp_path) -> None:
+    """The payload view breaks a turn apart instead of dumping JSON blobs (#99).
+
+    OpenAI-shaped wire format: assistant.tool_calls with JSON-*string* arguments,
+    reasoning_content for the CoT, and the answer in a later role:"tool" message.
+    """
+    asyncio.run(_seed(tmp_path))
+    client = _client(tmp_path)
+    llm.clear_captured()
+    llm.record_sent_payload(
+        ("telegram", "u1", "c1", ""),
+        {
+            "captured_at": 1_700_000_000.0,
+            "provider": "deepseek",
+            "model": "deepseek-chat",
+            "max_tokens": 8192,
+            "system": "S",
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": "",
+                    "reasoning_content": "MY_CHAIN_OF_THOUGHT",
+                    "tool_calls": [
+                        {
+                            "id": "call_42",
+                            "type": "function",
+                            "function": {
+                                "name": "bash",
+                                "arguments": '{"command": "ls -la /tmp", "purpose": "look"}',
+                            },
+                        }
+                    ],
+                },
+                {
+                    "role": "tool",
+                    "tool_call_id": "call_42",
+                    "content": '{"stdout": "total 0", "stderr": "", "exit_code": 0}',
+                },
+                # Anthropic-shaped blocks must render too (both providers supported).
+                {
+                    "role": "assistant",
+                    "content": [
+                        {"type": "thinking", "thinking": "ANTHROPIC_COT"},
+                        {"type": "text", "text": "done"},
+                    ],
+                },
+            ],
+            "tools": [],
+        },
+    )
+    r = client.get(
+        "/inspect/payload",
+        params={"channel": "telegram", "user_id": "u1", "chat_id": "c1"},
+        headers=AUTH,
+    )
+    assert r.status_code == 200
+    assert ">bash<" in r.text  # the tool name is a first-class element
+    assert "ls -la /tmp" in r.text  # JSON-string arguments are parsed out
+    assert "MY_CHAIN_OF_THOUGHT" in r.text and "ANTHROPIC_COT" in r.text
+    assert "thinking" in r.text  # CoT gets its own labelled, collapsed block
+    assert "exit 0" in r.text  # the result is paired and summarised
+    assert "tool result" in r.text
+    llm.clear_captured()

@@ -1464,9 +1464,11 @@ async def test_roster_with_a_team_lists_only_teammates(agent, monkeypatch) -> No
     assert "legal" not in block
     assert "may not name agents outside this list" in block
 
-    # No team → the old, deliberately restrictive guidance.
+    # No team → spawning stays the agent's own call, but NAMING one of these
+    # agents stays user-led (the distinction <delegation> makes in the prompt).
     plain = await agent._agents_roster_block(Agent(name="me", role="r0"))
-    assert "ONLY so you can honour an explicit request" in plain
+    assert "NO 'agent'" in plain
+    assert "asked for that specialist" in plain
     assert "legal" in plain  # the whole roster is visible again
 
 

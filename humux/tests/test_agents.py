@@ -7,7 +7,8 @@ import pytest
 from core.agent import scoped_tools
 from core.agents import Agent, AgentStore, parse_markdown, to_markdown
 from core.config import Config
-from core.prompt_builder import build_prompt_sections
+from core.executor import ToolExecutor
+from core.prompt_builder import build_prompt_sections, display_prefixes
 
 
 def test_parse_frontmatter_only() -> None:
@@ -164,7 +165,6 @@ def test_prompt_uses_agent_identity() -> None:
         history_mode="injection",
         skills_index="",
         memories="",
-        reflections="",
         decomposed_goal=None,
         agent=agent,
     )
@@ -181,7 +181,6 @@ def test_prompt_uses_agent_identity() -> None:
         history_mode="injection",
         skills_index="",
         memories="",
-        reflections="",
         decomposed_goal=None,
     )
     assert "DEFAULT-CHARACTER" in default.full_prompt
@@ -200,7 +199,6 @@ def test_workspace_section_namespaces_by_slug() -> None:
             history_mode="injection",
             skills_index="",
             memories="",
-            reflections="",
             decomposed_goal=None,
             agent=agent,
         ).workspace
@@ -303,7 +301,6 @@ def _prompt(cfg, agent=None) -> str:
         history_mode="injection",
         skills_index="",
         memories="",
-        reflections="",
         decomposed_goal=None,
         agent=agent,
     ).full_prompt
@@ -323,3 +320,56 @@ def test_delegation_block_present_and_gated() -> None:
     cfg.subagents.enabled = True
     walled_off = Agent(name="solo", tools=["bash"])  # allowlist without spawn_subagent
     assert "<delegation>" not in _prompt(cfg, walled_off)
+
+
+def test_allowlist_note_dedup_never_widens_the_advertised_set() -> None:
+    """The note is display-only de-dup: every prefix it advertises must be one the
+    executor actually permits, and no genuinely distinct prefix may be hidden."""
+    allowed = ToolExecutor.ALLOWED_PREFIXES
+    shown = display_prefixes()
+
+    # Nothing advertised that the guard would reject (expand the `a|b X` folds).
+    for entry in shown:
+        head, _, rest = entry.partition(" ")
+        for variant in [f"{name} {rest}".strip() for name in head.split("|")]:
+            assert variant in allowed, variant
+
+    # Nothing genuinely distinct hidden: every real prefix is still covered by a
+    # displayed one (either itself or a shorter prefix that subsumes it).
+    flat = [
+        f"{name} {e.partition(' ')[2]}".strip()
+        for e in shown
+        for name in e.partition(" ")[0].split("|")
+    ]
+    for prefix in allowed:
+        assert any(prefix.startswith(v) for v in flat), prefix
+
+    # And it actually de-duplicated: the subsumed tools/ scripts are gone.
+    assert "python3 /app/tools/skills.py" not in shown
+    assert "python3|python /app/skills/" in shown
+
+
+def test_voice_block_gated_on_channel() -> None:
+    """TTS on is not enough: a channel that can't play audio (cli) must not be told
+    it can speak. Unknown/default ("") keeps the historical behaviour."""
+    cfg = Config()
+    cfg.voice.tts_enabled = True
+
+    def voice_for(channel: str) -> str:
+        return build_prompt_sections(
+            config=cfg,
+            history_mode="injection",
+            channel=channel,
+            skills_index="",
+            memories="",
+            decomposed_goal=None,
+        ).voice
+
+    assert "<voice>" in voice_for("")  # admin preview / tests
+    assert "<voice>" in voice_for("telegram")
+    assert "<voice>" in voice_for("telegram:coach")
+    assert voice_for("cli") == ""
+    assert voice_for("system") == ""
+
+    cfg.voice.tts_enabled = False
+    assert voice_for("telegram") == ""

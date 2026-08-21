@@ -259,7 +259,7 @@
         .some(pat => id.includes(pat));
     };
 
-    function llmTab(provider, apiKey, model, openaiKey, openaiBaseUrl, googleKey, googleBaseUrl, grokKey, grokBaseUrl, deepseekKey, deepseekBaseUrl, openrouterKey, openrouterBaseUrl, extractionProvider, extractionModel, consolidationProvider, consolidationModel, gdEnabled, gdProvider, gdModel, trEnabled, trProvider, trModel, compactionProvider, compactionModel, thinkingLevel, extractionThinkingLevel, consolidationThinkingLevel, gdThinkingLevel, trThinkingLevel, compactionThinkingLevel, visionEnabled, visionProvider, visionModel, rdEnabled, rdProvider, rdModel, rdThinkingLevel, rdGroupOnly, rdMaxReplies, rdWindowSeconds, maxTokens, maxToolRounds, temperature, trMaxReflections) {
+    function llmTab(provider, apiKey, model, openaiKey, openaiBaseUrl, googleKey, googleBaseUrl, grokKey, grokBaseUrl, deepseekKey, deepseekBaseUrl, openrouterKey, openrouterBaseUrl, extractionProvider, extractionModel, consolidationProvider, consolidationModel, gdEnabled, gdProvider, gdModel, compactionProvider, compactionModel, thinkingLevel, extractionThinkingLevel, consolidationThinkingLevel, gdThinkingLevel, compactionThinkingLevel, visionEnabled, visionProvider, visionModel, rdEnabled, rdProvider, rdModel, rdThinkingLevel, rdGroupOnly, rdMaxReplies, rdWindowSeconds, maxTokens, maxToolRounds, temperature) {
       const currentProvider = provider || 'anthropic';
       return {
         // Sub-tab within the LLM tab (issue #114): inference | providers | history.
@@ -304,7 +304,6 @@
         extractionThinkingLevel: extractionThinkingLevel || '',
         consolidationThinkingLevel: consolidationThinkingLevel || '',
         gdThinkingLevel: gdThinkingLevel || '',
-        trThinkingLevel: trThinkingLevel || '',
         compactionThinkingLevel: compactionThinkingLevel || '',
         fetchedLevels: {anthropic: [], openai: [], google: [], grok: [], deepseek: [], openrouter: []},
         fetchingLevels: {anthropic: false, openai: false, google: false, grok: false, deepseek: false, openrouter: false},
@@ -326,16 +325,10 @@
         gdEnabled: gdEnabled === 'true' || gdEnabled === true,
         gdProvider: gdProvider || 'anthropic',
         gdModel: gdModel || 'claude-haiku-4-5',
-        trEnabled: trEnabled === 'true' || trEnabled === true,
-        trProvider: trProvider || 'anthropic',
-        trModel: trModel || 'claude-haiku-4-5',
-        trMaxReflections: trMaxReflections || '12',
         memoryResult: '',
         memoryResultOk: false,
         gdResult: '',
         gdResultOk: false,
-        trResult: '',
-        trResultOk: false,
         rdEnabled: rdEnabled === 'true' || rdEnabled === true,
         rdProvider: rdProvider || 'deepseek',
         rdModel: rdModel || 'deepseek-v4-flash',
@@ -542,7 +535,6 @@
           const savedExtraction = this.extractionModel;
           const savedConsolidation = this.consolidationModel;
           const savedGdModel = this.gdModel;
-          const savedTrModel = this.trModel;
           this.$nextTick(() => {
             const validProvider = this.providerOptions.some(item => item.value === savedProvider);
             this.provider = validProvider ? savedProvider : 'anthropic';
@@ -550,12 +542,10 @@
             this.extractionModel = savedExtraction;
             this.consolidationModel = savedConsolidation;
             this.gdModel = savedGdModel;
-            this.trModel = savedTrModel;
             this.resetModel();
             this.resetMemoryModel('extraction');
             this.resetMemoryModel('consolidation');
             this.resetBackgroundModel('gd');
-            this.resetBackgroundModel('tr');
             // Load the initial sub-tab content after seeding model values.
             this._loadSection(this.section);
           });
@@ -584,15 +574,9 @@
             if (list.length) { this.gdModel = list[0].value; }
             return;
           }
-          if (kind === 'rd') {
-            if (this.rdModel) return;
-            const list = this.modelOptions(this.rdProvider);
-            if (list.length) { this.rdModel = list[0].value; }
-            return;
-          }
-          if (this.trModel) return;
-          const list = this.modelOptions(this.trProvider);
-          if (list.length) { this.trModel = list[0].value; }
+          if (this.rdModel) return;
+          const list = this.modelOptions(this.rdProvider);
+          if (list.length) { this.rdModel = list[0].value; }
         },
         keyFor(service) {
           if (service === 'openai') return this.openaiKey;

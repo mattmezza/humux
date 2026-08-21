@@ -28,7 +28,9 @@ def test_whatsapp_advert_and_env_when_enabled() -> None:
         "WACLI_DEVICE_LABEL": "Agent1",
     }
     blocks = active_tool_prompts(cfg)
-    assert any('name="whatsapp"' in b and "send text" in b for b in blocks)
+    # The command reference moved into the wacli-whatsapp skill (#178 flw); the
+    # prompt block only has to make the CLI discoverable.
+    assert any('name="whatsapp"' in b and "wacli" in b for b in blocks)
 
 
 def test_whatsapp_enabled_without_identity_overrides_has_empty_env() -> None:
