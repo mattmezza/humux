@@ -70,7 +70,7 @@
     concurrent: {{ subagents_max_concurrent|default('4', true)|tojson|forceescape }},
     fanout: {{ subagents_max_fanout|default('6', true)|tojson|forceescape }},
     spawnsPerTurn: {{ subagents_max_spawns_per_turn|default('12', true)|tojson|forceescape }},
-    turnTokens: {{ subagents_turn_token_budget|default('400000', true)|tojson|forceescape }},
+    turnTokens: {{ subagents_turn_token_budget|default('1200000', true)|tojson|forceescape }},
     allowedModels: {{ subagents_allowed_models|default('', true)|tojson|forceescape }},
     result: '', resultOk: false,
     save() {
@@ -108,11 +108,12 @@
     <p class="text-muted text-xs mb-4">
       Let the assistant delegate a scoped subtask to a sub-loop (the
       <code>spawn_subagent</code> tool) under a chosen agent, on demand or
-      scheduled. A child's tools/skills/secrets are a subset of the caller's —
+      scheduled &mdash; or fan several out at once with
+      <code>spawn_subagents</code>, which share the turn token budget below. A child's tools/skills/secrets are a subset of the caller's —
       never wider. When disabled, the tool is hidden from the assistant (and from
       the Agents tool scope). Assign it per agent in the
       <strong>Agents</strong> editor; monitor and cancel runs in the
-      <strong>Jobs</strong> tab.
+      <strong>Inspect</strong> tab.
     </p>
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" x-show="enabled === 'true' || enabled === true">
       <div>
@@ -363,7 +364,7 @@
       report — published as a web artifact when the workspace is enabled. Needs the
       <strong>Web search</strong> tool configured. Cancel a running research with
       <code>/stop</code> (a background subagent run: from its cancel button in
-      <strong>Jobs</strong>). Assign it per agent in the <strong>Agents</strong> editor.
+      <strong>Inspect</strong>). Assign it per agent in the <strong>Agents</strong> editor.
     </p>
     <div class="space-y-3" x-show="enabled === 'true' || enabled === true">
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">

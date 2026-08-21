@@ -131,7 +131,7 @@ def resolve_model_override(
 def derive_label(label: str, task: str, index: int = 0) -> str:
     """A short run label for logs/UI: the model's own when supplied, else the
     first few words of the task (so five siblings of one agent stay tellable
-    apart in the Logs and Jobs tabs)."""
+    apart in the Logs and Inspect tabs)."""
     lbl = " ".join(str(label or "").split())
     if not lbl:
         lbl = " ".join(str(task or "").split()[:4]) or f"task{index}"

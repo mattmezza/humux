@@ -180,7 +180,7 @@ _SUBAGENT_NOTE_MIN_SECONDS = 10.0
 # a result near this line means the brief was wrong, not that the cap is tight.
 # ~80k chars ≈ 20k tokens: deliberately generous, so this only ever catches a
 # genuine runaway and never silently clips a legitimate answer. The full text
-# stays in the registry, so /subagents and the admin Jobs page still show it.
+# stays in the registry, so /subagents and the admin Inspect page still show it.
 # ponytail: a flat character cap, not a token count — only worth refining if a
 # real run ever lands close to the line and loses something that mattered.
 _SUBAGENT_RESULT_MAX_CHARS = 80_000
@@ -824,7 +824,7 @@ TOOLS = [
             "Use background=true for long-running work: you get a run id "
             "immediately, and when the run finishes its result comes back to YOU "
             "(in a <subagent_results> block) so you decide what to tell the owner "
-            "— monitor or cancel it via /subagents or the admin Jobs page. Use "
+            "— monitor or cancel it via /subagents or the admin Inspect page. Use "
             "background=false (default) to block and get the result back in this "
             "turn.\n"
             "Subagents are depth-limited, so prefer one focused delegation over "
