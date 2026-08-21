@@ -2206,14 +2206,6 @@ def create_admin_app(
             )
         except json.JSONDecodeError, TypeError:
             sub_allowed = ""
-        # Result-summary inference (notification + context digest) for finished
-        # background batches — fast/cheap model by default.
-        ss_enabled = await config_store.get("subagent_summary.enabled")
-        ss_enabled = ss_enabled if ss_enabled is not None else "true"
-        ss_provider = await config_store.get("subagent_summary.provider") or "deepseek"
-        ss_model = await config_store.get("subagent_summary.model") or "deepseek-v4-flash"
-        ss_thinking = await config_store.get("subagent_summary.thinking_level") or ""
-
         # Image generation (issue #55).
         ig_enabled = await config_store.get("tools.imagegen.enabled")
         ig_enabled = ig_enabled if ig_enabled is not None else "false"
@@ -2275,10 +2267,6 @@ def create_admin_app(
             subagents_max_spawns_per_turn=sub_spawns_turn,
             subagents_turn_token_budget=sub_turn_tokens,
             subagents_allowed_models=sub_allowed,
-            summary_enabled=ss_enabled,
-            summary_provider=ss_provider,
-            summary_model=ss_model,
-            summary_thinking_level=ss_thinking,
             imagegen_enabled=ig_enabled,
             imagegen_provider=ig_provider,
             imagegen_model=ig_model,

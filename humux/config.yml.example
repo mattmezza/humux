@@ -227,15 +227,6 @@ subagents:
   # (e.g. a cheap worker under an expensive coordinator). Empty = inherit only.
   allowed_models: []   # e.g. ["deepseek:deepseek-v4-flash"]
 
-# When a background subagent batch finishes, distil it into a one-line chat
-# notification + a concise context digest (instead of dumping the raw output).
-# Off → a crude first-line truncation with no LLM call.
-subagent_summary:
-  enabled: true
-  provider: "deepseek"
-  model: "deepseek-v4-flash"   # fast + cheap is ideal for this distillation
-  thinking_level: ""           # "" (off) | "low" | "medium" | "high"
-
 # Reply decision — in shared/group chats with several bots and people, decide
 # per message whether to reply at all. Stays quiet for messages aimed at another
 # bot, caught in a bot-to-bot reaction loop, or that the agent can't usefully add

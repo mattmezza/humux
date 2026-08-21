@@ -34,8 +34,9 @@ message. Everything it needs goes in `task`. Include:
 - **goal** — one sentence, what "done" means;
 - **inputs** — absolute paths, URLs, ids, versions. Never "the file we discussed";
 - **constraints** — what not to touch, time/source limits, tone;
-- **answer shape** — the exact structure you want back, since you will paste it
-  into a synthesis.
+- **answer shape** — the exact structure you want back, and how long it may be.
+  You will paste it into a synthesis, or read it back later when a background
+  run lands; either way it goes into your context whole.
 
 > **Bad:** Look into the pricing thing and report back.
 
@@ -141,6 +142,11 @@ absolute path plus a summary. Put that in the brief:
 
 Then read the file only if you need the detail. Returning 20k tokens of body
 text through the result field burns your turn budget for no gain.
+
+This applies just as much to `background=true`. A finished background batch is
+handed back to you in a `<subagent_results>` block, so its bulk lands in your
+context too — later, and clipped if a run ran long. Same discipline: file on
+disk, path and summary in the result.
 
 ## Partial failure
 

@@ -534,21 +534,6 @@ class SubagentsConfig(BaseModel):
     allowed_models: list[str] = []
 
 
-class SubagentSummaryConfig(BaseModel):
-    """Summarise a finished background subagent batch (issue #15).
-
-    Instead of dumping a subagent's raw output to the chat and the agent's
-    context, a small inference distils each batch into a one-sentence chat
-    *notification* and a concise *digest* for the agent's context. Mirrors the
-    other background inferences (memory / compaction).
-    """
-
-    enabled: bool = True
-    provider: str = "deepseek"  # fast + cheap is ideal for this distillation
-    model: str = "deepseek-v4-flash"
-    thinking_level: str = ""  # "" (off) | "low" | "medium" | "high" | "max"
-
-
 class Config(BaseModel):
     agent: AgentConfig = AgentConfig()
     calendar: CalendarConfig = CalendarConfig()
@@ -568,7 +553,6 @@ class Config(BaseModel):
     workspace: WorkspaceConfig = WorkspaceConfig()
     artifacts: ArtifactsConfig = ArtifactsConfig()
     subagents: SubagentsConfig = SubagentsConfig()
-    subagent_summary: SubagentSummaryConfig = SubagentSummaryConfig()
 
 
 def load_config(path: str | Path = "config.yml") -> Config:

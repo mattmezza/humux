@@ -56,14 +56,12 @@ from core.subagents import (
     SubagentRun,
     allowed_models_hint,
     derive_label,
-    fallback_summary,
     narrow_accounts,
     narrow_scope,
     normalize_effort,
     resolve_cap,
     resolve_model_override,
     short_summary,
-    summarize_batch,
 )
 from core.tools import _gh_app_configured, effective_tool_env, github_repo_violation
 from voice.pipeline import VoicePipeline
@@ -173,6 +171,27 @@ _LOOP_ABORT_MESSAGE = (
 # A sync spawn's result lands in the very next reply, so a completion note only
 # earns its noise when the run kept the user waiting this long.
 _SUBAGENT_NOTE_MIN_SECONDS = 10.0
+
+# Defensive ceiling on how much of ONE background run's result is folded back
+# into the conversation when its batch lands (#315). Nothing else caps a
+# subagent's output, and the batch is appended to the agent's context whole.
+# ~4000 chars ≈ 1k tokens: room for the dense fact dump the child is told to
+# return (RESULT_FOR_AGENT_INSTRUCTION), small enough that a runaway helper
+# can't weigh down every later turn. The full text stays in the registry, so
+# /subagents and the admin Jobs page still show it.
+# ponytail: a flat character cap, not a token count — only worth refining if a
+# real run ever lands close to the line and loses something that mattered.
+_SUBAGENT_RESULT_MAX_CHARS = 4000
+
+# A turn started BY a landing batch may not start more background work: its own
+# results would wake another turn, and so on (#315). Synchronous spawns stay
+# allowed — they return inside the turn, already bounded by FanoutBudget and
+# max_tool_rounds, so they cannot chain into another wake-up.
+_NO_BACKGROUND_IN_WOKEN_TURN = (
+    "Background spawns are not allowed in this turn — it started because "
+    "delegated work landed. Run the subtask now with background=false, or leave "
+    "it until the owner asks again."
+)
 
 # Returned for ANY web-search backend failure. The raw exception was an httpx
 # message carrying the internal endpoint URL and a link to the HTTP status docs,
@@ -785,6 +804,10 @@ TOOLS = [
             "that is never wider than yours, and returns a structured result. It "
             "has NO memory of this conversation — put everything it needs in "
             "'task'.\n"
+            "Say exactly what shape you want back, and keep it small: the result "
+            "lands in your context whole, so bulk output (a long report, extracted "
+            "data) should be written to a file and returned as the path plus a "
+            "short summary.\n"
             "Agent: omit 'agent' to run the subagent as YOU (your identity, "
             "tools, scope). Name an agent from your roster when the subtask "
             "belongs to that specialist — follow the roster's guidance on when. "
@@ -797,9 +820,11 @@ TOOLS = [
             "absolute paths of any files it creates in its result — you can then "
             "read or send them.\n"
             "Use background=true for long-running work: you get a run id "
-            "immediately and the result is posted to this chat when done (monitor "
-            "or cancel it via /subagents or the admin Jobs page). Use background=false "
-            "(default) to block and get the result back in this turn.\n"
+            "immediately, and when the run finishes its result comes back to YOU "
+            "(in a <subagent_results> block) so you decide what to tell the owner "
+            "— monitor or cancel it via /subagents or the admin Jobs page. Use "
+            "background=false (default) to block and get the result back in this "
+            "turn.\n"
             "Subagents are depth-limited, so prefer one focused delegation over "
             "deep nesting.\n"
             "ONE subtask → this tool. TWO OR MORE independent subtasks → "
@@ -899,8 +924,9 @@ TOOLS = [
             "Partial failure is normal: read each result's status and decide "
             "what to do about the ones that failed — never silently synthesize "
             "as though you got everything.\n"
-            "Use background=true only for long-running work: you get run ids "
-            "now and one combined result is posted to this chat when all finish."
+            "Use background=true only for long-running work: you get run ids now, "
+            "and when the last one finishes the whole batch comes back to YOU in a "
+            "<subagent_results> block to answer from."
         ),
         "input_schema": {
             "type": "object",
@@ -1259,8 +1285,17 @@ class AgentCore:
         addressed: bool = True,
         message_id: int | None = None,
         steerable: bool = False,
+        steer_kind: str = "user",
     ) -> AgentResponse:
         """Serialize concurrent turns of one chat, then run the turn.
+
+        ``steer_kind`` says WHOSE message this is: ``"user"`` (the default, and
+        every inbound message) or ``"subagent"`` for a finished background batch
+        coming back to the agent that delegated it (#315). It picks the framing in
+        ``_steer_message`` — the agent's own delegation returning must never read
+        as an instruction from the owner — and, on the idle path, bars the woken
+        turn from spawning further background subagents (see
+        ``_NO_BACKGROUND_IN_WOKEN_TURN``).
 
         ``steerable=True`` opts a system-channel caller into mid-turn steering
         (#266): the GitHub webhook passes it so an event landing on a thread
@@ -1306,7 +1341,12 @@ class AgentCore:
             and not _control_command(message)
             and self._active_turns_map().get(key) is not None
         ):
-            steer_entry = {"text": message, "message_id": message_id, "consumed": False}
+            steer_entry = {
+                "text": message,
+                "message_id": message_id,
+                "kind": steer_kind,
+                "consumed": False,
+            }
             self._steer_map().setdefault(key, []).append(steer_entry)
 
         async with self._chat_lock(channel, user_id, chat_id):
@@ -1324,6 +1364,7 @@ class AgentCore:
                 respond=respond,
                 addressed=addressed,
                 message_id=message_id,
+                woken_by_subagent=steer_kind == "subagent",
             )
 
     def _active_turns_map(self) -> dict:
@@ -1378,16 +1419,25 @@ class AgentCore:
         """Build one labelled user message from drained steer entries (#145). ponytail:
         text only — a steer's attachments are dropped; if it wasn't consumed its own
         turn still carries them, and mid-turn image steers are rare enough to defer."""
-        joined = "\n\n".join(e["text"] for e in entries)
-        # Neutral label (#266): a steer may be a user's follow-up OR an inbound
-        # event (a GitHub comment on the thread being worked) — "the user said"
-        # would misattribute the latter.
-        text = (
-            "[A follow-up arrived while you were working:]\n"
-            f"<steering_message>\n{joined}\n</steering_message>\n"
-            "Continue your current task taking this into account."
-        )
-        return {"role": "user", "content": text}
+        # Grouped by kind (#315): a finished background batch is the agent's own
+        # delegation returning, and framing it as a follow-up would present it as
+        # an instruction from the owner. It arrives pre-framed
+        # (_subagent_batch_message), so it passes through verbatim — identical
+        # text whether it lands here or as its own turn.
+        parts = []
+        followups = [e["text"] for e in entries if e.get("kind", "user") != "subagent"]
+        if followups:
+            # Neutral label (#266): a steer may be a user's follow-up OR an inbound
+            # event (a GitHub comment on the thread being worked) — "the user said"
+            # would misattribute the latter.
+            joined = "\n\n".join(followups)
+            parts.append(
+                "[A follow-up arrived while you were working:]\n"
+                f"<steering_message>\n{joined}\n</steering_message>\n"
+                "Continue your current task taking this into account."
+            )
+        parts.extend(e["text"] for e in entries if e.get("kind") == "subagent")
+        return {"role": "user", "content": "\n\n".join(parts)}
 
     async def _commit_steer(self, channel: str, chat_id: str, entries: list[dict]) -> None:
         """Confirm steers the model has now received: mark each consumed (so its
@@ -1452,6 +1502,7 @@ class AgentCore:
         respond: bool = True,
         addressed: bool = True,
         message_id: int | None = None,
+        woken_by_subagent: bool = False,
     ) -> AgentResponse:
         """Process an incoming message through the LLM with tool-use loop.
 
@@ -1481,6 +1532,10 @@ class AgentCore:
         ``message_id`` is the inbound message's id, carried into request_state so
         the ``set_reaction`` tool can react to the triggering message without the
         model having to know its id (#70). Channel-specific; None off Telegram.
+
+        ``woken_by_subagent`` marks a turn that only exists because a background
+        batch landed (#315); it bars further background spawns so wake-ups can't
+        chain. See ``_NO_BACKGROUND_IN_WOKEN_TURN``.
         """
 
         # Respond-gate (#30): record the turn for context, but do not reply. Runs
@@ -1682,6 +1737,7 @@ class AgentCore:
                     tools,
                     agent,
                     message_id,
+                    woken_by_subagent,
                 )
             return await self._process_injection(
                 system,
@@ -1694,6 +1750,7 @@ class AgentCore:
                 tools,
                 agent,
                 message_id,
+                woken_by_subagent,
             )
         finally:
             reset_capture_context(cap_token)
@@ -2227,6 +2284,7 @@ class AgentCore:
         tools: list[dict] | None = None,
         agent: Agent | None = None,
         message_id: int | None = None,
+        woken_by_subagent: bool = False,
     ) -> AgentResponse:
         """Injection mode: replay windowed history as native alternating messages."""
         tools = tools if tools is not None else TOOLS
@@ -2268,6 +2326,7 @@ class AgentCore:
                 "chat_id": chat_id,
                 "message_id": message_id,
             },
+            woken_by_subagent=woken_by_subagent,
         )
         # Resolve the YOLO grant once per turn (channel+chat_id are in scope here
         # but not in _execute_tool); every tool call this turn reads the cached flag.
@@ -2381,6 +2440,7 @@ class AgentCore:
         tools: list[dict] | None = None,
         agent: Agent | None = None,
         message_id: int | None = None,
+        woken_by_subagent: bool = False,
     ) -> AgentResponse:
         """Session mode: sticky session per (channel, user_id, chat_id).
 
@@ -2425,6 +2485,7 @@ class AgentCore:
                 "chat_id": chat_id,
                 "message_id": message_id,
             },
+            woken_by_subagent=woken_by_subagent,
         )
         # Resolve the YOLO grant once per turn (channel+chat_id are in scope here
         # but not in _execute_tool); every tool call this turn reads the cached flag.
@@ -2992,6 +3053,7 @@ class AgentCore:
         depth: int = 0,
         origin: dict | None = None,
         run_id: str | None = None,
+        woken_by_subagent: bool = False,
     ) -> dict:
         """Fresh per-turn state tracking write actions and approval decisions.
 
@@ -3013,6 +3075,9 @@ class AgentCore:
             "depth": depth,
             "origin": origin or {},
             "run_id": run_id,
+            # This turn exists because a background batch landed (#315) — no
+            # further background spawns, or wake-ups would chain.
+            "woken_by_subagent": woken_by_subagent,
         }
 
     @staticmethod
@@ -3826,6 +3891,9 @@ class AgentCore:
         task = str(params.get("task", "")).strip()
         if not task:
             return {"error": "Missing 'task' for spawn_subagent."}
+        background = bool(params.get("background", False))
+        if background and request_state.get("woken_by_subagent"):
+            return {"error": _NO_BACKGROUND_IN_WOKEN_TURN}
         origin = request_state.get("origin") or {}
         return await self.run_subagent(
             task=task,
@@ -3834,7 +3902,7 @@ class AgentCore:
             origin_user_id=str(origin.get("user_id", user_id)),
             origin_chat_id=str(origin.get("chat_id", "")),
             parent_state=request_state,
-            background=bool(params.get("background", False)),
+            background=background,
             max_steps=params.get("max_steps"),
             token_budget=params.get("token_budget"),
             thinking_effort=params.get("thinking_effort"),
@@ -3876,6 +3944,8 @@ class AgentCore:
                 )
             }
         background = bool(params.get("background", False))
+        if background and request_state.get("woken_by_subagent"):
+            return {"error": _NO_BACKGROUND_IN_WOKEN_TURN}
         if len(tasks) == 1:
             one = tasks[0] if isinstance(tasks[0], dict) else {}
             return await self._tool_spawn_subagent(
@@ -4106,10 +4176,10 @@ class AgentCore:
 
     async def _notify_background_progress(self, run: SubagentRun) -> None:
         """Completion note for a background run, but only mid-batch: the last
-        finisher's note would land right next to the batch digest — one event,
-        two bubbles — so it is skipped and the digest speaks for it. The check
-        mirrors _maybe_deliver_subagent_batch's barrier (background runs only),
-        so note-or-digest is exhaustive and exclusive."""
+        finisher's note would land right next to the agent's own reply about the
+        batch — one event, two bubbles — so it is skipped and the reply speaks for
+        it. The check mirrors _maybe_deliver_subagent_batch's barrier (background
+        runs only), so note-or-reply is exhaustive and exclusive."""
         still_running = any(
             r.background
             and r.status == "running"
@@ -4697,8 +4767,8 @@ class AgentCore:
         self, run: SubagentRun, child_agent: Agent | None, child_state: dict
     ) -> None:
         """Run a subagent off-turn. When the chat's whole batch of background runs
-        has finished, the spawning agent ingests their results and writes one reply
-        — the user never sees raw subagent output; it works for the agent (#15)."""
+        has finished, the results are routed back to the spawning agent, which reads
+        them and decides what to tell the owner (#15/#315)."""
         try:
             text = await self._run_subagent_loop(run.task, child_agent, child_state, run)
         except asyncio.CancelledError:
@@ -4729,9 +4799,9 @@ class AgentCore:
             await self._maybe_deliver_subagent_batch(run)
 
     async def _maybe_deliver_subagent_batch(self, run: SubagentRun) -> None:
-        """Once every background run for this chat is done, distil the batch into a
-        chat notification + a context digest and deliver them. The barrier collapses
-        a fan-out of parallel spawns into a single delivery (#15)."""
+        """Once every background run for this chat is done, hand the whole batch
+        back to the agent so it answers for them itself. The barrier collapses a
+        fan-out of parallel spawns into a single wake-up (#15/#315)."""
         channel, user_id, chat_id = run.origin_channel, run.origin_user_id, run.origin_chat_id
         if not chat_id or channel == "system":
             return  # scheduler / system-origin runs have no user chat to answer
@@ -4761,82 +4831,84 @@ class AgentCore:
             return
         for r in batch:
             r.synthesized = True
-        await self._summarize_and_deliver(channel, user_id, chat_id, batch)
+        await self._wake_on_subagent_batch(channel, user_id, chat_id, batch)
 
-    async def _summarize_and_deliver(
+    async def _wake_on_subagent_batch(
         self, channel: str, user_id: str, chat_id: str, batch: list[SubagentRun]
     ) -> None:
-        """Distil a finished batch into a one-line chat notification + a concise
-        context digest, then deliver: notification → the user, digest → the agent's
-        context. The raw subagent output reaches neither the user nor the context.
+        """Hand a finished background batch back to the agent that delegated it (#315).
+
+        Routed through ``process(steerable=True, steer_kind="subagent")``, so it
+        takes whichever branch fits: a turn already running for this conversation
+        gets the batch injected between tool rounds, an idle one runs it as its own
+        turn. Either way the AGENT decides what the owner is told — its reply is the
+        assistant turn, written to history by the normal turn path — instead of a
+        cheap summariser speaking in its voice into a chat the agent never saw.
+
+        Nothing to send when the batch was consumed as a steer: the running turn
+        answers for it, and ``process`` returns an empty response.
         """
-        notification, digest = await self._summarize_subagent_batch(batch)
-        # The user only ever saw the notification; the agent's context keeps the
-        # concise digest (so it can answer follow-ups) — never the raw output.
-        framed = notification
-        if digest and digest.strip() and digest.strip() != notification.strip():
-            framed = f"{notification}\n\n<subagent_digest>\n{digest}\n</subagent_digest>"
-        await self._record_subagent_context(channel, user_id, chat_id, framed)
-        ch = self.channels.get(channel)
-        if ch and chat_id and notification:
-            try:
-                await ch.send(chat_id, notification)
-            except Exception:
-                log.exception("Failed to deliver subagent notification (chat=%s)", chat_id)
-
-    async def _summarize_subagent_batch(self, batch: list[SubagentRun]) -> tuple[str, str]:
-        """(notification, digest) for a finished batch via the summary inference,
-        falling back to truncation when it is disabled or the inference fails."""
-        items = [
-            (
-                r.task,
-                r.result if r.status == "done" else f"[failed: {r.error or 'unknown error'}]",
-                r.agent or "",
-                r.status,
-            )
-            for r in batch
-        ]
-        cfg = self.config.subagent_summary
-        if cfg.enabled:
-            try:
-                llm = self._background_llm(cfg.provider, cfg.thinking_level)
-                return await summarize_batch(llm, cfg.model, items)
-            except Exception:
-                log.exception("Subagent summary inference failed; using truncation fallback")
-        return fallback_summary(items)
-
-    async def _record_subagent_context(
-        self, channel: str, user_id: str, chat_id: str, framed: str
-    ) -> None:
-        """Record a background batch's notification + digest as an assistant turn —
-        merged into the trailing assistant turn so replayed history stays strictly
-        alternating for providers that require it (#15).
-
-        Runs in the background subagent task, so it holds the same per-chat lock as
-        ``process()``: this fold is another read-modify-write on the chat's history,
-        and a concurrent foreground turn on the same chat would otherwise interleave
-        with it. Background delivery never runs under a held lock for this key (the
-        spawning turn returned long ago), so acquiring it here can't deadlock."""
-        if not chat_id or channel == "system":
-            return
         try:
-            async with self._chat_lock(channel, user_id, chat_id):
-                if self.history_mode == "session":
-                    merged = await self.history.append_to_last_session_message(
-                        channel, user_id, f"\n\n{framed}", chat_id
-                    )
-                    if not merged:
-                        await self.history.append_session_message(
-                            channel, user_id, {"role": "assistant", "content": framed}, chat_id
-                        )
-                else:
-                    merged = await self.history.append_to_last_turn(
-                        channel, user_id, "assistant", f"\n\n{framed}", chat_id
-                    )
-                    if not merged:
-                        await self.history.add_turn(channel, user_id, "assistant", framed, chat_id)
+            response = await self.process(
+                self._subagent_batch_message(batch),
+                channel,
+                user_id,
+                chat_id=chat_id,
+                steerable=True,
+                steer_kind="subagent",
+            )
         except Exception:
-            log.exception("Failed to record subagent context (chat=%s)", chat_id)
+            log.exception("Subagent batch wake-up failed (chat=%s)", chat_id)
+            return
+        ch = self.channels.get(channel)
+        if not ch:
+            return
+        # Each [[split]] bubble in order (#202) — response.text alone would collapse
+        # them into one. ponytail: text only; voice on an unprompted background
+        # landing would be a worse answer than text, and images from a woken turn
+        # (rare) would need channel-specific sends this helper deliberately avoids.
+        for msg in response.delivery_messages:
+            if not msg.text:
+                continue
+            try:
+                await ch.send(chat_id, msg.text)
+            except Exception:
+                log.exception("Failed to deliver a subagent batch reply (chat=%s)", chat_id)
+
+    def _subagent_batch_message(self, batch: list[SubagentRun]) -> str:
+        """Frame a finished background batch as one message for the agent (#315).
+
+        A bare tag plus per-run status lines and results: the standing rules for
+        reading this live once in the cached <delegation> block, and repeating a
+        paragraph of guidance in every landing batch would be paid for on every
+        later turn (the whole thing is persisted verbatim).
+        """
+        lines = ["<subagent_results>", "Delegated work you started earlier has finished."]
+        for run in batch:
+            name = " | ".join(p for p in (run.label, run.agent) if p) or run.run_id
+            if run.status == "error":
+                lines.append(f"- [{name}] status=error: {run.error or 'unknown error'}")
+                continue
+            head = f"- [{name}] status={run.status}"
+            # stopped_reason only when it says the result may be thin — "complete"
+            # is the norm and carries nothing the agent can act on.
+            if run.stopped_reason and run.stopped_reason != "complete":
+                head += f", stopped: {run.stopped_reason}"
+            lines.append(head)
+            lines.append(self._clip_subagent_result(run))
+        lines.append("</subagent_results>")
+        return "\n".join(lines)
+
+    @staticmethod
+    def _clip_subagent_result(run: SubagentRun) -> str:
+        """One run's result, capped — see ``_SUBAGENT_RESULT_MAX_CHARS``."""
+        text = (run.result or "").strip() or "(no output)"
+        if len(text) > _SUBAGENT_RESULT_MAX_CHARS:
+            text = (
+                text[:_SUBAGENT_RESULT_MAX_CHARS]
+                + f"\n[truncated — full result of run {run.run_id} is on /subagents]"
+            )
+        return text
 
     async def _record_inbound(
         self,
@@ -4849,8 +4921,8 @@ class AgentCore:
         """Record an inbound message as a user turn without generating a reply —
         the respond-gate's silent path for group rooms (#30).
 
-        Folds into the trailing user turn (mirroring ``_record_subagent_context``)
-        so a run of un-answered group messages stays a single turn and the
+        Folds into the trailing user turn so a run of un-answered group messages
+        stays a single turn and the
         replayed history keeps strict user/assistant alternation. ``message``
         already carries its ``[from <author>]`` speaker tag, so the bot sees who
         said what when it is later addressed. A refused fold (trailing turn is an

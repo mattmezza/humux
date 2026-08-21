@@ -236,21 +236,83 @@ async def test_budget_stop_returns_the_work_done_so_far(agent) -> None:
     assert agent.subagents.get(result["run_id"]).stopped_reason == "max_steps"
 
 
+# ---------------------------------------------------------------------------
+# A finished background batch wakes the AGENT (#315) — no summariser, no
+# fabricated assistant turn. It is routed back into the originating
+# conversation: a steer if a turn is running there, its own turn if not.
+# ---------------------------------------------------------------------------
+
+
+class _LoopingLLM:
+    """Tool-calls ``rounds`` times, then answers. Records every ``messages`` array
+    it was asked to generate on, so a test can assert what the model saw."""
+
+    provider = "deepseek"
+
+    def __init__(self, rounds: int = 3, final: str = "done") -> None:
+        self.rounds = rounds
+        self.final = final
+        self.calls = 0
+        self.seen: list[list[dict]] = []
+
+    async def generate(self, *, messages, **_kw) -> LLMResponse:
+        self.seen.append(list(messages))
+        self.calls += 1
+        if self.calls <= self.rounds:
+            return LLMResponse(
+                text="",
+                tool_calls=[
+                    LLMToolCall(id=f"c{self.calls}", name="web_search", arguments={"q": "x"})
+                ],
+            )
+        return LLMResponse(text=self.final, tool_calls=[])
+
+    def assistant_message(self, response: LLMResponse) -> dict:
+        return {"role": "assistant", "content": response.text}
+
+    def tool_result_messages(self, results: list[dict]) -> list[dict]:
+        return [{"role": "user", "content": results}]
+
+
+async def _wait_active(agent, key, task) -> None:
+    for _ in range(400):
+        await asyncio.sleep(0.001)
+        if key in agent._active_turns_map():
+            return
+    task.cancel()
+    pytest.fail("turn never registered an abort Event")
+
+
+def _finished_run(**kw) -> SubagentRun:
+    base = dict(
+        run_id="s1",
+        agent="",
+        task="price check",
+        label="pricing",
+        background=True,
+        origin_channel="telegram",
+        origin_user_id="u1",
+        origin_chat_id="555",
+        status="done",
+        stopped_reason="complete",
+        result="iPhone 17e 256GB at CHF 599",
+    )
+    return SubagentRun(**{**base, **kw})
+
+
 @pytest.mark.asyncio
-async def test_background_subagent_notifies_user_digests_context(agent, monkeypatch) -> None:
+async def test_landing_batch_runs_its_own_turn_when_idle(agent) -> None:
+    """Nothing running for the chat → a fresh turn under the ORIGIN triple. The
+    agent sees the raw result, and its own reply is what the user gets — split
+    into bubbles like any other turn (#202)."""
     channel = AsyncMock()
     agent.channels["telegram"] = channel
-    agent.llm = _ScriptedLLM([LLMResponse(text="raw verbose findings: CHF 599 ...", tool_calls=[])])
-
-    # Stub the summary inference: (chat notification, context digest).
-    async def fake_summary(batch):
-        return "Cheapest is CHF 599.", "iPhone 17e 256GB at CHF 599; entry model."
-
-    monkeypatch.setattr(agent, "_summarize_subagent_batch", fake_summary)
-
-    # A trailing assistant turn for the digest to merge into (keeps alternation).
-    await agent.history.add_turn("telegram", "u1", "user", "price?", "555")
-    await agent.history.add_turn("telegram", "u1", "assistant", "On it.", "555")
+    agent.llm = _ScriptedLLM(
+        [
+            LLMResponse(text="raw verbose findings: CHF 599 ...", tool_calls=[]),  # the subagent
+            LLMResponse(text="Found it.[[split]]Cheapest is CHF 599.", tool_calls=[]),  # the wake
+        ]
+    )
 
     result = await agent.run_subagent(
         task="price check",
@@ -263,29 +325,97 @@ async def test_background_subagent_notifies_user_digests_context(agent, monkeypa
     await run._task
 
     assert run.status == "done"
-    # Chat: the spawn note, then ONLY the one-line NOTIFICATION — no per-run
-    # completion note (the last/only finisher's note is suppressed; the digest
-    # speaks for it), and never the raw output.
-    assert _sent(channel) == ["🧬 Spawned subagent price check", "Cheapest is CHF 599."]
-    # Context: the concise digest is kept (merged), the raw output never is.
+    # Chat: the spawn note, then the agent's own reply as two bubbles — never the
+    # raw subagent output, and no per-run completion note (only finisher).
+    assert _sent(channel) == [
+        "🧬 Spawned subagent price check",
+        "Found it.",
+        "Cheapest is CHF 599.",
+    ]
+    # History: the batch is a user-role message and the agent's reply is the
+    # assistant turn — written by the normal turn path, not fabricated.
     turns = await agent.history.get_messages("telegram", "u1", "555")
-    blob = str(turns[-1]["content"])
-    assert [t["role"] for t in turns] == ["user", "assistant"]  # still alternating
-    assert "iPhone 17e 256GB at CHF 599" in blob
-    assert "raw verbose findings" not in blob
+    roles = [t["role"] for t in turns]
+    assert roles[0] == "user" and set(roles[1:]) == {"assistant"}
+    assert "<subagent_results>" in str(turns[0]["content"])
+    assert "raw verbose findings" in str(turns[0]["content"])
+    assert "Cheapest is CHF 599." in str(turns[-1]["content"])
+
+
+@pytest.mark.asyncio
+async def test_landing_batch_steers_a_running_turn(agent) -> None:
+    """A turn is already running for the chat → the batch is injected into THAT
+    turn, framed as returning delegation and never as a user follow-up."""
+    channel = AsyncMock()
+    agent.channels["telegram"] = channel
+    agent.llm = _LoopingLLM(rounds=3)
+
+    async def fake_tool(call, channel_, user_id, request_state):
+        await asyncio.sleep(0.002)  # pace the rounds so the batch lands mid-loop
+        return {"ok": True}
+
+    agent._execute_tool = fake_tool
+    key = ("telegram", "u1", "555")
+    turn = asyncio.create_task(agent.process("look into pricing", "telegram", "u1", chat_id="555"))
+    await _wait_active(agent, key, turn)
+
+    # Runs as a task: process() deposits the steer, then queues on the chat lock
+    # the running turn holds — exactly like a user's mid-turn follow-up.
+    wake = asyncio.create_task(
+        agent._wake_on_subagent_batch("telegram", "u1", "555", [_finished_run()])
+    )
+    assert (await asyncio.wait_for(turn, timeout=2)).text == "done"
+    await asyncio.wait_for(wake, timeout=2)
+
+    flat = "".join(str(m.get("content")) for seen in agent.llm.seen for m in seen)
+    assert "<subagent_results>" in flat
+    assert "iPhone 17e 256GB at CHF 599" in flat
+    # The agent's own delegation returning is NOT an instruction from the owner.
+    assert "<steering_message>" not in flat
+    assert "A follow-up arrived" not in flat
+    # Consumed by the running turn → the wake sends nothing of its own.
+    assert _sent(channel) == []
+
+
+@pytest.mark.asyncio
+async def test_fanout_produces_exactly_one_wake(agent, monkeypatch) -> None:
+    calls: list[list[str]] = []
+
+    async def fake_wake(channel, user_id, chat_id, batch):
+        calls.append([r.run_id for r in batch])
+
+    monkeypatch.setattr(agent, "_wake_on_subagent_batch", fake_wake)
+
+    common = dict(background=True, origin_channel="telegram", origin_chat_id="c")
+    r1 = SubagentRun(run_id="s1", agent="", task="a", origin_user_id="u", **common)
+    r2 = SubagentRun(run_id="s2", agent="", task="b", origin_user_id="u", **common)
+    agent.subagents.register(r1)
+    agent.subagents.register(r2)
+
+    # First finishes → the other is still running → barrier holds, no wake-up.
+    agent.subagents.finish("s1", "done", result="x")
+    await agent._maybe_deliver_subagent_batch(r1)
+    assert calls == []
+
+    # Last finishes → barrier releases → ONE wake-up over the whole batch.
+    agent.subagents.finish("s2", "done", result="y")
+    await agent._maybe_deliver_subagent_batch(r2)
+    assert len(calls) == 1
+    assert sorted(calls[0]) == ["s1", "s2"]
+    assert r1.synthesized and r2.synthesized
 
 
 @pytest.mark.asyncio
 async def test_midbatch_background_finisher_posts_a_note(agent, monkeypatch) -> None:
     """While siblings are still running, a background finisher notes its
-    completion; the LAST finisher stays silent — the batch digest follows."""
+    completion; the LAST finisher stays silent — the agent's reply follows."""
     channel = AsyncMock()
     agent.channels["telegram"] = channel
 
-    async def fake_summary(batch):
-        return "All done.", "digest"
+    async def fake_wake(channel_, user_id, chat_id, batch):
+        raise AssertionError("the barrier must hold while a sibling is running")
 
-    monkeypatch.setattr(agent, "_summarize_subagent_batch", fake_summary)
+    monkeypatch.setattr(agent, "_wake_on_subagent_batch", fake_wake)
     # A second background run for the same chat is still "running", so the
     # first finisher is mid-batch.
     agent.subagents.register(
@@ -311,36 +441,6 @@ async def test_midbatch_background_finisher_posts_a_note(agent, monkeypatch) -> 
 
     notes = [t for t in _sent(channel) if t.startswith("✅ Subagent")]
     assert len(notes) == 1 and run.label in notes[0]
-    # And no batch digest yet — the sibling is still running.
-    assert "All done." not in _sent(channel)
-
-
-@pytest.mark.asyncio
-async def test_background_batch_delivers_once_when_all_done(agent, monkeypatch) -> None:
-    calls: list[list[str]] = []
-
-    async def fake_deliver(channel, user_id, chat_id, batch):
-        calls.append([r.run_id for r in batch])
-
-    monkeypatch.setattr(agent, "_summarize_and_deliver", fake_deliver)
-
-    common = dict(background=True, origin_channel="telegram", origin_chat_id="c")
-    r1 = SubagentRun(run_id="s1", agent="", task="a", origin_user_id="u", **common)
-    r2 = SubagentRun(run_id="s2", agent="", task="b", origin_user_id="u", **common)
-    agent.subagents.register(r1)
-    agent.subagents.register(r2)
-
-    # First finishes → the other is still running → barrier holds, no delivery.
-    agent.subagents.finish("s1", "done", result="x")
-    await agent._maybe_deliver_subagent_batch(r1)
-    assert calls == []
-
-    # Last finishes → barrier releases → ONE delivery over the whole batch.
-    agent.subagents.finish("s2", "done", result="y")
-    await agent._maybe_deliver_subagent_batch(r2)
-    assert len(calls) == 1
-    assert sorted(calls[0]) == ["s1", "s2"]
-    assert r1.synthesized and r2.synthesized
 
 
 @pytest.mark.asyncio
@@ -351,10 +451,10 @@ async def test_cancelling_a_sibling_releases_a_deferred_reply(agent, monkeypatch
 
     calls: list[list[str]] = []
 
-    async def fake_deliver(channel, user_id, chat_id, batch):
+    async def fake_wake(channel, user_id, chat_id, batch):
         calls.append(sorted(r.run_id for r in batch))
 
-    monkeypatch.setattr(agent, "_summarize_and_deliver", fake_deliver)
+    monkeypatch.setattr(agent, "_wake_on_subagent_batch", fake_wake)
 
     gate = asyncio.Event()
 
@@ -385,33 +485,82 @@ async def test_cancelling_a_sibling_releases_a_deferred_reply(agent, monkeypatch
     assert agent.subagents.get(a_res["run_id"]).synthesized is True
 
 
-def test_summary_parsing_and_fallback() -> None:
-    from core.subagents import _parse_summary, fallback_summary
+def test_batch_message_states_failures_and_thin_results(agent) -> None:
+    text = agent._subagent_batch_message(
+        [
+            _finished_run(),
+            _finished_run(run_id="s2", label="deep-dive", stopped_reason="max_steps"),
+            _finished_run(
+                run_id="s3",
+                label="legal-check",
+                status="error",
+                result="",
+                error="max_steps exhausted",
+            ),
+        ]
+    )
+    assert text.startswith("<subagent_results>") and text.endswith("</subagent_results>")
+    assert "- [pricing] status=done" in text
+    # A complete run says nothing about why it stopped; a thin one does.
+    assert "stopped: complete" not in text
+    assert "- [deep-dive] status=done, stopped: max_steps" in text
+    assert "- [legal-check] status=error: max_steps exhausted" in text
 
-    n, d = _parse_summary("NOTIFICATION: Cheapest is CHF 599.\nDIGEST: iPhone 17e 256GB CHF 599.")
-    assert n == "Cheapest is CHF 599."
-    assert "iPhone 17e" in d
-    # No markers → first non-empty line becomes the notification.
-    assert _parse_summary("Just one line")[0] == "Just one line"
-    assert _parse_summary("") == ("", "")
-    # Truncation fallback from raw items (no LLM).
-    items = [("task a", "line1\nline2", "", "done"), ("task b", "r b", "", "done")]
-    notif, digest = fallback_summary(items)
-    assert "line1" in notif and "r b" in notif
-    assert "- task a:" in digest
+
+def test_oversized_result_is_clipped_with_the_run_id(agent) -> None:
+    from core.agent import _SUBAGENT_RESULT_MAX_CHARS
+
+    text = agent._subagent_batch_message([_finished_run(result="x" * 50_000)])
+    assert len(text) < _SUBAGENT_RESULT_MAX_CHARS + 500
+    assert "full result of run s1 is on /subagents" in text
+
+
+def test_mixed_drain_frames_each_kind_under_its_own_wrapper(agent) -> None:
+    msg = agent._steer_message(
+        [
+            {"text": "actually use the calendar API", "kind": "user"},
+            {"text": "<subagent_results>\nCHF 599\n</subagent_results>", "kind": "subagent"},
+        ]
+    )
+    body = msg["content"]
+    assert "<steering_message>\nactually use the calendar API\n</steering_message>" in body
+    assert "<subagent_results>\nCHF 599\n</subagent_results>" in body
+    # The batch sits outside the follow-up wrapper — it is not what the owner said.
+    assert body.index("</steering_message>") < body.index("<subagent_results>")
 
 
 @pytest.mark.asyncio
-async def test_summarize_batch_calls_llm_and_parses() -> None:
-    from core.subagents import summarize_batch
+async def test_woken_turn_may_not_spawn_more_background_work(agent) -> None:
+    """The wake-loop guard: a turn that exists because a batch landed cannot start
+    another batch. Structural, not a threshold — synchronous spawns still run."""
+    woken = agent._new_request_state(None, woken_by_subagent=True)
+    for params in ({"task": "t", "background": True},):
+        out = await agent._tool_spawn_subagent(params, "telegram", "u1", woken)
+        assert "background=false" in out["error"]
+    out = await agent._tool_spawn_subagents(
+        {"tasks": [{"task": "a"}, {"task": "b"}], "background": True}, "telegram", "u1", woken
+    )
+    assert "background=false" in out["error"]
 
-    class FakeLLM:
-        async def generate_text(self, *, model, prompt, max_tokens=600):
-            return "NOTIFICATION: Done — 3 results.\nDIGEST: A, B and C found."
+    # Synchronous delegation is untouched — it returns inside the turn and cannot
+    # chain into another wake-up.
+    agent.llm = _ScriptedLLM([LLMResponse(text="sync answer", tool_calls=[])])
+    ok = await agent._tool_spawn_subagent({"task": "t"}, "telegram", "u1", woken)
+    assert ok["ok"] is True and ok["result"] == "sync answer"
 
-    notif, digest = await summarize_batch(FakeLLM(), "m", [("t", "r", "", "done")])
-    assert notif == "Done — 3 results."
-    assert digest == "A, B and C found."
+    # And an ordinary turn may still spawn background work.
+    normal = agent._new_request_state(None)
+    assert normal["woken_by_subagent"] is False
+
+
+def test_summariser_is_gone() -> None:
+    """#315 deleted the cheap-model batch summariser and its config knob."""
+    import core.subagents as sub
+    from core.config import Config
+
+    assert not hasattr(Config(), "subagent_summary")
+    for name in ("summarize_batch", "fallback_summary", "_parse_summary", "_SUMMARY_PROMPT"):
+        assert not hasattr(sub, name), name
 
 
 @pytest.mark.asyncio

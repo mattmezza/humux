@@ -427,66 +427,14 @@ class SubagentRegistry:
 def short_summary(text: str, limit: int = 280) -> str:
     """A one-glance summary of a subagent's result — first non-empty line, capped.
 
-    The crude fallback for :func:`summarize_batch` when the summary inference is
-    disabled or its output can't be parsed; also the sync spawn's preview field.
+    The preview field of a synchronous spawn; the full result is returned
+    alongside it, so nothing is lost.
     """
     for line in (text or "").splitlines():
         line = line.strip()
         if line:
             return line[:limit] + ("…" if len(line) > limit else "")
     return (text or "").strip()[:limit]
-
-
-# (task, outcome, agent, status) for one finished background run.
-SummaryItem = tuple[str, str, str, str]
-
-_SUMMARY_PROMPT = (
-    "Background helper task(s) ran for a user and finished. Summarise their "
-    "results into TWO things, and nothing else:\n"
-    "1. NOTIFICATION — ONE short sentence (max ~140 chars) giving the single most "
-    "important result/answer, phrased for the user. No greeting, no 'the helper "
-    "found', no markdown.\n"
-    "2. DIGEST — a few concise sentences with the key facts the assistant may need "
-    "to answer follow-ups. Real content only; do not restate the task or pad.\n\n"
-    "Respond in EXACTLY this format (NOTIFICATION on one line):\n"
-    "NOTIFICATION: <one sentence>\n"
-    "DIGEST: <concise summary>"
-)
-
-
-def _format_items(items: list[SummaryItem]) -> str:
-    blocks = []
-    for task, outcome, _agent, status in items:
-        blocks.append(f"--- task: {task}\nstatus: {status}\nresult:\n{outcome}")
-    return "\n\n".join(blocks)
-
-
-def fallback_summary(items: list[SummaryItem]) -> tuple[str, str]:
-    """Crude (no-LLM) fallback for :func:`summarize_batch`: first-line previews
-    for both the notification and the digest, used when the summary inference is
-    disabled or its output is unusable."""
-    notif = "; ".join(s for s in (short_summary(o, 120) for _, o, _, _ in items) if s)[:200]
-    digest = "\n".join(f"- {t[:80]}: {short_summary(o, 280)}" for t, o, _, _ in items)
-    return notif, digest
-
-
-def _parse_summary(raw: str) -> tuple[str, str]:
-    """Pull (notification, digest) out of the model's reply; ('', '') if unusable."""
-    if not raw or not raw.strip():
-        return "", ""
-    low = raw.lower()
-    n_idx, d_idx = low.find("notification:"), low.find("digest:")
-    if n_idx == -1 and d_idx == -1:
-        # No markers — take the first non-empty line as the notification.
-        lines = [ln.strip() for ln in raw.strip().splitlines() if ln.strip()]
-        return (lines[0], "\n".join(lines[1:]) or lines[0]) if lines else ("", "")
-    notif = ""
-    if n_idx != -1:
-        end = d_idx if (d_idx > n_idx) else len(raw)
-        body = raw[n_idx + len("notification:") : end].strip()
-        notif = body.splitlines()[0].strip() if body else ""
-    digest = raw[d_idx + len("digest:") :].strip() if d_idx != -1 else ""
-    return notif, digest
 
 
 def _selfcheck() -> None:
@@ -539,21 +487,6 @@ def _selfcheck() -> None:
     assert derive_label("", "", 3) == "task3"
     assert len(derive_label("x" * 99, "")) == 32
     print("subagents.py self-check OK")
-
-
-async def summarize_batch(llm, model: str, items: list[SummaryItem]) -> tuple[str, str]:
-    """LLM-distil a finished background batch into (notification, digest).
-
-    ``notification`` is one sentence for the chat; ``digest`` is concise context
-    for the spawning agent. Falls back to truncation if the model's output can't
-    be parsed (the caller falls back too if the inference itself raises).
-    """
-    prompt = f"{_SUMMARY_PROMPT}\n\n{_format_items(items)}"
-    raw = await llm.generate_text(model=model, prompt=prompt, max_tokens=600)
-    notif, digest = _parse_summary(raw)
-    if not notif:
-        return fallback_summary(items)
-    return notif, digest or notif
 
 
 if __name__ == "__main__":
