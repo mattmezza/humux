@@ -510,7 +510,10 @@ def test_batch_message_states_failures_and_thin_results(agent) -> None:
 def test_oversized_result_is_clipped_with_the_run_id(agent) -> None:
     from core.agent import _SUBAGENT_RESULT_MAX_CHARS
 
-    text = agent._subagent_batch_message([_finished_run(result="x" * 50_000)])
+    # Sized off the constant, so raising the ceiling can't quietly stop this
+    # from testing the clip at all.
+    oversized = "x" * (_SUBAGENT_RESULT_MAX_CHARS * 2)
+    text = agent._subagent_batch_message([_finished_run(result=oversized)])
     assert len(text) < _SUBAGENT_RESULT_MAX_CHARS + 500
     assert "full result of run s1 is on /subagents" in text
 

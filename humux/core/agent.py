@@ -175,13 +175,15 @@ _SUBAGENT_NOTE_MIN_SECONDS = 10.0
 # Defensive ceiling on how much of ONE background run's result is folded back
 # into the conversation when its batch lands (#315). Nothing else caps a
 # subagent's output, and the batch is appended to the agent's context whole.
-# ~4000 chars ≈ 1k tokens: room for the dense fact dump the child is told to
-# return (RESULT_FOR_AGENT_INSTRUCTION), small enough that a runaway helper
-# can't weigh down every later turn. The full text stays in the registry, so
-# /subagents and the admin Jobs page still show it.
+# Size is NOT the primary control — the child is told to return a dense fact
+# dump (RESULT_FOR_AGENT_INSTRUCTION) and to hand bulk back as a file path, so
+# a result near this line means the brief was wrong, not that the cap is tight.
+# ~80k chars ≈ 20k tokens: deliberately generous, so this only ever catches a
+# genuine runaway and never silently clips a legitimate answer. The full text
+# stays in the registry, so /subagents and the admin Jobs page still show it.
 # ponytail: a flat character cap, not a token count — only worth refining if a
 # real run ever lands close to the line and loses something that mattered.
-_SUBAGENT_RESULT_MAX_CHARS = 4000
+_SUBAGENT_RESULT_MAX_CHARS = 80_000
 
 # A turn started BY a landing batch may not start more background work: its own
 # results would wake another turn, and so on (#315). Synchronous spawns stay
