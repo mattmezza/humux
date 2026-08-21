@@ -4973,10 +4973,21 @@ class AgentCore:
 
     @staticmethod
     def _usage_total(usage: dict | None) -> int:
-        """Best-effort token count for budgeting (0 when the provider omits usage)."""
+        """Genuinely-new tokens for budgeting (0 when the provider omits usage).
+
+        Charging the whole prompt made a budget deplete quadratically in rounds:
+        cache reads are the re-sent conversation earlier rounds already paid for,
+        and the provider bills them at a fraction. ``context_tokens`` is already
+        normalised per provider shape (Anthropic: uncached input + cache
+        read/creation; OpenAI: the whole prompt), so subtracting the cache read
+        leaves the new input on both. Falls back to ``input_tokens`` when the
+        provider reports no context size.
+        """
         if not usage:
             return 0
-        return int(usage.get("input_tokens", 0) or 0) + int(usage.get("output_tokens", 0) or 0)
+        context = int(usage.get("context_tokens") or usage.get("input_tokens") or 0)
+        cache_read = int(usage.get("cache_read_input_tokens") or 0)
+        return int(usage.get("output_tokens") or 0) + max(0, context - cache_read)
 
     async def _tool_web_search(self, params: dict) -> dict:
         """Search the web via the configured provider (Tavily or SearXNG)."""
@@ -5121,8 +5132,7 @@ class AgentCore:
                     tools=[],
                     max_tokens=max_tokens,
                 )
-                u = r.usage or {}
-                return r.text, u.get("input_tokens", 0) + u.get("output_tokens", 0)
+                return r.text, self._usage_total(r.usage)
 
             return gen
 

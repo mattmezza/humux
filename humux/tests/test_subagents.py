@@ -1430,6 +1430,41 @@ async def test_run_reports_steps_tokens_and_stopped_reason(agent) -> None:
     assert res["tokens_used"] == run.tokens_used == 200  # 4 rounds × 50
 
 
+def test_usage_total_charges_only_new_tokens(agent) -> None:
+    # DeepSeek/OpenAI shape: input_tokens is the whole re-sent prompt, so only
+    # the cache miss is new (#199).
+    assert (
+        agent._usage_total(
+            {
+                "input_tokens": 10_000,
+                "output_tokens": 200,
+                "cache_read_input_tokens": 9_600,
+                "cache_creation_input_tokens": 400,
+                "context_tokens": 10_000,
+            }
+        )
+        == 600
+    )
+    # Anthropic shape: input_tokens is ALREADY the uncached input, cache reads
+    # sit beside it — charging input + creation, never collapsing to output.
+    assert (
+        agent._usage_total(
+            {
+                "input_tokens": 300,
+                "output_tokens": 200,
+                "cache_read_input_tokens": 9_600,
+                "cache_creation_input_tokens": 100,
+                "context_tokens": 10_000,
+            }
+        )
+        == 600
+    )
+    # No cache info at all: unchanged, input + output.
+    assert agent._usage_total({"input_tokens": 50, "output_tokens": 0}) == 50
+    assert agent._usage_total(None) == 0
+    assert agent._usage_total({}) == 0
+
+
 @pytest.mark.asyncio
 async def test_sync_result_carries_telemetry_on_a_clean_run(agent) -> None:
     agent.llm = _ScriptedLLM(
