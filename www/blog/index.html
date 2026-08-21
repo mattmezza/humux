@@ -32,46 +32,46 @@
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 
   <link rel="stylesheet" href="/assets/css/style.css">
+  <noscript><style>.reveal{opacity:1;transform:none}</style></noscript>
 
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script defer src="/assets/js/reveal.js"></script>
   <script defer src="https://analytics.casa.merola.co/script.js" data-website-id="b395aaa1-97a5-494e-9ad8-15b3ba20318e"></script>
 </head>
 <body>
 
   <!-- Nav -->
   <nav x-data="{ open: false }" class="sticky top-0 z-50 border-b border-[var(--color-border)]" style="background: rgba(6,6,6,0.85); backdrop-filter: blur(12px);">
-    <div class="mx-auto flex max-w-6xl items-center justify-between px-5 py-3">
+    <div class="mx-auto flex max-w-6xl items-center justify-between px-5 py-4">
       <a href="/" class="flex items-center gap-2 no-underline">
-        <span class="text-sm font-semibold tracking-wider" style="color: var(--color-accent);">humux</span>
-        <span class="hidden sm:inline text-xs" style="color: var(--color-muted);">/ˈhjuːmʌks/</span>
+        <span class="text-base font-semibold tracking-wider" style="color: var(--color-accent);">humux</span>
+        <span class="hidden sm:inline text-sm" style="color: var(--color-muted);">/ˈhjuːmʌks/</span>
       </a>
       <!-- Desktop links -->
-      <div class="hidden md:flex items-center gap-5 text-xs">
+      <div class="hidden md:flex items-center gap-6 text-[0.9375rem]">
         <a href="/" class="no-underline transition-colors" style="color: var(--color-secondary);">Home</a>
         <a href="/features.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Features</a>
         <a href="/use-cases.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Use Cases</a>
-        <a href="/comparison.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Comparison</a>
         <a href="/blog/" class="font-medium no-underline" style="color: var(--color-accent);">Blog</a>
-        <a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="no-underline transition-colors" style="color: var(--color-secondary);">
-          <svg class="inline-block h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        <a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="no-underline transition-colors" style="color: var(--color-secondary);" aria-label="GitHub">
+          <svg class="inline-block h-[1.125rem] w-[1.125rem]" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
         </a>
         <a href="https://docs.humux.dev" target="_blank" rel="noopener" class="no-underline transition-colors" style="color: var(--color-secondary);">Docs</a>
       </div>
       <!-- Hamburger -->
       <button @click="open = !open" class="md:hidden p-2" style="color: var(--color-secondary);" aria-label="Menu">
-        <svg x-show="!open" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-        <svg x-show="open" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        <svg x-show="!open" class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        <svg x-show="open" class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
     <!-- Mobile dropdown -->
-    <div x-show="open" @click.outside="open = false" x-cloak class="md:hidden border-t border-[var(--color-border)] px-5 py-4 space-y-3 text-sm" style="background: rgba(6,6,6,0.95);">
+    <div x-show="open" @click.outside="open = false" x-cloak class="md:hidden border-t border-[var(--color-border)] px-5 py-5 space-y-4 text-base" style="background: rgba(6,6,6,0.95);">
       <a href="/" class="block no-underline transition-colors" style="color: var(--color-secondary);">Home</a>
       <a href="/features.html" class="block no-underline transition-colors" style="color: var(--color-secondary);">Features</a>
       <a href="/use-cases.html" class="block no-underline transition-colors" style="color: var(--color-secondary);">Use Cases</a>
-      <a href="/comparison.html" class="block no-underline transition-colors" style="color: var(--color-secondary);">Comparison</a>
       <a href="/blog/" class="block font-medium no-underline" style="color: var(--color-accent);">Blog</a>
       <a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="block no-underline transition-colors" style="color: var(--color-secondary);">GitHub</a>
       <a href="https://docs.humux.dev" target="_blank" rel="noopener" class="block no-underline transition-colors" style="color: var(--color-secondary);">Docs</a>
@@ -85,7 +85,7 @@
       Engineering blog
     </h1>
     <p class="mx-auto mt-4 max-w-xl leading-relaxed" style="color: var(--color-secondary);">
-      Deep dives into agent architecture, memory systems, and self-hosted infrastructure.
+      Deep dives into agent architecture, memory systems, and the self-hosted infrastructure behind a squad of agents that works like a full team of experts.
     </p>
   </section>
 
@@ -93,127 +93,134 @@
   <section class="mx-auto max-w-6xl px-5 py-16">
     <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
 
-      <a href="/blog/release-notes-v032-v033.html" class="feature-card no-underline block">
-        <p class="text-xs font-mono mb-2" style="color: var(--color-muted);">July 9, 2026</p>
-        <h2 class="text-sm font-semibold mb-2" style="color: #eee;">Release Notes: v0.32 – v0.33</h2>
-        <p class="text-xs leading-relaxed mb-3" style="color: var(--color-secondary);">Webhook lifecycle reactions, mid-turn steering for busy threads, GitHub identity hardening, and infrastructure cleanup.</p>
-        <span class="text-xs font-medium" style="color: var(--color-accent);">Read &rarr;</span>
+      <a href="/blog/release-notes-v034-v038.html" class="feature-card no-underline block reveal">
+        <p class="text-sm font-mono mb-2" style="color: var(--color-muted);">August 21, 2026</p>
+        <h2 class="text-lg font-semibold mb-2" style="color: #eee;">Release Notes: v0.34 &ndash; v0.38</h2>
+        <p class="leading-relaxed mb-3" style="color: var(--color-secondary);">Parallel subagent fan-out with charge-as-you-go budgets, delegation trust lists, live read-only web transcripts, and a system prompt on a diet.</p>
+        <span class="text-sm font-medium" style="color: var(--color-accent);">Read &rarr;</span>
       </a>
 
-      <a href="/blog/release-notes-v029-v031.html" class="feature-card no-underline block">
-        <p class="text-xs font-mono mb-2" style="color: var(--color-muted);">July 8, 2026</p>
-        <h2 class="text-sm font-semibold mb-2" style="color: #eee;">Release Notes: v0.29 – v0.31</h2>
-        <p class="text-xs leading-relaxed mb-3" style="color: var(--color-secondary);">Sidecar architecture for slimmer deployments, remote voice backends, multilingual embeddings, and an accessibility overhaul.</p>
-        <span class="text-xs font-medium" style="color: var(--color-accent);">Read &rarr;</span>
+      <a href="/blog/release-notes-v032-v033.html" class="feature-card no-underline block reveal">
+        <p class="text-sm font-mono mb-2" style="color: var(--color-muted);">July 9, 2026</p>
+        <h2 class="text-lg font-semibold mb-2" style="color: #eee;">Release Notes: v0.32 – v0.33</h2>
+        <p class="leading-relaxed mb-3" style="color: var(--color-secondary);">Webhook lifecycle reactions, mid-turn steering for busy threads, GitHub identity hardening, and infrastructure cleanup.</p>
+        <span class="text-sm font-medium" style="color: var(--color-accent);">Read &rarr;</span>
       </a>
 
-      <a href="/blog/release-notes-v025-v028.html" class="feature-card no-underline block">
-        <p class="text-xs font-mono mb-2" style="color: var(--color-muted);">July 7, 2026</p>
-        <h2 class="text-sm font-semibold mb-2" style="color: #eee;">Release Notes: v0.25 – v0.28</h2>
-        <p class="text-xs leading-relaxed mb-3" style="color: var(--color-secondary);">Four releases in one week: GitHub webhook integration, per-agent LLM overrides, token usage dashboard, and chain-of-thought feedback.</p>
-        <span class="text-xs font-medium" style="color: var(--color-accent);">Read &rarr;</span>
+      <a href="/blog/release-notes-v029-v031.html" class="feature-card no-underline block reveal reveal-delay-1">
+        <p class="text-sm font-mono mb-2" style="color: var(--color-muted);">July 8, 2026</p>
+        <h2 class="text-lg font-semibold mb-2" style="color: #eee;">Release Notes: v0.29 – v0.31</h2>
+        <p class="leading-relaxed mb-3" style="color: var(--color-secondary);">Sidecar architecture for slimmer deployments, remote voice backends, multilingual embeddings, and an accessibility overhaul.</p>
+        <span class="text-sm font-medium" style="color: var(--color-accent);">Read &rarr;</span>
       </a>
 
-      <a href="/blog/replacing-cloud-ai.html" class="feature-card no-underline block">
-        <p class="text-xs font-mono mb-2" style="color: var(--color-muted);">July 3, 2026</p>
-        <h2 class="text-sm font-semibold mb-2" style="color: #eee;">How I Replaced My Cloud AI Assistant with a Self-Hosted Agent</h2>
-        <p class="text-xs leading-relaxed mb-3" style="color: var(--color-secondary);">A personal account of migrating from cloud AI assistants to humux — what worked, what broke, and what I'd do differently.</p>
-        <span class="text-xs font-medium" style="color: var(--color-accent);">Read &rarr;</span>
+      <a href="/blog/release-notes-v025-v028.html" class="feature-card no-underline block reveal reveal-delay-2">
+        <p class="text-sm font-mono mb-2" style="color: var(--color-muted);">July 7, 2026</p>
+        <h2 class="text-lg font-semibold mb-2" style="color: #eee;">Release Notes: v0.25 – v0.28</h2>
+        <p class="leading-relaxed mb-3" style="color: var(--color-secondary);">Four releases in one week: GitHub webhook integration, per-agent LLM overrides, token usage dashboard, and chain-of-thought feedback.</p>
+        <span class="text-sm font-medium" style="color: var(--color-accent);">Read &rarr;</span>
       </a>
 
-      <a href="/blog/subagent-patterns.html" class="feature-card no-underline block">
-        <p class="text-xs font-mono mb-2" style="color: var(--color-muted);">June 28, 2026</p>
-        <h2 class="text-sm font-semibold mb-2" style="color: #eee;">Subagent Patterns: Scoped Delegation for Complex Tasks</h2>
-        <p class="text-xs leading-relaxed mb-3" style="color: var(--color-secondary);">How to spawn scoped sub-tasks with inherit-never-widen security, budget controls, and sync or background execution.</p>
-        <span class="text-xs font-medium" style="color: var(--color-accent);">Read &rarr;</span>
+      <a href="/blog/replacing-cloud-ai.html" class="feature-card no-underline block reveal">
+        <p class="text-sm font-mono mb-2" style="color: var(--color-muted);">July 3, 2026</p>
+        <h2 class="text-lg font-semibold mb-2" style="color: #eee;">How I Replaced My Cloud AI Assistant with a Self-Hosted Agent</h2>
+        <p class="leading-relaxed mb-3" style="color: var(--color-secondary);">A personal account of migrating from cloud AI assistants to humux — what worked, what broke, and what I'd do differently.</p>
+        <span class="text-sm font-medium" style="color: var(--color-accent);">Read &rarr;</span>
       </a>
 
-      <a href="/blog/group-chat-engineering.html" class="feature-card no-underline block">
-        <p class="text-xs font-mono mb-2" style="color: var(--color-muted);">June 23, 2026</p>
-        <h2 class="text-sm font-semibold mb-2" style="color: #eee;">Group Chat Engineering: Multiple Agents, Zero Loops</h2>
-        <p class="text-xs leading-relaxed mb-3" style="color: var(--color-secondary);">The addressing protocol, reply decision gate, rate cap, and speaker tags that make multi-agent Telegram groups work.</p>
-        <span class="text-xs font-medium" style="color: var(--color-accent);">Read &rarr;</span>
+      <a href="/blog/subagent-patterns.html" class="feature-card no-underline block reveal reveal-delay-1">
+        <p class="text-sm font-mono mb-2" style="color: var(--color-muted);">June 28, 2026</p>
+        <h2 class="text-lg font-semibold mb-2" style="color: #eee;">Subagent Patterns: Scoped Delegation for Complex Tasks</h2>
+        <p class="leading-relaxed mb-3" style="color: var(--color-secondary);">How to spawn scoped sub-tasks with inherit-never-widen security, budget controls, and sync or background execution.</p>
+        <span class="text-sm font-medium" style="color: var(--color-accent);">Read &rarr;</span>
       </a>
 
-      <a href="/blog/why-multiple-agents.html" class="feature-card no-underline block">
-        <p class="text-xs font-mono mb-2" style="color: var(--color-muted);">June 18, 2026</p>
-        <h2 class="text-sm font-semibold mb-2" style="color: #eee;">Why Multiple Agents Beat One Generalist</h2>
-        <p class="text-xs leading-relaxed mb-3" style="color: var(--color-secondary);">Specialized agents with different skills, tools, and personalities outperform one monolithic agent trying to do everything.</p>
-        <span class="text-xs font-medium" style="color: var(--color-accent);">Read &rarr;</span>
+      <a href="/blog/group-chat-engineering.html" class="feature-card no-underline block reveal reveal-delay-2">
+        <p class="text-sm font-mono mb-2" style="color: var(--color-muted);">June 23, 2026</p>
+        <h2 class="text-lg font-semibold mb-2" style="color: #eee;">Group Chat Engineering: Multiple Agents, Zero Loops</h2>
+        <p class="leading-relaxed mb-3" style="color: var(--color-secondary);">The addressing protocol, reply decision gate, rate cap, and speaker tags that make multi-agent Telegram groups work.</p>
+        <span class="text-sm font-medium" style="color: var(--color-accent);">Read &rarr;</span>
       </a>
 
-      <a href="/blog/use-case-walkthroughs.html" class="feature-card no-underline block">
-        <p class="text-xs font-mono mb-2" style="color: var(--color-muted);">June 11, 2026</p>
-        <h2 class="text-sm font-semibold mb-2" style="color: #eee;">Four Ways to Use humux: Detailed Conversation Walkthroughs</h2>
-        <p class="text-xs leading-relaxed mb-3" style="color: var(--color-secondary);">Real conversation flows for four personas — from code review to email triage to multi-agent group chats.</p>
-        <span class="text-xs font-medium" style="color: var(--color-accent);">Read &rarr;</span>
+      <a href="/blog/why-multiple-agents.html" class="feature-card no-underline block reveal">
+        <p class="text-sm font-mono mb-2" style="color: var(--color-muted);">June 18, 2026</p>
+        <h2 class="text-lg font-semibold mb-2" style="color: #eee;">Why Multiple Agents Beat One Generalist</h2>
+        <p class="leading-relaxed mb-3" style="color: var(--color-secondary);">Specialized agents with different skills, tools, and personalities outperform one monolithic agent trying to do everything.</p>
+        <span class="text-sm font-medium" style="color: var(--color-accent);">Read &rarr;</span>
       </a>
 
-      <a href="/blog/voice-pipelines-for-agents.html" class="feature-card no-underline block">
-        <p class="text-xs font-mono mb-2" style="color: var(--color-muted);">June 4, 2026</p>
-        <h2 class="text-sm font-semibold mb-2" style="color: #eee;">Voice Pipelines for Agents: On-Device STT and TTS</h2>
-        <p class="text-xs leading-relaxed mb-3" style="color: var(--color-secondary);">Building offline-capable voice interaction with faster-whisper for speech-to-text and Kokoro 82M for text-to-speech.</p>
-        <span class="text-xs font-medium" style="color: var(--color-accent);">Read &rarr;</span>
+      <a href="/blog/use-case-walkthroughs.html" class="feature-card no-underline block reveal reveal-delay-1">
+        <p class="text-sm font-mono mb-2" style="color: var(--color-muted);">June 11, 2026</p>
+        <h2 class="text-lg font-semibold mb-2" style="color: #eee;">Four Ways to Use humux: Detailed Conversation Walkthroughs</h2>
+        <p class="leading-relaxed mb-3" style="color: var(--color-secondary);">Real conversation flows for four personas — from code review to email triage to multi-agent group chats.</p>
+        <span class="text-sm font-medium" style="color: var(--color-accent);">Read &rarr;</span>
       </a>
 
-      <a href="/blog/secrets-management-agents.html" class="feature-card no-underline block">
-        <p class="text-xs font-mono mb-2" style="color: var(--color-muted);">May 28, 2026</p>
-        <h2 class="text-sm font-semibold mb-2" style="color: #eee;">Secrets Management for AI Agents: Why .env Files Aren't Enough</h2>
-        <p class="text-xs leading-relaxed mb-3" style="color: var(--color-secondary);">How a two-tier encrypted vault keeps credentials out of the model context and why .env files are a security risk for autonomous agents.</p>
-        <span class="text-xs font-medium" style="color: var(--color-accent);">Read &rarr;</span>
+      <a href="/blog/voice-pipelines-for-agents.html" class="feature-card no-underline block reveal reveal-delay-2">
+        <p class="text-sm font-mono mb-2" style="color: var(--color-muted);">June 4, 2026</p>
+        <h2 class="text-lg font-semibold mb-2" style="color: #eee;">Voice Pipelines for Agents: On-Device STT and TTS</h2>
+        <p class="leading-relaxed mb-3" style="color: var(--color-secondary);">Building offline-capable voice interaction with faster-whisper for speech-to-text and Kokoro 82M for text-to-speech.</p>
+        <span class="text-sm font-medium" style="color: var(--color-accent);">Read &rarr;</span>
       </a>
 
-      <a href="/blog/permission-engineering.html" class="feature-card no-underline block">
-        <p class="text-xs font-mono mb-2" style="color: var(--color-muted);">May 19, 2026</p>
-        <h2 class="text-sm font-semibold mb-2" style="color: #eee;">Permission Engineering for Autonomous Agents</h2>
-        <p class="text-xs leading-relaxed mb-3" style="color: var(--color-secondary);">Glob-pattern rules, approval flows via Telegram, and vault-sealed secrets that never enter the model context.</p>
-        <span class="text-xs font-medium" style="color: var(--color-accent);">Read &rarr;</span>
+      <a href="/blog/secrets-management-agents.html" class="feature-card no-underline block reveal">
+        <p class="text-sm font-mono mb-2" style="color: var(--color-muted);">May 28, 2026</p>
+        <h2 class="text-lg font-semibold mb-2" style="color: #eee;">Secrets Management for AI Agents: Why .env Files Aren't Enough</h2>
+        <p class="leading-relaxed mb-3" style="color: var(--color-secondary);">How a two-tier encrypted vault keeps credentials out of the model context and why .env files are a security risk for autonomous agents.</p>
+        <span class="text-sm font-medium" style="color: var(--color-accent);">Read &rarr;</span>
       </a>
 
-      <a href="/blog/memory-architecture-for-agents.html" class="feature-card no-underline block">
-        <p class="text-xs font-mono mb-2" style="color: var(--color-muted);">May 5, 2026</p>
-        <h2 class="text-sm font-semibold mb-2" style="color: #eee;">Memory Architecture for Long-Running Agents</h2>
-        <p class="text-xs leading-relaxed mb-3" style="color: var(--color-secondary);">Four tiers of memory: lexical retrieval, semantic search, importance-based forgetting, and hygiene via deduplication.</p>
-        <span class="text-xs font-medium" style="color: var(--color-accent);">Read &rarr;</span>
+      <a href="/blog/permission-engineering.html" class="feature-card no-underline block reveal reveal-delay-1">
+        <p class="text-sm font-mono mb-2" style="color: var(--color-muted);">May 19, 2026</p>
+        <h2 class="text-lg font-semibold mb-2" style="color: #eee;">Permission Engineering for Autonomous Agents</h2>
+        <p class="leading-relaxed mb-3" style="color: var(--color-secondary);">Glob-pattern rules, approval flows via Telegram, and vault-sealed secrets that never enter the model context.</p>
+        <span class="text-sm font-medium" style="color: var(--color-accent);">Read &rarr;</span>
       </a>
 
-      <a href="/blog/skills-over-code.html" class="feature-card no-underline block">
-        <p class="text-xs font-mono mb-2" style="color: var(--color-muted);">April 21, 2026</p>
-        <h2 class="text-sm font-semibold mb-2" style="color: #eee;">Skills Over Code: Teaching Agents via Markdown</h2>
-        <p class="text-xs leading-relaxed mb-3" style="color: var(--color-secondary);">Why describing CLI tools in markdown files beats writing Python adapter classes for every new agent capability.</p>
-        <span class="text-xs font-medium" style="color: var(--color-accent);">Read &rarr;</span>
+      <a href="/blog/memory-architecture-for-agents.html" class="feature-card no-underline block reveal reveal-delay-2">
+        <p class="text-sm font-mono mb-2" style="color: var(--color-muted);">May 5, 2026</p>
+        <h2 class="text-lg font-semibold mb-2" style="color: #eee;">Memory Architecture for Long-Running Agents</h2>
+        <p class="leading-relaxed mb-3" style="color: var(--color-secondary);">Four tiers of memory: lexical retrieval, semantic search, importance-based forgetting, and hygiene via deduplication.</p>
+        <span class="text-sm font-medium" style="color: var(--color-accent);">Read &rarr;</span>
       </a>
 
-      <a href="/blog/single-container-agents.html" class="feature-card no-underline block">
-        <p class="text-xs font-mono mb-2" style="color: var(--color-muted);">April 2, 2026</p>
-        <h2 class="text-sm font-semibold mb-2" style="color: #eee;">Running a Full Agent Stack in a Single Container</h2>
-        <p class="text-xs leading-relaxed mb-3" style="color: var(--color-secondary);">Architecture decisions that make it possible to run LLM orchestration, voice, email, calendar, and admin UI in one Docker container.</p>
-        <span class="text-xs font-medium" style="color: var(--color-accent);">Read &rarr;</span>
+      <a href="/blog/skills-over-code.html" class="feature-card no-underline block reveal">
+        <p class="text-sm font-mono mb-2" style="color: var(--color-muted);">April 21, 2026</p>
+        <h2 class="text-lg font-semibold mb-2" style="color: #eee;">Skills Over Code: Teaching Agents via Markdown</h2>
+        <p class="leading-relaxed mb-3" style="color: var(--color-secondary);">Why describing CLI tools in markdown files beats writing Python adapter classes for every new agent capability.</p>
+        <span class="text-sm font-medium" style="color: var(--color-accent);">Read &rarr;</span>
       </a>
 
-      <a href="/blog/multi-channel-agent-architecture.html" class="feature-card no-underline block">
-        <p class="text-xs font-mono mb-2" style="color: var(--color-muted);">March 17, 2026</p>
-        <h2 class="text-sm font-semibold mb-2" style="color: #eee;">Designing Multi-Channel Agent Architectures</h2>
-        <p class="text-xs leading-relaxed mb-3" style="color: var(--color-secondary);">How to build agents that operate across Telegram, email, calendar, and CLI as a unified system with a common message abstraction.</p>
-        <span class="text-xs font-medium" style="color: var(--color-accent);">Read &rarr;</span>
+      <a href="/blog/single-container-agents.html" class="feature-card no-underline block reveal reveal-delay-1">
+        <p class="text-sm font-mono mb-2" style="color: var(--color-muted);">April 2, 2026</p>
+        <h2 class="text-lg font-semibold mb-2" style="color: #eee;">Running a Full Agent Stack in a Single Container</h2>
+        <p class="leading-relaxed mb-3" style="color: var(--color-secondary);">Architecture decisions that make it possible to run LLM orchestration, voice, email, calendar, and admin UI in one Docker container.</p>
+        <span class="text-sm font-medium" style="color: var(--color-accent);">Read &rarr;</span>
+      </a>
+
+      <a href="/blog/multi-channel-agent-architecture.html" class="feature-card no-underline block reveal reveal-delay-2">
+        <p class="text-sm font-mono mb-2" style="color: var(--color-muted);">March 17, 2026</p>
+        <h2 class="text-lg font-semibold mb-2" style="color: #eee;">Designing Multi-Channel Agent Architectures</h2>
+        <p class="leading-relaxed mb-3" style="color: var(--color-secondary);">How to build agents that operate across Telegram, email, calendar, and CLI as a unified system with a common message abstraction.</p>
+        <span class="text-sm font-medium" style="color: var(--color-accent);">Read &rarr;</span>
       </a>
 
     </div>
   </section>
 
   <!-- Footer -->
-  <footer class="border-t px-5 py-12" style="border-color: var(--color-border); background: var(--color-surface);">
+  <footer class="border-t px-5 py-14" style="border-color: var(--color-border); background: var(--color-surface);">
     <div class="mx-auto max-w-6xl">
-      <div class="flex flex-wrap items-start justify-between gap-8">
+      <div class="flex flex-wrap items-start justify-between gap-10">
         <div>
-          <span class="text-sm font-semibold" style="color: var(--color-accent);">humux</span>
-          <p class="mt-1 text-xs" style="color: var(--color-muted);">Human Multiplexer &mdash; /ˈhjuːmʌks/</p>
-          <p class="mt-0.5 text-xs" style="color: var(--color-muted);">Your self-hosted personal AI agent.</p>
+          <span class="text-base font-semibold" style="color: var(--color-accent);">humux</span>
+          <p class="mt-1.5 text-sm" style="color: var(--color-muted);">Human Multiplexer &mdash; /ˈhjuːmʌks/</p>
+          <p class="mt-1 text-sm" style="color: var(--color-muted);">A self-hosted squad of agents for your most ambitious ideas.</p>
         </div>
         <div class="flex flex-wrap gap-10">
           <div>
-            <span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Site</span>
-            <ul class="mt-2 space-y-1 text-xs" style="color: var(--color-muted);">
+            <span class="text-sm font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Site</span>
+            <ul class="mt-3 space-y-1.5 text-sm" style="color: var(--color-muted);">
               <li><a href="/" class="no-underline">Home</a></li>
               <li><a href="/features.html" class="no-underline">Features</a></li>
               <li><a href="/use-cases.html" class="no-underline">Use Cases</a></li>
@@ -222,23 +229,33 @@
             </ul>
           </div>
           <div>
-            <span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Resources</span>
-            <ul class="mt-2 space-y-1 text-xs" style="color: var(--color-muted);">
+            <span class="text-sm font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Resources</span>
+            <ul class="mt-3 space-y-1.5 text-sm" style="color: var(--color-muted);">
               <li><a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="no-underline">GitHub</a></li>
               <li><a href="https://docs.humux.dev" target="_blank" rel="noopener" class="no-underline">Documentation</a></li>
               <li><a href="https://github.com/mattmezza/humux/releases" target="_blank" rel="noopener" class="no-underline">Releases</a></li>
             </ul>
           </div>
           <div>
-            <span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Author</span>
-            <ul class="mt-2 space-y-1 text-xs" style="color: var(--color-muted);">
+            <span class="text-sm font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Company</span>
+            <ul class="mt-3 space-y-1.5 text-sm" style="color: var(--color-muted);">
+              <li><a href="/about.html" class="no-underline">About</a></li>
+              <li><a href="/support.html" class="no-underline">Support</a></li>
+              <li><a href="/privacy.html" class="no-underline">Privacy</a></li>
+              <li><a href="/terms.html" class="no-underline">Terms</a></li>
+              <li><a href="/licence.html" class="no-underline">Licence</a></li>
+            </ul>
+          </div>
+          <div>
+            <span class="text-sm font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Author</span>
+            <ul class="mt-3 space-y-1.5 text-sm" style="color: var(--color-muted);">
               <li><a href="https://x.com/_mattmezza_" target="_blank" rel="noopener" class="no-underline">@_mattmezza_</a></li>
             </ul>
           </div>
         </div>
       </div>
-      <div class="mt-10 border-t pt-6 text-center text-xs" style="border-color: var(--color-border); color: var(--color-muted);">
-        &copy; 2026 Merola Software &amp; Services. MIT License.
+      <div class="mt-10 border-t pt-6 text-center text-sm" style="border-color: var(--color-border); color: var(--color-muted);">
+        &copy; 2026 <a href="https://matteo.merola.co/software" target="_blank" rel="noopener" class="no-underline">Merola Software &amp; Services</a>
       </div>
     </div>
   </footer>

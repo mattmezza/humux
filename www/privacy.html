@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy &mdash; humux</title>
+  <meta name="description" content="humux is self-hosted: Merola Software &amp; Services never receives, stores or processes your data. The humux.dev site uses cookieless, self-hosted analytics. No ads, no trackers, no data sales.">
+  <meta name="author" content="Merola Software &amp; Services">
+  <link rel="canonical" href="https://humux.dev/privacy">
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="Privacy &mdash; humux">
+  <meta property="og:description" content="humux is self-hosted: Merola Software &amp; Services never receives, stores or processes your data. The humux.dev site uses cookieless, self-hosted analytics. No ads, no trackers, no data sales.">
+  <meta property="og:url" content="https://humux.dev/privacy">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="https://humux.dev/assets/images/og-image.png">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Privacy &mdash; humux">
+  <meta name="twitter:description" content="humux is self-hosted: Merola Software &amp; Services never receives, stores or processes your data. The humux.dev site uses cookieless, self-hosted analytics. No ads, no trackers, no data sales.">
+  <meta name="twitter:image" content="https://humux.dev/assets/images/og-image.png">
+  <meta name="twitter:site" content="@_mattmezza_">
+  <meta name="twitter:creator" content="@_mattmezza_">
+
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://humux.dev/"},{"@type":"ListItem","position":2,"name":"Privacy","item":"https://humux.dev/privacy"}]}
+  </script>
+
+  <link rel="alternate" type="application/rss+xml" title="humux blog" href="/blog/feed.xml">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="/assets/images/favicon-32.svg">
+  <link rel="alternate icon" type="image/png" sizes="32x32" href="/assets/images/favicon-32.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/images/apple-touch-icon.png">
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CSS (compiled locally) -->
+  <link rel="stylesheet" href="/assets/css/style.css">
+  <noscript><style>.reveal{opacity:1;transform:none}</style></noscript>
+
+  <!-- Alpine.js (CDN) -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script defer src="/assets/js/reveal.js"></script>
+  <script defer src="https://analytics.casa.merola.co/script.js" data-website-id="b395aaa1-97a5-494e-9ad8-15b3ba20318e"></script>
+</head>
+<body>
+
+  <!-- Nav -->
+  <nav x-data="{ open: false }" class="sticky top-0 z-50 border-b border-[var(--color-border)]" style="background: rgba(6,6,6,0.85); backdrop-filter: blur(12px);">
+    <div class="mx-auto flex max-w-6xl items-center justify-between px-5 py-4">
+      <a href="/" class="flex items-center gap-2 no-underline">
+        <span class="text-base font-semibold tracking-wider" style="color: var(--color-accent);">humux</span>
+        <span class="hidden sm:inline text-sm" style="color: var(--color-muted);">/ˈhjuːmʌks/</span>
+      </a>
+      <!-- Desktop links -->
+      <div class="hidden md:flex items-center gap-6 text-[0.9375rem]">
+        <a href="/" class="no-underline transition-colors" style="color: var(--color-secondary);">Home</a>
+        <a href="/features.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Features</a>
+        <a href="/use-cases.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Use Cases</a>
+        <a href="/blog/" class="no-underline transition-colors" style="color: var(--color-secondary);">Blog</a>
+        <a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="no-underline transition-colors" style="color: var(--color-secondary);" aria-label="GitHub">
+          <svg class="inline-block h-[1.125rem] w-[1.125rem]" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        </a>
+        <a href="https://docs.humux.dev" target="_blank" rel="noopener" class="no-underline transition-colors" style="color: var(--color-secondary);">Docs</a>
+      </div>
+      <!-- Hamburger -->
+      <button @click="open = !open" class="md:hidden p-2" style="color: var(--color-secondary);" aria-label="Menu">
+        <svg x-show="!open" class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        <svg x-show="open" class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <!-- Mobile dropdown -->
+    <div x-show="open" @click.outside="open = false" x-cloak class="md:hidden border-t border-[var(--color-border)] px-5 py-5 space-y-4 text-base" style="background: rgba(6,6,6,0.95);">
+      <a href="/" class="block no-underline transition-colors" style="color: var(--color-secondary);">Home</a>
+      <a href="/features.html" class="block no-underline transition-colors" style="color: var(--color-secondary);">Features</a>
+      <a href="/use-cases.html" class="block no-underline transition-colors" style="color: var(--color-secondary);">Use Cases</a>
+      <a href="/blog/" class="block no-underline transition-colors" style="color: var(--color-secondary);">Blog</a>
+      <a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="block no-underline transition-colors" style="color: var(--color-secondary);">GitHub</a>
+      <a href="https://docs.humux.dev" target="_blank" rel="noopener" class="block no-underline transition-colors" style="color: var(--color-secondary);">Docs</a>
+    </div>
+  </nav>
+
+  <!-- Header -->
+  <section class="relative overflow-hidden border-b px-5 py-20" style="border-color: var(--color-border); background: radial-gradient(ellipse 80% 60% at 50% 0%, rgba(102,204,153,0.04) 0%, transparent 70%);">
+    <div class="pointer-events-none absolute inset-0 opacity-[0.03]"
+      style="background-image: linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px); background-size: 48px 48px;"></div>
+    <div class="relative z-10 mx-auto max-w-3xl">
+      <span class="kicker reveal">privacy</span>
+      <h1 class="reveal mt-5 text-4xl font-bold leading-tight sm:text-5xl" style="color: #eee;">Privacy policy</h1>
+      <p class="reveal reveal-delay-1 mt-6 text-lg leading-relaxed" style="color: var(--color-secondary);">Short version: humux runs on your hardware, so we never see your data. This website counts visits without cookies. Nothing is sold, ever.</p>
+      <p class="reveal reveal-delay-2 mt-4 font-mono text-sm" style="color: var(--color-muted);">Last updated: August 21, 2026</p>
+    </div>
+  </section>
+
+  <section class="border-b px-5 py-20" style="border-color: var(--color-border); background: var(--color-surface);">
+    <div class="mx-auto max-w-3xl">
+
+      <div class="reveal">
+        <h2 class="text-2xl font-semibold" style="color: #eee;">The software</h2>
+        <p class="mt-3 text-base leading-relaxed" style="color: var(--color-secondary);">
+          humux is self-hosted. You download it, you run it, and it lives on your own hardware or on
+          infrastructure you rent. Merola Software &amp; Services never receives, stores or processes
+          the data your humux instance handles &mdash; not your email, not your calendar, not your
+          messages, not your files, not your conversations with your agents. There is no account, no
+          sign-up, no license server, and no telemetry. The software makes no callbacks to us.
+        </p>
+        <p class="mt-4 text-base leading-relaxed" style="color: var(--color-secondary);">
+          Your data leaves your machine only where you tell it to: to the LLM provider, search
+          provider, email host, calendar server or messaging platform you configure, using your own
+          API keys and your own accounts. Those providers are your contractual counterparties, and
+          their privacy terms apply to what you send them. Choosing them &mdash; and choosing what
+          your agents may touch &mdash; is entirely under your control.
+        </p>
+      </div>
+
+      <div class="reveal mt-10">
+        <h2 class="text-2xl font-semibold" style="color: #eee;">This website</h2>
+        <p class="mt-3 text-base leading-relaxed" style="color: var(--color-secondary);">
+          humux.dev uses <a href="https://umami.is" target="_blank" rel="noopener" class="no-underline">umami</a>,
+          a self-hosted, cookieless analytics tool running on our own server at
+          <code class="inline-code">analytics.casa.merola.co</code>. It records anonymous aggregate
+          statistics only: page views, referrer, rough country, browser and screen size. It sets no
+          cookies, builds no cross-site profile, and stores no personal data or IP addresses that
+          could identify you. No third-party analytics, no ad networks, no tracking pixels.
+        </p>
+        <p class="mt-4 text-base leading-relaxed" style="color: var(--color-secondary);">
+          The site loads two third-party assets: Google Fonts (for typefaces) and jsDelivr (for the
+          Alpine.js library). Those requests reach the respective CDNs and are governed by their own
+          policies. Everything else is served from humux.dev.
+        </p>
+      </div>
+
+      <div class="reveal mt-10">
+        <h2 class="text-2xl font-semibold" style="color: #eee;">Email you send us</h2>
+        <p class="mt-3 text-base leading-relaxed" style="color: var(--color-secondary);">
+          If you write to <a href="mailto:support@humux.dev" class="no-underline">support@humux.dev</a>,
+          we keep the message so we can answer it and follow up. We use it for nothing else. Ask us to
+          delete it and we will.
+        </p>
+      </div>
+
+      <div class="reveal mt-10">
+        <h2 class="text-2xl font-semibold" style="color: #eee;">What we never do</h2>
+        <div class="mt-4 grid gap-2">
+          <div class="flex items-center gap-3 rounded-md px-4 py-2.5 text-sm" style="background: var(--color-elevated);">
+            <span style="color: var(--color-accent);">&#10007;</span>
+            <span style="color: var(--color-secondary);">Sell, rent or share your data with anyone</span>
+          </div>
+          <div class="flex items-center gap-3 rounded-md px-4 py-2.5 text-sm" style="background: var(--color-elevated);">
+            <span style="color: var(--color-accent);">&#10007;</span>
+            <span style="color: var(--color-secondary);">Run advertising, ad trackers or third-party pixels</span>
+          </div>
+          <div class="flex items-center gap-3 rounded-md px-4 py-2.5 text-sm" style="background: var(--color-elevated);">
+            <span style="color: var(--color-accent);">&#10007;</span>
+            <span style="color: var(--color-secondary);">Collect usage telemetry from your humux instance</span>
+          </div>
+          <div class="flex items-center gap-3 rounded-md px-4 py-2.5 text-sm" style="background: var(--color-elevated);">
+            <span style="color: var(--color-accent);">&#10007;</span>
+            <span style="color: var(--color-secondary);">Train models on anything of yours</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="reveal mt-10">
+        <h2 class="text-2xl font-semibold" style="color: #eee;">Your rights</h2>
+        <p class="mt-3 text-base leading-relaxed" style="color: var(--color-secondary);">
+          Under the Swiss FADP and the GDPR you may request access to, correction of, or deletion of
+          any personal data we hold about you. In practice that is limited to email correspondence,
+          since the analytics data is anonymous and the software sends us nothing. Write to
+          <a href="mailto:support@humux.dev" class="no-underline">support@humux.dev</a> and we will
+          answer within 30 days.
+        </p>
+      </div>
+
+      <div class="feature-card reveal mt-10">
+        <span class="tag">data controller</span>
+        <h2 class="mt-3 text-xl font-semibold" style="color: #eee;">Merola Software &amp; Services</h2>
+        <p class="mt-2 text-base leading-relaxed" style="color: var(--color-secondary);">
+          Wartauweg 19, 8049 Z&uuml;rich, Switzerland<br>
+          <a href="mailto:support@humux.dev" class="no-underline">support@humux.dev</a>
+        </p>
+      </div>
+
+      <p class="reveal text-sm" style="color: var(--color-muted);">
+        If this policy changes, the date at the top changes with it. See also the
+        <a href="/terms.html" class="no-underline">terms of use</a> and the
+        <a href="/licence.html" class="no-underline">licence</a>.
+      </p>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="border-t px-5 py-14" style="border-color: var(--color-border); background: var(--color-surface);">
+    <div class="mx-auto max-w-6xl">
+      <div class="flex flex-wrap items-start justify-between gap-10">
+        <div>
+          <span class="text-base font-semibold" style="color: var(--color-accent);">humux</span>
+          <p class="mt-1.5 text-sm" style="color: var(--color-muted);">Human Multiplexer &mdash; /ˈhjuːmʌks/</p>
+          <p class="mt-1 text-sm" style="color: var(--color-muted);">A self-hosted squad of agents for your most ambitious ideas.</p>
+        </div>
+        <div class="flex flex-wrap gap-10">
+          <div>
+            <span class="text-sm font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Site</span>
+            <ul class="mt-3 space-y-1.5 text-sm" style="color: var(--color-muted);">
+              <li><a href="/" class="no-underline">Home</a></li>
+              <li><a href="/features.html" class="no-underline">Features</a></li>
+              <li><a href="/use-cases.html" class="no-underline">Use Cases</a></li>
+              <li><a href="/comparison.html" class="no-underline">Comparison</a></li>
+              <li><a href="/blog/" class="no-underline">Blog</a></li>
+            </ul>
+          </div>
+          <div>
+            <span class="text-sm font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Resources</span>
+            <ul class="mt-3 space-y-1.5 text-sm" style="color: var(--color-muted);">
+              <li><a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="no-underline">GitHub</a></li>
+              <li><a href="https://docs.humux.dev" target="_blank" rel="noopener" class="no-underline">Documentation</a></li>
+              <li><a href="https://github.com/mattmezza/humux/releases" target="_blank" rel="noopener" class="no-underline">Releases</a></li>
+            </ul>
+          </div>
+          <div>
+            <span class="text-sm font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Company</span>
+            <ul class="mt-3 space-y-1.5 text-sm" style="color: var(--color-muted);">
+              <li><a href="/about.html" class="no-underline">About</a></li>
+              <li><a href="/support.html" class="no-underline">Support</a></li>
+              <li><a href="/privacy.html" class="no-underline">Privacy</a></li>
+              <li><a href="/terms.html" class="no-underline">Terms</a></li>
+              <li><a href="/licence.html" class="no-underline">Licence</a></li>
+            </ul>
+          </div>
+          <div>
+            <span class="text-sm font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Author</span>
+            <ul class="mt-3 space-y-1.5 text-sm" style="color: var(--color-muted);">
+              <li><a href="https://x.com/_mattmezza_" target="_blank" rel="noopener" class="no-underline">@_mattmezza_</a></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div class="mt-10 border-t pt-6 text-center text-sm" style="border-color: var(--color-border); color: var(--color-muted);">
+        &copy; 2026 <a href="https://matteo.merola.co/software" target="_blank" rel="noopener" class="no-underline">Merola Software &amp; Services</a>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

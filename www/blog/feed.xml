@@ -8,6 +8,13 @@
     <atom:link href="https://humux.dev/blog/feed.xml" rel="self" type="application/rss+xml"/>
 
     <item>
+      <title>Release Notes: v0.34 – v0.38</title>
+      <link>https://humux.dev/blog/release-notes-v034-v038.html</link>
+      <guid>https://humux.dev/blog/release-notes-v034-v038.html</guid>
+      <pubDate>Fri, 21 Aug 2026 00:00:00 +0000</pubDate>
+      <description>Parallel subagent fan-out with charge-as-you-go budgets, delegation trust lists, live read-only web transcripts, and a system prompt on a diet.</description>
+    </item>
+    <item>
       <title>Release Notes: v0.32 – v0.33</title>
       <link>https://humux.dev/blog/release-notes-v032-v033.html</link>
       <guid>https://humux.dev/blog/release-notes-v032-v033.html</guid>

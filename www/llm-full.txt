@@ -1,10 +1,10 @@
 # humux — Human Multiplexer (Full Reference)
 
-> Self-hosted personal AI agent. One Docker container. Messaging, email, calendar, contacts, voice, memory, and automation.
+> A squad of AI agents that acts like a full team of experts at your disposal. Self-hosted, one Docker container. Messaging, email, calendar, contacts, voice, memory, and automation.
 
 ## Overview
 
-humux (pronounced /ˈhjuːmʌks/) is an open-source, self-hosted personal AI agent. It runs entirely in a single Docker container with no external database dependencies. humux acts as a unified intelligence layer across all channels of a person's digital life.
+humux (pronounced /ˈhjuːmʌks/) is an open-source, self-hosted squad of AI agents — a lead, a developer, a researcher, a marketer, a QA — that acts like a full team of experts at your disposal, working your most ambitious ideas end to end. It runs entirely in a single Docker container with no external database dependencies, and doubles as a unified personal assistant across all channels of a person's digital life.
 
 - License: MIT
 - Language: Python 3.14 + uv
@@ -265,6 +265,14 @@ All under `/app/data`. Backup: `tar czf backup.tar.gz ./data`.
 ## Links
 
 - Website: https://humux.dev
+- Features: https://humux.dev/features
+- Use cases: https://humux.dev/use-cases
+- Comparison: https://humux.dev/comparison
+- About: https://humux.dev/about
+- Support: https://humux.dev/support
+- Licence: https://humux.dev/licence
+- Privacy: https://humux.dev/privacy
+- Terms: https://humux.dev/terms
 - GitHub: https://github.com/mattmezza/humux
 - Documentation: https://docs.humux.dev
 - Blog: https://humux.dev/blog/

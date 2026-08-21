@@ -1,27 +1,56 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="scroll-smooth">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>404 — humux</title>
-  <meta name="robots" content="noindex, nofollow">
+  <title>Licence &mdash; humux</title>
+  <meta name="description" content="humux is released under the MIT licence: use it, fork it, ship it, commercially too. Full licence text and a link to the source repository.">
+  <meta name="author" content="Merola Software &amp; Services">
+  <link rel="canonical" href="https://humux.dev/licence">
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="Licence &mdash; humux">
+  <meta property="og:description" content="humux is released under the MIT licence: use it, fork it, ship it, commercially too. Full licence text and a link to the source repository.">
+  <meta property="og:url" content="https://humux.dev/licence">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="https://humux.dev/assets/images/og-image.png">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Licence &mdash; humux">
+  <meta name="twitter:description" content="humux is released under the MIT licence: use it, fork it, ship it, commercially too. Full licence text and a link to the source repository.">
+  <meta name="twitter:image" content="https://humux.dev/assets/images/og-image.png">
+  <meta name="twitter:site" content="@_mattmezza_">
+  <meta name="twitter:creator" content="@_mattmezza_">
+
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://humux.dev/"},{"@type":"ListItem","position":2,"name":"Licence","item":"https://humux.dev/licence"}]}
+  </script>
+
+  <link rel="alternate" type="application/rss+xml" title="humux blog" href="/blog/feed.xml">
+
+  <!-- Favicon -->
   <link rel="icon" type="image/svg+xml" href="/assets/images/favicon-32.svg">
+  <link rel="alternate icon" type="image/png" sizes="32x32" href="/assets/images/favicon-32.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/images/apple-touch-icon.png">
+
+  <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CSS (compiled locally) -->
   <link rel="stylesheet" href="/assets/css/style.css">
   <noscript><style>.reveal{opacity:1;transform:none}</style></noscript>
+
+  <!-- Alpine.js (CDN) -->
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
   <script defer src="/assets/js/reveal.js"></script>
-  <style>
-    body { background: var(--color-bg); margin: 0; display: flex; flex-direction: column; min-height: 100vh; }
-    main { flex: 1; display: flex; align-items: center; justify-content: center; padding: 4rem 0; }
-    .glitch { font-family: var(--font-mono); }
-  </style>
   <script defer src="https://analytics.casa.merola.co/script.js" data-website-id="b395aaa1-97a5-494e-9ad8-15b3ba20318e"></script>
 </head>
 <body>
 
+  <!-- Nav -->
   <nav x-data="{ open: false }" class="sticky top-0 z-50 border-b border-[var(--color-border)]" style="background: rgba(6,6,6,0.85); backdrop-filter: blur(12px);">
     <div class="mx-auto flex max-w-6xl items-center justify-between px-5 py-4">
       <a href="/" class="flex items-center gap-2 no-underline">
@@ -56,35 +85,81 @@
     </div>
   </nav>
 
-  <main>
-  <div class="text-center px-5">
-    <div class="glitch text-7xl font-bold mb-4" style="color: var(--color-accent);">404</div>
-    <h1 class="text-2xl font-semibold mb-2" style="color: #eee;">Page not found</h1>
-    <p class="text-lg mb-8 max-w-sm mx-auto" style="color: var(--color-secondary);">
-      The terminal doesn't recognise that command. Maybe you took a wrong turn in the pipeline?
-    </p>
-    <div class="terminal-window max-w-xs mx-auto mb-8 text-left">
-      <div class="terminal-header">
-        <span class="terminal-dot red"></span>
-        <span class="terminal-dot yellow"></span>
-        <span class="terminal-dot green"></span>
-        <span class="ml-2 text-sm" style="color: var(--color-muted);">bash — error</span>
-      </div>
-      <div class="terminal-body">
-        <div><span class="terminal-prompt"></span><span style="color: var(--color-accent);">curl</span> https://humux.dev/$(<span style="color: #888;">whoops</span>)</div>
-        <div class="mt-2" style="color: #c66;">✖ 404 — Not Found</div>
-        <div class="mt-2 opacity-60">No such page. Try one of these:</div>
-        <div class="mt-1"><span class="terminal-prompt"></span><a href="/" class="no-underline" style="color: var(--color-accent);">cd /</a></div>
-        <div><span class="terminal-prompt"></span><a href="/features.html" class="no-underline" style="color: var(--color-accent);">cat /features</a></div>
-        <div><span class="terminal-prompt"></span><a href="/use-cases.html" class="no-underline" style="color: var(--color-accent);">cat /use-cases</a></div>
-        <div><span class="terminal-prompt"></span><a href="/comparison.html" class="no-underline" style="color: var(--color-accent);">cat /comparison</a></div>
-      </div>
+  <!-- Header -->
+  <section class="relative overflow-hidden border-b px-5 py-20" style="border-color: var(--color-border); background: radial-gradient(ellipse 80% 60% at 50% 0%, rgba(102,204,153,0.04) 0%, transparent 70%);">
+    <div class="pointer-events-none absolute inset-0 opacity-[0.03]"
+      style="background-image: linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px); background-size: 48px 48px;"></div>
+    <div class="relative z-10 mx-auto max-w-3xl">
+      <span class="kicker reveal">licence</span>
+      <h1 class="reveal mt-5 text-4xl font-bold leading-tight sm:text-5xl" style="color: #eee;">MIT <span class="h1-accent">licence</span></h1>
+      <p class="reveal reveal-delay-1 mt-6 text-lg leading-relaxed" style="color: var(--color-secondary);">humux is MIT licensed. Use it, fork it, ship it &mdash; commercially too. Keep the copyright notice, and don't expect a warranty.</p>
+      <p class="reveal reveal-delay-2 mt-4 font-mono text-sm" style="color: var(--color-muted);">Last updated: August 21, 2026</p>
     </div>
-    <a href="/" class="btn-accent no-underline">Return to base</a>
-    <p class="mt-4 text-sm" style="color: var(--color-muted);">humux — Human Multiplexer &mdash; Merola Software & Services, Zürich</p>
-  </div>
-  </main>
+  </section>
 
+  <section class="border-b px-5 py-20" style="border-color: var(--color-border); background: var(--color-surface);">
+    <div class="mx-auto max-w-3xl">
+      <p class="reveal text-base leading-relaxed" style="color: var(--color-secondary);">
+        In practice, the MIT licence means you can run humux for anything, change it however you
+        like, fold it into a product you sell, and redistribute it &mdash; without asking, without
+        paying, and without opening your own source. The two conditions are that the copyright and
+        licence notice below travel with the code, and that the software comes with no warranty and
+        no liability on our side.
+      </p>
+
+      <div class="reveal reveal-delay-1 mt-8">
+        <div class="terminal-window">
+          <div class="terminal-header">
+            <span class="terminal-dot red"></span>
+            <span class="terminal-dot yellow"></span>
+            <span class="terminal-dot green"></span>
+            <span class="ml-2 text-sm" style="color: var(--color-muted);">LICENSE</span>
+          </div>
+          <div class="terminal-body">
+<pre style="white-space: pre-wrap;">MIT License
+
+Copyright (c) 2026 Merola Software &amp; Services
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.</pre>
+          </div>
+        </div>
+      </div>
+
+      <div class="reveal mt-8 flex flex-wrap gap-4">
+        <a href="https://github.com/mattmezza/humux/blob/main/LICENSE" target="_blank" rel="noopener" class="btn-ghost no-underline gap-2">
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+          LICENSE on GitHub
+        </a>
+        <a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="btn-ghost no-underline">
+          Source repository
+          <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </a>
+      </div>
+
+      <p class="reveal mt-8 text-sm" style="color: var(--color-muted);">
+        Third-party components bundled with humux keep their own licences. See also the
+        <a href="/terms.html" class="no-underline">terms of use</a>.
+      </p>
+    </div>
+  </section>
+
+  <!-- Footer -->
   <footer class="border-t px-5 py-14" style="border-color: var(--color-border); background: var(--color-surface);">
     <div class="mx-auto max-w-6xl">
       <div class="flex flex-wrap items-start justify-between gap-10">

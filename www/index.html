@@ -3,23 +3,23 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>humux — Self-hosted AI personal assistant. Email, calendar, messages — one container.</title>
-  <meta name="description" content="humux is a self-hosted AI personal assistant that handles your email, calendar, contacts, and messages in a single Docker container. Morning briefings, email triage, voice — no cloud dependencies.">
-  <meta name="keywords" content="self-hosted AI assistant, personal AI, Docker, open source, privacy, email triage, calendar agent, Telegram bot, voice assistant">
+  <title>humux — A squad of agents. A whole team of experts. Self-hosted.</title>
+  <meta name="description" content="humux runs a squad of AI agents — a lead, a developer, a researcher, a marketer, a QA — that research, build, ship and market your most ambitious ideas. Self-hosted in one Docker container, on your hardware, under your own API keys.">
+  <meta name="keywords" content="AI agent squad, multi-agent system, self-hosted AI agents, autonomous developer agent, Docker, open source, privacy, AI personal assistant, email triage, calendar agent, Telegram bot">
   <meta name="author" content="Merola Software &amp; Services">
   <link rel="canonical" href="https://humux.dev">
 
   <!-- Open Graph -->
-  <meta property="og:title" content="humux — Self-hosted AI personal assistant">
-  <meta property="og:description" content="Email, calendar, contacts, and messages — handled by your own AI. One container. Your data.">
+  <meta property="og:title" content="humux — A squad of agents. A whole team of experts.">
+  <meta property="og:description" content="A lead, a developer, a researcher, a marketer, a QA — working your most ambitious ideas. Self-hosted, one container, your keys.">
   <meta property="og:url" content="https://humux.dev">
   <meta property="og:type" content="website">
   <meta property="og:image" content="https://humux.dev/assets/images/og-image.png">
 
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="humux — Self-hosted AI personal assistant">
-  <meta name="twitter:description" content="Email, calendar, contacts, and messages — one container. Your data.">
+  <meta name="twitter:title" content="humux — A squad of agents. A whole team of experts.">
+  <meta name="twitter:description" content="A lead, a developer, a researcher, a marketer, a QA — working your most ambitious ideas. Self-hosted, one container, your keys.">
   <meta name="twitter:image" content="https://humux.dev/assets/images/og-image.png">
   <meta name="twitter:site" content="@_mattmezza_">
   <meta name="twitter:creator" content="@_mattmezza_">
@@ -31,7 +31,7 @@
     "@type": "SoftwareApplication",
     "name": "humux",
     "alternateName": "Human Multiplexer",
-    "description": "Self-hosted AI personal assistant. One Docker container. Email triage, calendar management, morning briefings, contacts, voice, and automation.",
+    "description": "A self-hosted squad of AI agents — lead, developer, researcher, marketer, QA — that research, build, ship and market your ideas. One Docker container. Also handles email triage, calendar, briefings, contacts and voice.",
     "url": "https://humux.dev",
     "applicationCategory": "DeveloperApplication",
     "operatingSystem": "Linux, macOS, Windows (Docker)",
@@ -61,13 +61,15 @@
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 
   <!-- Tailwind CSS (compiled locally) -->
   <link rel="stylesheet" href="/assets/css/style.css">
+  <noscript><style>.reveal{opacity:1;transform:none}</style></noscript>
 
   <!-- Alpine.js (CDN) -->
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script defer src="/assets/js/reveal.js"></script>
   <script>
   fetch('https://api.github.com/repos/mattmezza/humux/releases/latest')
     .then(r => r.json())
@@ -80,30 +82,30 @@
 
   <!-- Nav -->
   <nav x-data="{ open: false }" class="sticky top-0 z-50 border-b border-[var(--color-border)]" style="background: rgba(6,6,6,0.85); backdrop-filter: blur(12px);">
-    <div class="mx-auto flex max-w-6xl items-center justify-between px-5 py-3">
+    <div class="mx-auto flex max-w-6xl items-center justify-between px-5 py-4">
       <a href="/" class="flex items-center gap-2 no-underline">
-        <span class="text-sm font-semibold tracking-wider" style="color: var(--color-accent);">humux</span>
-        <span class="hidden sm:inline text-xs" style="color: var(--color-muted);">/ˈhjuːmʌks/</span>
+        <span class="text-base font-semibold tracking-wider" style="color: var(--color-accent);">humux</span>
+        <span class="hidden sm:inline text-sm" style="color: var(--color-muted);">/ˈhjuːmʌks/</span>
       </a>
       <!-- Desktop links -->
-      <div class="hidden md:flex items-center gap-5 text-xs">
+      <div class="hidden md:flex items-center gap-6 text-[0.9375rem]">
         <a href="/" class="font-medium no-underline" style="color: var(--color-accent);">Home</a>
         <a href="/features.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Features</a>
         <a href="/use-cases.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Use Cases</a>
         <a href="/blog/" class="no-underline transition-colors" style="color: var(--color-secondary);">Blog</a>
-        <a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="no-underline transition-colors" style="color: var(--color-secondary);">
-          <svg class="inline-block h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        <a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="no-underline transition-colors" style="color: var(--color-secondary);" aria-label="GitHub">
+          <svg class="inline-block h-[1.125rem] w-[1.125rem]" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
         </a>
         <a href="https://docs.humux.dev" target="_blank" rel="noopener" class="no-underline transition-colors" style="color: var(--color-secondary);">Docs</a>
       </div>
       <!-- Hamburger -->
       <button @click="open = !open" class="md:hidden p-2" style="color: var(--color-secondary);" aria-label="Menu">
-        <svg x-show="!open" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-        <svg x-show="open" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        <svg x-show="!open" class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        <svg x-show="open" class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
     <!-- Mobile dropdown -->
-    <div x-show="open" @click.outside="open = false" x-cloak class="md:hidden border-t border-[var(--color-border)] px-5 py-4 space-y-3 text-sm" style="background: rgba(6,6,6,0.95);">
+    <div x-show="open" @click.outside="open = false" x-cloak class="md:hidden border-t border-[var(--color-border)] px-5 py-5 space-y-4 text-base" style="background: rgba(6,6,6,0.95);">
       <a href="/" class="block font-medium no-underline" style="color: var(--color-accent);">Home</a>
       <a href="/features.html" class="block no-underline transition-colors" style="color: var(--color-secondary);">Features</a>
       <a href="/use-cases.html" class="block no-underline transition-colors" style="color: var(--color-secondary);">Use Cases</a>
@@ -114,7 +116,7 @@
   </nav>
 
   <!-- Hero -->
-  <section class="relative min-h-[88vh] flex items-center justify-center overflow-hidden px-5"
+  <section class="relative flex min-h-[88vh] items-center justify-center overflow-hidden px-5 py-24"
     style="background: radial-gradient(ellipse 80% 60% at 50% 40%, rgba(102,204,153,0.04) 0%, transparent 70%);">
 
     <div class="pointer-events-none absolute inset-0 opacity-[0.03]"
@@ -123,152 +125,281 @@
 
     <div class="relative z-10 mx-auto max-w-4xl text-center">
 
-      <div class="mb-4 inline-flex items-center gap-2 rounded-full border px-4 py-1 text-xs"
+      <div class="reveal mb-6 inline-flex items-center gap-2 rounded-full border px-4 py-1.5 text-sm"
         style="border-color: var(--color-accent-dim); background: var(--color-accent-glow); color: var(--color-accent);">
         <span class="inline-block h-1.5 w-1.5 rounded-full" style="background: var(--color-accent);"></span>
-        <span id="version-tag">v0.36</span> &mdash; Self-hosted &bull; Open source &bull; MIT
+        <span id="version-tag">v0.38</span> &mdash; Self-hosted &bull; Open source &bull; MIT
       </div>
 
-      <h1 class="mx-auto mb-6 max-w-3xl text-4xl font-bold leading-tight sm:text-5xl md:text-6xl" style="color: #eee;">
-        Your self-hosted<br>
-        <span style="color: var(--color-accent);">AI personal assistant.</span>
+      <h1 class="reveal mx-auto mb-7 max-w-3xl text-5xl font-bold leading-[1.05] sm:text-6xl md:text-6xl" style="color: #eee;">
+        You have the idea.<br>
+        <span class="md:whitespace-nowrap">Now you have the <span class="h1-accent">team</span>.</span>
       </h1>
 
-      <p class="mx-auto mb-8 max-w-2xl text-lg leading-relaxed" style="color: var(--color-secondary);">
-        humux triages your email, manages your calendar, sends morning briefings,
-        handles your messages &mdash; and runs as a single Docker container on your own hardware.
-        No cloud AI, no third-party data access.
+      <p class="reveal reveal-delay-1 mx-auto mb-9 max-w-2xl text-lg leading-relaxed sm:text-xl" style="color: var(--color-secondary);">
+        humux runs a squad of agents &mdash; a lead, a developer, a researcher, a marketer, a QA &mdash;
+        that pick up your most ambitious ideas, do the work, and report back.
+        One Docker container, on your hardware, under your own keys.
       </p>
 
-      <div class="flex flex-wrap items-center justify-center gap-4">
-        <a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="btn-accent text-sm no-underline gap-2">
+      <div class="reveal reveal-delay-2 flex flex-wrap items-center justify-center gap-4">
+        <a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="btn-accent no-underline gap-2">
           <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
           Star on GitHub
         </a>
-        <a href="#quickstart" class="btn-ghost text-sm no-underline">
+        <a href="#quickstart" class="btn-ghost no-underline">
           <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
           Quick Start
         </a>
-        <a href="/features.html" class="btn-ghost text-sm no-underline">
+        <a href="/features.html" class="btn-ghost no-underline">
           All Features
           <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
         </a>
       </div>
 
-      <!-- Terminal: a real assistant conversation -->
-      <div class="mx-auto mt-12 max-w-xl text-left">
+      <!-- Terminal: the squad taking an idea and running with it -->
+      <div class="reveal reveal-delay-3 mx-auto mt-14 max-w-2xl text-left">
         <div class="terminal-window animate-pulse-glow">
           <div class="terminal-header">
             <span class="terminal-dot red"></span>
             <span class="terminal-dot yellow"></span>
             <span class="terminal-dot green"></span>
-            <span class="ml-2 text-xs" style="color: var(--color-muted);">Telegram &mdash; clio</span>
+            <span class="ml-2 text-sm" style="color: var(--color-muted);">Telegram &mdash; Team Chat</span>
           </div>
           <div class="terminal-body">
-            <div><span style="color: var(--color-accent);">You:</span> morning briefing</div>
-            <div class="mt-2 opacity-80"><span style="color: #888;">clio:</span> Good morning! Here's your briefing:</div>
-            <div class="opacity-80 pl-6 mt-1">
-              <div>&#9728;&#65039; 24&deg;C, partly cloudy. Rain expected tomorrow after 3pm.</div>
-              <div class="mt-1">&#128231; 18 unread &mdash; 2 need your attention:</div>
-              <div class="pl-5">&bull; Lease renewal &mdash; reply deadline Friday</div>
-              <div class="pl-5">&bull; Dentist rescheduled to July 15</div>
-              <div class="mt-1">&#128197; 2 events: Design review 10am, Dentist 3pm</div>
-              <div class="mt-1">&#128276; Reminder: flowrent deploy scheduled for tomorrow</div>
-            </div>
-            <div class="mt-3"><span style="color: var(--color-accent);">You:</span> reschedule the dentist to next week, any afternoon slot</div>
-            <div class="mt-2 opacity-80"><span style="color: #888;">clio:</span> Checking your calendar... Wednesday 2pm is open. I'll email the clinic to reschedule and update your calendar.</div>
-            <div class="mt-1 opacity-80" style="color: var(--color-accent);">&#10004; Calendar updated &middot; Email sent to Dr. Russo's office</div>
+            <div><span style="color: var(--color-accent);">You:</span> @kindral explore the meal-prep subscription space and tell me if it's worth building</div>
+            <div class="mt-2"><span style="color: #ca6;">kindral</span> <span class="opacity-60">(lead):</span> On it. Market, competitors, revenue models. Back within the hour.</div>
+            <div class="mt-2 opacity-60 italic">&mdash; 20 minutes later &mdash;</div>
+            <div class="mt-2"><span style="color: #ca6;">kindral:</span> 3 viable competitors, $2B TAM, brutal churn. The wedge is local-first sourcing. Worth a prototype &mdash; approve?</div>
+            <div class="mt-2"><span style="color: var(--color-accent);">You:</span> approved. break it down and ship it.</div>
+            <div class="mt-2"><span style="color: #ca6;">kindral:</span> Milestone created: MVP. Dispatching 4 issues.</div>
+            <div class="mt-1"><span style="color: #7bf;">seniordev</span> <span class="opacity-60">(dev):</span> Took #12 &mdash; landing page. PR incoming.</div>
+            <div class="mt-1"><span style="color: #f7a;">marketeer</span> <span class="opacity-60">(marketing):</span> Took #13 &mdash; positioning and launch copy.</div>
+            <div class="mt-1"><span style="color: #9c7;">qa</span> <span class="opacity-60">(qa):</span> Watching #12. I'll review the PR when it lands.</div>
           </div>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- What it actually does -->
+  <!-- The squad -->
   <section class="border-t px-5 py-24" style="border-color: var(--color-border); background: var(--color-surface);">
     <div class="mx-auto max-w-6xl">
-      <div class="mb-14 text-center">
-        <span class="tag mb-4">What it does</span>
-        <h2 class="mt-3 text-3xl font-bold" style="color: #eee;">Not a chatbot. An assistant that acts.</h2>
-        <p class="mx-auto mt-3 max-w-xl" style="color: var(--color-secondary);">
-          humux doesn't just answer questions &mdash; it reads your email, checks your calendar,
-          sends messages on your behalf, and runs scheduled tasks. All via Telegram, WhatsApp, or CLI.
+      <div class="grid items-center gap-14 lg:grid-cols-2">
+        <div class="reveal">
+          <span class="kicker">01 &mdash; the squad</span>
+          <h2 class="mt-5 text-3xl font-bold leading-tight md:text-4xl" style="color: #eee;">One agent for your life.<br><span style="color: var(--color-accent);">A squad for your work.</span></h2>
+          <p class="mt-5 text-lg leading-relaxed" style="color: var(--color-secondary);">
+            Most ideas die because one person cannot be five people. A squad fixes that.
+            Create specialized agents &mdash; a lead who coordinates, a developer who ships PRs,
+            a researcher who reads everything, a marketer, a QA &mdash; each with their own
+            skills, tools, model, voice, memory and identity.
+          </p>
+          <p class="mt-4 text-base leading-relaxed" style="color: var(--color-secondary);">
+            They coordinate through GitHub issues, each appearing as their own GitHub App with a
+            distinct name and avatar. Work is dispatched, executed, reviewed and shipped without
+            you in the loop &mdash; unless a task is labeled for a human. You stay the one with taste
+            and the final word.
+          </p>
+
+          <div class="mt-7 grid gap-2">
+            <div class="flex items-center gap-3 rounded-md px-4 py-2.5 text-sm" style="background: var(--color-elevated);">
+              <span class="font-mono font-semibold" style="color: var(--color-accent);">Per-agent</span>
+              <span style="color: var(--color-muted);">Skills, tools, LLM model, voice, GitHub identity, memory</span>
+            </div>
+            <div class="flex items-center gap-3 rounded-md px-4 py-2.5 text-sm" style="background: var(--color-elevated);">
+              <span class="font-mono font-semibold" style="color: var(--color-accent);">Shared</span>
+              <span style="color: var(--color-muted);">Cross-agent memory store, group chat context, issue tracker</span>
+            </div>
+            <div class="flex items-center gap-3 rounded-md px-4 py-2.5 text-sm" style="background: var(--color-elevated);">
+              <span class="font-mono font-semibold" style="color: var(--color-accent);">Dispatch</span>
+              <span style="color: var(--color-muted);">Lead assigns via issues &bull; agents pick up, execute, report</span>
+            </div>
+            <div class="flex items-center gap-3 rounded-md px-4 py-2.5 text-sm" style="background: var(--color-elevated);">
+              <span class="font-mono font-semibold" style="color: var(--color-accent);">Fan-out</span>
+              <span style="color: var(--color-muted);">Any agent spawns subagents in parallel, under a shared budget</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="reveal reveal-delay-1">
+          <div class="terminal-window">
+            <div class="terminal-header">
+              <span class="terminal-dot red"></span>
+              <span class="terminal-dot yellow"></span>
+              <span class="terminal-dot green"></span>
+              <span class="ml-2 text-sm" style="color: var(--color-muted);">humux &mdash; agent tree</span>
+            </div>
+            <div class="terminal-body">
+              <div><span class="terminal-prompt"></span><span style="color: var(--color-accent);">humux jobs tree</span></div>
+              <div class="mt-2"><span style="color: #ca6;">kindral</span> <span class="opacity-60">(lead)</span> &mdash; milestone: MVP</div>
+              <div class="pl-4 mt-1">&#9500;&#9472; <span style="color: #7bf;">seniordev</span> #12 landing page <span style="color: var(--color-accent);">PR &#35;41 open</span></div>
+              <div class="pl-4">&#9474;&nbsp;&nbsp;&#9492;&#9472; subagent: scaffolding <span class="opacity-60">done &middot; 41s</span></div>
+              <div class="pl-4">&#9500;&#9472; <span style="color: #f7a;">marketeer</span> #13 positioning <span class="opacity-60">running</span></div>
+              <div class="pl-4">&#9474;&nbsp;&nbsp;&#9500;&#9472; subagent: competitor scan <span class="opacity-60">done &middot; 2m</span></div>
+              <div class="pl-4">&#9474;&nbsp;&nbsp;&#9492;&#9472; subagent: pricing survey <span class="opacity-60">running</span></div>
+              <div class="pl-4">&#9500;&#9472; <span style="color: #9c7;">qa</span> #14 test plan <span class="opacity-60">queued</span></div>
+              <div class="pl-4">&#9492;&#9472; <span style="color: #7bf;">seniordev</span> #15 checkout flow <span class="opacity-60">queued</span></div>
+              <div class="mt-3" style="color: var(--color-accent);">&#10004; 2 running &middot; 2 queued &middot; budget 38% used</div>
+            </div>
+          </div>
+          <p class="mt-4 text-center text-sm" style="color: var(--color-muted);">
+            Every agent gets its own Telegram bot, GitHub App identity and LLM configuration.
+          </p>
+        </div>
+      </div>
+
+      <!-- Roles -->
+      <div class="reveal mt-16 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <div class="feature-card">
+          <span class="tag">lead</span>
+          <h3 class="mt-3 text-base font-semibold" style="color: #eee;">Breaks it down</h3>
+          <p class="mt-1.5 text-sm" style="color: var(--color-secondary);">Turns a one-line ambition into a milestone, issues and owners. Escalates only what needs you.</p>
+        </div>
+        <div class="feature-card">
+          <span class="tag">researcher</span>
+          <h3 class="mt-3 text-base font-semibold" style="color: #eee;">Reads everything</h3>
+          <p class="mt-1.5 text-sm" style="color: var(--color-secondary);">Deep research over the live web, with sources cited and a report you can actually check.</p>
+        </div>
+        <div class="feature-card">
+          <span class="tag">developer</span>
+          <h3 class="mt-3 text-base font-semibold" style="color: #eee;">Ships the code</h3>
+          <p class="mt-1.5 text-sm" style="color: var(--color-secondary);">Reads, writes, edits and runs code in a confined workspace. Opens PRs under its own identity.</p>
+        </div>
+        <div class="feature-card">
+          <span class="tag">marketer</span>
+          <h3 class="mt-3 text-base font-semibold" style="color: #eee;">Tells the story</h3>
+          <p class="mt-1.5 text-sm" style="color: var(--color-secondary);">Positioning, launch copy, landing pages, images &mdash; published as hosted artifacts.</p>
+        </div>
+        <div class="feature-card">
+          <span class="tag">qa</span>
+          <h3 class="mt-3 text-base font-semibold" style="color: #eee;">Keeps it honest</h3>
+          <p class="mt-1.5 text-sm" style="color: var(--color-secondary);">Reviews PRs, runs the tests, files what's broken before your users find it.</p>
+        </div>
+      </div>
+
+      <div class="reveal mt-10 text-center">
+        <a href="/use-cases.html" class="btn-ghost no-underline">
+          See what people build with it
+          <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- What it does day to day -->
+  <section class="border-t px-5 py-24" style="border-color: var(--color-border);">
+    <div class="mx-auto max-w-6xl">
+      <div class="reveal mb-14 text-center">
+        <span class="kicker kicker-center">02 &mdash; every other day</span>
+        <h2 class="mt-5 text-3xl font-bold md:text-4xl" style="color: #eee;">Not a chatbot. An assistant that acts.</h2>
+        <p class="mx-auto mt-4 max-w-2xl text-lg leading-relaxed" style="color: var(--color-secondary);">
+          The squad is the headline. The foundation is an assistant that already runs your day:
+          it reads your email, checks your calendar, sends messages on your behalf and runs
+          scheduled work &mdash; from Telegram, WhatsApp or the CLI.
         </p>
       </div>
 
       <div class="grid gap-6 sm:grid-cols-2">
         <!-- Email triage -->
-        <div class="feature-card">
+        <div class="feature-card reveal">
           <div class="mb-3 flex items-center gap-3">
             <div class="flex h-10 w-10 items-center justify-center rounded-md" style="background: var(--color-accent-glow);">
               <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color: var(--color-accent);"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
             </div>
-            <h3 class="text-sm font-semibold" style="color: #eee;">"Triage my inbox"</h3>
+            <h3 class="text-base font-semibold" style="color: #eee;">"Triage my inbox"</h3>
           </div>
-          <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">
-            Reads your email via IMAP, surfaces only what matters, drafts replies. Per-agent mailboxes
-            with vault-secured credentials &mdash; API keys never enter the model context.
+          <p class="text-sm leading-relaxed" style="color: var(--color-secondary);">
+            Reads your email over IMAP, surfaces only what matters, drafts the replies. Per-agent
+            mailboxes with vault-secured credentials &mdash; keys never enter the model context.
           </p>
-          <div class="mt-3 rounded-md px-3 py-2 text-xs" style="background: var(--color-elevated); color: var(--color-muted);">
+          <div class="mt-4 rounded-md px-3 py-2.5 text-sm" style="background: var(--color-elevated); color: var(--color-muted);">
             <span style="color: var(--color-accent);">&gt;</span> "3 emails need attention. The lease renewal has a Friday deadline &mdash; want me to draft a reply?"
           </div>
         </div>
 
         <!-- Morning briefing -->
-        <div class="feature-card">
+        <div class="feature-card reveal reveal-delay-1">
           <div class="mb-3 flex items-center gap-3">
             <div class="flex h-10 w-10 items-center justify-center rounded-md" style="background: var(--color-accent-glow);">
               <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color: var(--color-accent);"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
             </div>
-            <h3 class="text-sm font-semibold" style="color: #eee;">"Morning briefing at 7am"</h3>
+            <h3 class="text-base font-semibold" style="color: #eee;">"Morning briefing at 7am"</h3>
           </div>
-          <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">
-            Scheduled tasks run on cron. Weather, unread emails, today's calendar, reminders &mdash;
-            delivered as text and voice message. Configure what you care about and when.
+          <p class="text-sm leading-relaxed" style="color: var(--color-secondary);">
+            Scheduled work runs on cron. Weather, unread mail, today's calendar, reminders, whatever
+            your squad shipped overnight &mdash; delivered as text and as voice.
           </p>
-          <div class="mt-3 rounded-md px-3 py-2 text-xs" style="background: var(--color-elevated); color: var(--color-muted);">
-            <span style="color: var(--color-accent);">&gt;</span> Daily at 7am: weather + email digest + calendar + news topics you follow
+          <div class="mt-4 rounded-md px-3 py-2.5 text-sm" style="background: var(--color-elevated); color: var(--color-muted);">
+            <span style="color: var(--color-accent);">&gt;</span> Daily at 7am: weather + email digest + calendar + overnight PRs + the topics you follow
           </div>
         </div>
 
         <!-- Calendar -->
-        <div class="feature-card">
+        <div class="feature-card reveal">
           <div class="mb-3 flex items-center gap-3">
             <div class="flex h-10 w-10 items-center justify-center rounded-md" style="background: var(--color-accent-glow);">
               <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color: var(--color-accent);"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
             </div>
-            <h3 class="text-sm font-semibold" style="color: #eee;">"Schedule a meeting with Alex"</h3>
+            <h3 class="text-base font-semibold" style="color: #eee;">"Schedule a meeting with Alex"</h3>
           </div>
-          <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">
-            CalDAV integration with Google Calendar, iCloud, Fastmail. The agent checks your availability,
-            creates the event, and can email the other person &mdash; all from a single message.
+          <p class="text-sm leading-relaxed" style="color: var(--color-secondary);">
+            CalDAV against Google Calendar, iCloud or Fastmail. Checks availability, creates the
+            event and emails the other person &mdash; from a single message.
           </p>
-          <div class="mt-3 rounded-md px-3 py-2 text-xs" style="background: var(--color-elevated); color: var(--color-muted);">
+          <div class="mt-4 rounded-md px-3 py-2.5 text-sm" style="background: var(--color-elevated); color: var(--color-muted);">
             <span style="color: var(--color-accent);">&gt;</span> "Tuesday 2pm is free. Created 'Coffee with Alex' and emailed her a confirmation."
           </div>
         </div>
 
         <!-- Creative & artifacts -->
-        <div class="feature-card">
+        <div class="feature-card reveal reveal-delay-1">
           <div class="mb-3 flex items-center gap-3">
             <div class="flex h-10 w-10 items-center justify-center rounded-md" style="background: var(--color-accent-glow);">
               <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color: var(--color-accent);"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
             </div>
-            <h3 class="text-sm font-semibold" style="color: #eee;">"Make a photo collage from these"</h3>
+            <h3 class="text-base font-semibold" style="color: #eee;">"Make a photo collage from these"</h3>
           </div>
-          <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">
-            Share photos or data via Telegram or email. Your agent creates shareable mini web apps &mdash;
-            games, collages, dashboards &mdash; hosted under <code class="inline-code">/artifacts/</code>
-            with a link you can send to anyone.
+          <p class="text-sm leading-relaxed" style="color: var(--color-secondary);">
+            Send photos or data over Telegram or email. Your agent builds shareable mini web apps
+            &mdash; games, collages, dashboards &mdash; hosted under <code class="inline-code">/artifacts/</code>
+            with a link you can pass to anyone.
           </p>
-          <div class="mt-3 rounded-md px-3 py-2 text-xs" style="background: var(--color-elevated); color: var(--color-muted);">
+          <div class="mt-4 rounded-md px-3 py-2.5 text-sm" style="background: var(--color-elevated); color: var(--color-muted);">
             <span style="color: var(--color-accent);">&gt;</span> "Done! Here's your collage: https://your-humux.dev/artifacts/summer-2026/"
           </div>
         </div>
       </div>
 
-      <div class="mt-8 text-center">
-        <a href="/features.html" class="btn-ghost no-underline text-xs">
+      <!-- Assistant terminal -->
+      <div class="reveal mx-auto mt-10 max-w-2xl">
+        <div class="terminal-window">
+          <div class="terminal-header">
+            <span class="terminal-dot red"></span>
+            <span class="terminal-dot yellow"></span>
+            <span class="terminal-dot green"></span>
+            <span class="ml-2 text-sm" style="color: var(--color-muted);">Telegram &mdash; clio</span>
+          </div>
+          <div class="terminal-body">
+            <div><span style="color: var(--color-accent);">You:</span> morning briefing</div>
+            <div class="mt-2 opacity-80"><span style="color: #888;">clio:</span> Good morning! Here's your briefing:</div>
+            <div class="mt-1 pl-6 opacity-80">
+              <div>&#9728;&#65039; 24&deg;C, partly cloudy. Rain expected tomorrow after 3pm.</div>
+              <div class="mt-1">&#128231; 18 unread &mdash; 2 need your attention:</div>
+              <div class="pl-5">&bull; Lease renewal &mdash; reply deadline Friday</div>
+              <div class="pl-5">&bull; Dentist rescheduled to July 15</div>
+              <div class="mt-1">&#128197; 2 events: Design review 10am, Dentist 3pm</div>
+              <div class="mt-1">&#128276; Overnight: seniordev merged PR &#35;41, qa filed 2 issues</div>
+            </div>
+            <div class="mt-3"><span style="color: var(--color-accent);">You:</span> reschedule the dentist to next week, any afternoon slot</div>
+            <div class="mt-2 opacity-80"><span style="color: #888;">clio:</span> Checking your calendar... Wednesday 2pm is open. I'll email the clinic and update your calendar.</div>
+            <div class="mt-1 opacity-80" style="color: var(--color-accent);">&#10004; Calendar updated &middot; Email sent to Dr. Russo's office</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="reveal mt-10 text-center">
+        <a href="/features.html" class="btn-ghost no-underline">
           Full feature catalog
           <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
         </a>
@@ -276,111 +407,46 @@
     </div>
   </section>
 
-  <!-- One agent is just the start -->
-  <section class="border-t px-5 py-24" style="border-color: var(--color-border);">
-    <div class="mx-auto max-w-6xl">
-      <div class="grid items-center gap-12 lg:grid-cols-2">
-        <div>
-          <span class="tag mb-4">The squad</span>
-          <h2 class="mt-3 text-3xl font-bold leading-tight" style="color: #eee;">One agent for your life.<br><span style="color: var(--color-accent);">A squad for your work.</span></h2>
-          <p class="mt-4 leading-relaxed" style="color: var(--color-secondary);">
-            A personal assistant is just the start. Create specialized agents &mdash;
-            a lead who coordinates, a developer who ships PRs, a marketing specialist, a QA &mdash;
-            each with their own skills, tools, model, voice, and identity.
-          </p>
-          <p class="mt-3 leading-relaxed" style="color: var(--color-secondary);">
-            They coordinate via GitHub issues, each appearing as their own GitHub App
-            with a distinct name and avatar. Work is dispatched, reviewed, and shipped
-            without you in the loop &mdash; unless a task is labeled for a human.
-          </p>
-
-          <div class="mt-6 grid gap-2">
-            <div class="flex items-center gap-3 rounded-md px-3 py-2 text-xs" style="background: var(--color-elevated);">
-              <span class="font-mono font-semibold" style="color: var(--color-accent);">Per-agent</span>
-              <span style="color: var(--color-muted);">Skills, tools, LLM model, voice, GitHub identity, memory</span>
-            </div>
-            <div class="flex items-center gap-3 rounded-md px-3 py-2 text-xs" style="background: var(--color-elevated);">
-              <span class="font-mono font-semibold" style="color: var(--color-accent);">Shared</span>
-              <span style="color: var(--color-muted);">Cross-agent memory store, group chat context, issue tracker</span>
-            </div>
-            <div class="flex items-center gap-3 rounded-md px-3 py-2 text-xs" style="background: var(--color-elevated);">
-              <span class="font-mono font-semibold" style="color: var(--color-accent);">Dispatch</span>
-              <span style="color: var(--color-muted);">Lead assigns via issues &bull; agents pick up, execute, report</span>
-            </div>
-            <div class="flex items-center gap-3 rounded-md px-3 py-2 text-xs" style="background: var(--color-elevated);">
-              <span class="font-mono font-semibold" style="color: var(--color-accent);">Ship</span>
-              <span style="color: var(--color-muted);">PRs, reviews, releases &mdash; state persisted on GitHub</span>
-            </div>
-          </div>
-        </div>
-
-        <div>
-          <div class="terminal-window">
-            <div class="terminal-header">
-              <span class="terminal-dot red"></span>
-              <span class="terminal-dot yellow"></span>
-              <span class="terminal-dot green"></span>
-              <span class="ml-2 text-xs" style="color: var(--color-muted);">Telegram &mdash; Team Chat</span>
-            </div>
-            <div class="terminal-body">
-              <div><span style="color: var(--color-accent);">You:</span> @kindral explore the meal-prep subscription space and tell me if it's worth building</div>
-              <div class="mt-2"><span style="color: #ca6;">kindral</span> <span class="opacity-60">(lead):</span> On it. I'll research the market, competitors, and revenue models.</div>
-              <div class="mt-2 opacity-60 italic text-xs">&mdash; 20 minutes later &mdash;</div>
-              <div class="mt-2"><span style="color: #ca6;">kindral:</span> Research complete. 3 viable competitors, $2B TAM, high churn. The differentiator would be local-first sourcing. Worth a prototype. Approval?</div>
-              <div class="mt-2"><span style="color: var(--color-accent);">You:</span> approved. break it down and ship it.</div>
-              <div class="mt-2"><span style="color: #ca6;">kindral:</span> Created milestone: MVP. Dispatching 4 issues to the team.</div>
-              <div class="mt-1"><span style="color: #7bf;">seniordev</span> <span class="opacity-60">(dev):</span> Picked up issue #12 &mdash; landing page. PR incoming.</div>
-              <div class="mt-1"><span style="color: #f7a;">marketeer</span> <span class="opacity-60">(marketing):</span> Working on issue #13 &mdash; competitive positioning.</div>
-            </div>
-          </div>
-          <p class="mt-4 text-xs text-center" style="color: var(--color-muted);">
-            Each agent has its own Telegram bot, GitHub App identity, and LLM configuration.
-          </p>
-        </div>
-      </div>
-    </div>
-  </section>
-
   <!-- How it works / Quick Start -->
   <section id="quickstart" class="border-t px-5 py-24" style="border-color: var(--color-border); background: var(--color-surface);">
     <div class="mx-auto max-w-6xl">
-      <div class="grid items-center gap-12 lg:grid-cols-2">
-        <div>
-          <span class="tag mb-4">How it works</span>
-          <h2 class="mt-3 text-3xl font-bold" style="color: #eee;">One container. Your data.</h2>
-          <p class="mt-4 leading-relaxed" style="color: var(--color-secondary);">
-            Python orchestrator + battle-tested CLI tools. Himalaya (Rust) for email,
-            CalDAV for calendars, Playwright for browsing, faster-whisper or Kokoro for voice.
-            SQLite for storage. No external databases, no Kubernetes.
+      <div class="grid items-center gap-14 lg:grid-cols-2">
+        <div class="reveal">
+          <span class="kicker">03 &mdash; how it works</span>
+          <h2 class="mt-5 text-3xl font-bold md:text-4xl" style="color: #eee;">One container. Your data.</h2>
+          <p class="mt-5 text-lg leading-relaxed" style="color: var(--color-secondary);">
+            A Python orchestrator plus battle-tested CLI tools. Himalaya (Rust) for email,
+            CalDAV for calendars, Playwright for browsing, faster-whisper or Kokoro for voice,
+            SQLite for storage. No external databases. No Kubernetes. No account to sign up for.
           </p>
 
-          <div class="mt-6 space-y-3">
-            <div class="flex gap-3 rounded-md px-4 py-3 text-xs" style="background: var(--color-elevated);">
+          <div class="mt-7 space-y-3">
+            <div class="flex gap-3 rounded-md px-4 py-3 text-sm" style="background: var(--color-elevated);">
               <span style="color: var(--color-accent);">&#10004;</span>
-              <span style="color: var(--color-secondary);"><strong style="color: #ddd;">Your API keys, your infrastructure.</strong> Bring your own LLM key (Anthropic, OpenAI, DeepSeek, Google, Grok, OpenRouter).</span>
+              <span style="color: var(--color-secondary);"><strong style="color: #ddd;">Your API keys, your infrastructure.</strong> Bring your own LLM key (Anthropic, OpenAI, DeepSeek, Google, Grok, OpenRouter) &mdash; per agent if you want a cheap model doing the grunt work.</span>
             </div>
-            <div class="flex gap-3 rounded-md px-4 py-3 text-xs" style="background: var(--color-elevated);">
+            <div class="flex gap-3 rounded-md px-4 py-3 text-sm" style="background: var(--color-elevated);">
               <span style="color: var(--color-accent);">&#10004;</span>
               <span style="color: var(--color-secondary);"><strong style="color: #ddd;">Encrypted secrets vault.</strong> Two-tier encryption &mdash; credentials never enter the model context. Bitwarden import.</span>
             </div>
-            <div class="flex gap-3 rounded-md px-4 py-3 text-xs" style="background: var(--color-elevated);">
+            <div class="flex gap-3 rounded-md px-4 py-3 text-sm" style="background: var(--color-elevated);">
               <span style="color: var(--color-accent);">&#10004;</span>
               <span style="color: var(--color-secondary);"><strong style="color: #ddd;">No telemetry, no cloud callbacks.</strong> Fully air-gappable. MIT licensed, every line on GitHub.</span>
             </div>
-            <div class="flex gap-3 rounded-md px-4 py-3 text-xs" style="background: var(--color-elevated);">
+            <div class="flex gap-3 rounded-md px-4 py-3 text-sm" style="background: var(--color-elevated);">
               <span style="color: var(--color-accent);">&#10004;</span>
               <span style="color: var(--color-secondary);"><strong style="color: #ddd;">Offline-capable voice.</strong> Kokoro 82M for TTS, faster-whisper for STT. No cloud voice API needed.</span>
             </div>
           </div>
         </div>
 
-        <div>
+        <div class="reveal reveal-delay-1">
           <div class="terminal-window">
             <div class="terminal-header">
               <span class="terminal-dot red"></span>
               <span class="terminal-dot yellow"></span>
               <span class="terminal-dot green"></span>
-              <span class="ml-2 text-xs" style="color: var(--color-muted);">bash</span>
+              <span class="ml-2 text-sm" style="color: var(--color-muted);">bash</span>
             </div>
             <div class="terminal-body">
               <div>
@@ -395,16 +461,19 @@
               </div>
               <div class="mt-2 opacity-60">Pulling from mattmezza/humux... done</div>
               <div class="mt-2" style="color: var(--color-accent);">&#10004; Container started</div>
-              <div class="text-xs mt-1 opacity-80" style="color: var(--color-accent);">
+              <div class="mt-1 opacity-80" style="color: var(--color-accent);">
                 &gt; Admin UI at http://localhost:8000
               </div>
-              <div class="text-xs opacity-80" style="color: var(--color-accent);">
+              <div class="opacity-80" style="color: var(--color-accent);">
                 &gt; Setup wizard guides you through API key, Telegram, accounts
+              </div>
+              <div class="opacity-80" style="color: var(--color-accent);">
+                &gt; Then hire your first agent and give it something hard
               </div>
             </div>
           </div>
           <div class="mt-4 text-center">
-            <a href="https://github.com/mattmezza/humux?tab=readme-ov-file#quick-start" target="_blank" rel="noopener" class="text-xs no-underline" style="color: var(--color-accent);">Full setup guide &rarr;</a>
+            <a href="https://github.com/mattmezza/humux?tab=readme-ov-file#quick-start" target="_blank" rel="noopener" class="text-sm no-underline" style="color: var(--color-accent);">Full setup guide &rarr;</a>
           </div>
         </div>
       </div>
@@ -414,71 +483,71 @@
   <!-- Everything built in -->
   <section class="border-t px-5 py-24" style="border-color: var(--color-border);">
     <div class="mx-auto max-w-6xl">
-      <div class="mb-14 text-center">
-        <span class="tag mb-4">Built in</span>
-        <h2 class="mt-3 text-3xl font-bold" style="color: #eee;">Everything native, nothing bolted on</h2>
-        <p class="mx-auto mt-3 max-w-xl" style="color: var(--color-secondary);">
-          Email, calendar, contacts, voice &mdash; integrated at the core, not via third-party plugins.
-          Teach new capabilities by writing markdown files.
+      <div class="reveal mb-14 text-center">
+        <span class="kicker kicker-center">04 &mdash; built in</span>
+        <h2 class="mt-5 text-3xl font-bold md:text-4xl" style="color: #eee;">Everything native, nothing bolted on</h2>
+        <p class="mx-auto mt-4 max-w-2xl text-lg leading-relaxed" style="color: var(--color-secondary);">
+          Email, calendar, contacts, voice, code, search &mdash; integrated at the core, not through
+          third-party plugins. New capabilities are taught by writing a markdown file.
         </p>
       </div>
 
       <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div class="feature-card text-center">
+        <div class="feature-card reveal text-center">
           <div class="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-md" style="background: var(--color-accent-glow);">
             <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color: var(--color-accent);"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
           </div>
-          <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Messaging</h3>
-          <p class="text-xs" style="color: var(--color-secondary);">Telegram (per-agent bots, voice, reactions, inline approvals), WhatsApp, CLI. Live web transcripts</p>
+          <h3 class="mb-1.5 text-base font-semibold" style="color: #eee;">Messaging</h3>
+          <p class="text-sm" style="color: var(--color-secondary);">Telegram (per-agent bots, voice, reactions, inline approvals), WhatsApp, CLI. Live web transcripts</p>
         </div>
-        <div class="feature-card text-center">
+        <div class="feature-card reveal reveal-delay-1 text-center">
           <div class="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-md" style="background: var(--color-accent-glow);">
             <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color: var(--color-accent);"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
           </div>
-          <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Multi-agent</h3>
-          <p class="text-xs" style="color: var(--color-secondary);">Create agents with distinct skills, tools, voice, model, and account bindings. Delegate subtasks to several in parallel</p>
+          <h3 class="mb-1.5 text-base font-semibold" style="color: #eee;">Multi-agent</h3>
+          <p class="text-sm" style="color: var(--color-secondary);">Agents with distinct skills, tools, voice, model and account bindings. Fan out subtasks to several at once</p>
         </div>
-        <div class="feature-card text-center">
+        <div class="feature-card reveal reveal-delay-2 text-center">
           <div class="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-md" style="background: var(--color-accent-glow);">
             <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color: var(--color-accent);"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
           </div>
-          <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Memory</h3>
-          <p class="text-xs" style="color: var(--color-secondary);">Four-tier: lexical, semantic, importance-based forgetting, deduplication</p>
+          <h3 class="mb-1.5 text-base font-semibold" style="color: #eee;">Memory</h3>
+          <p class="text-sm" style="color: var(--color-secondary);">Four tiers: lexical, semantic, importance-based forgetting, deduplication</p>
         </div>
-        <div class="feature-card text-center">
+        <div class="feature-card reveal reveal-delay-3 text-center">
           <div class="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-md" style="background: var(--color-accent-glow);">
             <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color: var(--color-accent);"><path d="M14.7 6.3a1 1 0 00 0 1.4l1.6 1.6a1 1 0 00 1.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>
           </div>
-          <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Markdown skills</h3>
-          <p class="text-xs" style="color: var(--color-secondary);">Teach new capabilities by writing files &mdash; no code, no plugin registry</p>
+          <h3 class="mb-1.5 text-base font-semibold" style="color: #eee;">Markdown skills</h3>
+          <p class="text-sm" style="color: var(--color-secondary);">Teach new capabilities by writing files &mdash; no code, no plugin registry</p>
         </div>
-        <div class="feature-card text-center">
+        <div class="feature-card reveal text-center">
           <div class="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-md" style="background: var(--color-accent-glow);">
             <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color: var(--color-accent);"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
           </div>
-          <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Voice</h3>
-          <p class="text-xs" style="color: var(--color-secondary);">STT + TTS, local or remote. Voice messages in Telegram, voice briefings</p>
+          <h3 class="mb-1.5 text-base font-semibold" style="color: #eee;">Voice</h3>
+          <p class="text-sm" style="color: var(--color-secondary);">STT + TTS, local or remote. Voice messages in Telegram, voice briefings</p>
         </div>
-        <div class="feature-card text-center">
+        <div class="feature-card reveal reveal-delay-1 text-center">
           <div class="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-md" style="background: var(--color-accent-glow);">
             <svg class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" style="color: var(--color-accent);"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
           </div>
-          <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">GitHub</h3>
-          <p class="text-xs" style="color: var(--color-secondary);">Webhook-driven agent turns on issues, PRs, and comments. Per-agent GitHub App identity</p>
+          <h3 class="mb-1.5 text-base font-semibold" style="color: #eee;">GitHub</h3>
+          <p class="text-sm" style="color: var(--color-secondary);">Webhook-driven agent turns on issues, PRs and comments. Per-agent GitHub App identity</p>
         </div>
-        <div class="feature-card text-center">
+        <div class="feature-card reveal reveal-delay-2 text-center">
           <div class="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-md" style="background: var(--color-accent-glow);">
             <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color: var(--color-accent);"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
           </div>
-          <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Browser & search</h3>
-          <p class="text-xs" style="color: var(--color-secondary);">Headless Playwright, Tavily or self-hosted SearXNG. Deep research with cited reports. Web artifacts</p>
+          <h3 class="mb-1.5 text-base font-semibold" style="color: #eee;">Browser &amp; search</h3>
+          <p class="text-sm" style="color: var(--color-secondary);">Headless Playwright, Tavily or self-hosted SearXNG. Deep research with cited reports. Web artifacts</p>
         </div>
-        <div class="feature-card text-center">
+        <div class="feature-card reveal reveal-delay-3 text-center">
           <div class="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-md" style="background: var(--color-accent-glow);">
             <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color: var(--color-accent);"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
           </div>
-          <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Admin UI</h3>
-          <p class="text-xs" style="color: var(--color-secondary);">PWA-installable. Setup wizard, agent editor, token dashboard, prompt inspector, log streams, memory inspector</p>
+          <h3 class="mb-1.5 text-base font-semibold" style="color: #eee;">Admin UI</h3>
+          <p class="text-sm" style="color: var(--color-secondary);">PWA-installable. Setup wizard, agent editor, token dashboard, prompt inspector, log streams, memory inspector</p>
         </div>
       </div>
     </div>
@@ -487,35 +556,35 @@
   <!-- Blog highlight -->
   <section class="border-t px-5 py-24" style="border-color: var(--color-border); background: var(--color-surface);">
     <div class="mx-auto max-w-6xl">
-      <div class="grid items-center gap-12 lg:grid-cols-2">
-        <div>
-          <span class="tag mb-4">From the blog</span>
-          <h2 class="mt-3 text-2xl font-bold leading-tight" style="color: #eee;">How I Replaced My Cloud AI Assistant with a Self-Hosted Agent</h2>
-          <p class="mt-4 leading-relaxed" style="color: var(--color-secondary);">
-            A personal account of migrating from cloud AI assistants to humux &mdash;
-            what worked, what broke, and what I'd do differently. The post that started it all.
+      <div class="grid items-center gap-14 lg:grid-cols-2">
+        <div class="reveal">
+          <span class="kicker">05 &mdash; from the blog</span>
+          <h2 class="mt-5 text-2xl font-bold leading-tight md:text-3xl" style="color: #eee;">How I Replaced My Cloud AI Assistant with a Self-Hosted Agent</h2>
+          <p class="mt-5 text-lg leading-relaxed" style="color: var(--color-secondary);">
+            A personal account of moving off hosted assistants and onto humux &mdash; what worked,
+            what broke, and what I'd do differently. The post that started all of this.
           </p>
-          <a href="/blog/replacing-cloud-ai.html" class="mt-4 btn-ghost no-underline text-xs inline-flex">
+          <a href="/blog/replacing-cloud-ai.html" class="btn-ghost mt-6 inline-flex no-underline">
             Read the full story
             <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
           </a>
         </div>
         <div>
           <div class="grid gap-4">
-            <a href="/blog/memory-architecture-for-agents.html" class="feature-card no-underline block">
-              <p class="text-xs font-mono mb-1" style="color: var(--color-muted);">May 5, 2026</p>
-              <h3 class="text-sm font-semibold" style="color: #eee;">Memory Architecture for Long-Running Agents</h3>
-              <p class="text-xs mt-1" style="color: var(--color-secondary);">Four tiers of memory: lexical retrieval, semantic search, importance-based forgetting, and hygiene via deduplication.</p>
+            <a href="/blog/memory-architecture-for-agents.html" class="feature-card reveal block no-underline">
+              <p class="mb-1 font-mono text-sm" style="color: var(--color-muted);">May 5, 2026</p>
+              <h3 class="text-base font-semibold" style="color: #eee;">Memory Architecture for Long-Running Agents</h3>
+              <p class="mt-1.5 text-sm" style="color: var(--color-secondary);">Four tiers of memory: lexical retrieval, semantic search, importance-based forgetting, and hygiene via deduplication.</p>
             </a>
-            <a href="/blog/skills-over-code.html" class="feature-card no-underline block">
-              <p class="text-xs font-mono mb-1" style="color: var(--color-muted);">April 21, 2026</p>
-              <h3 class="text-sm font-semibold" style="color: #eee;">Skills Over Code: Teaching Agents via Markdown</h3>
-              <p class="text-xs mt-1" style="color: var(--color-secondary);">Why describing CLI tools in markdown files beats writing Python adapter classes.</p>
+            <a href="/blog/skills-over-code.html" class="feature-card reveal reveal-delay-1 block no-underline">
+              <p class="mb-1 font-mono text-sm" style="color: var(--color-muted);">April 21, 2026</p>
+              <h3 class="text-base font-semibold" style="color: #eee;">Skills Over Code: Teaching Agents via Markdown</h3>
+              <p class="mt-1.5 text-sm" style="color: var(--color-secondary);">Why describing CLI tools in markdown files beats writing Python adapter classes.</p>
             </a>
-            <a href="/blog/single-container-agents.html" class="feature-card no-underline block">
-              <p class="text-xs font-mono mb-1" style="color: var(--color-muted);">April 2, 2026</p>
-              <h3 class="text-sm font-semibold" style="color: #eee;">Running a Full Agent Stack in a Single Container</h3>
-              <p class="text-xs mt-1" style="color: var(--color-secondary);">Architecture decisions that make it possible to run LLM orchestration, voice, email, and admin UI in one Docker container.</p>
+            <a href="/blog/single-container-agents.html" class="feature-card reveal reveal-delay-2 block no-underline">
+              <p class="mb-1 font-mono text-sm" style="color: var(--color-muted);">April 2, 2026</p>
+              <h3 class="text-base font-semibold" style="color: #eee;">Running a Full Agent Stack in a Single Container</h3>
+              <p class="mt-1.5 text-sm" style="color: var(--color-secondary);">Architecture decisions that make it possible to run orchestration, voice, email and the admin UI in one Docker container.</p>
             </a>
           </div>
         </div>
@@ -525,21 +594,22 @@
 
   <!-- Open Source CTA -->
   <section class="border-t px-5 py-24 text-center" style="border-color: var(--color-border);">
-    <div class="mx-auto max-w-2xl">
-      <span class="tag mb-4">Open Source</span>
-      <h2 class="mt-3 text-3xl font-bold" style="color: #eee;">Built in the open</h2>
-      <p class="mx-auto mt-3 max-w-lg leading-relaxed" style="color: var(--color-secondary);">
-        MIT licensed. Every line of code is on GitHub. No telemetry, no usage tracking, no cloud callbacks.
+    <div class="reveal mx-auto max-w-2xl">
+      <span class="kicker kicker-center">06 &mdash; open source</span>
+      <h2 class="mt-5 text-3xl font-bold md:text-4xl" style="color: #eee;">Built in the open</h2>
+      <p class="mx-auto mt-4 max-w-lg text-lg leading-relaxed" style="color: var(--color-secondary);">
+        MIT licensed. Every line of code is on GitHub. No telemetry, no usage tracking,
+        no cloud callbacks. Your squad answers to you and nobody else.
       </p>
-      <div class="mt-8 flex flex-wrap items-center justify-center gap-4">
-        <a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="btn-accent text-sm no-underline gap-2">
+      <div class="mt-9 flex flex-wrap items-center justify-center gap-4">
+        <a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="btn-accent no-underline gap-2">
           <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
           Star on GitHub
         </a>
-        <a href="https://docs.humux.dev" target="_blank" rel="noopener" class="btn-ghost text-sm no-underline">
+        <a href="https://docs.humux.dev" target="_blank" rel="noopener" class="btn-ghost no-underline">
           Read the docs
         </a>
-        <a href="/blog/" class="btn-ghost text-sm no-underline">
+        <a href="/blog/" class="btn-ghost no-underline">
           Engineering blog
         </a>
       </div>
@@ -547,18 +617,18 @@
   </section>
 
   <!-- Footer -->
-  <footer class="border-t px-5 py-12" style="border-color: var(--color-border); background: var(--color-surface);">
+  <footer class="border-t px-5 py-14" style="border-color: var(--color-border); background: var(--color-surface);">
     <div class="mx-auto max-w-6xl">
-      <div class="flex flex-wrap items-start justify-between gap-8">
+      <div class="flex flex-wrap items-start justify-between gap-10">
         <div>
-          <span class="text-sm font-semibold" style="color: var(--color-accent);">humux</span>
-          <p class="mt-1 text-xs" style="color: var(--color-muted);">Human Multiplexer &mdash; /ˈhjuːmʌks/</p>
-          <p class="mt-0.5 text-xs" style="color: var(--color-muted);">Your self-hosted AI personal assistant.</p>
+          <span class="text-base font-semibold" style="color: var(--color-accent);">humux</span>
+          <p class="mt-1.5 text-sm" style="color: var(--color-muted);">Human Multiplexer &mdash; /ˈhjuːmʌks/</p>
+          <p class="mt-1 text-sm" style="color: var(--color-muted);">A self-hosted squad of agents for your most ambitious ideas.</p>
         </div>
         <div class="flex flex-wrap gap-10">
           <div>
-            <span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Site</span>
-            <ul class="mt-2 space-y-1 text-xs" style="color: var(--color-muted);">
+            <span class="text-sm font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Site</span>
+            <ul class="mt-3 space-y-1.5 text-sm" style="color: var(--color-muted);">
               <li><a href="/" class="no-underline">Home</a></li>
               <li><a href="/features.html" class="no-underline">Features</a></li>
               <li><a href="/use-cases.html" class="no-underline">Use Cases</a></li>
@@ -567,23 +637,33 @@
             </ul>
           </div>
           <div>
-            <span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Resources</span>
-            <ul class="mt-2 space-y-1 text-xs" style="color: var(--color-muted);">
+            <span class="text-sm font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Resources</span>
+            <ul class="mt-3 space-y-1.5 text-sm" style="color: var(--color-muted);">
               <li><a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="no-underline">GitHub</a></li>
               <li><a href="https://docs.humux.dev" target="_blank" rel="noopener" class="no-underline">Documentation</a></li>
               <li><a href="https://github.com/mattmezza/humux/releases" target="_blank" rel="noopener" class="no-underline">Releases</a></li>
             </ul>
           </div>
           <div>
-            <span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Author</span>
-            <ul class="mt-2 space-y-1 text-xs" style="color: var(--color-muted);">
+            <span class="text-sm font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Company</span>
+            <ul class="mt-3 space-y-1.5 text-sm" style="color: var(--color-muted);">
+              <li><a href="/about.html" class="no-underline">About</a></li>
+              <li><a href="/support.html" class="no-underline">Support</a></li>
+              <li><a href="/privacy.html" class="no-underline">Privacy</a></li>
+              <li><a href="/terms.html" class="no-underline">Terms</a></li>
+              <li><a href="/licence.html" class="no-underline">Licence</a></li>
+            </ul>
+          </div>
+          <div>
+            <span class="text-sm font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Author</span>
+            <ul class="mt-3 space-y-1.5 text-sm" style="color: var(--color-muted);">
               <li><a href="https://x.com/_mattmezza_" target="_blank" rel="noopener" class="no-underline">@_mattmezza_</a></li>
             </ul>
           </div>
         </div>
       </div>
-      <div class="mt-10 border-t pt-6 text-center text-xs" style="border-color: var(--color-border); color: var(--color-muted);">
-        &copy; 2026 Merola Software &amp; Services. MIT License.
+      <div class="mt-10 border-t pt-6 text-center text-sm" style="border-color: var(--color-border); color: var(--color-muted);">
+        &copy; 2026 <a href="https://matteo.merola.co/software" target="_blank" rel="noopener" class="no-underline">Merola Software &amp; Services</a>
       </div>
     </div>
   </footer>

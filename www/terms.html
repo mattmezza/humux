@@ -1,27 +1,56 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="scroll-smooth">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>404 — humux</title>
-  <meta name="robots" content="noindex, nofollow">
+  <title>Terms of use &mdash; humux</title>
+  <meta name="description" content="Plain-language terms for the humux website and software: MIT licence, provided as-is, no warranty, no liability. You are responsible for what your agents do on your accounts. Swiss law, Zürich jurisdiction.">
+  <meta name="author" content="Merola Software &amp; Services">
+  <link rel="canonical" href="https://humux.dev/terms">
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="Terms of use &mdash; humux">
+  <meta property="og:description" content="Plain-language terms for the humux website and software: MIT licence, provided as-is, no warranty, no liability. You are responsible for what your agents do on your accounts. Swiss law, Zürich jurisdiction.">
+  <meta property="og:url" content="https://humux.dev/terms">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="https://humux.dev/assets/images/og-image.png">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Terms of use &mdash; humux">
+  <meta name="twitter:description" content="Plain-language terms for the humux website and software: MIT licence, provided as-is, no warranty, no liability. You are responsible for what your agents do on your accounts. Swiss law, Zürich jurisdiction.">
+  <meta name="twitter:image" content="https://humux.dev/assets/images/og-image.png">
+  <meta name="twitter:site" content="@_mattmezza_">
+  <meta name="twitter:creator" content="@_mattmezza_">
+
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://humux.dev/"},{"@type":"ListItem","position":2,"name":"Terms","item":"https://humux.dev/terms"}]}
+  </script>
+
+  <link rel="alternate" type="application/rss+xml" title="humux blog" href="/blog/feed.xml">
+
+  <!-- Favicon -->
   <link rel="icon" type="image/svg+xml" href="/assets/images/favicon-32.svg">
+  <link rel="alternate icon" type="image/png" sizes="32x32" href="/assets/images/favicon-32.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/images/apple-touch-icon.png">
+
+  <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CSS (compiled locally) -->
   <link rel="stylesheet" href="/assets/css/style.css">
   <noscript><style>.reveal{opacity:1;transform:none}</style></noscript>
+
+  <!-- Alpine.js (CDN) -->
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
   <script defer src="/assets/js/reveal.js"></script>
-  <style>
-    body { background: var(--color-bg); margin: 0; display: flex; flex-direction: column; min-height: 100vh; }
-    main { flex: 1; display: flex; align-items: center; justify-content: center; padding: 4rem 0; }
-    .glitch { font-family: var(--font-mono); }
-  </style>
   <script defer src="https://analytics.casa.merola.co/script.js" data-website-id="b395aaa1-97a5-494e-9ad8-15b3ba20318e"></script>
 </head>
 <body>
 
+  <!-- Nav -->
   <nav x-data="{ open: false }" class="sticky top-0 z-50 border-b border-[var(--color-border)]" style="background: rgba(6,6,6,0.85); backdrop-filter: blur(12px);">
     <div class="mx-auto flex max-w-6xl items-center justify-between px-5 py-4">
       <a href="/" class="flex items-center gap-2 no-underline">
@@ -56,35 +85,101 @@
     </div>
   </nav>
 
-  <main>
-  <div class="text-center px-5">
-    <div class="glitch text-7xl font-bold mb-4" style="color: var(--color-accent);">404</div>
-    <h1 class="text-2xl font-semibold mb-2" style="color: #eee;">Page not found</h1>
-    <p class="text-lg mb-8 max-w-sm mx-auto" style="color: var(--color-secondary);">
-      The terminal doesn't recognise that command. Maybe you took a wrong turn in the pipeline?
-    </p>
-    <div class="terminal-window max-w-xs mx-auto mb-8 text-left">
-      <div class="terminal-header">
-        <span class="terminal-dot red"></span>
-        <span class="terminal-dot yellow"></span>
-        <span class="terminal-dot green"></span>
-        <span class="ml-2 text-sm" style="color: var(--color-muted);">bash — error</span>
+  <!-- Header -->
+  <section class="relative overflow-hidden border-b px-5 py-20" style="border-color: var(--color-border); background: radial-gradient(ellipse 80% 60% at 50% 0%, rgba(102,204,153,0.04) 0%, transparent 70%);">
+    <div class="pointer-events-none absolute inset-0 opacity-[0.03]"
+      style="background-image: linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px); background-size: 48px 48px;"></div>
+    <div class="relative z-10 mx-auto max-w-3xl">
+      <span class="kicker reveal">terms</span>
+      <h1 class="reveal mt-5 text-4xl font-bold leading-tight sm:text-5xl" style="color: #eee;">Terms of use</h1>
+      <p class="reveal reveal-delay-1 mt-6 text-lg leading-relaxed" style="color: var(--color-secondary);">Short version: the software is free and MIT licensed, it comes with no warranty, and what your agents do on your accounts is your responsibility.</p>
+      <p class="reveal reveal-delay-2 mt-4 font-mono text-sm" style="color: var(--color-muted);">Last updated: August 21, 2026</p>
+    </div>
+  </section>
+
+  <section class="border-b px-5 py-20" style="border-color: var(--color-border); background: var(--color-surface);">
+    <div class="mx-auto max-w-3xl">
+
+      <div class="reveal">
+        <h2 class="text-2xl font-semibold" style="color: #eee;">1. What these terms cover</h2>
+        <p class="mt-3 text-base leading-relaxed" style="color: var(--color-secondary);">
+          They cover the humux.dev website and the humux software published by Merola Software &amp;
+          Services. Using either means you accept them. The software itself is additionally governed
+          by the <a href="/licence.html" class="no-underline">MIT licence</a>, which prevails over
+          anything here where the two differ.
+        </p>
       </div>
-      <div class="terminal-body">
-        <div><span class="terminal-prompt"></span><span style="color: var(--color-accent);">curl</span> https://humux.dev/$(<span style="color: #888;">whoops</span>)</div>
-        <div class="mt-2" style="color: #c66;">✖ 404 — Not Found</div>
-        <div class="mt-2 opacity-60">No such page. Try one of these:</div>
-        <div class="mt-1"><span class="terminal-prompt"></span><a href="/" class="no-underline" style="color: var(--color-accent);">cd /</a></div>
-        <div><span class="terminal-prompt"></span><a href="/features.html" class="no-underline" style="color: var(--color-accent);">cat /features</a></div>
-        <div><span class="terminal-prompt"></span><a href="/use-cases.html" class="no-underline" style="color: var(--color-accent);">cat /use-cases</a></div>
-        <div><span class="terminal-prompt"></span><a href="/comparison.html" class="no-underline" style="color: var(--color-accent);">cat /comparison</a></div>
+
+      <div class="reveal mt-10">
+        <h2 class="text-2xl font-semibold" style="color: #eee;">2. Provided as-is</h2>
+        <p class="mt-3 text-base leading-relaxed" style="color: var(--color-secondary);">
+          The website and the software are provided "as is", without warranty of any kind, express or
+          implied. We do not promise that humux is fit for a particular purpose, error-free, secure,
+          or continuously available. To the fullest extent permitted by law, Merola Software &amp;
+          Services is not liable for any damage, loss of data, loss of profit, or other harm arising
+          from the use of the website or the software.
+        </p>
+      </div>
+
+      <div class="reveal mt-10">
+        <h2 class="text-2xl font-semibold" style="color: #eee;">3. Your agents act on your accounts</h2>
+        <p class="mt-3 text-base leading-relaxed" style="color: var(--color-secondary);">
+          humux is autonomous software. Under the configuration and permissions you give it, it reads
+          and sends email, creates and changes calendar events, sends messages, browses the web, runs
+          commands and writes code. It can get things wrong. Everything it does on your accounts, and
+          every consequence of that, is your responsibility. Configure permissions deliberately, keep
+          backups, and review what your agents may touch before you let them run unattended.
+        </p>
+      </div>
+
+      <div class="reveal mt-10">
+        <h2 class="text-2xl font-semibold" style="color: #eee;">4. Third-party services</h2>
+        <p class="mt-3 text-base leading-relaxed" style="color: var(--color-secondary);">
+          humux connects to services you choose &mdash; LLM providers, search engines, email hosts,
+          calendar servers, Telegram, WhatsApp, GitHub and others &mdash; using your own accounts and
+          API keys. You must comply with the terms of each of those services, and you are responsible
+          for their costs. We are not a party to those relationships and have no control over them.
+        </p>
+      </div>
+
+      <div class="reveal mt-10">
+        <h2 class="text-2xl font-semibold" style="color: #eee;">5. Lawful use</h2>
+        <p class="mt-3 text-base leading-relaxed" style="color: var(--color-secondary);">
+          Use humux lawfully. Do not use it to send spam, to impersonate people, to harvest data you
+          have no right to, or to break the law of the place you are in. The MIT licence grants you
+          broad freedom with the code; it does not grant you an exemption from the law.
+        </p>
+      </div>
+
+      <div class="reveal mt-10">
+        <h2 class="text-2xl font-semibold" style="color: #eee;">6. Changes</h2>
+        <p class="mt-3 text-base leading-relaxed" style="color: var(--color-secondary);">
+          We may update these terms and the software at any time. The date at the top of this page
+          tells you when the terms last changed. Continued use after a change means you accept it.
+        </p>
+      </div>
+
+      <div class="reveal mt-10">
+        <h2 class="text-2xl font-semibold" style="color: #eee;">7. Law and jurisdiction</h2>
+        <p class="mt-3 text-base leading-relaxed" style="color: var(--color-secondary);">
+          These terms are governed by Swiss law, excluding its conflict-of-law rules. The exclusive
+          place of jurisdiction is Z&uuml;rich, Switzerland. If any clause is found invalid, the rest
+          stays in force.
+        </p>
+      </div>
+
+      <div class="feature-card reveal mt-10">
+        <span class="tag">contact</span>
+        <h2 class="mt-3 text-xl font-semibold" style="color: #eee;">Merola Software &amp; Services</h2>
+        <p class="mt-2 text-base leading-relaxed" style="color: var(--color-secondary);">
+          Wartauweg 19, 8049 Z&uuml;rich, Switzerland<br>
+          <a href="mailto:support@humux.dev" class="no-underline">support@humux.dev</a>
+        </p>
       </div>
     </div>
-    <a href="/" class="btn-accent no-underline">Return to base</a>
-    <p class="mt-4 text-sm" style="color: var(--color-muted);">humux — Human Multiplexer &mdash; Merola Software & Services, Zürich</p>
-  </div>
-  </main>
+  </section>
 
+  <!-- Footer -->
   <footer class="border-t px-5 py-14" style="border-color: var(--color-border); background: var(--color-surface);">
     <div class="mx-auto max-w-6xl">
       <div class="flex flex-wrap items-start justify-between gap-10">

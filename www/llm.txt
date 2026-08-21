@@ -1,10 +1,10 @@
 # humux — Human Multiplexer
 
-> Self-hosted AI personal assistant. One Docker container.
+> A squad of AI agents that acts like a full team of experts at your disposal. Self-hosted, one Docker container.
 
-humux is an open-source, self-hosted AI personal assistant that runs in a single Docker container. It triages your email, manages your calendar, sends morning briefings, handles your messages, and runs scheduled tasks — all on your own hardware with no cloud AI dependencies.
+humux is an open-source, self-hosted squad of AI agents — a lead, a developer, a researcher, a marketer, a QA — that pick up your most ambitious ideas, do the work, and report back. They coordinate via GitHub issues, each with their own identity, tools, model, and voice, all running on your own hardware under your own API keys.
 
-For advanced use: create a squad of specialized agents (lead, developer, marketing, QA) that coordinate via GitHub issues, each with their own identity, tools, model, and voice.
+The foundation underneath is a full personal assistant: it triages your email, manages your calendar, sends morning briefings, handles your messages, and runs scheduled tasks — with no cloud AI dependencies.
 
 ## Key facts
 
@@ -59,6 +59,14 @@ Anthropic, OpenAI, Google Gemini, Grok (xAI), DeepSeek, OpenRouter — configura
 ## Links
 
 - Site: https://humux.dev
+- Features: https://humux.dev/features
+- Use cases: https://humux.dev/use-cases
+- Comparison: https://humux.dev/comparison
+- About: https://humux.dev/about
+- Support: https://humux.dev/support
+- Licence: https://humux.dev/licence
+- Privacy: https://humux.dev/privacy
+- Terms: https://humux.dev/terms
 - GitHub: https://github.com/mattmezza/humux
 - Docs: https://docs.humux.dev
 - Blog: https://humux.dev/blog/

@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Release Notes: v0.34 &ndash; v0.38 &mdash; humux blog</title>
+  <meta name="description" content="Parallel subagent fan-out with charge-as-you-go budgets, delegation trust lists, live read-only web transcripts, a system prompt on a diet, and a rebuilt Inspect tab.">
+  <link rel="canonical" href="https://humux.dev/blog/release-notes-v034-v038">
+
+  <meta property="og:title" content="Release Notes: v0.34 – v0.38">
+  <meta property="og:description" content="Subagent fan-out, delegation trust lists, live web transcripts, and a leaner prompt.">
+  <meta property="og:url" content="https://humux.dev/blog/release-notes-v034-v038">
+  <meta property="og:type" content="article">
+  <meta property="og:image" content="https://humux.dev/assets/images/og-image.png">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Release Notes: v0.34 – v0.38">
+  <meta name="twitter:description" content="Subagent fan-out, delegation trust lists, live web transcripts, and a leaner prompt.">
+  <meta name="twitter:image" content="https://humux.dev/assets/images/og-image.png">
+  <meta name="twitter:site" content="@_mattmezza_">
+  <meta name="twitter:creator" content="@_mattmezza_">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "headline": "Release Notes: v0.34 – v0.38",
+    "description": "Parallel subagent fan-out with charge-as-you-go budgets, delegation trust lists, live read-only web transcripts, a system prompt on a diet, and a rebuilt Inspect tab.",
+    "datePublished": "2026-08-21",
+    "author": { "@type": "Person", "name": "Matteo Merola" },
+    "publisher": { "@type": "Organization", "name": "humux" },
+    "url": "https://humux.dev/blog/release-notes-v034-v038"
+  }
+  </script>
+
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://humux.dev/"},{"@type":"ListItem","position":2,"name":"Blog","item":"https://humux.dev/blog/"},{"@type":"ListItem","position":3,"name":"Release Notes: v0.34 – v0.38","item":"https://humux.dev/blog/release-notes-v034-v038.html"}]}
+  </script>
+
+  <link rel="alternate" type="application/rss+xml" title="humux blog" href="/blog/feed.xml">
+
+  <link rel="icon" type="image/svg+xml" href="/assets/images/favicon-32.svg">
+  <link rel="alternate icon" type="image/png" sizes="32x32" href="/assets/images/favicon-32.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/images/apple-touch-icon.png">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="/assets/css/style.css">
+  <noscript><style>.reveal{opacity:1;transform:none}</style></noscript>
+
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script defer src="/assets/js/reveal.js"></script>
+  <script defer src="https://analytics.casa.merola.co/script.js" data-website-id="b395aaa1-97a5-494e-9ad8-15b3ba20318e"></script>
+</head>
+<body>
+
+  <!-- Nav -->
+  <nav x-data="{ open: false }" class="sticky top-0 z-50 border-b border-[var(--color-border)]" style="background: rgba(6,6,6,0.85); backdrop-filter: blur(12px);">
+    <div class="mx-auto flex max-w-6xl items-center justify-between px-5 py-4">
+      <a href="/" class="flex items-center gap-2 no-underline">
+        <span class="text-base font-semibold tracking-wider" style="color: var(--color-accent);">humux</span>
+        <span class="hidden sm:inline text-sm" style="color: var(--color-muted);">/ˈhjuːmʌks/</span>
+      </a>
+      <!-- Desktop links -->
+      <div class="hidden md:flex items-center gap-6 text-[0.9375rem]">
+        <a href="/" class="no-underline transition-colors" style="color: var(--color-secondary);">Home</a>
+        <a href="/features.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Features</a>
+        <a href="/use-cases.html" class="no-underline transition-colors" style="color: var(--color-secondary);">Use Cases</a>
+        <a href="/blog/" class="font-medium no-underline" style="color: var(--color-accent);">Blog</a>
+        <a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="no-underline transition-colors" style="color: var(--color-secondary);" aria-label="GitHub">
+          <svg class="inline-block h-[1.125rem] w-[1.125rem]" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        </a>
+        <a href="https://docs.humux.dev" target="_blank" rel="noopener" class="no-underline transition-colors" style="color: var(--color-secondary);">Docs</a>
+      </div>
+      <!-- Hamburger -->
+      <button @click="open = !open" class="md:hidden p-2" style="color: var(--color-secondary);" aria-label="Menu">
+        <svg x-show="!open" class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        <svg x-show="open" class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <!-- Mobile dropdown -->
+    <div x-show="open" @click.outside="open = false" x-cloak class="md:hidden border-t border-[var(--color-border)] px-5 py-5 space-y-4 text-base" style="background: rgba(6,6,6,0.95);">
+      <a href="/" class="block no-underline transition-colors" style="color: var(--color-secondary);">Home</a>
+      <a href="/features.html" class="block no-underline transition-colors" style="color: var(--color-secondary);">Features</a>
+      <a href="/use-cases.html" class="block no-underline transition-colors" style="color: var(--color-secondary);">Use Cases</a>
+      <a href="/blog/" class="block font-medium no-underline" style="color: var(--color-accent);">Blog</a>
+      <a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="block no-underline transition-colors" style="color: var(--color-secondary);">GitHub</a>
+      <a href="https://docs.humux.dev" target="_blank" rel="noopener" class="block no-underline transition-colors" style="color: var(--color-secondary);">Docs</a>
+    </div>
+  </nav>
+
+  <!-- Article -->
+  <article class="mx-auto max-w-3xl px-5 py-16">
+    <header class="mb-12 reveal">
+      <p class="text-sm font-mono mb-3" style="color: var(--color-muted);">August 21, 2026 &mdash; Matteo Merola</p>
+      <h1 class="text-4xl sm:text-5xl font-bold leading-tight mb-4" style="color: #eee;">Release Notes: v0.34 &ndash; v0.38</h1>
+      <p class="text-xl leading-relaxed" style="color: var(--color-secondary);">Five releases. The big one is delegation growing from a single helper into a squad that works in parallel &mdash; plus live read-only web transcripts, a system prompt on a diet, and an Inspect tab that finally shows what is actually being sent.</p>
+    </header>
+
+    <div class="space-y-6">
+
+      <!-- Fan-out -->
+      <h2 class="text-3xl font-bold mt-12 mb-4" style="color: #eee;">v0.38 &mdash; Fan-out: one call, several teammates</h2>
+
+      <p class="text-lg leading-relaxed" style="color: var(--color-secondary);">
+        Subagents have existed since v0.20-something, but they ran one at a time: the agent spawned a helper, waited, spawned the next. For work that splits into genuinely independent pieces that is just a slow loop. <code class="inline-code">spawn_subagents</code> (plural) takes a list of tasks and runs them in parallel in a single tool call &mdash; wall-clock is roughly the slowest subtask, not the sum of them.
+      </p>
+
+      <p class="text-lg leading-relaxed" style="color: var(--color-secondary);">
+        Results come back in request order, one entry per task, each with its own <code class="inline-code">status</code>, <code class="inline-code">steps</code>, <code class="inline-code">tokens_used</code>, <code class="inline-code">stopped_reason</code>, summary and full result. Partial failure is per-subtask: one helper erroring or being cancelled never sinks the batch. Fan-out is top-level only &mdash; a subagent can still delegate further with the singular tool, up to <code class="inline-code">recursion_depth</code>, but it cannot start a fan-out of its own. That single rule is what keeps the spend tree from branching exponentially.
+      </p>
+
+      <p class="text-lg leading-relaxed" style="color: var(--color-secondary);">
+        The agent also no longer waits to be asked. A standing <code class="inline-code">&lt;delegation&gt;</code> block in the prompt gives it the test &mdash; parts that each need several tool calls and don&rsquo;t depend on each other get fanned out; quick lookups it just does itself. Before that block, delegation only happened when the owner said the word &ldquo;subagent&rdquo; out loud: the orchestration skill explaining <em>when</em> to fan out was one line in an index of fifteen, so the model had to already suspect the answer to go read it.
+      </p>
+
+      <div class="terminal-window mt-6 mb-6">
+        <div class="terminal-header">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+          <span class="ml-2 text-sm" style="color: var(--color-muted);">telegram &mdash; a fan-out in flight</span>
+        </div>
+        <div class="terminal-body">
+<pre>you  &gt; compare the pricing, the docs and the self-host story
+       for the three vendors on my shortlist
+
+bot  &gt; 🧩 Delegating 3 subtasks…
+bot  &gt; ✅ Subagent pricing — done (42s, 23k tokens)
+bot  &gt; ✅ Subagent docs — done (51s, 31k tokens)
+bot  &gt; ⚠️ Subagent self-host — error (18s, 7k tokens)
+
+you  &gt; /subagents
+bot  &gt; Active runs (oldest first)
+
+       research      running   0:58   12 steps   [Cancel]
+       └ spawned by research: deep-dive
+                     running   0:21    3 steps   [Cancel]</pre>
+        </div>
+      </div>
+
+      <p class="text-lg leading-relaxed" style="color: var(--color-secondary);">
+        Those notes are notifications, not messages. They ride the channel send path directly, so they never enter history, never reach the model as input, and can never trigger a turn. Every spawn announces itself at every depth (<code class="inline-code">🧬 pricing spawned subagent deep-dive</code> for a nested one), and <code class="inline-code">/subagents</code> now reads as a tree &mdash; oldest first, so parents sit above the children they spawned, each nested run carrying a <code class="inline-code">└ spawned by …</code> line. Cancelling a parent cascades to its subtree, and <code class="inline-code">/stop</code> reaches children too instead of letting a fan-out run to completion after the turn it belonged to has already aborted.
+      </p>
+
+      <h3 class="text-2xl font-semibold mt-8 mb-3" style="color: #eee;">Budgets charged as you go</h3>
+
+      <p class="text-lg leading-relaxed" style="color: var(--color-secondary);">
+        The first budget design reserved tokens up front and refunded the unspent remainder. It was correct and it was miserable in the field: spawns got refused before they had done anything, the model read the refusal as &ldquo;delegation is broken&rdquo; and fell back to doing everything itself. The reservation machinery &mdash; refunds, pool normalisation, fair-share splitting across a fan-out &mdash; existed only to make reservations tolerable, so all of it went.
+      </p>
+
+      <p class="text-lg leading-relaxed" style="color: var(--color-secondary);">
+        What replaced it is charge-as-you-go: the per-turn pool is debited one LLM round at a time, as it is actually spent. A spawn is refused only when the spawn count is used up or the pool is already dry &mdash; never pre-emptively. When the pool drains mid-run, runs stop gracefully between rounds with <code class="inline-code">stopped_reason: "turn_budget"</code>, and a stopped run spends one final tool-less round writing up what it found rather than throwing away work already paid for. The trade-off is honest: concurrent children can overshoot the pool by at most one round each. A bounded overshoot beat the complexity of preventing it.
+      </p>
+
+      <p class="text-lg leading-relaxed" style="color: var(--color-secondary);">
+        <code class="inline-code">max_concurrent</code> became a real per-chat gate covering every run, sync or background &mdash; extra spawns queue instead of failing, and each chat has its own pool so one conversation&rsquo;s fan-out can never starve another&rsquo;s. A late fix also stopped budgets being charged for the whole re-sent prompt on every round instead of the new tokens, which was quietly draining pools several times faster than the numbers in the admin card suggested.
+      </p>
+
+      <h3 class="text-2xl font-semibold mt-8 mb-3" style="color: #eee;">Delegation trust lists</h3>
+
+      <p class="text-lg leading-relaxed" style="color: var(--color-secondary);">
+        <code class="inline-code">spawnable_agents</code> on an agent is a list of slugs it may delegate to. Left empty, the old behaviour holds: any agent may be named, and the child is narrowed to the intersection of both scopes &mdash; inherit, never widen. Filled in, it becomes a curated team: only the listed agents may be named, anything else is refused with the team in the error so the model can self-correct, and a listed specialist runs with its <em>own</em> tools, skills, secrets and account bindings.
+      </p>
+
+      <p class="text-lg leading-relaxed" style="color: var(--color-secondary);">
+        That is the point, and also the thing to be careful with. The list is the owner&rsquo;s explicit trust grant, which turns delegation into a deliberate capability handoff rather than a leak &mdash; but a subagent runs with system semantics and no per-action approval, so the spawn approval (which now names the target agent and the task) is the one human gate on the whole run. On agents reachable by untrusted input &mdash; group chats, GitHub webhooks &mdash; every entry in the list is a capability that input can reach for. Keep those lists short.
+      </p>
+
+      <p class="text-lg leading-relaxed" style="color: var(--color-secondary);">
+        Two scoping bugs surfaced while building it, both of the kind that only bite at depth: narrowing dropped the trust list, so an anonymous grandchild of a team-scoped agent escaped back into the any-agent regime; and collapsing two disjoint non-empty scopes produced an empty list, which by the allowlist convention means <em>all</em> &mdash; a narrowing that widened.
+      </p>
+
+      <h3 class="text-2xl font-semibold mt-8 mb-3" style="color: #eee;">The agent answers for its own helpers</h3>
+
+      <p class="text-lg leading-relaxed" style="color: var(--color-secondary);">
+        A finished background batch used to be handed to a cheap fast model, which wrote a one-liner into the chat and filed a digest as an assistant turn the agent never wrote. The agent was never re-invoked and never saw what its own helpers found &mdash; it couldn&rsquo;t act on the result, couldn&rsquo;t answer a follow-up beyond the digest, and the words the owner read were a small model&rsquo;s in the agent&rsquo;s voice.
+      </p>
+
+      <p class="text-lg leading-relaxed" style="color: var(--color-secondary);">
+        Now the batch routes back into the conversation it came from, through the same steering machinery the GitHub webhook already uses: a turn already running for that chat gets it injected between tool rounds, an idle chat runs it as its own turn. Either way the agent reads the raw results and its own reply is the assistant turn. The block is pre-framed as its own delegation returning rather than as a fresh instruction from the owner &mdash; a returning dispatch must not look like a new order. Wake loops are closed structurally instead of with a threshold: a turn started by a landing batch may not spawn background runs, so every chain is at most one wake deep.
+      </p>
+
+      <p class="text-lg leading-relaxed" style="color: var(--color-secondary);">
+        Generated media travels properly now too. A synchronous child shares the spawning turn&rsquo;s attachment queue, so an image it generates rides out natively with the parent&rsquo;s reply; a background run has no live turn to deliver through, so it hands back an absolute saved path. Previously the path was relative to the child&rsquo;s working directory, the parent couldn&rsquo;t find it, and simply regenerated the image &mdash; paying twice for the same picture.
+      </p>
+
+      <!-- Transcripts -->
+      <h2 class="text-3xl font-bold mt-12 mb-4" style="color: #eee;">v0.38 &mdash; Live read-only web transcripts</h2>
+
+      <p class="text-lg leading-relaxed" style="color: var(--color-secondary);">
+        Send <code class="inline-code">/weburl</code> and the agent replies with a link to a read-only web page showing that conversation, updating live. The token in the path is the only credential &mdash; 32 urlsafe bytes, minted once per channel/user/chat triple so the link stays stable and shareable, and scoped to exactly that context. Tokens live in the history database, which is already keyed by the same triple, so there is no new store and nothing to configure.
+      </p>
+
+      <p class="text-lg leading-relaxed" style="color: var(--color-secondary);">
+        The page flattens whatever the context recorded into typed entries &mdash; text, reasoning, tool call, tool result &mdash; so it renders chain-of-thought and tool activity behind collapsed chips without knowing anything about providers. The system prompt lives in its own table and never passes through. Tool arguments and results render through a small collapsible JSON tree instead of one long unwrappable line, nodes built with <code class="inline-code">textContent</code> throughout so a payload can never inject markup. There is a share button that copies the URL, a translucent live pill at the bottom of the page, and a 💭 toggle for readers who want every reasoning block open by default &mdash; kept viewer-side in <code class="inline-code">localStorage</code>, because it is a reading preference that differs per person looking at the same link. Tool activity deliberately stays collapsed; the reason to expand reasoning is not the reason to expand a 400-line tool result.
+      </p>
+
+      <!-- Prompt diet -->
+      <h2 class="text-3xl font-bold mt-12 mb-4" style="color: #eee;">v0.38 &mdash; The prompt on a diet, and an Inspect tab that shows it</h2>
+
+      <p class="text-lg leading-relaxed" style="color: var(--color-secondary);">
+        Measured before touching anything: about 11k tokens reached the model before the user had said a word, and a 10.4k-character per-turn preamble was prepended to every user message <em>and persisted</em>, so each turn stored another copy of it.
+      </p>
+
+      <p class="text-lg leading-relaxed" style="color: var(--color-secondary);">
+        Task reflection was deleted outright rather than trimmed. It injected 3,465 characters every turn &mdash; the last twelve rows, no relevance ranking, no scope, no expiry &mdash; and the lessons had drifted into contradicting the live prompt, one of them insisting the browser tool was unavailable while the tools block advertised it. The rest was de-duplication: &ldquo;read the skill first&rdquo; was stated three times, the tool blocks re-explained what the skills already carried and shrank to discovery pointers, and <code class="inline-code">character.md</code> stopped re-litigating harness policy and went back to being personality. Static prompt from ~13.1KB to 10,396 characters; preamble from 10,421 to ~6,810 characters per turn.
+      </p>
+
+      <p class="text-lg leading-relaxed" style="color: var(--color-secondary);">
+        The Inspect tab rendered neither tool calls nor reasoning content, so on DeepSeek every tool-calling turn showed as an empty card &mdash; 137 of the last 400 messages. It now renders role-badged message cards, tool calls with pretty-printed arguments, results paired to their call by id with an output preview, and thinking in its own collapsed block, with the system prompt and tool schemas showing their size, which is rather the point of the screen. Live subagent runs moved here from the Jobs tab, grouped by fan-out with children indented under their parent, each with a cancel button; every context row has a <strong style="color: #eee;">runs</strong> button that filters the panel to that conversation.
+      </p>
+
+      <!-- Reliability -->
+      <h2 class="text-3xl font-bold mt-12 mb-4" style="color: #eee;">Reliability</h2>
+
+      <p class="text-lg leading-relaxed" style="color: var(--color-secondary);">
+        A fan-out multiplies every background-inference weakness by the number of children, which is how the embedder problems surfaced. Three fixes, one commit:
+      </p>
+
+      <ul class="list-disc pl-6 space-y-2 text-lg leading-relaxed" style="color: var(--color-secondary);">
+        <li><strong style="color: #eee;">It no longer shouts</strong> &mdash; the recall fallback and the safe-embed path both logged full tracebacks at ERROR for a path their own docstrings call graceful. One turn with two subagents and a <code class="inline-code">remember</code> produced four stack traces for a sidecar that was simply down. Warnings now.</li>
+        <li><strong style="color: #eee;">It no longer hangs</strong> &mdash; the embedding client passed no timeout, inheriting the SDK&rsquo;s 600s with two retries. A <em>hung</em> sidecar (as opposed to a refused one) stalled the turn preamble, and every subagent preamble behind it, for ten minutes before falling back. Now 20s with one retry, matching the LLM clients.</li>
+        <li><strong style="color: #eee;">It no longer eats a vector</strong> &mdash; updating a long-term memory wrote the re-embed result straight into the row, so a failed embed during an outage replaced a good vector with NULL and dropped that memory out of semantic recall until someone reindexed by hand.</li>
+      </ul>
+
+      <p class="text-lg leading-relaxed" style="color: var(--color-secondary);">
+        Elsewhere: a cancelled subagent now reports what it found instead of returning nothing, a dead backend stops the loop rather than burning the step budget on retries, scheduled job context is cleared before each invocation, the Telegram Bot API is blocked from the agent&rsquo;s shell, and <code class="inline-code">max_tool_rounds</code> now defaults to 100 rather than 50 &mdash; the old ceiling was being hit by legitimate long tasks.
+      </p>
+
+      <!-- Earlier -->
+      <h2 class="text-3xl font-bold mt-12 mb-4" style="color: #eee;">v0.34 &ndash; v0.37 &mdash; what came before</h2>
+
+      <ul class="list-disc pl-6 space-y-2 text-lg leading-relaxed" style="color: var(--color-secondary);">
+        <li><strong style="color: #eee;">Deep research</strong> (v0.36) &mdash; a <code class="inline-code">deep_research</code> tool running a multi-step web research pipeline and delivering a themed report as an artifact, with its own models and budget in the Tools tab.</li>
+        <li><strong style="color: #eee;">Subagent model override</strong> (v0.37) &mdash; a spawn may name a model and provider from an <code class="inline-code">allowed_models</code> list, so a coordinator on a big model can farm legwork out to cheap fast workers and keep the synthesis for itself.</li>
+        <li><strong style="color: #eee;">Pause and resume scheduled jobs</strong> (v0.34) &mdash; without deleting and recreating them.</li>
+        <li><strong style="color: #eee;">Admin UI, in pieces</strong> (v0.34&ndash;v0.35) &mdash; every tab split into lazy-loaded sub-tabs with the sub-tab in the URL, pagination and search on the Memory and Skills tabs, and a row-click detail modal with inline editing that makes the memory tables usable on a phone.</li>
+        <li><strong style="color: #eee;">Thinking level &ldquo;max&rdquo;</strong> (v0.35), a <strong style="color: #eee;">Test STT</strong> button in the Voice tab (v0.37), and a fix for voice-marked parts being duplicated when they fell back to text.</li>
+        <li><strong style="color: #eee;">Operational odds and ends</strong> &mdash; log timestamps respect the configured timezone, the Docker healthcheck reads <code class="inline-code">$PORT</code>, an SSH client in the image, release tags preserved as GHCR image tags, and a much faster test suite.</li>
+      </ul>
+
+    </div>
+
+    <!-- CTA -->
+    <div class="mt-16 pt-8 border-t" style="border-color: var(--color-border);">
+      <p class="text-lg leading-relaxed" style="color: var(--color-secondary);">
+        Full changelogs for each release are on <a href="https://github.com/mattmezza/humux/releases" target="_blank" rel="noopener" class="no-underline font-medium" style="color: var(--color-accent);">GitHub Releases</a>.
+      </p>
+    </div>
+  </article>
+
+  <!-- Footer -->
+  <footer class="border-t px-5 py-14" style="border-color: var(--color-border); background: var(--color-surface);">
+    <div class="mx-auto max-w-6xl">
+      <div class="flex flex-wrap items-start justify-between gap-10">
+        <div>
+          <span class="text-base font-semibold" style="color: var(--color-accent);">humux</span>
+          <p class="mt-1.5 text-sm" style="color: var(--color-muted);">Human Multiplexer &mdash; /ˈhjuːmʌks/</p>
+          <p class="mt-1 text-sm" style="color: var(--color-muted);">A self-hosted squad of agents for your most ambitious ideas.</p>
+        </div>
+        <div class="flex flex-wrap gap-10">
+          <div>
+            <span class="text-sm font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Site</span>
+            <ul class="mt-3 space-y-1.5 text-sm" style="color: var(--color-muted);">
+              <li><a href="/" class="no-underline">Home</a></li>
+              <li><a href="/features.html" class="no-underline">Features</a></li>
+              <li><a href="/use-cases.html" class="no-underline">Use Cases</a></li>
+              <li><a href="/comparison.html" class="no-underline">Comparison</a></li>
+              <li><a href="/blog/" class="no-underline">Blog</a></li>
+            </ul>
+          </div>
+          <div>
+            <span class="text-sm font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Resources</span>
+            <ul class="mt-3 space-y-1.5 text-sm" style="color: var(--color-muted);">
+              <li><a href="https://github.com/mattmezza/humux" target="_blank" rel="noopener" class="no-underline">GitHub</a></li>
+              <li><a href="https://docs.humux.dev" target="_blank" rel="noopener" class="no-underline">Documentation</a></li>
+              <li><a href="https://github.com/mattmezza/humux/releases" target="_blank" rel="noopener" class="no-underline">Releases</a></li>
+            </ul>
+          </div>
+          <div>
+            <span class="text-sm font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Company</span>
+            <ul class="mt-3 space-y-1.5 text-sm" style="color: var(--color-muted);">
+              <li><a href="/about.html" class="no-underline">About</a></li>
+              <li><a href="/support.html" class="no-underline">Support</a></li>
+              <li><a href="/privacy.html" class="no-underline">Privacy</a></li>
+              <li><a href="/terms.html" class="no-underline">Terms</a></li>
+              <li><a href="/licence.html" class="no-underline">Licence</a></li>
+            </ul>
+          </div>
+          <div>
+            <span class="text-sm font-semibold uppercase tracking-wider" style="color: var(--color-secondary);">Author</span>
+            <ul class="mt-3 space-y-1.5 text-sm" style="color: var(--color-muted);">
+              <li><a href="https://x.com/_mattmezza_" target="_blank" rel="noopener" class="no-underline">@_mattmezza_</a></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div class="mt-10 border-t pt-6 text-center text-sm" style="border-color: var(--color-border); color: var(--color-muted);">
+        &copy; 2026 <a href="https://matteo.merola.co/software" target="_blank" rel="noopener" class="no-underline">Merola Software &amp; Services</a>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

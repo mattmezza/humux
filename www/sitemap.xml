@@ -21,6 +21,31 @@
     <priority>0.7</priority>
   </url>
   <url>
+    <loc>https://humux.dev/about</loc>
+    <changefreq>yearly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://humux.dev/support</loc>
+    <changefreq>yearly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://humux.dev/licence</loc>
+    <changefreq>yearly</changefreq>
+    <priority>0.4</priority>
+  </url>
+  <url>
+    <loc>https://humux.dev/privacy</loc>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
+  </url>
+  <url>
+    <loc>https://humux.dev/terms</loc>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
+  </url>
+  <url>
     <loc>https://humux.dev/blog/</loc>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
@@ -84,6 +109,11 @@
     <loc>https://humux.dev/blog/use-case-walkthroughs</loc>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://humux.dev/blog/release-notes-v034-v038</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
   </url>
   <url>
     <loc>https://humux.dev/blog/release-notes-v032-v033</loc>
