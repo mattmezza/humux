@@ -80,6 +80,19 @@ body {
   font-feature-settings: "rlig" 1, "calt" 1;
 }
 
+/* Space Grotesk for headings/display, matching the humux site */
+:where(h1, h2, h3, h4, h5, h6) {
+  font-family: var(--font-humux-display), ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: -0.01em;
+}
+
+/* keep inline/blocked code monospaced inside headings */
+:where(h1, h2, h3, h4, h5, h6) code {
+  font-family: "SF Mono", "Cascadia Code", "Fira Code", "JetBrains Mono",
+    ui-monospace, monospace;
+  letter-spacing: normal;
+}
+
 :where(.prose) {
   color: hsl(var(--fd-foreground));
 }
