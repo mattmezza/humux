@@ -4,7 +4,8 @@ and the last-sent LLM payload view (#99)."""
 from __future__ import annotations
 
 import asyncio
-from typing import cast
+from types import SimpleNamespace
+from typing import Any, cast
 
 from fastapi.testclient import TestClient
 
@@ -12,6 +13,7 @@ from api.admin import AgentState, create_admin_app
 from core import llm
 from core.config_store import ConfigStore
 from core.history import ConversationHistory
+from core.subagents import SubagentRun
 
 AUTH = {"Authorization": "Bearer secret"}
 
@@ -76,7 +78,7 @@ def test_inspect_partial_lists_active_contexts(tmp_path) -> None:
 
 def test_capture_records_per_context_and_suppresses_when_unset() -> None:
     llm.clear_captured()
-    ctx = ("telegram", "u1", "c1")
+    ctx = ("telegram", "u1", "c1", "")
     tok = llm.set_capture_context(ctx)
     try:
         llm.record_sent_payload(llm._capture_ctx.get(), {"model": "m", "messages": [], "tools": []})
@@ -93,10 +95,10 @@ def test_capture_lru_evicts_oldest() -> None:
     llm.clear_captured()
     cap = llm._CAPTURE_CAP
     for i in range(cap + 5):
-        llm.record_sent_payload(("c", "u", str(i)), {"model": str(i)})
+        llm.record_sent_payload(("c", "u", str(i), ""), {"model": str(i)})
     assert len(llm._LAST_SENT) == cap
-    assert llm.get_sent_payload(("c", "u", "0")) is None  # oldest evicted
-    assert llm.get_sent_payload(("c", "u", str(cap + 4))) is not None
+    assert llm.get_sent_payload(("c", "u", "0", "")) is None  # oldest evicted
+    assert llm.get_sent_payload(("c", "u", str(cap + 4), "")) is not None
     llm.clear_captured()
 
 
@@ -105,7 +107,7 @@ def test_inspect_payload_renders_captured_request(tmp_path) -> None:
     client = _client(tmp_path)
     llm.clear_captured()
     llm.record_sent_payload(
-        ("telegram", "u1", "c1"),
+        ("telegram", "u1", "c1", ""),
         {
             "captured_at": 1_700_000_000.0,
             "provider": "anthropic",
@@ -137,7 +139,7 @@ def test_inspect_payload_shows_context_usage_and_percent(tmp_path) -> None:
     client = _client(tmp_path)
     llm.clear_captured()
     llm.record_sent_payload(
-        ("telegram", "u1", "c1"),
+        ("telegram", "u1", "c1", ""),
         {
             "captured_at": 1_700_000_000.0,
             "provider": "anthropic",
@@ -168,7 +170,7 @@ def test_inspect_payload_omits_usage_when_absent(tmp_path) -> None:
     client = _client(tmp_path)
     llm.clear_captured()
     llm.record_sent_payload(
-        ("telegram", "u1", "c1"),
+        ("telegram", "u1", "c1", ""),
         {
             "captured_at": 1_700_000_000.0,
             "provider": "x",
@@ -202,6 +204,70 @@ def test_inspect_payload_empty_for_uncaptured_context(tmp_path) -> None:
     assert "No payload captured yet" in r.text
 
 
+def test_subagent_context_row_is_named_by_its_run(tmp_path) -> None:
+    """A captured subagent payload is listed by the run's label and task — a bare
+    run id makes every row of a fan-out look identical."""
+    llm.clear_captured()
+    llm.record_sent_payload(("telegram", "u1", "c1", "sub_1"), {"model": "m"})
+    run = SubagentRun(
+        run_id="sub_1",
+        agent="clio",
+        task="research competitor logos",
+        label="logo-research",
+        origin_channel="telegram",
+        origin_chat_id="c1",
+    )
+    r = _runs_client(tmp_path, [run]).get("/partials/inspect", headers=AUTH)
+    llm.clear_captured()
+    assert r.status_code == 200
+    assert "logo-research" in r.text
+    assert "research competitor logos" in r.text
+
+
+# ── Live subagent runs panel (moved from the Jobs tab) ──────────────────────
+
+
+def _runs_client(tmp_path, runs) -> TestClient:
+    agent = SimpleNamespace(subagents=SimpleNamespace(list_runs=lambda: runs))
+    app, _ = create_admin_app(
+        AgentState(agent=cast(Any, agent)), cast(ConfigStore, _Store(tmp_path))
+    )
+    return TestClient(app)
+
+
+def test_inspect_partial_hosts_runs_panel_with_per_context_filter(tmp_path) -> None:
+    asyncio.run(_seed(tmp_path))
+    r = _client(tmp_path).get("/partials/inspect", headers=AUTH)
+    assert r.status_code == 200
+    assert 'id="subagent-runs"' in r.text  # panel lives in Inspect now
+    # Each main context row filters the panel to its own channel + chat.
+    assert "/partials/subagent-runs?channel=telegram&chat_id=c1" in r.text
+
+
+def test_subagent_runs_filtered_by_channel_and_chat(tmp_path) -> None:
+    runs = [
+        SubagentRun(
+            run_id="r1", agent="a", task="mine", origin_channel="telegram", origin_chat_id="c1"
+        ),
+        SubagentRun(
+            run_id="r2", agent="a", task="theirs", origin_channel="telegram", origin_chat_id="c2"
+        ),
+    ]
+    client = _runs_client(tmp_path, runs)
+    both = client.get("/partials/subagent-runs", headers=AUTH)
+    assert "mine" in both.text and "theirs" in both.text
+    assert "show all" not in both.text  # no reset link while unfiltered
+
+    one = client.get(
+        "/partials/subagent-runs", params={"channel": "telegram", "chat_id": "c1"}, headers=AUTH
+    )
+    assert one.status_code == 200
+    assert "mine" in one.text and "theirs" not in one.text
+    assert "show all" in one.text  # reset link shown while filtered
+    # The filter is echoed into the panel's own poll URL, so it survives refreshes.
+    assert "chat_id=c1" in one.text
+
+
 def test_config_requires_restart_flags_startup_only_keys() -> None:
     from api.admin import _config_requires_restart
 
@@ -233,3 +299,68 @@ def test_patch_config_restart_required_only_on_real_change(tmp_path) -> None:
     # voice change → restart; hot-applied key → no restart.
     assert patch({"voice.tts_voice": "en-US-AvaNeural"})["restart_required"] is True
     assert patch({"memory.long_term_limit": "99"})["restart_required"] is False
+
+
+def test_inspect_payload_renders_tool_calls_thinking_and_results(tmp_path) -> None:
+    """The payload view breaks a turn apart instead of dumping JSON blobs (#99).
+
+    OpenAI-shaped wire format: assistant.tool_calls with JSON-*string* arguments,
+    reasoning_content for the CoT, and the answer in a later role:"tool" message.
+    """
+    asyncio.run(_seed(tmp_path))
+    client = _client(tmp_path)
+    llm.clear_captured()
+    llm.record_sent_payload(
+        ("telegram", "u1", "c1", ""),
+        {
+            "captured_at": 1_700_000_000.0,
+            "provider": "deepseek",
+            "model": "deepseek-chat",
+            "max_tokens": 8192,
+            "system": "S",
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": "",
+                    "reasoning_content": "MY_CHAIN_OF_THOUGHT",
+                    "tool_calls": [
+                        {
+                            "id": "call_42",
+                            "type": "function",
+                            "function": {
+                                "name": "bash",
+                                "arguments": '{"command": "ls -la /tmp", "purpose": "look"}',
+                            },
+                        }
+                    ],
+                },
+                {
+                    "role": "tool",
+                    "tool_call_id": "call_42",
+                    "content": '{"stdout": "total 0", "stderr": "", "exit_code": 0}',
+                },
+                # Anthropic-shaped blocks must render too (both providers supported).
+                {
+                    "role": "assistant",
+                    "content": [
+                        {"type": "thinking", "thinking": "ANTHROPIC_COT"},
+                        {"type": "text", "text": "done"},
+                    ],
+                },
+            ],
+            "tools": [],
+        },
+    )
+    r = client.get(
+        "/inspect/payload",
+        params={"channel": "telegram", "user_id": "u1", "chat_id": "c1"},
+        headers=AUTH,
+    )
+    assert r.status_code == 200
+    assert ">bash<" in r.text  # the tool name is a first-class element
+    assert "ls -la /tmp" in r.text  # JSON-string arguments are parsed out
+    assert "MY_CHAIN_OF_THOUGHT" in r.text and "ANTHROPIC_COT" in r.text
+    assert "thinking" in r.text  # CoT gets its own labelled, collapsed block
+    assert "exit 0" in r.text  # the result is paired and summarised
+    assert "tool result" in r.text
+    llm.clear_captured()

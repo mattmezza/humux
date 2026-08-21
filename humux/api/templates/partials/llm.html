@@ -24,16 +24,12 @@
   {{ gd_enabled|default('true', true)|tojson|forceescape }},
   {{ gd_provider|default('deepseek', true)|tojson|forceescape }},
   {{ gd_model|default('deepseek-v4-flash', true)|tojson|forceescape }},
-  {{ tr_enabled|default('true', true)|tojson|forceescape }},
-  {{ tr_provider|default('deepseek', true)|tojson|forceescape }},
-  {{ tr_model|default('deepseek-v4-flash', true)|tojson|forceescape }},
   {{ compaction_provider|default('deepseek', true)|tojson|forceescape }},
   {{ compaction_model|default('deepseek-v4-flash', true)|tojson|forceescape }},
   {{ thinking_level|default('', true)|tojson|forceescape }},
   {{ extraction_thinking_level|default('', true)|tojson|forceescape }},
   {{ consolidation_thinking_level|default('', true)|tojson|forceescape }},
   {{ gd_thinking_level|default('', true)|tojson|forceescape }},
-  {{ tr_thinking_level|default('', true)|tojson|forceescape }},
   {{ compaction_thinking_level|default('', true)|tojson|forceescape }},
   {{ vision_enabled|default('false', true)|tojson|forceescape }},
   {{ vision_provider|default('anthropic', true)|tojson|forceescape }},
@@ -47,8 +43,7 @@
   {{ rd_window_seconds|default('120', true)|tojson|forceescape }},
   {{ max_tokens|default('16384', true)|tojson|forceescape }},
   {{ max_tool_rounds|default('100', true)|tojson|forceescape }},
-  {{ temperature|default('0.5', true)|tojson|forceescape }},
-  {{ tr_max_reflections|default('12', true)|tojson|forceescape }}
+  {{ temperature|default('0.5', true)|tojson|forceescape }}
 )">
   {# Sub-tabs: Inference | Providers | History #}
   <div class="flex border-b border-border mb-4 overflow-x-auto">

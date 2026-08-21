@@ -264,7 +264,9 @@ def test_narrow_gh_repos_disjoint_blocks_not_widens() -> None:
     # NOT "unrestricted". Narrowing yields an empty list, and the gate blocks.
     parent = Agent(name="p", tool_config={"gh": {"enabled": True, "repos": ["me/a"]}})
     narrowed = _narrow_gh_repos(parent, {"gh": {"enabled": True, "repos": ["me/evil"]}})
-    assert narrowed["gh"]["repos"] == []
+    # narrow_scope returns a match-nothing sentinel for disjoint scopes
+    # ("[]" would mean *all* for tools/skills); for repos either value blocks.
+    assert narrowed["gh"]["repos"] == ["__nothing__"]
     child = Agent(name="c", tool_config=narrowed)
     assert github_repo_violation(child, "gh issue create --repo other/xyz") == "other/xyz"
 

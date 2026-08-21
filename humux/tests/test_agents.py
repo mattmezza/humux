@@ -7,7 +7,8 @@ import pytest
 from core.agent import scoped_tools
 from core.agents import Agent, AgentStore, parse_markdown, to_markdown
 from core.config import Config
-from core.prompt_builder import build_prompt_sections
+from core.executor import ToolExecutor
+from core.prompt_builder import build_prompt_sections, display_prefixes
 
 
 def test_parse_frontmatter_only() -> None:
@@ -54,6 +55,33 @@ def test_markdown_roundtrip() -> None:
     p2 = parse_markdown(to_markdown(p), name="t")
     assert (p2.role, p2.voice, p2.skills, p2.tools) == (p.role, p.voice, p.skills, p.tools)
     assert p2.character.strip() == "How."
+
+
+def test_spawnable_agents_roundtrip_and_coercion() -> None:
+    # Frontmatter list, plus the form-input shapes _as_list must coerce.
+    p = parse_markdown("---\nspawnable_agents: [qa, legal]\n---\n", name="boss")
+    assert p.spawnable_agents == ["qa", "legal"]
+    assert parse_markdown("---\nspawnable_agents: qa, legal\n---\n", name="b").spawnable_agents == [
+        "qa",
+        "legal",
+    ]
+    assert parse_markdown(
+        "---\nspawnable_agents: |\n  qa\n  legal\n---\n", name="b"
+    ).spawnable_agents == ["qa", "legal"]
+    assert parse_markdown("---\nrole: X\n---\n", name="b").spawnable_agents == []  # absent = []
+    # Survives the markdown round-trip.
+    back = parse_markdown(to_markdown(p), name="boss")
+    assert back.spawnable_agents == ["qa", "legal"]
+
+
+@pytest.mark.asyncio
+async def test_store_roundtrips_spawnable_agents(tmp_path) -> None:
+    store = AgentStore(db_path=str(tmp_path / "p.db"), seed_dir=tmp_path / "missing")
+    await store.upsert(Agent(name="boss", spawnable_agents=["qa", "legal"]))
+    assert (await store.get("boss")).spawnable_agents == ["qa", "legal"]
+    # Clearing the team sticks (upsert overwrites, not merges).
+    await store.upsert(Agent(name="boss", spawnable_agents=[]))
+    assert (await store.get("boss")).spawnable_agents == []
 
 
 def test_allow_semantics() -> None:
@@ -137,7 +165,6 @@ def test_prompt_uses_agent_identity() -> None:
         history_mode="injection",
         skills_index="",
         memories="",
-        reflections="",
         decomposed_goal=None,
         agent=agent,
     )
@@ -154,7 +181,6 @@ def test_prompt_uses_agent_identity() -> None:
         history_mode="injection",
         skills_index="",
         memories="",
-        reflections="",
         decomposed_goal=None,
     )
     assert "DEFAULT-CHARACTER" in default.full_prompt
@@ -173,7 +199,6 @@ def test_workspace_section_namespaces_by_slug() -> None:
             history_mode="injection",
             skills_index="",
             memories="",
-            reflections="",
             decomposed_goal=None,
             agent=agent,
         ).workspace
@@ -268,3 +293,83 @@ async def test_delete_seeded_agent_does_not_reseed(tmp_path) -> None:
     await store.upsert(Agent(name="fitness-coach", role="Back"))
     assert (await store.get("fitness-coach")).role == "Back"
     assert [p.name for p in await store.list_agents()] == ["fitness-coach"]
+
+
+def _prompt(cfg, agent=None) -> str:
+    return build_prompt_sections(
+        config=cfg,
+        history_mode="injection",
+        skills_index="",
+        memories="",
+        decomposed_goal=None,
+        agent=agent,
+    ).full_prompt
+
+
+def test_delegation_block_present_and_gated() -> None:
+    """The tool schemas say HOW to spawn; the orchestration skill says WHEN — but
+    the model only reads that skill if it already suspects fan-out. This block is
+    the trigger, so it has to be in the prompt whenever spawning is possible."""
+    cfg = Config()
+    cfg.subagents.enabled = True
+    assert "<delegation>" in _prompt(cfg)
+
+    cfg.subagents.enabled = False
+    assert "<delegation>" not in _prompt(cfg)
+
+    cfg.subagents.enabled = True
+    walled_off = Agent(name="solo", tools=["bash"])  # allowlist without spawn_subagent
+    assert "<delegation>" not in _prompt(cfg, walled_off)
+
+
+def test_allowlist_note_dedup_never_widens_the_advertised_set() -> None:
+    """The note is display-only de-dup: every prefix it advertises must be one the
+    executor actually permits, and no genuinely distinct prefix may be hidden."""
+    allowed = ToolExecutor.ALLOWED_PREFIXES
+    shown = display_prefixes()
+
+    # Nothing advertised that the guard would reject (expand the `a|b X` folds).
+    for entry in shown:
+        head, _, rest = entry.partition(" ")
+        for variant in [f"{name} {rest}".strip() for name in head.split("|")]:
+            assert variant in allowed, variant
+
+    # Nothing genuinely distinct hidden: every real prefix is still covered by a
+    # displayed one (either itself or a shorter prefix that subsumes it).
+    flat = [
+        f"{name} {e.partition(' ')[2]}".strip()
+        for e in shown
+        for name in e.partition(" ")[0].split("|")
+    ]
+    for prefix in allowed:
+        assert any(prefix.startswith(v) for v in flat), prefix
+
+    # And it actually de-duplicated: the subsumed tools/ scripts are gone.
+    assert "python3 /app/tools/skills.py" not in shown
+    assert "python3|python /app/skills/" in shown
+
+
+def test_voice_block_gated_on_channel() -> None:
+    """TTS on is not enough: a channel that can't play audio (cli) must not be told
+    it can speak. Unknown/default ("") keeps the historical behaviour."""
+    cfg = Config()
+    cfg.voice.tts_enabled = True
+
+    def voice_for(channel: str) -> str:
+        return build_prompt_sections(
+            config=cfg,
+            history_mode="injection",
+            channel=channel,
+            skills_index="",
+            memories="",
+            decomposed_goal=None,
+        ).voice
+
+    assert "<voice>" in voice_for("")  # admin preview / tests
+    assert "<voice>" in voice_for("telegram")
+    assert "<voice>" in voice_for("telegram:coach")
+    assert voice_for("cli") == ""
+    assert voice_for("system") == ""
+
+    cfg.voice.tts_enabled = False
+    assert voice_for("telegram") == ""

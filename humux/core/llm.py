@@ -7,6 +7,7 @@ import contextvars
 import importlib
 import json
 import logging
+import random
 import time
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -25,21 +26,22 @@ reasoning_log.setLevel(logging.WARNING)
 # the agent sets the context for a turn, generate() records the payload, the
 # admin Inspect tab reads it back. ponytail: process-global dict, fine for one
 # agent process; move onto the agent instance if multi-tenant ever lands.
-# Context key = (channel, user_id, chat_id) — same triple as ConversationHistory.
+# Context key = (channel, user_id, chat_id, run_id) — the ConversationHistory
+# triple plus a subagent run id ("" for a main turn), so a fan-out of children
+# is inspectable per run instead of clobbering the parent's slot.
 _capture_ctx: contextvars.ContextVar = contextvars.ContextVar("humux_llm_capture_ctx", default=None)
 # The agent slug whose turn is running, so token usage can be attributed per
 # agent for the dashboard (#199 flw). Empty = unknown (subagents/system tasks).
 _usage_agent: contextvars.ContextVar = contextvars.ContextVar("humux_llm_usage_agent", default="")
-_LAST_SENT: OrderedDict[tuple[str, str, str], dict[str, Any]] = OrderedDict()
+_LAST_SENT: OrderedDict[tuple[str, str, str, str], dict[str, Any]] = OrderedDict()
 _CAPTURE_CAP = 100  # ponytail: LRU cap; bump if you watch >100 live chats
 
 
-def set_capture_context(ctx: tuple[str, str, str] | None) -> Any:
+def set_capture_context(ctx: tuple[str, str, str, str] | None) -> Any:
     """Bind the conversation context that generate() should record under.
 
-    Pass ``None`` to suppress capture (e.g. subagents, which run inside the
-    spawner's context but must not overwrite its captured payload). Returns a
-    token for :func:`reset_capture_context`."""
+    Pass ``None`` to suppress capture entirely. Returns a token for
+    :func:`reset_capture_context`."""
     return _capture_ctx.set(ctx)
 
 
@@ -57,7 +59,7 @@ def reset_usage_agent(token: Any) -> None:
     _usage_agent.reset(token)
 
 
-def record_sent_payload(ctx: tuple[str, str, str] | None, payload: dict[str, Any]) -> None:
+def record_sent_payload(ctx: tuple[str, str, str, str] | None, payload: dict[str, Any]) -> None:
     """Store ``payload`` as the last-sent request for ``ctx`` (no-op if None)."""
     if ctx is None:
         return
@@ -67,13 +69,53 @@ def record_sent_payload(ctx: tuple[str, str, str] | None, payload: dict[str, Any
         _LAST_SENT.popitem(last=False)
 
 
-def get_sent_payload(ctx: tuple[str, str, str]) -> dict[str, Any] | None:
+def get_sent_payload(ctx: tuple[str, str, str, str]) -> dict[str, Any] | None:
     return _LAST_SENT.get(ctx)
+
+
+def list_captured() -> list[tuple[str, str, str, str]]:
+    """Keys of every captured payload, newest first — the admin Inspect tab
+    merges these with the chat list so subagent runs (which never appear in
+    ConversationHistory) still get an entry."""
+    return list(reversed(_LAST_SENT.keys()))
 
 
 def clear_captured() -> None:
     """Drop all captured payloads (used by tests)."""
     _LAST_SENT.clear()
+
+
+# Transport-level resilience (#fan-out): concurrent subagents hitting one
+# provider will surface 429s/5xxs that today's serial calls never did. A short
+# jittered retry on the SDK call itself; deliberately NOT an automatic re-run of
+# a failed subagent (that would double spend invisibly — the model can retry a
+# failed child from the fan-out result instead).
+_RETRY_STATUSES = {429, 500, 502, 503, 504, 529}
+_RETRY_ATTEMPTS = 3
+
+
+async def _call_with_retries(fn):
+    """Await ``fn()`` retrying transient provider errors with jittered backoff.
+
+    Both SDKs raise typed errors carrying ``status_code``; anything else (auth,
+    bad request, timeout) propagates immediately.
+    """
+    for attempt in range(_RETRY_ATTEMPTS):
+        try:
+            return await fn()
+        except Exception as exc:
+            status = getattr(exc, "status_code", None)
+            if status not in _RETRY_STATUSES or attempt >= _RETRY_ATTEMPTS - 1:
+                raise
+            delay = (2**attempt) * 0.5 * (1 + random.random())
+            logging.getLogger(__name__).warning(
+                "LLM call failed with %s; retrying in %.1fs (%d/%d)",
+                status,
+                delay,
+                attempt + 1,
+                _RETRY_ATTEMPTS,
+            )
+            await asyncio.sleep(delay)
 
 
 _DEFAULT_BASE_URLS = {
@@ -400,13 +442,15 @@ class LLMClient:
                         "cache_control": {"type": "ephemeral"},
                     }
                 ]
-            response = await messages_client.create(
-                model=resolved_model,
-                max_tokens=max_tokens,
-                system=cast(Any, system_param),
-                messages=cast(Any, messages),
-                tools=cast(Any, tools),
-                **self._sampling_kwargs(),
+            response = await _call_with_retries(
+                lambda: messages_client.create(
+                    model=resolved_model,
+                    max_tokens=max_tokens,
+                    system=cast(Any, system_param),
+                    messages=cast(Any, messages),
+                    tools=cast(Any, tools),
+                    **self._sampling_kwargs(),
+                )
             )
             tool_calls = []
             text_parts = []
@@ -461,12 +505,18 @@ class LLMClient:
         openai_tools = _openai_tools(tools)
         client_any = cast(Any, self._client)
         full_messages = [{"role": "system", "content": system}, *messages]
-        response = await client_any.chat.completions.create(
-            model=resolved_model,
-            max_tokens=max_tokens,
-            messages=cast(Any, full_messages),
-            tools=cast(Any, openai_tools),
-            **self._reasoning_kwargs(),
+        # The OpenAI schema rejects an empty `tools` array, so a deliberately
+        # tool-free call (vision captioning, a subagent's wrap-up round) has to
+        # omit the field entirely rather than send [].
+        tool_kwargs = {"tools": cast(Any, openai_tools)} if openai_tools else {}
+        response = await _call_with_retries(
+            lambda: client_any.chat.completions.create(
+                model=resolved_model,
+                max_tokens=max_tokens,
+                messages=cast(Any, full_messages),
+                **tool_kwargs,
+                **self._reasoning_kwargs(),
+            )
         )
         message = response.choices[0].message
         tool_calls = []

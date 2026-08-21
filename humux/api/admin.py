@@ -30,7 +30,13 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import httpx
 import requests as http_requests
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    RedirectResponse,
+    Response,
+)
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
 from jinja2 import Environment, FileSystemLoader
@@ -41,13 +47,14 @@ from core.compaction import effective_window
 from core.config import CompactionConfig, search_ready
 from core.config_store import ConfigStore
 from core.goal_decomposition import classify_complexity, decompose_goal
-from core.llm import LLMClient, get_sent_payload
+from core.llm import LLMClient, get_sent_payload, list_captured
 from core.log_streams import current_stream, current_subagent
 from core.prompt_builder import (
     build_prompt_sections,
 )
 from core.tools import gh_token_secret_name, tool_env
 from core.tools import registry as tool_registry
+from core.transcript import to_entries
 from core.wacli import WacliManager
 
 if TYPE_CHECKING:
@@ -107,8 +114,23 @@ def _fmt_tokens(n: int) -> str:
     return str(n)
 
 
+def _fromjson(value: object) -> object:
+    """Parse a JSON string, or return None if it isn't JSON (Inspect tab #99).
+
+    OpenAI-shaped tool calls carry their arguments as a JSON-encoded *string*;
+    the payload view parses them so they can be rendered as fields instead of
+    one unreadable blob."""
+    if not isinstance(value, str):
+        return value
+    try:
+        return json.loads(value)
+    except Exception:
+        return None
+
+
 _jinja_env.globals["step_ctx"] = {}  # default empty dict for wizard templates
 _jinja_env.globals["fmt_tokens"] = _fmt_tokens
+_jinja_env.filters["fromjson"] = _fromjson
 
 
 def _render(template_name: str, **ctx: object) -> HTMLResponse:
@@ -471,6 +493,7 @@ class _BufferHandler(logging.Handler):
                     "name": record.name,
                     "stream": stream,
                     "hue": _stream_hue(stream),
+                    "subagent": sub or "",
                     "message": message,
                     "is_reasoning": record.name == _REASONING_LOGGER,
                 }
@@ -487,17 +510,20 @@ def _filter_log_entries(
     q: str = "",
     since: str = "",
     until: str = "",
+    subagent: str = "",
 ) -> list[dict]:
     """Apply the Logs tab filters. ``stream`` is a regex over the stream name;
     ``level`` is a minimum severity; ``q`` is a case-insensitive substring over
-    the message; ``since``/``until`` are ``datetime-local`` bounds. Each empty
-    filter is a no-op, so the unfiltered case returns everything."""
+    the message; ``since``/``until`` are ``datetime-local`` bounds; ``subagent``
+    is a case-insensitive substring over the emitting subagent's label. Each
+    empty filter is a no-op, so the unfiltered case returns everything."""
     try:
         rx = re.compile(stream, re.IGNORECASE) if stream else None
     except re.error:
         rx = None  # a half-typed regex shouldn't blank the viewer
     minlevel = logging.getLevelName(level) if level in _LOG_LEVELS else 0
     ql = q.strip().lower()
+    subl = subagent.strip().lower()
     lo = _parse_local_dt(since)
     hi = _parse_local_dt(until)
     out = []
@@ -507,6 +533,8 @@ def _filter_log_entries(
         if minlevel and e["levelno"] < minlevel:
             continue
         if ql and ql not in e["message"].lower() and ql not in e["name"].lower():
+            continue
+        if subl and subl not in (e.get("subagent") or "").lower():
             continue
         if lo is not None and e["ts"] < lo:
             continue
@@ -1065,6 +1093,7 @@ class AgentUpsertIn(BaseModel):
     character: str = ""
     skills: list[str] = []
     tools: list[str] = []
+    spawnable_agents: list[str] = []  # delegation trust list; empty = any agent
     secrets: list[str] = []
     bot_token: str = ""  # per-agent Telegram bot (#29); empty = no own bot
     allowed_user_ids: str = ""  # comma/newline-separated; empty = inherit global
@@ -1131,7 +1160,6 @@ class CalendarTestIn(BaseModel):
 class PromptPreviewIn(BaseModel):
     message: str = ""
     include_memories: bool = True
-    include_reflections: bool = True
 
 
 class VoicePreviewIn(BaseModel):
@@ -1273,6 +1301,44 @@ def create_admin_app(
                 "X-Content-Type-Options": "nosniff",
             },
         )
+
+    # ── Read-only live web transcript (share token from /weburl) ──────────────
+    # No auth dependency: the 32-byte urlsafe token in the path IS the credential,
+    # the same trade the public artifacts route makes. A token maps to exactly one
+    # (channel, user_id, chat_id), so one link never exposes another conversation.
+
+    async def _transcript_context(token: str):
+        history = await _history_from_config(config_store)
+        ctx = await history.resolve_web_token(token)
+        return history, ctx
+
+    @app.get("/t/{token}", response_model=None)
+    async def transcript_page(token: str) -> Response:
+        history, ctx = await _transcript_context(token)
+        if ctx is None:
+            return Response("Not found", status_code=404, media_type="text/plain")
+        channel, user_id, chat_id = ctx
+        name = await history.get_chat_agent(channel, user_id, chat_id)
+        name = name or await config_store.get("agent.name") or "Assistant"
+        page = _render("transcript.html", agent_name=name, token=token)
+        # Not indexable and never cached: the URL is a secret, and a stale copy
+        # would show a frozen transcript.
+        page.headers["X-Robots-Tag"] = "noindex, nofollow"
+        page.headers["Cache-Control"] = "no-store"
+        return page
+
+    @app.get("/t/{token}/messages", response_model=None)
+    async def transcript_messages(token: str, after: int = 0) -> Response:
+        """Typed entries recorded after cursor ``after``, plus the new cursor."""
+        history, ctx = await _transcript_context(token)
+        if ctx is None:
+            return Response("Not found", status_code=404, media_type="text/plain")
+        rows = await history.transcript_rows(*ctx, after=after)
+        payload = {
+            "entries": to_entries(rows),
+            "cursor": rows[-1]["id"] if rows else max(0, after),
+        }
+        return JSONResponse(payload, headers={"Cache-Control": "no-store"})
 
     auth = _make_auth_dependency(config_store, secret_store)
 
@@ -1513,6 +1579,10 @@ def create_admin_app(
                 {"key": s.key, "label": s.label, "summary": s.summary}
                 for s in tool_registry()
                 if (await config_store.get(f"tools.{s.key}.enabled")) == "true"
+            ],
+            # Agent slugs offerable as a delegation trust list (spawnable_agents).
+            "all_agents": [
+                a.name for a in await (await _agent_store_from_config(config_store)).list_agents()
             ],
             "infra_available": bool(secret_store and secret_store.infra.available),
             # Existing infra-vault secret names an agent can reuse as its gh token
@@ -1945,13 +2015,7 @@ def create_admin_app(
         gd_enabled = gd_enabled if gd_enabled is not None else "true"
         gd_provider = await config_store.get("goal_decomposition.provider") or "deepseek"
         gd_model = await config_store.get("goal_decomposition.model") or "deepseek-v4-flash"
-        tr_enabled = await config_store.get("task_reflection.enabled")
-        tr_enabled = tr_enabled if tr_enabled is not None else "true"
-        tr_provider = await config_store.get("task_reflection.provider") or "deepseek"
-        tr_model = await config_store.get("task_reflection.model") or "deepseek-v4-flash"
-        tr_max_reflections = await config_store.get("task_reflection.max_reflections") or "12"
         gd_thinking_level = await config_store.get("goal_decomposition.thinking_level") or ""
-        tr_thinking_level = await config_store.get("task_reflection.thinking_level") or ""
         rd_enabled = await config_store.get("reply_decision.enabled")
         rd_enabled = rd_enabled if rd_enabled is not None else "false"
         rd_provider = await config_store.get("reply_decision.provider") or "deepseek"
@@ -2003,11 +2067,6 @@ def create_admin_app(
             gd_provider=gd_provider,
             gd_model=gd_model,
             gd_thinking_level=gd_thinking_level,
-            tr_enabled=tr_enabled,
-            tr_provider=tr_provider,
-            tr_model=tr_model,
-            tr_max_reflections=tr_max_reflections,
-            tr_thinking_level=tr_thinking_level,
             rd_enabled=rd_enabled,
             rd_provider=rd_provider,
             rd_model=rd_model,
@@ -2135,7 +2194,10 @@ def create_admin_app(
         sub_recursion = await config_store.get("subagents.recursion_depth") or "3"
         sub_steps = await config_store.get("subagents.max_steps") or "12"
         sub_tokens = await config_store.get("subagents.token_budget") or "100000"
-        sub_concurrent = await config_store.get("subagents.max_concurrent") or "3"
+        sub_concurrent = await config_store.get("subagents.max_concurrent") or "4"
+        sub_fanout = await config_store.get("subagents.max_fanout") or "6"
+        sub_spawns_turn = await config_store.get("subagents.max_spawns_per_turn") or "12"
+        sub_turn_tokens = await config_store.get("subagents.turn_token_budget") or "400000"
         # Allowed "provider:model" overrides (#299) — stored as a JSON list,
         # edited as one entry per line.
         try:
@@ -2144,14 +2206,6 @@ def create_admin_app(
             )
         except json.JSONDecodeError, TypeError:
             sub_allowed = ""
-        # Result-summary inference (notification + context digest) for finished
-        # background batches — fast/cheap model by default.
-        ss_enabled = await config_store.get("subagent_summary.enabled")
-        ss_enabled = ss_enabled if ss_enabled is not None else "true"
-        ss_provider = await config_store.get("subagent_summary.provider") or "deepseek"
-        ss_model = await config_store.get("subagent_summary.model") or "deepseek-v4-flash"
-        ss_thinking = await config_store.get("subagent_summary.thinking_level") or ""
-
         # Image generation (issue #55).
         ig_enabled = await config_store.get("tools.imagegen.enabled")
         ig_enabled = ig_enabled if ig_enabled is not None else "false"
@@ -2209,11 +2263,10 @@ def create_admin_app(
             subagents_max_steps=sub_steps,
             subagents_token_budget=sub_tokens,
             subagents_max_concurrent=sub_concurrent,
+            subagents_max_fanout=sub_fanout,
+            subagents_max_spawns_per_turn=sub_spawns_turn,
+            subagents_turn_token_budget=sub_turn_tokens,
             subagents_allowed_models=sub_allowed,
-            summary_enabled=ss_enabled,
-            summary_provider=ss_provider,
-            summary_model=ss_model,
-            summary_thinking_level=ss_thinking,
             imagegen_enabled=ig_enabled,
             imagegen_provider=ig_provider,
             imagegen_model=ig_model,
@@ -2745,12 +2798,20 @@ def create_admin_app(
         q: str = "",
         since: str = "",
         until: str = "",
+        subagent: str = "",
     ) -> HTMLResponse:
         """Filtered log lines for HTMX swap (#75). Filters: stream (regex), level
-        (min severity), q (text), since/until (time range)."""
+        (min severity), q (text), since/until (time range), subagent (label
+        substring — lines emitted inside one subagent run)."""
         snapshot = list(_LOG_BUFFER)
         entries = _filter_log_entries(
-            snapshot, stream=stream, level=level, q=q, since=since, until=until
+            snapshot,
+            stream=stream,
+            level=level,
+            q=q,
+            since=since,
+            until=until,
+            subagent=subagent,
         )[-300:]
         # All stream names ever seen (not just the filtered slice) for the picker.
         streams = sorted({e["stream"] for e in snapshot})
@@ -2835,11 +2896,6 @@ def create_admin_app(
         return _render_partial(
             "partials/jobs_scheduled.html", **(await _jobs_context(show_completed))
         )
-
-    @app.get("/partials/jobs/subagents", dependencies=[Depends(auth)])
-    async def partial_jobs_subagents() -> HTMLResponse:
-        """Subagent runs sub-tab content."""
-        return _render_partial("partials/jobs_subagents.html")
 
     @app.post("/jobs", dependencies=[Depends(auth)])
     async def upsert_job(request: Request) -> HTMLResponse:
@@ -3085,18 +3141,61 @@ def create_admin_app(
             return []
         return agent.subagents.list_runs()
 
+    def _subagent_groups(runs: list) -> list[dict]:
+        """Bucket runs by ``group_id`` (siblings of one fan-out), newest bucket
+        first; an ungrouped run is its own bucket. Order inside a bucket keeps
+        list_runs' newest-first order."""
+        groups: list[dict] = []
+        index: dict[str, dict] = {}
+        for r in runs:
+            gid = getattr(r, "group_id", "") or ""
+            key = gid or f"\0solo:{r.run_id}"
+            g = index.get(key)
+            if g is None:
+                g = {"group_id": gid, "runs": []}
+                index[key] = g
+                groups.append(g)
+            g["runs"].append(r)
+        return groups
+
     @app.get("/partials/subagent-runs", dependencies=[Depends(auth)])
-    async def partial_subagent_runs() -> HTMLResponse:
-        """Subagent runs card grid — polled by the Jobs tab for live status."""
+    async def partial_subagent_runs(channel: str = "", chat_id: str = "") -> HTMLResponse:
+        """Subagent runs card grid — polled by the Inspect tab for live status.
+
+        ``channel``/``chat_id`` narrow the panel to the runs originating from one
+        conversation (the Inspect master list's per-context "runs" buttons); both
+        empty shows every run. The filter is echoed back as ``qs`` so the panel's
+        self-poll keeps it."""
+        runs = _subagent_runs()
+        # Labels come from every run, so a filtered child can still name a parent.
+        labels = {r.run_id: (r.label or r.agent or r.run_id) for r in runs}
+        if channel or chat_id:
+            runs = [
+                r
+                for r in runs
+                if (not channel or r.origin_channel == channel)
+                and (not chat_id or r.origin_chat_id == chat_id)
+            ]
         return _render_partial(
             "partials/subagent_runs.html",
-            runs=_subagent_runs(),
+            groups=_subagent_groups(runs),
+            labels=labels,
+            running_count=sum(1 for r in runs if r.status == "running"),
             agent_running=agent_state.agent is not None,
+            qs=(
+                "?" + urllib.parse.urlencode({"channel": channel, "chat_id": chat_id})
+                if (channel or chat_id)
+                else ""
+            ),
         )
 
     @app.post("/subagents/cancel", dependencies=[Depends(auth)])
-    async def cancel_subagent(request: Request) -> HTMLResponse:
-        """Cancel a running subagent. Returns the refreshed runs partial."""
+    async def cancel_subagent(
+        request: Request, channel: str = "", chat_id: str = ""
+    ) -> HTMLResponse:
+        """Cancel a running subagent. Returns the refreshed runs partial,
+        keeping any active per-context filter (the button posts to
+        ``/subagents/cancel{qs}``, so the panel doesn't jump back to all runs)."""
         agent = agent_state.agent
         if not agent:
             raise HTTPException(503, "Agent not running")
@@ -3110,9 +3209,7 @@ def create_admin_app(
             raise HTTPException(400, "Missing 'run_id' in request body")
         agent.subagents.cancel(run_id)
         log.info("Subagent %r cancelled via admin", run_id)
-        return _render_partial(
-            "partials/subagent_runs.html", runs=_subagent_runs(), agent_running=True
-        )
+        return await partial_subagent_runs(channel=channel, chat_id=chat_id)
 
     # ── Config API ─────────────────────────────────────────────────────
 
@@ -3182,7 +3279,6 @@ def create_admin_app(
                 agent.memory.archive_min_idle_days = mem_cfg.archive_min_idle_days
                 agent.memory.hygiene_enabled = mem_cfg.hygiene_enabled
                 agent.memory.hygiene_similarity_threshold = mem_cfg.hygiene_similarity_threshold
-                agent.reflections.max_reflections = new_config.task_reflection.max_reflections
                 agent.search_enabled = search_ready(new_config.search)
                 if agent.search_enabled and new_config.search.provider == "tavily":
                     from tavily import TavilyClient
@@ -3305,18 +3401,6 @@ def create_admin_app(
                     long_term_limit=config.memory.long_term_limit,
                 ).format_for_prompt(query=query)
 
-        reflections = ""
-        if body.include_reflections and config.task_reflection.enabled:
-            if agent_state.agent:
-                reflections = await agent_state.agent.reflections.format_for_prompt()
-            else:
-                from core.task_reflection import ReflectionStore
-
-                reflections = await ReflectionStore(
-                    db_path=config.task_reflection.db_path,
-                    max_reflections=config.task_reflection.max_reflections,
-                ).format_for_prompt()
-
         decomposed_goal = None
         if message and config.goal_decomposition.enabled:
             try:
@@ -3349,11 +3433,9 @@ def create_admin_app(
             history_mode=history_mode,
             skills_index=skills_index,
             memories=memories,
-            reflections=reflections,
             decomposed_goal=decomposed_goal,
             secrets_available=secret_store is not None,
             include_memories=body.include_memories,
-            include_reflections=body.include_reflections,
         )
         full_prompt = sections.full_prompt
         section_map = sections.as_dict()
@@ -3367,7 +3449,6 @@ def create_admin_app(
             "lengths": {k: len(v or "") for k, v in section_map.items()},
             "flags": {
                 "include_memories": body.include_memories,
-                "include_reflections": body.include_reflections,
                 "decomposition_applied": decomposed_goal is not None,
             },
         }
@@ -4066,6 +4147,7 @@ def create_admin_app(
                 character=body.character,
                 skills=[s.strip() for s in body.skills if s.strip()],
                 tools=[t.strip() for t in body.tools if t.strip()],
+                spawnable_agents=[a.strip() for a in body.spawnable_agents if a.strip()],
                 secrets=[s.strip() for s in body.secrets if s.strip()],
                 bot_token=body.bot_token.strip(),
                 allowed_user_ids=_as_int_list(body.allowed_user_ids),
@@ -4207,7 +4289,30 @@ def create_admin_app(
         tz = await config_store.get("agent.timezone") or "UTC"
         now = datetime.now(UTC)
         for c in chats:
+            c["run_id"] = c["label"] = c["task"] = c["status"] = ""
             c["last_active_h"] = _humanize_ts(c.get("last_active", ""), now, tz)
+        # Subagent runs never write to ConversationHistory, so their captured
+        # payloads would be unreachable from the list. Append one synthetic row
+        # per captured key that carries a run id (newest first), leaving the
+        # main-chat rows above untouched. The registry supplies the label/agent/
+        # task so the row is nameable instead of an opaque run id — it keeps
+        # fewer finished runs than the payload cache, hence the .get fallback.
+        runs = {r.run_id: r for r in _subagent_runs()}
+        for channel, user_id, chat_id, run_id in list_captured():
+            if run_id:
+                run = runs.get(run_id)
+                chats.append(
+                    {
+                        "channel": channel,
+                        "user_id": user_id,
+                        "chat_id": chat_id,
+                        "run_id": run_id,
+                        "label": (run.label or run.agent) if run else "",
+                        "task": (run.task or "")[:120] if run else "",
+                        "status": run.status if run else "",
+                        "last_active_h": run.elapsed_str if run else "",
+                    }
+                )
         return _render_partial("partials/inspect.html", chats=chats)
 
     @app.get("/partials/inspect-tabs", dependencies=[Depends(auth)])
@@ -4227,14 +4332,15 @@ def create_admin_app(
 
     @app.get("/inspect/payload", dependencies=[Depends(auth)])
     async def inspect_payload(
-        channel: str = "", user_id: str = "", chat_id: str = ""
+        channel: str = "", user_id: str = "", chat_id: str = "", run_id: str = ""
     ) -> HTMLResponse:
         """Render the last-sent inference payload for one context (#99).
 
-        Reads the in-memory capture keyed by (channel, user_id, chat_id) — the
-        exact system/messages/tools/model that generate() last sent. Empty until
-        the context has had a turn since the agent started."""
-        payload = get_sent_payload((channel, user_id, chat_id))
+        Reads the in-memory capture keyed by (channel, user_id, chat_id, run_id)
+        — run_id "" for a main turn, a subagent run id otherwise — the exact
+        system/messages/tools/model that generate() last sent. Empty until the
+        context has had a turn since the agent started."""
+        payload = get_sent_payload((channel, user_id, chat_id, run_id))
         meta: dict[str, object] | None = None
         system = ""
         messages: list = []
@@ -5291,6 +5397,7 @@ GATEABLE_TOOLS = [
     "deep_research",
     "manage_jobs",
     "spawn_subagent",
+    "spawn_subagents",
     "generate_image",
     "read",
     "write",
@@ -5318,6 +5425,7 @@ TOOL_DESCRIPTIONS = {
     "deep_research": "Multi-step web research with a synthesized, cited report.",
     "manage_jobs": "Schedule, list and cancel the agent's own jobs.",
     "spawn_subagent": "Delegate a scoped subtask to a child agent.",
+    "spawn_subagents": "Fan out several subtasks to parallel subagents.",
     "generate_image": "Generate images and send them as photos.",
     "read": "Read a file inside the workspace.",
     "write": "Create or overwrite a file inside the workspace.",
@@ -5333,7 +5441,7 @@ def gateable_tools_for(
     """GATEABLE_TOOLS minus tools whose feature is globally disabled."""
     out = list(GATEABLE_TOOLS)
     if not subagents_enabled:
-        out = [t for t in out if t != "spawn_subagent"]
+        out = [t for t in out if t not in ("spawn_subagent", "spawn_subagents")]
     if not imagegen_enabled:
         out = [t for t in out if t != "generate_image"]
     if not workspace_enabled:

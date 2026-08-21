@@ -25,7 +25,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from core.skills import SkillsStore  # noqa: E402
 
-NAME_PATTERN = re.compile(r"^[a-z0-9-]+$")
+# Underscores allowed: the bundled image_generation skill uses one, and the
+# pattern exists to block path tricks and garbage, not naming style.
+NAME_PATTERN = re.compile(r"^[a-z0-9_-]+$")
 
 # Resolve paths relative to this script's location, not CWD (which is the
 # workspace when run via bash). This ensures the CLI always finds the correct
@@ -58,7 +60,7 @@ def _validate_name(name: str) -> str:
     if "/" in value or "\\" in value:
         raise ValueError("Skill name cannot include path separators")
     if not NAME_PATTERN.match(value):
-        raise ValueError("Skill name must be lowercase letters, digits, and hyphens")
+        raise ValueError("Skill name must be lowercase letters, digits, hyphens, or underscores")
     if "--" in value or value.startswith("-") or value.endswith("-"):
         raise ValueError("Skill name cannot start/end with hyphen or contain consecutive hyphens")
     return value

@@ -179,6 +179,43 @@
     font-family: var(--font-mono);
   }
 
+  /* Payload inspector (#99): code/JSON block that grows to its content and
+     scrolls inside itself, so a wide blob never widens the page. */
+  .code-block {
+    @apply bg-[#050505] border border-border rounded-md px-2 py-1.5
+           text-xs leading-snug whitespace-pre-wrap break-words
+           max-h-64 overflow-auto;
+    font-family: var(--font-mono);
+  }
+
+  .code-block-lg {
+    @apply max-h-96;
+  }
+
+  .code-block-xl {
+    @apply max-h-[36rem];
+  }
+
+  /* <summary> laid out as a row while keeping a disclosure marker (display:flex
+     on a summary drops the native one). */
+  .sum-row {
+    @apply flex items-baseline gap-2 min-w-0 cursor-pointer;
+    list-style: none;
+  }
+
+  .sum-row::-webkit-details-marker {
+    display: none;
+  }
+
+  .sum-row::before {
+    content: '\25B8';
+    @apply text-muted text-[0.6rem] shrink-0;
+  }
+
+  details[open] > .sum-row::before {
+    content: '\25BE';
+  }
+
   /* Model chain-of-thought lines, set apart from regular log output */
   .log-thinking {
     @apply block border-l-2 border-accent pl-2 my-0.5 text-muted italic;

@@ -7,9 +7,12 @@ enables it in Settings → Tools.
 **Last resort.** Prefer an existing API or CLI (e.g. `gh`, `himalaya`, calendar
 tools) whenever one exists. Reach for the browser only when there is no better way.
 
-Every command is a fresh process: cookies/sessions persist via `--profile`, but the
-open page does **not**. So a multi-step interaction (e.g. a login) must be a single
-`act` call.
+**CRITICAL:** every command starts a BRAND-NEW browser that reloads `--url` from
+scratch — cookies/sessions persist via `--profile`, but the open page does
+**not**. You CANNOT do a flow step-by-step across several commands; each call
+restarts from the beginning and loses all progress. A multi-step interaction
+(e.g. a login, a booking) must be a single `act` or `explore` call carrying the
+whole flow.
 
 ## Reading a page
 
@@ -45,6 +48,34 @@ the user can follow along. `--steps` is an ordered JSON array of single-key obje
 | `{"goto":"url"}` | navigate within the same call |
 
 `act` returns `{"url", "title", "steps", "screenshot"}`.
+
+## Exploring a page (self-driving loop)
+
+```bash
+python3 ./tools/browser.py explore --url https://site/booking --profile acme \
+  --task "1. Search flights ZRH->LHR on 2026-09-01. 2. Pick the cheapest. 3. Fill passenger name Alice Smith, email a@b.com. 4. Stop before payment and report the total."
+```
+
+PREFER `explore` for ANYTHING interactive: clicking buttons, opening modals or
+widgets, multi-step forms, bookings, checkouts, anything inside an iframe. One
+browser stays open and an inner LLM loop sees every frame and clicks/types on
+its own until done, then returns a JSON `{"answer", ...}`. It is the ONLY verb
+that can drive embedded widgets and payment iframes — `read`/`act` only see the
+top page and will fail on them.
+
+Put the ENTIRE flow in one `--task` as numbered steps with every value it
+needs (product, dates, name, email, phone, card details) — it cannot ask
+mid-run. It runs for a few minutes; do not treat the wait as a hang, split the
+task, retry, or fall back to `read`/`act`. Quote the `answer` (and screenshot)
+back to the user; if it reports pending/awaiting-approval don't upgrade that
+to "confirmed"; if it returns `done:false` with a `reason`, report what
+blocked it and don't blindly re-run.
+
+`explore` **self-drives to completion under a SINGLE approval** — there is no
+per-step gate once it starts. Do NOT use it to spend money or submit
+irreversible actions on its own: for purchases/payments, confirm the exact
+details with the owner first, and prefer guided `act` steps instead (each
+fill/submit is approved separately).
 
 ## Profiles (logged-in sessions)
 

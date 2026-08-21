@@ -341,7 +341,6 @@ humux/
 │   ├── agents.py         Agent definitions, CRUD, markdown parsing
 │   ├── embeddings.py     Local (fastembed) + remote/sidecar embeddings
 │   ├── goal_decomposition.py  Task breakdown for complex requests
-│   ├── task_reflection.py     Post-task reflection store
 │   └── reply_decision.py      Group-chat reply gate
 ├── channels/         Communication channels
 │   └── telegram.py       Telegram bot (text, voice, approvals)
@@ -392,7 +391,7 @@ humux uses a dual-layer config system:
 | **Language** | Python 3.14+ with [uv](https://docs.astral.sh/uv/) |
 | **LLM providers** | Anthropic Claude, OpenAI, Google Gemini, Grok (xAI), DeepSeek, OpenRouter (any OpenAI-compatible) |
 | **Messaging** | python-telegram-bot, wacli (WhatsApp) |
-| **Persistence** | SQLite (8 databases: config, skills, agents, history, memory, reflections, jobs, imagegen) |
+| **Persistence** | SQLite (7 databases: config, skills, agents, history, memory, jobs, imagegen) |
 | **Admin UI** | FastAPI + Jinja2 + HTMX + Alpine.js + Tailwind CSS v4 |
 | **Voice** | faster-whisper (STT), edge-tts / Kokoro 82M (TTS) |
 | **Browser** | Playwright (Chromium), headless or CDP sidecar |

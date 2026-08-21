@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import logging
+import secrets
 from pathlib import Path
 from typing import Any
 
@@ -59,6 +60,14 @@ CREATE TABLE IF NOT EXISTS chat_agent (
     updated_at DATETIME DEFAULT (datetime('now')),
     PRIMARY KEY (channel, user_id, chat_id)
 );
+CREATE TABLE IF NOT EXISTS web_tokens (
+    token TEXT PRIMARY KEY,
+    channel TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    chat_id TEXT NOT NULL DEFAULT '',
+    created_at DATETIME DEFAULT (datetime('now')),
+    UNIQUE (channel, user_id, chat_id)
+);
 """
 
 # Migrations applied after initial schema creation.
@@ -83,6 +92,14 @@ _MIGRATIONS = [
         "ON session_messages(channel, user_id, chat_id, id)",
     ),
 ]
+
+
+def _loads(raw: str) -> Any:
+    """Parse a stored JSON payload, falling back to the raw string if it isn't JSON."""
+    try:
+        return json.loads(raw)
+    except TypeError, ValueError:
+        return raw
 
 
 class ConversationHistory:
@@ -542,6 +559,104 @@ class ConversationHistory:
             await db.commit()
         # The per-agent bot channel only carries traffic after a restart, so the
         # in-memory _session_system cache (keyed by the old channel) is moot here.
+
+    # -------------------------------------------------------------------
+    # Read-only web transcript — share tokens + raw rows (/weburl)
+    # -------------------------------------------------------------------
+
+    async def web_token(self, channel: str, user_id: str, chat_id: str = "") -> str:
+        """Return this context's web-transcript token, minting one on first call.
+
+        The token *is* the authentication for ``/t/<token>`` — 32 urlsafe bytes,
+        unguessable — so it is minted once and reused, keeping the link stable
+        across repeated ``/weburl`` calls. Kept here rather than in its own store
+        because it is keyed by exactly the (channel, user_id, chat_id) triple this
+        table set is already keyed by.
+        """
+        await self._ensure_schema()
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                "SELECT token FROM web_tokens WHERE channel = ? AND user_id = ? AND chat_id = ?",
+                (channel, user_id, chat_id),
+            )
+            row = await cursor.fetchone()
+            if row:
+                return str(row[0])
+            token = secrets.token_urlsafe(32)
+            await db.execute(
+                "INSERT INTO web_tokens (token, channel, user_id, chat_id) VALUES (?, ?, ?, ?)",
+                (token, channel, user_id, chat_id),
+            )
+            await db.commit()
+        return token
+
+    async def resolve_web_token(self, token: str) -> tuple[str, str, str] | None:
+        """The (channel, user_id, chat_id) a web token opens, or None if unknown."""
+        if not token:
+            return None
+        await self._ensure_schema()
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                "SELECT channel, user_id, chat_id FROM web_tokens WHERE token = ?",
+                (token,),
+            )
+            row = await cursor.fetchone()
+        return (row[0], row[1], row[2]) if row else None
+
+    async def transcript_rows(
+        self, channel: str, user_id: str, chat_id: str = "", after: int = 0, limit: int = 500
+    ) -> list[dict[str, Any]]:
+        """Stored messages for one context with an id past ``after``, oldest first.
+
+        Reads whichever mode this context actually recorded in — the sticky
+        session when it has rows, else the windowed turns — so one integer cursor
+        works for both. The system prompt lives in its own table and is never
+        returned here. ponytail: a context that switches history mode mid-life
+        restarts its cursor space; the page just re-renders from 0 on the next
+        load, which is not worth a compound cursor.
+        """
+        await self._ensure_schema()
+        after = max(0, after)
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                "SELECT 1 FROM session_messages "
+                "WHERE channel = ? AND user_id = ? AND chat_id = ? LIMIT 1",
+                (channel, user_id, chat_id),
+            )
+            session_mode = await cursor.fetchone() is not None
+            if session_mode:
+                cursor = await db.execute(
+                    "SELECT id, message, created_at FROM session_messages "
+                    "WHERE channel = ? AND user_id = ? AND chat_id = ? AND id > ? "
+                    "ORDER BY id ASC LIMIT ?",
+                    (channel, user_id, chat_id, after, limit),
+                )
+                return [
+                    {
+                        "id": rid,
+                        "source": "session",
+                        "role": "",
+                        "payload": _loads(payload),
+                        "created_at": created_at,
+                    }
+                    for rid, payload, created_at in await cursor.fetchall()
+                ]
+            cursor = await db.execute(
+                "SELECT id, role, content, created_at FROM conversation_turns "
+                "WHERE channel = ? AND user_id = ? AND chat_id = ? AND id > ? "
+                "ORDER BY id ASC LIMIT ?",
+                (channel, user_id, chat_id, after, limit),
+            )
+            return [
+                {
+                    "id": rid,
+                    "source": "turn",
+                    "role": role,
+                    "payload": _loads(payload),
+                    "created_at": created_at,
+                }
+                for rid, role, payload, created_at in await cursor.fetchall()
+            ]
 
     async def list_chats(self) -> list[dict[str, str]]:
         """List every known (channel, user_id, chat_id), most-recently-active first.

@@ -698,7 +698,6 @@ class TestConfigAPI:
             json={
                 "message": "Plan my week",
                 "include_memories": False,
-                "include_reflections": False,
             },
             headers=AUTH,
         )

@@ -302,15 +302,6 @@ class GoalDecompositionConfig(BaseModel):
     thinking_level: str = ""  # "" (off) | "low" | "medium" | "high" | "max"
 
 
-class TaskReflectionConfig(BaseModel):
-    enabled: bool = True
-    provider: str = "deepseek"
-    model: str = "deepseek-v4-flash"
-    thinking_level: str = ""  # "" (off) | "low" | "medium" | "high" | "max"
-    db_path: str = "data/reflections.db"
-    max_reflections: int = 12  # injected per turn; kept small to cut prompt bloat (#5, was 50)
-
-
 class ReplyDecisionConfig(BaseModel):
     """Decide whether to reply in shared/group chats (#36).
 
@@ -523,26 +514,25 @@ class SubagentsConfig(BaseModel):
     enabled: bool = True
     recursion_depth: int = 3  # max nesting; spawns are refused beyond this
     max_steps: int = 12  # max tool-call rounds per run (hard stop)
-    token_budget: int = 100_000  # approx token ceiling per run (best-effort)
-    max_concurrent: int = 3  # max background runs at once
+    # Approx token ceiling per run. Counted as input+output EVERY round, and on
+    # OpenAI-shaped providers `input_tokens` includes the whole re-sent prompt
+    # (system + tool defs ≈ 14k before any history), so the real cost of a round
+    # grows and 100k bought only ~4 rounds — max_steps, the honest limiter, never
+    # got to bind. Sized so it does.
+    token_budget: int = 300_000
+    # Runs executing at once, PER CHAT, all paths (sync fan-out queues at the
+    # cap; a single background spawn still refuses). Was a background-only
+    # process-wide counter before the fan-out work.
+    max_concurrent: int = 4
+    max_fanout: int = 6  # max tasks in one spawn_subagents call
+    # Whole-tree per-turn pools (see FanoutBudget): total spawns and total
+    # subagent tokens a single turn may consume, parents and children combined.
+    max_spawns_per_turn: int = 12
+    turn_token_budget: int = 1_200_000  # max_concurrent × token_budget
     # "provider:model" entries a spawn may pick instead of inheriting the
     # caller's LLM (#299). Empty = no overrides; a subagent always inherits.
     allowed_models: list[str] = []
 
-
-class SubagentSummaryConfig(BaseModel):
-    """Summarise a finished background subagent batch (issue #15).
-
-    Instead of dumping a subagent's raw output to the chat and the agent's
-    context, a small inference distils each batch into a one-sentence chat
-    *notification* and a concise *digest* for the agent's context. Mirrors the
-    other background inferences (memory / compaction / reflection).
-    """
-
-    enabled: bool = True
-    provider: str = "deepseek"  # fast + cheap is ideal for this distillation
-    model: str = "deepseek-v4-flash"
-    thinking_level: str = ""  # "" (off) | "low" | "medium" | "high" | "max"
 
 class Config(BaseModel):
     agent: AgentConfig = AgentConfig()
@@ -553,7 +543,6 @@ class Config(BaseModel):
     history: HistoryConfig = HistoryConfig()
     memory: MemoryConfig = MemoryConfig()
     goal_decomposition: GoalDecompositionConfig = GoalDecompositionConfig()
-    task_reflection: TaskReflectionConfig = TaskReflectionConfig()
     reply_decision: ReplyDecisionConfig = ReplyDecisionConfig()
     compaction: CompactionConfig = CompactionConfig()
     search: SearchConfig = SearchConfig()
@@ -564,7 +553,6 @@ class Config(BaseModel):
     workspace: WorkspaceConfig = WorkspaceConfig()
     artifacts: ArtifactsConfig = ArtifactsConfig()
     subagents: SubagentsConfig = SubagentsConfig()
-    subagent_summary: SubagentSummaryConfig = SubagentSummaryConfig()
 
 
 def load_config(path: str | Path = "config.yml") -> Config:

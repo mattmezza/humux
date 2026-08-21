@@ -26,7 +26,6 @@ def agent(tmp_path, monkeypatch):
     cfg.agent.llm_provider = "deepseek"
     cfg.agent.model = "deepseek-v4-flash"
     cfg.memory.embedding.enabled = False
-    cfg.task_reflection.enabled = False
     cfg.goal_decomposition.enabled = False
     return AgentCore(cfg)
 

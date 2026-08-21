@@ -68,7 +68,7 @@ async def test_anthropic_generate_omits_effort_when_off() -> None:
 
 @pytest.mark.asyncio
 async def test_anthropic_generate_text_sends_effort_when_set() -> None:
-    """Background tasks (memory/reflection/etc.) honor the client's level too."""
+    """Background tasks (memory/compaction/etc.) honor the client's level too."""
     client = LLMClient("anthropic", "x", thinking_level="low")
     create = AsyncMock(return_value=type("R", (), {"content": []})())
     client._client = type("C", (), {"messages": type("M", (), {"create": create})()})()
@@ -141,7 +141,7 @@ async def test_generate_backfills_usage_into_captured_payload() -> None:
     client._client = type("C", (), {"messages": type("M", (), {"create": create})()})()
 
     llm.clear_captured()
-    ctx = ("telegram", "u1", "c1")
+    ctx = ("telegram", "u1", "c1", "")
     tok = llm.set_capture_context(ctx)
     try:
         await client.generate(model="claude-opus-4-8", system="s", messages=[], tools=[])
@@ -150,6 +150,32 @@ async def test_generate_backfills_usage_into_captured_payload() -> None:
     captured = llm.get_sent_payload(ctx)
     assert captured is not None
     assert captured["usage"]["context_tokens"] == 2000  # 1200 input + 800 cache read
+    llm.clear_captured()
+
+
+def test_list_captured_is_newest_first() -> None:
+    llm.clear_captured()
+    for i in range(3):
+        llm.record_sent_payload(("cli", "u", "c", f"sub_{i}"), {"model": str(i)})
+    assert llm.list_captured() == [
+        ("cli", "u", "c", "sub_2"),
+        ("cli", "u", "c", "sub_1"),
+        ("cli", "u", "c", "sub_0"),
+    ]
+    llm.clear_captured()
+
+
+def test_capture_run_id_is_a_separate_slot_from_the_main_turn() -> None:
+    """A subagent's payload is keyed by its run id, so it can't clobber the
+    parent turn's last-sent payload (#99 + fan-out)."""
+    llm.clear_captured()
+    main = ("telegram", "u1", "c1", "")
+    child = ("telegram", "u1", "c1", "sub_abc")
+    llm.record_sent_payload(main, {"model": "parent"})
+    llm.record_sent_payload(child, {"model": "child"})
+    assert llm.get_sent_payload(main)["model"] == "parent"
+    assert llm.get_sent_payload(child)["model"] == "child"
+    assert llm.list_captured()[0] == child  # newest first
     llm.clear_captured()
 
 

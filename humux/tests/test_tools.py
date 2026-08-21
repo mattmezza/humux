@@ -49,7 +49,6 @@ def _sections(cfg: Config):
         history_mode="session",
         skills_index="",
         memories="",
-        reflections="",
         decomposed_goal=None,
     )
 
@@ -70,7 +69,6 @@ def test_skills_index_rendered_when_supplied() -> None:
         history_mode="session",
         skills_index='<skill name="weather">fetch the forecast</skill>',
         memories="",
-        reflections="",
         decomposed_goal=None,
     )
     assert "<available_skills>" in sections.available_skills
@@ -257,19 +255,13 @@ async def test_mid_session_memory_visible_next_turn_without_new(agent) -> None:
     snapshot = await agent._session_system_prompt("telegram", "u1", "")
     assert "Capital of France is Paris" not in snapshot
 
-    # Mid-session extraction stores a new long-term fact + a task reflection
-    # (the issue names all three of compaction/cross-chat/reflection staleness).
+    # Mid-session extraction stores a new long-term fact.
     await agent.memory._insert_long_term("fact", "France", "Capital of France is Paris")
-    await agent.reflections._store_reflection(
-        {"lesson": "Prefer himalaya -o json over scraping text", "category": "tool"}
-    )
 
-    # Next turn's preamble surfaces both — no /new, no snapshot rebuild.
+    # Next turn's preamble surfaces it — no /new, no snapshot rebuild.
     preamble = await agent._turn_preamble(None, query="What's the capital of France?")
     assert "Capital of France is Paris" in preamble
     assert "<memories>" in preamble
-    assert "Prefer himalaya -o json over scraping text" in preamble
-    assert "<task_reflections>" in preamble
 
     # Snapshot is still the frozen one (cache intact, not rebuilt).
     assert await agent._session_system_prompt("telegram", "u1", "") == snapshot
@@ -359,7 +351,8 @@ async def test_preamble_carries_xml_skills_index(agent) -> None:
     preamble = await agent._turn_preamble(None, query="hi")
     assert "<available_skills>" in preamble
     assert '<skill name="weather">fetch the forecast</skill>' in preamble
-    assert "skills.py show" in preamble  # loading instructions ride along
+    # "Read it first" lives once in DEFAULT_TOOL_USAGE_BLOCK, not repeated here.
+    assert "skills.py show" not in preamble
 
 
 @pytest.mark.asyncio
@@ -885,6 +878,59 @@ async def test_repeat_failure_breaker_stops_after_n(agent) -> None:
     assert all("command" in e for e in errors[:_MAX_REPEAT_FAILURES])
     assert errors[_MAX_REPEAT_FAILURES] == _REPEAT_FAILURE_NOTICE
     assert errors[-1] == _REPEAT_FAILURE_NOTICE
+
+
+@pytest.mark.asyncio
+async def test_error_streak_breaker_stops_a_dead_backend(agent, monkeypatch) -> None:
+    """Varying arguments defeat the signature breaker, so a down service keeps
+    getting called — five different search queries, five identical outages. The
+    error-streak breaker is what stops that."""
+    from core.agent import _MAX_REPEAT_FAILURES, _REPEAT_ERROR_NOTICE
+    from core.llm import LLMToolCall
+
+    async def down(*_a, **_kw):
+        return {"error": "The web search backend is unavailable."}
+
+    monkeypatch.setattr(agent, "_execute_tool_inner", down)
+    state = agent._new_request_state()
+    errors = [
+        (
+            await agent._execute_tool(
+                LLMToolCall(id=str(i), name="web_search", arguments={"query": f"q{i}"}),
+                "system",
+                "u",
+                state,
+            )
+        )["error"]
+        for i in range(_MAX_REPEAT_FAILURES + 1)
+    ]
+    assert all("unavailable" in e for e in errors[:_MAX_REPEAT_FAILURES])
+    assert errors[-1].startswith(_REPEAT_ERROR_NOTICE)
+
+
+@pytest.mark.asyncio
+async def test_error_streak_resets_on_success(agent, monkeypatch) -> None:
+    from core.agent import _MAX_REPEAT_FAILURES
+    from core.llm import LLMToolCall
+
+    outcomes = [{"error": "flaky"}] * (_MAX_REPEAT_FAILURES - 1) + [{"ok": True}]
+
+    async def flaky(*_a, **_kw):
+        return outcomes.pop(0) if outcomes else {"error": "flaky"}
+
+    monkeypatch.setattr(agent, "_execute_tool_inner", flaky)
+    state = agent._new_request_state()
+    # One more call than the streak allows: without the reset the success would
+    # not clear the two earlier failures and this last call would be refused.
+    for i in range(_MAX_REPEAT_FAILURES + 2):
+        res = await agent._execute_tool(
+            LLMToolCall(id=str(i), name="web_search", arguments={"query": f"q{i}"}),
+            "system",
+            "u",
+            state,
+        )
+    # The success cleared the streak, so the next failure starts counting again.
+    assert res["error"] == "flaky"
 
 
 # ---------------------------------------------------------------------------

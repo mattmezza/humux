@@ -24,10 +24,14 @@
 
   <form id="log-filters"
         hx-get="/partials/logs-content" hx-target="#log-content" hx-swap="innerHTML"
-        hx-trigger="load, change, keyup delay:400ms from:input[name='q']"
+        hx-trigger="load, change, keyup delay:400ms from:input[name='q'], keyup delay:400ms from:input[name='subagent']"
         class="flex flex-wrap items-end gap-3 mb-4">
     <label class="label">Stream
       <input type="text" name="stream" list="log-streams" placeholder="all (regex)"
+             class="block w-44 rounded border-border bg-surface text-sm px-2 py-1">
+    </label>
+    <label class="label">Subagent
+      <input type="text" name="subagent" placeholder="any (label)"
              class="block w-44 rounded border-border bg-surface text-sm px-2 py-1">
     </label>
     <label class="label">Level

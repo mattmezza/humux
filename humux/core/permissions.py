@@ -260,6 +260,7 @@ DEFAULT_RULES: dict[str, str] = {
     # Delegating to a subagent is approved once per spawn; the subagent then runs
     # autonomously within its narrowed scope (system semantics), like a job.
     "spawn_subagent": "ASK",
+    "spawn_subagents": "ASK",
     # Publishing a web artifact is now just a write under {workspace}/artifacts/
     # (issue #82) — it inherits the write ASK rule, no separate entry.
     # Dangerous — never allow
@@ -573,6 +574,7 @@ class PermissionEngine:
             "schedule_task",
             "manage_jobs",
             "spawn_subagent",
+            "spawn_subagents",
             "write",
             "edit",
         }:
@@ -808,6 +810,21 @@ def format_approval_message(tool_name: str, params: dict) -> str:
         if action == "list":
             return "List scheduled jobs"
         return f"Manage jobs: {action}"
+    if tool_name == "spawn_subagent":
+        # Name the target: subagents run with system semantics (no per-action
+        # prompts), so this approval is the one human gate on the whole run.
+        who = params.get("agent") or ""
+        head = f"Delegate to agent '{who}'" if who else "Delegate to a subagent (runs as itself)"
+        return f"{head}\n{_preview(str(params.get('task', '?')), 200)}"
+    if tool_name == "spawn_subagents":
+        tasks = params.get("tasks") or []
+        tasks = tasks if isinstance(tasks, list) else []
+        parts = []
+        for t in tasks:
+            t = t if isinstance(t, dict) else {}
+            who = f" → {t['agent']}" if t.get("agent") else ""
+            parts.append(f"- {_preview(str(t.get('task', '?')), 80)}{who}")
+        return f"Delegate {len(tasks)} subtasks to parallel subagents:\n" + "\n".join(parts)
     if tool_name == "bash":
         cmd = _preview(params.get("command", "?"))
         purpose = params.get("purpose", "")

@@ -92,7 +92,7 @@ async def run_agent_task(
     log.info("Scheduler running agent task: %s", task[:100])
     # A "telegram:<agent>" job is generated AS that agent (#29) so the bot
     # that delivers it also writes it — while keeping the "system" execution mode
-    # (auto-approved writes, no memory/reflection). Bare channels keep the default.
+    # (auto-approved writes, no memory). Bare channels keep the default.
     gen_agent = channel.split(":", 1)[1] if channel.startswith("telegram:") else None
     try:
         response = await agent.process(
@@ -175,7 +175,8 @@ async def run_subagent_task(
         # don't share conversation history when no origin was captured (#235).
         _ctx_chat = f"scheduler:{job_id}" if (job_id and not origin_chat_id) else (target or "")
         _ctx_user = (
-            f"scheduler:{job_id}" if (job_id and not origin_user_id)
+            f"scheduler:{job_id}"
+            if (job_id and not origin_user_id)
             else (origin_user_id or owner or "scheduler")
         )
         # Clear previous context for recurring subagent jobs (#301): same rationale

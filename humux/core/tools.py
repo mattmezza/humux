@@ -41,18 +41,8 @@ _GH_PROMPT = """<tool name="gh">
 The GitHub CLI `gh` is installed and authenticated. Run it with the `bash`
 tool for GitHub operations. Read operations run without asking; creating issues,
 PRs or releases ask for confirmation first.
-Examples:
-  gh issue list --repo owner/name
-  gh pr view 123 --repo owner/name
-  gh pr list --repo owner/name --state open
-  gh api repos/owner/name/commits
-  gh search issues "is:open label:bug" --repo owner/name
-Always pass `--repo owner/name` unless the working directory is a checkout of the
-target repository. Use `--json <fields>`
-(e.g. `gh issue list --json number,title,labels`) or `gh api` and parse JSON when you need fields.
-Single-quote issue/PR bodies that contain Markdown (`--body '…```code```…'`):
-single quotes make backticks and `$(…)` literal so the command guard keeps them
-and the shell doesn't run them; double quotes leave them live and get rejected.
+See the `gh` skill (`python3 /app/tools/skills.py show gh`) for command examples,
+`--repo` scoping, `--json` output, and safely quoting Markdown bodies.
 </tool>"""
 
 
@@ -62,38 +52,17 @@ A headless browser (`/app/tools/browser.py`, Playwright) is available via `bash`
 for JS-heavy pages and acting on the user's behalf. Prefer an existing API/CLI
 over the browser whenever one exists — it is a last resort.
 Verbs (always pass `--url`; add `--profile NAME` to reuse a logged-in session):
-  python3 /app/tools/browser.py read --url URL                  # readable page text
-  python3 /app/tools/browser.py screenshot --url URL            # save a PNG (path in result)
-  python3 /app/tools/browser.py act --url URL --profile P --steps JSON
-  python3 /app/tools/browser.py explore --url URL --task "..."  # self-driving loop
-  python3 /app/tools/browser.py profiles                        # list saved sessions
-PREFER `explore` for ANYTHING interactive — clicking buttons, opening modals/
-widgets, multi-step forms, bookings, checkouts, anything inside an iframe. One
-browser stays open and an inner loop sees every frame and clicks/types on its
-own until done, then returns an answer. It is the ONLY verb that can drive
-embedded widgets and payment iframes; `read`/`act` only see the top page and
-will fail on them.
-CRITICAL: every browser command starts a BRAND-NEW browser that reloads `--url`
-from scratch — there is NO shared session or page state between calls. So you
-CANNOT do a flow step-by-step across several commands; each call would restart
-from the beginning and lose all progress. A whole interactive flow MUST be ONE
-explore call that carries the entire task.
-CAUTION: `explore` self-drives to completion under a SINGLE approval — there is NO
-per-step gate once it starts. Do NOT use it to spend money or submit irreversible
-actions on its own: for purchases/payments confirm the exact details with the owner
-first, and prefer guided `act` steps (each fill/submit is approved separately).
-How to use it well: put the ENTIRE flow in one `--task` as numbered steps with every
-value it needs (product, dates, name, email, phone, card details) — it cannot ask
-mid-run. It runs for a few minutes and returns ONE JSON `answer`: do NOT treat the wait
-as a hang, split the task, retry, or fall back to `read`/`act` (those only see the top
-page, never the widget/iframe). Quote the `answer` (and screenshot) back; if it reports
-pending/awaiting-approval don't upgrade to "confirmed"; if it returns `done:false` with a
-`reason`, report what blocked it and don't blindly re-run.
-`read`/`screenshot` run without asking; `act` asks approval each call (shows a screenshot
-on chat) and takes `--steps`, a JSON array of single-key objects, e.g.
-  [{"fill":["#user","alice"]},{"click":"#login"}]   (fill/click/select/press/wait/goto).
-For the full reference — steps syntax, guided first-time login + 2FA, profiles — read
-the `browser` skill (`python3 /app/tools/skills.py show browser`).
+  read URL | screenshot URL | act --steps JSON | explore --task "..." | profiles
+PREFER `explore` for ANYTHING interactive (clicks, modals, widgets, multi-step
+forms, iframes) — it is the ONLY verb that can drive embedded widgets, and
+every command starts a brand-new browser with no shared page state, so a whole
+flow must be ONE `explore` call carrying the entire task.
+`read`/`screenshot`/`profiles` run without asking; `act` and `explore` ask
+approval — `explore` self-drives to completion under a SINGLE approval, so
+never use it for anything irreversible (payments, submissions) without
+confirming exact details with the owner first.
+See the `browser` skill (`python3 /app/tools/skills.py show browser`) for
+`--steps` syntax, profiles, and guided first-time login/2FA.
 </tool>"""
 
 
@@ -102,16 +71,8 @@ _WHATSAPP_PROMPT = """<tool name="whatsapp">
 WhatsApp is available through the `wacli` CLI — run it with the `bash` tool.
 Read operations (sync, messages, contacts, chats, groups) run without asking;
 sending a message asks for confirmation first.
-Send a message:
-  wacli --json send text --to <jid> --message "..."
-Read (sync first whenever checking for new/recent messages):
-  wacli --json sync --once --idle-exit 5s
-  wacli --json messages list --limit 20
-  wacli --json messages search "invoice" --chat <jid>
-  wacli --json contacts search "Marco"
-JIDs: users are `<phone>@s.whatsapp.net` (digits only, no `+`); groups `<id>@g.us`.
-Read the `wacli-whatsapp` skill (`python3 /app/tools/skills.py show wacli-whatsapp`)
-for the full command reference.
+See the `wacli-whatsapp` skill (`python3 /app/tools/skills.py show wacli-whatsapp`)
+for JID formats and the full command reference.
 </tool>"""
 
 

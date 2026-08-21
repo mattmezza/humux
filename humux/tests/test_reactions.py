@@ -161,7 +161,6 @@ async def test_react_only_turn_sends_and_persists_nothing(agent) -> None:
     # The model reacts to the triggering message and then says nothing: the turn
     # must send no text AND leave no empty assistant turn in history (which some
     # providers reject on replay) — only the user turn is recorded (#70).
-    agent.config.task_reflection.enabled = False
     agent.channels["telegram"] = SimpleNamespace(react=AsyncMock())
     agent.llm = _ReactThenSilentLLM()
 

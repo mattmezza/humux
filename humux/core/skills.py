@@ -39,22 +39,14 @@ ORIGIN_MARKER = ".origin"
 _NAME_PATTERN = re.compile(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?$")
 
 
-# One-line instruction prepended to the skills index (#178), telling the model
-# skills are read on demand via bash. Shared by the runtime prompt and the admin
-# prompt-preview so the preview can't drift from what the model actually sees.
-SKILLS_INDEX_HEADER = (
-    "Skills are reusable instructions for specific tasks. Before acting on a task "
-    "a skill covers, read it with bash: `python3 /app/tools/skills.py show <name>`."
-)
-
-
 def render_skills_index(entries: list[dict]) -> str:
     """Render index ``{name, summary}`` rows as the ``<available_skills>`` body
-    (header line + one ``<skill>`` element each). Empty rows → empty string."""
+    (one ``<skill>`` element each). The "read it first" instruction already
+    lives once in DEFAULT_TOOL_USAGE_BLOCK (#178); no need to repeat it here.
+    Empty rows → empty string."""
     if not entries:
         return ""
-    lines = [SKILLS_INDEX_HEADER]
-    lines += [
+    lines = [
         f'<skill name="{e["name"]}">{(e.get("summary") or "").strip()}</skill>' for e in entries
     ]
     return "\n".join(lines)

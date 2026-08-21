@@ -56,6 +56,7 @@ voice: en-US-GuyNeural
 skills: [scheduling, memory, weather]
 tools: [send_message, create_calendar_event, manage_jobs, web_search]
 secrets: []
+spawnable_agents: [research-analyst, writing-editor]   # delegation trust list — see below
 tool_config:
   gh: {enabled: true}            # uses this agent's own GitHub token
   browser: {enabled: true, profile: forge}
@@ -89,7 +90,8 @@ first. From there you can:
   routes); the flag moves atomically, applied live to new turns;
 - **Disable / Enable** — the kill-switch (see [below](#enabling--disabling-an-agent));
 - **edit** an agent in the editor — a **guided form** (identity, voice, skill + tool
-  checkboxes, secret scope) with a **raw markdown** toggle for power users;
+  checkboxes, secret scope, delegation trust list) with a **raw markdown** toggle for
+  power users;
 - **rename** an agent's slug in the editor — the new slug is cascaded to everything that
   references it (per-chat bindings, private memories, scheduled jobs, and the `telegram:<slug>`
   bot channel), so no association is lost. The `is_default` flag rides with the row, so a
@@ -183,7 +185,26 @@ means the agent inherits everything (existing agents are unchanged on upgrade). 
 and base URLs are **always** the global ones (LLM → Providers): the override picks *which*
 configured provider and model the agent runs on, it never carries its own credentials.
 The override applies to the agent's whole agentic loop, including the subagent runs it
-spawns; background inferences (memory, compaction, reflection, …) keep their own models.
+spawns; background inferences (memory, compaction, …) keep their own models.
+
+## Delegation trust list
+
+`spawnable_agents` is the list of agent slugs this agent may delegate to when it spawns a
+[subagent](/docs/subagents). Leave it **empty** (the default) and nothing changes: any
+agent may be named, and the child's tools, skills, secrets and account bindings are
+narrowed to the intersection with the caller's — inherit, never widen.
+
+Fill it in and the agent gets a **team**. Only the listed agents may be named (anything
+else is refused with a message listing the team), the `<agents>` roster the agent sees each
+turn is filtered to them, and a listed specialist runs with its **own** tools, skills,
+secrets and accounts instead of the narrowed intersection — the list itself is your grant
+of trust, so delegation becomes a capability handoff. Omitting the agent (or naming
+itself) still runs the subtask as the caller.
+
+Edit it in the **Agents** editor, or as `spawnable_agents:` in the markdown frontmatter.
+Because subagents run without per-action approval prompts, keep the list short on agents
+exposed to untrusted input — see [Delegation trust
+list](/docs/subagents#delegation-trust-list) for the full semantics.
 
 ## Tool identities
 

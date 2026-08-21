@@ -16,7 +16,7 @@ There is **one execution primitive** reached by two trigger paths:
 - **Scheduled** — a `subagent` job fired by the [scheduler](/docs/scheduler).
 
 A subagent runs with **system semantics**: no goal decomposition, no memory
-extraction, no reflection, and no per-action approval prompts — the same path
+extraction, and no per-action approval prompts — the same path
 scheduled jobs already use. You approve the delegation once (the `spawn_subagent`
 call is an [ASK action](/docs/permissions)); the subagent then runs autonomously
 within its scope.
@@ -44,7 +44,7 @@ The agent decides to delegate and calls the tool. Two modes:
   "task": "Research the top 3 Python HTTP clients and summarise trade-offs",
   "agent": "coding-helper",   // optional — omit to run as yourself (same identity & scope)
   "max_steps": 6,                // optional — caller-chosen, capped at the configured max
-  "token_budget": 40000,         // optional — caller-chosen, min 1000, capped at the configured max
+  "token_budget": 120000,        // optional — caller-chosen, min 50000, capped at the configured max
   "thinking_effort": "high",     // optional — off | low | medium | high; omit to inherit yours
   "model": "deepseek-v4-flash",  // optional — must be an allowed model; omit to inherit yours
   "provider": "deepseek",        // optional — only to disambiguate; follows from "model"
@@ -75,7 +75,70 @@ it. Omit both and the subagent inherits the caller's model, as it always has.
 **Files hand back automatically.** The subagent shares the agent's filesystem,
 so any file it writes is already on disk where the caller can reach it — it just
 reports the absolute paths in its result, which the spawning agent then reads,
-sends, or attaches.
+sends, or attaches. Generated media travels differently depending on mode: a
+**synchronous** spawn's `generate_image` rides out natively with the spawning
+turn's reply (it shares the parent turn's attachment queue), while a
+**background** run has no live turn to deliver through, so it hands back the
+saved image's absolute path via the `Files:` convention instead.
+
+## Fan-out & orchestration
+
+For work that splits into independent pieces, `spawn_subagents` (plural) runs
+several subtasks **in parallel** in one call instead of one `spawn_subagent`
+call per piece. Wall-clock is roughly that of the slowest subtask, not the sum
+of them.
+
+```jsonc
+// spawn_subagents tool input
+{
+  "tasks": [
+    { "task": "Summarise open PRs in repo A", "label": "repo-a", "agent": "coding-helper" },
+    { "task": "Summarise open PRs in repo B", "label": "repo-b", "agent": "coding-helper" }
+  ],
+  "background": false   // true → return run ids immediately, results posted when all finish
+}
+```
+
+Each entry in `tasks` takes the same fields as `spawn_subagent` (`task`, `agent`,
+`max_steps`, `token_budget`, `thinking_effort`, `model`, `provider`) plus a
+short `label` used in logs and the [admin UI](/docs/admin-ui) — the agent
+derives one from the task text when it's omitted. A call may name 2 up to
+`max_fanout` tasks (see [Guardrails](#guardrails)).
+
+`background: true` runs the whole batch off-turn: results are posted to the
+chat as **one grouped notification** once every subtask has finished, not one
+notification per subtask.
+
+**Failure is per-subtask, never all-or-nothing.** Results come back in request
+order, one entry per task, each with `status` (`done` / `error` / `cancelled`),
+`steps`, `tokens_used`, `stopped_reason` (`complete` / `max_steps` /
+`token_budget` / `turn_budget` / `truncated` / `aborted`), a `summary`, and the full `result`.
+One subtask failing or being cancelled doesn't stop the others from completing.
+
+**Fan-out doesn't nest.** `spawn_subagents` is only offered to the top-level
+agent; a subagent it spawns can still delegate further with the singular
+`spawn_subagent`, up to `recursion_depth` — it just can't start a fan-out of
+its own.
+
+When a fan-out starts, the agent posts a one-line progress note to the chat
+(`🧩 Delegating N subtasks…`) so a long parallel run doesn't look hung. Anything
+you send meanwhile is picked up once the fan-out completes — the 👀 steering
+ack still just means "the model has seen it", not "the fan-out is done".
+
+As each run ends it posts its own one-line status note (`✅ Subagent pricing —
+done (42s, 23k tokens)`, or the failed/cancelled variant). Like the progress
+note these are notifications only: they never start a turn and never enter the
+conversation history. A singular synchronous spawn only posts one if it ran for
+at least ten seconds — a quick one's result is already in the very next reply.
+Every spawn announces itself the same way (`🧬 Spawned subagent pricing`, or
+`🧬 pricing spawned subagent stock-check` for a nested one — fan-out children are
+covered by the group note instead), so the run tree is visible in the chat as it
+grows and any run in it can be cancelled from `/subagents` or the Inspect tab.
+
+All spawns, singular or plural, draw from the same [per-turn budget
+pool](#guardrails) — a big fan-out can exhaust it and leave less room for
+further delegation later in the turn. The bundled `subagent-orchestration`
+skill covers when fanning out is worth it versus a single sequential spawn.
 
 ## Scheduled
 
@@ -107,6 +170,31 @@ and a scoped caller delegating to an open agent keeps its own limits.
 [Permission rules](/docs/permissions) (`NEVER` in particular) still apply inside
 the subagent, so a blocked action stays blocked at any depth.
 
+### Delegation trust list
+
+Narrowing is the default because the caller has vouched for nobody. The
+`spawnable_agents` field on an [agent](/docs/agents) — a list of agent slugs —
+is how you vouch:
+
+- **Empty** (the default) — legacy behaviour: any agent may be named in
+  `spawn_subagent`/`spawn_subagents`, and the child is narrowed to the
+  intersection described above.
+- **Non-empty** — a curated **team**. Only the listed agents may be named;
+  anything else is refused with a message listing the team, so the model can
+  self-correct. A listed specialist runs with its **own** tools, skills, secrets,
+  and account bindings — the list *is* the owner's trust grant, which makes
+  delegation a deliberate capability handoff rather than a leak.
+
+Naming yourself, or omitting `agent` entirely, still runs the subtask as the
+caller, narrowed exactly as before.
+
+> **Keep the list short on exposed agents.** A subagent runs with system
+> semantics — no per-action approval — so the spawn approval (which names the
+> target agent and the task) is the one human gate on the whole run. On agents
+> reachable by untrusted input, such as group chats or [GitHub
+> webhooks](/docs/channels), every entry in `spawnable_agents` is a capability
+> that input can reach for.
+
 ## Choosing an agent
 
 Selection stays **user-led**: omitting `agent` runs the subagent as the caller
@@ -115,6 +203,11 @@ already chose. To make the *specialist* case an informed choice rather than a
 guess, each turn the agent sees a compact roster of available agents
 (`name — role`) and only names one when the subtask clearly fits it. A wrong
 name is rejected with the list of valid names, so the agent can self-correct.
+
+With a **team** configured, the roster is filtered to that team and the guidance
+flips: instead of "only when the user asked for a specialist", the agent is told
+to pick the best-equipped teammate for the subtask, because you have already
+approved each of them.
 
 ## Guardrails
 
@@ -127,14 +220,21 @@ limit, applied live without a restart), or under `subagents` in `config.yml`:
 | `enabled` | `true` | Master switch; off hides the `spawn_subagent` tool everywhere |
 | `recursion_depth` | `3` | Max nesting (a top-level spawn is depth 1) |
 | `max_steps` | `12` | Ceiling on tool-call rounds per run — a hard stop; the agent may request fewer per spawn, never more |
-| `token_budget` | `100000` | Ceiling on tokens per run (best-effort); the agent may request fewer per spawn, never more |
-| `max_concurrent` | `3` | Max background runs at once |
+| `token_budget` | `300000` | Ceiling on tokens per run (best-effort); the agent may request fewer per spawn, never more. A round re-sends the whole prompt, so it costs 15–35k and each round costs more than the last — sized so `max_steps`, not tokens, is what stops a run |
+| `max_concurrent` | `4` | Per-chat concurrency gate covering **every** subagent run, sync or background. Extra spawns queue instead of failing; each chat has its own pool, so one chat's fan-out can't starve another chat's spawn. A background `spawn_subagent` still refuses outright when the chat is already at the cap |
+| `max_fanout` | `6` | Max tasks in one `spawn_subagents` call |
+| `max_spawns_per_turn` | `12` | Max subagent spawns across the whole subagent tree, per turn |
+| `turn_token_budget` | `1200000` | Max subagent tokens across the whole tree, per turn. Charged as spent, one LLM round at a time — never reserved up front, so a spawn is never refused for tokens before it starts. Once the pool drains, runs stop gracefully between rounds with `stopped_reason: "turn_budget"`; concurrent runs can overshoot by at most one round each, a bounded tradeoff for the simplicity |
 | `allowed_models` | *(empty)* | `provider:model` entries a spawn may pick instead of inheriting the caller's model — one per line in the admin card. Empty means overrides are off entirely |
 
 When disabled, the tool is hidden from the assistant and from the Agents tool
 scope. Assign it per agent in the **Agents** editor. A run that hits its step
 or token budget stops and returns what it has, with a note that the budget was
-reached.
+reached — a stop always lands on a round that wanted to call another tool, so
+the run spends one final tool-less round writing up what it found rather than
+returning an empty result over the work it already paid for. A spawn is refused only once `max_spawns_per_turn` is used up or
+`turn_token_budget` is already fully drained — never pre-emptively for
+tokens — with a message the model can read instead of spawning without limit.
 
 ## Result summary
 
@@ -160,12 +260,15 @@ Background subagents are first-class runs you can watch and stop:
 
 - **Telegram** — send `/jobs` to list active runs, each with an inline **Cancel**
   button. Monitoring and cancelling a long task from your phone needs no web UI.
-- **Admin UI** — the **Jobs** tab shows a live card per run (agent, status,
-  elapsed time, current step) with a cancel button; the layout collapses to a
-  single column at phone width.
+- **Admin UI** — the **Inspect** tab shows a live card per run (agent, status,
+  elapsed time, current step) with a cancel button, above the context list; the
+  layout collapses to a single column at phone width. Each context row has a
+  **runs** button that filters the panel to that conversation's runs.
 
 Cancelling stops the run; if it was a background run, a cancellation notice is
-posted back to the originating chat.
+posted back to the originating chat. `/stop` cancels in-flight subagents too —
+for a fan-out that means the whole batch, cascading to any children it spawned
+— instead of letting them run to completion after the main turn has aborted.
 
 > Runs live in memory, so a restart clears the registry (and stops any in-flight
 > background runs) — there is nothing to resume after a reboot.

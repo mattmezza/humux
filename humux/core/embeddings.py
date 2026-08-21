@@ -99,7 +99,12 @@ class EmbeddingClient:
             client_class = cast(Any, getattr(module, "AsyncOpenAI"))
         except Exception as exc:  # pragma: no cover - import guard
             raise RuntimeError("openai package is required for embeddings") from exc
-        self._client = cast(Any, client_class)(api_key=api_key, base_url=resolved_base or None)
+        # timeout/max_retries mirror the LLM clients: the SDK default is 600s with
+        # 2 retries, so a hung sidecar would stall every turn preamble — and each
+        # subagent's too — for ten minutes before falling back.
+        self._client = cast(Any, client_class)(
+            api_key=api_key, base_url=resolved_base or None, timeout=20.0, max_retries=1
+        )
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
         """Return one embedding vector per input text."""

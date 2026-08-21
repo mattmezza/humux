@@ -3,7 +3,7 @@
 A *subagent* is one execution primitive (``AgentCore.run_subagent``) reached by
 two trigger paths: on demand via the ``spawn_subagent`` tool, or on a schedule
 via a ``subagent`` job. Either way it runs the existing agent loop with **system
-semantics** (no goal decomposition / memory / reflection / approval prompts) and
+semantics** (no goal decomposition / memory / approval prompts) and
 an agent whose tool/skill/secret scope is a *subset* of the caller's — never
 wider (``narrow_scope``).
 
@@ -16,8 +16,10 @@ registry is the right scope; nothing here needs to survive a reboot.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import time
 from collections import OrderedDict
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 # Keep at most this many finished runs for after-the-fact inspection.
@@ -126,6 +128,55 @@ def resolve_model_override(
     )
 
 
+def derive_label(label: str, task: str, index: int = 0) -> str:
+    """A short run label for logs/UI: the model's own when supplied, else the
+    first few words of the task (so five siblings of one agent stay tellable
+    apart in the Logs and Jobs tabs)."""
+    lbl = " ".join(str(label or "").split())
+    if not lbl:
+        lbl = " ".join(str(task or "").split()[:4]) or f"task{index}"
+    return lbl[:32]
+
+
+@dataclass(slots=True)
+class FanoutBudget:
+    """Whole-tree subagent spend pool for one turn, shared by reference
+    parent → child so a depth-2 grandchild draws from the same pool.
+
+    Spend is charged as it happens (once per LLM round), not reserved up
+    front: a spawn is never refused for tokens — runs stop gracefully between
+    rounds once the pool drains. Concurrent runs can overshoot by at most one
+    round each, which is bounded and far simpler than reserve-then-refund
+    (whose upfront refusals also confused the model whenever the per-run
+    ceiling approached the pool size).
+    """
+
+    tokens_left: int
+    spawns_left: int
+
+    def take_spawn(self) -> str | None:
+        """Claim one spawn from the pool; an error message when none is left."""
+        if self.spawns_left <= 0:
+            return (
+                "Spawn budget for this turn is exhausted — finish with what "
+                "you have instead of delegating more."
+            )
+        if self.exhausted:
+            return (
+                "The turn's subagent token budget is exhausted — finish with "
+                "what you have instead of delegating more."
+            )
+        self.spawns_left -= 1
+        return None
+
+    def charge(self, tokens: int) -> None:
+        self.tokens_left -= max(0, int(tokens))
+
+    @property
+    def exhausted(self) -> bool:
+        return self.tokens_left <= 0
+
+
 def resolve_cap(value: object, ceiling: int, floor: int = 1) -> int:
     """Clamp a caller-requested run cap (steps / token budget) into bounds.
 
@@ -159,7 +210,12 @@ def narrow_scope(parent: list[str] | None, child: list[str] | None) -> list[str]
         return list(c)
     if not c:
         return list(p)
-    return [x for x in c if x in p]
+    # An empty intersection must stay restrictive: [] means *all*, so collapsing
+    # two disjoint non-empty scopes to it would WIDEN the child to everything —
+    # the exact inversion of inherit-never-widen. The sentinel matches no real
+    # tool/skill/secret, so it grants nothing (mirrors Agent.__post_init__'s
+    # legacy-migration rule of keeping a scope non-empty).
+    return [x for x in c if x in p] or ["__nothing__"]
 
 
 def narrow_accounts(parent: list[dict] | None, child: list[dict] | None) -> list[dict]:
@@ -205,6 +261,19 @@ class SubagentRun:
     task: str
     depth: int = 1
     background: bool = False
+    # Short display name for logs/UI (model-picked or derived from the task).
+    label: str = ""
+    # Fan-out bookkeeping: siblings of one spawn_subagents call share a
+    # group_id; parent_run_id/children link the run tree so the admin UI can
+    # render it and cancel can cascade.
+    group_id: str = ""
+    parent_run_id: str = ""
+    children: list[str] = field(default_factory=list)
+    # Live spend/outcome telemetry, updated by the run loop as it goes.
+    tokens_used: int = 0
+    steps: int = 0
+    # "" while running; complete | max_steps | token_budget | truncated | aborted.
+    stopped_reason: str = ""
     # Per-run sizing the spawning agent chose, resolved/clamped via resolve_cap
     # before the run starts (so always concrete on a live run; the 0 defaults are
     # only placeholders for direct construction). effort None = inherit caller level.
@@ -245,10 +314,40 @@ class SubagentRegistry:
 
     def __init__(self) -> None:
         self._runs: OrderedDict[str, SubagentRun] = OrderedDict()
+        # Per-chat concurrency gate (see slot()): chat key → depth-1 runs
+        # currently holding a slot. One Condition for all chats — wakeups are
+        # rare and cheap at this scale.
+        self._slots: dict[str, int] = {}
+        self._slots_cond = asyncio.Condition()
 
     def register(self, run: SubagentRun) -> None:
         self._runs[run.run_id] = run
         self._trim()
+
+    @contextlib.asynccontextmanager
+    async def slot(self, chat_key: str, limit: Callable[[], int]):
+        """Acquire a per-chat concurrency slot; queues (never refuses) when the
+        chat is at its cap. ``limit`` is read at every acquire so a live config
+        change to ``max_concurrent`` applies without a restart. Per-chat, so one
+        chat's fan-out never starves another chat's spawn.
+        """
+        async with self._slots_cond:
+            while self._slots.get(chat_key, 0) >= max(1, limit()):
+                await self._slots_cond.wait()
+            self._slots[chat_key] = self._slots.get(chat_key, 0) + 1
+        try:
+            yield
+        finally:
+            async with self._slots_cond:
+                n = self._slots.get(chat_key, 1) - 1
+                if n <= 0:
+                    self._slots.pop(chat_key, None)
+                else:
+                    self._slots[chat_key] = n
+                self._slots_cond.notify_all()
+
+    def slots_in_use(self, chat_key: str) -> int:
+        return self._slots.get(chat_key, 0)
 
     def attach_task(self, run_id: str, task: asyncio.Task) -> None:
         run = self._runs.get(run_id)
@@ -293,12 +392,21 @@ class SubagentRegistry:
         self._trim()
         return True
 
+    def list_group(self, group_id: str) -> list[SubagentRun]:
+        """All runs of one fan-out group, oldest first."""
+        out = [r for r in self._runs.values() if group_id and r.group_id == group_id]
+        return sorted(out, key=lambda r: r.started_at)
+
     def cancel(self, run_id: str) -> bool:
-        """Request cancellation of a running subagent. Returns False if it is not
-        running (unknown id or already finished)."""
+        """Request cancellation of a running subagent, cascading to any children
+        it spawned (a ``create_task`` child survives its parent's cancellation,
+        so without the walk a cancelled orchestrator would orphan its fan-out).
+        Returns False if it is not running (unknown id or already finished)."""
         run = self._runs.get(run_id)
         if not run or run.status != "running":
             return False
+        for child_id in list(run.children):
+            self.cancel(child_id)
         if run._task and not run._task.done():
             run._task.cancel()
         # The task's CancelledError handler flips status to "cancelled"; set it
@@ -319,8 +427,8 @@ class SubagentRegistry:
 def short_summary(text: str, limit: int = 280) -> str:
     """A one-glance summary of a subagent's result — first non-empty line, capped.
 
-    The crude fallback for :func:`summarize_batch` when the summary inference is
-    disabled or its output can't be parsed; also the sync spawn's preview field.
+    The preview field of a synchronous spawn; the full result is returned
+    alongside it, so nothing is lost.
     """
     for line in (text or "").splitlines():
         line = line.strip()
@@ -329,63 +437,13 @@ def short_summary(text: str, limit: int = 280) -> str:
     return (text or "").strip()[:limit]
 
 
-# (task, outcome, agent, status) for one finished background run.
-SummaryItem = tuple[str, str, str, str]
-
-_SUMMARY_PROMPT = (
-    "Background helper task(s) ran for a user and finished. Summarise their "
-    "results into TWO things, and nothing else:\n"
-    "1. NOTIFICATION — ONE short sentence (max ~140 chars) giving the single most "
-    "important result/answer, phrased for the user. No greeting, no 'the helper "
-    "found', no markdown.\n"
-    "2. DIGEST — a few concise sentences with the key facts the assistant may need "
-    "to answer follow-ups. Real content only; do not restate the task or pad.\n\n"
-    "Respond in EXACTLY this format (NOTIFICATION on one line):\n"
-    "NOTIFICATION: <one sentence>\n"
-    "DIGEST: <concise summary>"
-)
-
-
-def _format_items(items: list[SummaryItem]) -> str:
-    blocks = []
-    for task, outcome, _agent, status in items:
-        blocks.append(f"--- task: {task}\nstatus: {status}\nresult:\n{outcome}")
-    return "\n\n".join(blocks)
-
-
-def fallback_summary(items: list[SummaryItem]) -> tuple[str, str]:
-    """Crude (no-LLM) fallback for :func:`summarize_batch`: first-line previews
-    for both the notification and the digest, used when the summary inference is
-    disabled or its output is unusable."""
-    notif = "; ".join(s for s in (short_summary(o, 120) for _, o, _, _ in items) if s)[:200]
-    digest = "\n".join(f"- {t[:80]}: {short_summary(o, 280)}" for t, o, _, _ in items)
-    return notif, digest
-
-
-def _parse_summary(raw: str) -> tuple[str, str]:
-    """Pull (notification, digest) out of the model's reply; ('', '') if unusable."""
-    if not raw or not raw.strip():
-        return "", ""
-    low = raw.lower()
-    n_idx, d_idx = low.find("notification:"), low.find("digest:")
-    if n_idx == -1 and d_idx == -1:
-        # No markers — take the first non-empty line as the notification.
-        lines = [ln.strip() for ln in raw.strip().splitlines() if ln.strip()]
-        return (lines[0], "\n".join(lines[1:]) or lines[0]) if lines else ("", "")
-    notif = ""
-    if n_idx != -1:
-        end = d_idx if (d_idx > n_idx) else len(raw)
-        body = raw[n_idx + len("notification:") : end].strip()
-        notif = body.splitlines()[0].strip() if body else ""
-    digest = raw[d_idx + len("digest:") :].strip() if d_idx != -1 else ""
-    return notif, digest
-
-
 def _selfcheck() -> None:
     # ponytail: one runnable check for the scope/account narrowing (#15, #110).
     assert narrow_scope([], ["a"]) == ["a"]  # empty parent = no restriction
     assert narrow_scope(["a", "b"], []) == ["a", "b"]  # empty child inherits
     assert narrow_scope(["a", "b"], ["b", "c"]) == ["b"]  # intersection, never widen
+    # Disjoint non-empty scopes must NOT collapse to [] ("all") — that would widen.
+    assert narrow_scope(["a"], ["b"]) == ["__nothing__"]
 
     rw = {"account": "x", "access_level": "read_write", "is_sender_identity": True}
     ro = {"account": "x", "access_level": "read", "is_sender_identity": False}
@@ -410,22 +468,25 @@ def _selfcheck() -> None:
     assert resolve_model_override("", "b", ["a:b"]) == ("a", "b", "")
     assert resolve_model_override("a", "b", ["a:b", "c:d"]) == ("a", "b", "")
     assert resolve_model_override("a", "d", ["a:b", "c:d"])[2]  # wrong pairing → refused
+
+    # FanoutBudget: charge-as-you-go, spawns refused only on exhausted pools.
+    b = FanoutBudget(tokens_left=100, spawns_left=2)
+    assert b.take_spawn() is None and b.spawns_left == 1
+    b.charge(60)
+    assert b.tokens_left == 40 and not b.exhausted
+    assert b.take_spawn() is None and b.spawns_left == 0
+    assert b.take_spawn()  # spawn pool exhausted → message, not exception
+    b.charge(-5)  # a bogus negative charge never grows the pool back
+    b.charge(50)
+    assert b.tokens_left == -10 and b.exhausted  # bounded overshoot is fine
+    assert FanoutBudget(tokens_left=0, spawns_left=5).take_spawn()  # token pool dry
+
+    # Labels: model-picked wins, else derived from the task, always bounded.
+    assert derive_label("pricing", "whatever task") == "pricing"
+    assert derive_label("", "Read the six PRs and summarise") == "Read the six PRs"
+    assert derive_label("", "", 3) == "task3"
+    assert len(derive_label("x" * 99, "")) == 32
     print("subagents.py self-check OK")
-
-
-async def summarize_batch(llm, model: str, items: list[SummaryItem]) -> tuple[str, str]:
-    """LLM-distil a finished background batch into (notification, digest).
-
-    ``notification`` is one sentence for the chat; ``digest`` is concise context
-    for the spawning agent. Falls back to truncation if the model's output can't
-    be parsed (the caller falls back too if the inference itself raises).
-    """
-    prompt = f"{_SUMMARY_PROMPT}\n\n{_format_items(items)}"
-    raw = await llm.generate_text(model=model, prompt=prompt, max_tokens=600)
-    notif, digest = _parse_summary(raw)
-    if not notif:
-        return fallback_summary(items)
-    return notif, digest or notif
 
 
 if __name__ == "__main__":
