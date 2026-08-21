@@ -24,7 +24,7 @@ Python orchestrator + battle-tested CLI tools. Python handles async orchestratio
 - Voice TTS: edge-tts (cloud) or Kokoro 82M (offline, multilingual)
 - Browser: Playwright (headless Chromium)
 - Search: Tavily or self-hosted SearXNG
-- Storage: SQLite in WAL mode (8 databases, no external server)
+- Storage: SQLite in WAL mode (7 databases, no external server)
 - Admin UI: FastAPI + Jinja2 + HTMX + Alpine.js + Tailwind CSS v4
 
 ## Quick start
@@ -54,6 +54,7 @@ Admin UI at http://localhost:8000. Setup wizard walks through LLM API key, Teleg
 - Per-chat settings: control who can trigger each agent per group (everyone/nobody/users)
 - Group chat: multiple agents in one group, only addressed bot replies, no loops
 - Multi-message replies: [[split]] marker produces multiple bubbles per turn
+- Live web transcript: `/weburl` replies with a read-only link that renders the chat as a live-updating web page
 
 ### WhatsApp
 Via wacli CLI tool. Read and send messages. Integrated as a skill.
@@ -130,16 +131,20 @@ Skills use a dual format: flat `<name>.md` files or directories with `<name>/SKI
 Skills installable from git repos via admin UI. Shallow clone → validate SKILL.md → copy to `data/skills/<name>/` → record `.origin` marker → seed into DB. Installed skills are read-only; update = re-pull from origin.
 
 ### Built-in skills
-13 skill files ship with humux: email, calendar, contacts, memory, voice, browser, WhatsApp, weather, scheduling, image generation, artifact hosting, jq, skill-creator.
+15 skill files ship with humux: email, calendar, contacts, memory, voice, browser, WhatsApp, weather, scheduling, image generation, artifact hosting, gh (GitHub CLI), subagent orchestration, jq, skill-creator.
 
 ## Subagents
 
 Spawn scoped sub-loops under any agent:
 - Inherit-never-widen for tools, skills, secrets, and GitHub repo access
 - Sync mode: result returned in-turn
-- Background mode: distilled summary delivered later
-- Step, token, and thinking budgets
-- Monitor and cancel from Telegram or admin UI
+- Background mode: the finished batch is routed back into the conversation it came from, so the agent reads the raw results and writes the reply itself (injected between tool rounds if a turn is already running)
+- Per-spawn step, token, and thinking budgets; a spawn may also name a different model/provider from the configured `allowed_models`
+- Fan-out: one `spawn_subagents` call runs several subtasks in parallel (default max 6 per call, per-chat concurrency gate of 4). Results come back per subtask with status, steps, tokens, and stop reason — one failure never sinks the batch
+- Per-turn token pool across the whole subagent tree, charged as it is spent rather than reserved up front
+- Delegation trust list: `spawnable_agents` on an agent names which teammates it may delegate to. A listed specialist runs with its own tools, skills, and secrets; unlisted names are refused. Empty means narrow-to-intersection
+- Bundled `subagent-orchestration` skill covers when fanning out beats a sequential spawn
+- Monitor and cancel from Telegram (`/subagents`) or the admin UI Inspect tab; `/stop` cascades to in-flight children
 
 ## Security
 
@@ -181,6 +186,10 @@ Headless Chromium via Playwright. Self-driving explore mode (inner LLM loop navi
 
 Multi-step autonomous research pipeline. The agent plans search queries, fans out web searches, fetches and reads full pages, cross-checks claims across sources, and synthesizes a cited report delivered as a shareable artifact. Configurable search/read models and token budget via the admin UI Tools tab.
 
+## Live web transcript
+
+`/weburl` in any Telegram chat replies with a link to a read-only web page of that conversation, updating live. The token in the path is the only credential — no login, no admin API key — and maps to exactly one (channel, user, chat) triple, so asking again returns the same link. Reasoning and tool activity sit between messages as expandable chips: reasoning as prose, tool arguments and results as a collapsible JSON tree, with a thinking toggle that expands them all. The system prompt is never included and there is no way to send a message from the page. Set `HUMUX_BASE_URL` so the link is reachable off-box.
+
 ## Web artifacts
 
 Agent writes files to `artifacts/<slug>/`, served as shareable links with sandboxed CSP. Multi-file sites, PDFs, images.
@@ -209,7 +218,7 @@ Full web dashboard: FastAPI + HTMX + Alpine.js + Tailwind CSS v4.
 - Memory inspector (Settings / Long-term / Short-term sub-tabs, pagination, search, inline editing via detail modal)
 - Job management (create, pause, resume, cancel, monitor)
 - Per-agent log streams (filterable by stream, level, time, text)
-- Prompt inspector (last-sent LLM payload per context)
+- Inspect tab: exact last-sent LLM payload per context (role-badged message cards, tool calls with pretty-printed arguments, results paired to their call, thinking in a collapsed block, system-prompt and tool-schema sizes) plus live subagent run cards with cancel buttons
 - Token usage dashboard (24h/7d/30d, per-provider breakdown)
 - Secrets vault management
 - GitHub webhook configuration
@@ -243,13 +252,13 @@ One turn can produce multiple heterogeneous messages (text, voice, images) via a
 
 - `config.yml`: agent settings, channels, calendar, scheduler jobs
 - `character.md`: agent identity, personality, communication style
-- `skills/*.md`: skill files (13 built-in)
+- `skills/*.md`: skill files (15 built-in)
 - `.env`: environment variables (LLM keys, etc.)
 
 ## Data storage
 
-8 SQLite databases in WAL mode:
-- config.db, skills.db, agents.db, history.db, memory.db, reflections.db, jobs.db, imagegen.db
+7 SQLite databases in WAL mode:
+- config.db, skills.db, agents.db, history.db, memory.db, jobs.db, imagegen.db
 
 All under `/app/data`. Backup: `tar czf backup.tar.gz ./data`.
 

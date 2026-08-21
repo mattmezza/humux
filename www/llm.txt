@@ -35,6 +35,7 @@ Admin UI at http://localhost:8000 — setup wizard guides through LLM API key, T
 ## Capabilities
 
 - Messaging: Telegram (per-agent bots, voice, reactions, inline approvals, multi-message replies), WhatsApp, CLI
+- Live transcript: /weburl returns a read-only, live-updating web page of that chat — reasoning and tool calls behind expandable chips, no login for the reader
 - Email: read, compose, search, manage — per-agent mailboxes with vault-secured credentials
 - Calendar: CalDAV (Google Calendar, iCloud, Fastmail) — read/write events, scheduled briefings
 - Contacts: CardDAV + Google Contacts — search, create, per-agent access levels
@@ -42,13 +43,13 @@ Admin UI at http://localhost:8000 — setup wizard guides through LLM API key, T
 - Voice: STT via faster-whisper or remote OpenAI-compatible API, TTS via edge-tts / Kokoro / remote TTS
 - Memory: four-tier system with automatic extraction from conversations
 - Skills: markdown-based, installable from git repos via admin UI
-- Subagents: scoped sub-tasks with step/token/thinking budgets
+- Subagents: scoped sub-tasks with per-spawn step/token/thinking budgets and an optional different model/provider; spawn_subagents fans several out in parallel; per-agent delegation trust lists (spawnable_agents); the agent itself reads the results and replies when a background batch lands
 - Deep research: multi-step autonomous research pipeline — plan, search, fetch, verify, synthesize a cited report as a shareable artifact
 - Browser: headless Playwright with persistent profiles and per-domain rules, optional sidecar
 - Coding: read/write/edit/bash tools confined to workspace directory
 - Scheduling: cron-based jobs for briefings, email checks, custom tasks — pause and resume via admin UI
 - Security: ALWAYS/ASK/NEVER permission rules, Telegram inline approval buttons, YOLO mode default
-- Admin UI: PWA-installable, token usage dashboard (24h/7d/30d), per-agent LLM override, mid-turn steering
+- Admin UI: PWA-installable, token usage dashboard (24h/7d/30d), per-agent LLM override, mid-turn steering, Inspect tab (exact last-sent LLM payload per context + live subagent run tree)
 - Artifacts: agent-generated web apps and pages served under /artifacts/ with shareable links
 
 ## LLM providers

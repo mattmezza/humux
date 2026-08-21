@@ -142,6 +142,10 @@
             <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">CLI channel</h3>
             <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">Chat with the agent directly from your terminal — SSH in or run <code class="inline-code">uv run python -m core.cli</code>. Resumable sessions, no Telegram needed.</p>
           </div>
+          <div class="feature-card">
+            <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Live web transcript</h3>
+            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">Send <code class="inline-code">/weburl</code> and the agent replies with a read-only link that renders that chat as a live-updating web page. Reasoning and tool calls sit behind expandable chips with a JSON tree. One link per conversation, no login, system prompt never included.</p>
+          </div>
         </div>
       </div>
     </section>
@@ -296,7 +300,7 @@
           </div>
           <div class="feature-card">
             <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Subagents</h3>
-            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">Delegate scoped subtasks to a sub-loop. Run sync (result in-turn) or background (distilled summary). Set step/token/thinking budgets.</p>
+            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">Delegate scoped subtasks to a sub-loop, optionally on a different model or provider. Run sync (result in-turn) or background — when a background batch lands, the agent reads the raw results and writes the reply itself. Step, token, and thinking budgets per spawn.</p>
           </div>
           <div class="feature-card">
             <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Markdown skills</h3>
@@ -313,6 +317,14 @@
           <div class="feature-card">
             <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Context usage meter</h3>
             <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">See token count and percentage of context window used in the Inspect tab. Manage context budget per agent.</p>
+          </div>
+          <div class="feature-card">
+            <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Parallel fan-out</h3>
+            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">One <code class="inline-code">spawn_subagents</code> call runs several subtasks at once — wall-clock is the slowest, not the sum. Per-chat concurrency gate, per-subtask status so one failure never sinks the batch, and a per-turn token pool charged as it is spent.</p>
+          </div>
+          <div class="feature-card">
+            <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Delegation trust lists</h3>
+            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);"><code class="inline-code">spawnable_agents</code> names which teammates an agent may delegate to. A listed specialist runs with its own tools and secrets; anything unlisted is refused. Left empty, a subagent is narrowed to the caller's scope — inherit, never widen.</p>
           </div>
         </div>
       </div>
@@ -360,11 +372,15 @@
           </div>
           <div class="feature-card">
             <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Job management</h3>
-            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">View, create, pause, resume, and cancel scheduled jobs. Monitor subagent runs. Filter jobs by agent.</p>
+            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">View, create, pause, resume, and cancel scheduled jobs. Filter jobs by agent.</p>
           </div>
           <div class="feature-card">
             <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Secrets vault</h3>
             <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">Encrypted two-tier vault: infrastructure keys (machine-key sealed) and agent secrets (admin-password sealed). Bitwarden import.</p>
+          </div>
+          <div class="feature-card">
+            <h3 class="mb-1 text-sm font-semibold" style="color: #eee;">Inspect tab</h3>
+            <p class="text-xs leading-relaxed" style="color: var(--color-secondary);">The exact payload last sent to the LLM, per context: role-badged message cards, tool calls with pretty-printed arguments, results paired to their call, thinking in a collapsed block, and the size of the system prompt and tool schemas. Live subagent runs show as cards with a cancel button, grouped by fan-out with children indented under their parent.</p>
           </div>
         </div>
       </div>
