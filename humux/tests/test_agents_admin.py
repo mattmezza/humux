@@ -531,5 +531,9 @@ def test_agent_llm_override_roundtrip_and_editor(tmp_path) -> None:
     page = client.get("/admin/agents/senior", headers=AUTH).text
     assert "Custom LLM settings for this agent" in page  # LLM tab renders
     assert "claude-4-6-opus" in page  # stored override seeds the controls
+    # The provider <select> re-asserts the saved value per option (#317): an
+    # x-for select drops it at init, and a dropped provider means the next save
+    # silently strips the override.
+    assert ':selected="p.value === llmProvider"' in page
     listing = client.get("/partials/agents", headers=AUTH).text
     assert "🧠 claude-4-6-opus" in listing  # list badge shows the model
