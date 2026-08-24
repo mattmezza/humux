@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -119,6 +120,56 @@ async def test_openai_generate_flags_truncation() -> None:
 
     out = await client.generate(model="deepseek-v4-flash", system="s", messages=[], tools=[])
     assert out.truncated is True
+
+
+# --- #317: an empty response keeps its raw shape; the turn decides what to say --
+
+
+def _openai_msg(content: str, reasoning: str | None = None) -> Any:
+    return type(
+        "Msg",
+        (),
+        {
+            "tool_calls": None,
+            "content": content,
+            "reasoning_content": reasoning,
+            "reasoning": None,
+            "model_dump": lambda self, exclude_none=True: {
+                "role": "assistant",
+                "content": content,
+            },
+        },
+    )()
+
+
+def _openai_resp(content: str, finish_reason: str, reasoning: str | None = None) -> Any:
+    choice = type(
+        "Choice", (), {"message": _openai_msg(content, reasoning), "finish_reason": finish_reason}
+    )()
+    return type("R", (), {"choices": [choice], "usage": None})()
+
+
+def _openai_client(create: AsyncMock) -> LLMClient:
+    client = LLMClient("openai", "x")
+    completions = type("Co", (), {"create": create})()
+    client._client = type("C", (), {"chat": type("Ch", (), {"completions": completions})()})()
+    return client
+
+
+@pytest.mark.asyncio
+async def test_openai_generate_keeps_reasoning_out_of_text() -> None:
+    """A reasoning model can answer only in reasoning_content. generate() reports
+    both fields as they came — surfacing the CoT as the reply is the agent loop's
+    call (only on a first, tool-free round), never the client's (#317)."""
+    create = AsyncMock(return_value=_openai_resp("", "stop", reasoning="the answer is 42"))
+    client = _openai_client(create)
+
+    out = await client.generate(model="stealth/ox-alpha", system="s", messages=[], tools=[])
+
+    assert create.await_count == 1
+    assert out.text == ""
+    assert out.reasoning == "the answer is 42"
+    assert out.truncated is False
 
 
 @pytest.mark.asyncio

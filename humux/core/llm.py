@@ -13,7 +13,19 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Any, cast
 
+from anthropic import APIError as AnthropicAPIError
 from anthropic import AsyncAnthropic
+
+# Typed API errors from both provider SDKs (auth, 4xx, 5xx, timeout…), caught at
+# the turn boundary so a failed model call reaches the user instead of dying in
+# the channel layer (#317). openai is imported lazily, like the client itself, so
+# an anthropic-only install still loads this module.
+try:
+    from openai import APIError as _OpenAIAPIError
+except ImportError:  # pragma: no cover - openai is declared in pyproject
+    PROVIDER_API_ERRORS: tuple[type[Exception], ...] = (AnthropicAPIError,)
+else:
+    PROVIDER_API_ERRORS = (AnthropicAPIError, _OpenAIAPIError)
 
 # Dedicated logger for model chain-of-thought. Silent by default (WARNING);
 # the CLI bumps it to INFO to stream reasoning live without spamming server logs.
@@ -509,6 +521,7 @@ class LLMClient:
         # tool-free call (vision captioning, a subagent's wrap-up round) has to
         # omit the field entirely rather than send [].
         tool_kwargs = {"tools": cast(Any, openai_tools)} if openai_tools else {}
+
         response = await _call_with_retries(
             lambda: client_any.chat.completions.create(
                 model=resolved_model,
