@@ -31,6 +31,7 @@ from core.history import ConversationHistory
 from core.imagegen import ImageBudget
 from core.job_store import JobStore
 from core.llm import (
+    PROVIDER_API_ERRORS,
     LLMClient,
     LLMToolCall,
     model_supports_vision,
@@ -166,6 +167,17 @@ _REPEAT_ERROR_NOTICE = (
 _LOOP_ABORT_MESSAGE = (
     "I had to stop — I made too many tool calls without reaching an answer. "
     "Could you rephrase, or break the request into smaller steps?"
+)
+
+# #317: the very first model response was empty — no text, no chain-of-thought,
+# no tool calls, not truncated. That is a provider glitch (a gateway hiccup, a
+# model that dropped the turn), never a deliberate silence: a genuine react-only
+# turn (#70) always runs at least one tool round before its empty final
+# response, so it is untouched by this guard.
+_EMPTY_RESPONSE_MESSAGE = (
+    "I got an empty response from the model — no text and no tool calls. "
+    "This usually means the model or provider misbehaved; please try again, or "
+    "check the agent's LLM settings."
 )
 
 # A sync spawn's result lands in the very next reply, so a completion note only
@@ -1356,18 +1368,29 @@ class AgentCore:
                 self._discard_steer(key, steer_entry)
                 if steer_entry["consumed"]:
                     return AgentResponse(text="")
-            return await self._process_impl(
-                message,
-                channel,
-                user_id,
-                attachments=attachments,
-                chat_id=chat_id,
-                agent_name=agent_name,
-                respond=respond,
-                addressed=addressed,
-                message_id=message_id,
-                woken_by_subagent=steer_kind == "subagent",
-            )
+            try:
+                return await self._process_impl(
+                    message,
+                    channel,
+                    user_id,
+                    attachments=attachments,
+                    chat_id=chat_id,
+                    agent_name=agent_name,
+                    respond=respond,
+                    addressed=addressed,
+                    message_id=message_id,
+                    woken_by_subagent=steer_kind == "subagent",
+                )
+            except PROVIDER_API_ERRORS as exc:
+                # #317: a failed model call (bad model id, auth, provider outage)
+                # must reach the user — an uncaught SDK error would die in the
+                # channel layer and come back as silence. Subagent runs already
+                # handle their own errors and never surface here.
+                log.exception("Provider API error while processing turn")
+                status = getattr(exc, "status_code", None)
+                detail = getattr(exc, "message", None) or str(exc)
+                suffix = f" (HTTP {status})" if status else ""
+                return AgentResponse(text=f"The model call failed{suffix}: {detail}")
 
     def _active_turns_map(self) -> dict:
         """Conversation key → abort Event for the turn currently running there.
@@ -2399,6 +2422,14 @@ class AgentCore:
                 final_text = _TRUNCATION_GIVEUP_MESSAGE
             elif response.tool_calls and not final_text:
                 final_text = _LOOP_ABORT_MESSAGE
+            elif rounds == 0 and not final_text:
+                # #317: empty first response, no tool calls, not truncated. A
+                # reasoning model can put its whole answer in chain-of-thought and
+                # leave content empty — surface that rather than nothing; anything
+                # else is a provider glitch. Only safe with no tool round behind
+                # us: a deliberate react-only silence (#70) always has one, and
+                # its final round carries CoT too on a reasoning model.
+                final_text = response.reasoning or _EMPTY_RESPONSE_MESSAGE
         log.info("Response: %s", final_text[:200])
 
         # Split into one or more delivery messages (#202); each part may be voice.
@@ -2577,6 +2608,14 @@ class AgentCore:
                 final_text = _TRUNCATION_GIVEUP_MESSAGE
             elif response.tool_calls and not final_text:
                 final_text = _LOOP_ABORT_MESSAGE
+            elif rounds == 0 and not final_text:
+                # #317: empty first response, no tool calls, not truncated. A
+                # reasoning model can put its whole answer in chain-of-thought and
+                # leave content empty — surface that rather than nothing; anything
+                # else is a provider glitch. Only safe with no tool round behind
+                # us: a deliberate react-only silence (#70) always has one, and
+                # its final round carries CoT too on a reasoning model.
+                final_text = response.reasoning or _EMPTY_RESPONSE_MESSAGE
 
         # Split into one or more delivery messages (#202); each part may be voice.
         # ``final_text`` becomes the combined marker-free text — one assistant turn

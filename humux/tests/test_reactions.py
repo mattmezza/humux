@@ -129,7 +129,10 @@ def test_set_reaction_is_preapproved(tmp_path) -> None:
 
 
 class _ReactThenSilentLLM:
-    """First turn calls set_reaction; the final turn returns no text at all."""
+    """First turn calls set_reaction; the final turn returns no text at all.
+
+    The final round carries chain-of-thought, as a reasoning model always does:
+    a deliberate silence must stay silent, never be filled with the CoT (#317)."""
 
     provider = "deepseek"
 
@@ -141,7 +144,7 @@ class _ReactThenSilentLLM:
                     LLMToolCall(id="r1", name="set_reaction", arguments={"emoji": "heart"})
                 ],
             ),
-            LLMResponse(text="", tool_calls=[]),
+            LLMResponse(text="", tool_calls=[], reasoning="already reacted; nothing to add"),
         ]
 
     async def generate(self, **_kw) -> LLMResponse:

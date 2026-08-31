@@ -127,8 +127,11 @@
             <label class="label" for="agent-llm-provider">Provider</label>
             <select class="select input-sm" style="max-width:300px" x-model="llmProvider" id="agent-llm-provider">
               <option value="" x-text="'Global — ' + llmDefaults.provider"></option>
+              {# :selected — an x-for select drops its saved value at init (the
+                 <option>s aren't in the DOM yet when x-model binds), so each
+                 option re-asserts it. Same idiom as the LLM tab's selects (#317). #}
               <template x-for="p in llmProviders" :key="'agent-llm-' + p.value">
-                <option :value="p.value" x-text="p.label"></option>
+                <option :value="p.value" x-text="p.label" :selected="p.value === llmProvider"></option>
               </template>
             </select>
             <p class="text-xs text-muted mt-1">The provider must have its API key configured in Dashboard → LLM → Providers.</p>
