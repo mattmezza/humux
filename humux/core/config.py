@@ -138,7 +138,8 @@ class GroupChatConfig(BaseModel):
 
     - replies only when **addressed** — @mentioned or replying to one of its own
       messages (``reply_when_addressed_only``); otherwise it stays silent but still
-      records the turn for context,
+      records the turn for context — a voice note included, transcribed instead of
+      reduced to a placeholder (``transcribe_unaddressed_voice``, #328),
     - **ignores other bots** so two assistants never loop replying to each other
       (``ignore_bots``); their messages are still recorded for context,
     - records every message it sees with a ``[from <author>]`` speaker tag, so a
@@ -162,6 +163,12 @@ class GroupChatConfig(BaseModel):
     reply_when_addressed_only: bool = True
     # Loop guard: never reply to a message authored by another bot (record only).
     ignore_bots: bool = True
+    # Transcribe voice notes this bot is NOT answering, so their content still
+    # lands in the shared context (#328). Without it an unaddressed voice note is
+    # recorded as the useless placeholder "(voice message)" and the agent can
+    # never act on it later. Costs one STT call per unaddressed voice note, hence
+    # the opt-out. Moot when no voice pipeline is configured.
+    transcribe_unaddressed_voice: bool = True
 
 
 class TelegramConfig(BaseModel):

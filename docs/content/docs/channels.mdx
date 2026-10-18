@@ -57,13 +57,14 @@ Since each agent is its own bot, adding several to one Telegram group is natural
 raw behaviour is wrong: every bot would answer every message, and two bots would loop
 replying to each other forever. **Group multi-agent rooms** fix the turn-taking. It's a
 **per-agent** setting (toggles in the **Telegram bot** section of the agent editor, not a
-global config), with three controls — mirrored in raw frontmatter as `group_chat`:
+global config), with the controls below — mirrored in raw frontmatter as `group_chat`:
 
 ```yaml
 group_chat:
   enabled: false                   # opt-in; off by default
   reply_when_addressed_only: true  # reply only when @mentioned or replied-to
   ignore_bots: true                # never reply to another bot (loop guard)
+  transcribe_unaddressed_voice: true  # still transcribe voice notes it doesn't answer
 ```
 
 Group rooms are **off by default**, so existing single-bot groups are unchanged on
@@ -79,6 +80,14 @@ group or supergroup each bot then:
   control: a group message naively hits every bot = N× LLM calls; the gate means
   only the addressed bot runs inference. Set `reply_when_addressed_only: false` to
   have a bot reply to every human message instead.
+- **transcribes voice notes it stays silent on** — an unaddressed voice note is
+  downloaded and transcribed and recorded as `[voice] <transcript>`, so the audio is
+  still in the shared context and the bot can act on it when it *is* addressed later.
+  It costs one STT call per unaddressed voice note; set
+  `transcribe_unaddressed_voice: false` to keep the cheap `(voice message)`
+  placeholder instead (also what you get when no voice pipeline is configured, or
+  when transcription fails — then the placeholder reads `(voice message — could not
+  transcribe)`).
 - **ignores other bots** — another bot's messages are recorded for context but never
   trigger a reply, so two assistants can't loop. Set `ignore_bots: false` to allow it.
 - **tags every speaker** — each message a bot sees is recorded with a `[from <author>]`
