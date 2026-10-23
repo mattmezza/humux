@@ -50,6 +50,10 @@ dev = [
 [tool.ruff]
 target-version = "py314"
 line-length = 100
+# The standalone STT container uses Python 3.12 independently of the agent.
+[tool.ruff.per-file-target-version]
+"sidecars/whistle/*.py" = "py312"
+"tests/smoke_whistle.py" = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]

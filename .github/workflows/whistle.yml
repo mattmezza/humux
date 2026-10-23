@@ -1,0 +1,38 @@
+name: Whistle sidecar
+
+on:
+  pull_request:
+    paths:
+      - 'humux/sidecars/whistle/**'
+      - 'humux/tests/smoke_whistle.py'
+      - 'humux/voice/samples/**'
+      - '.github/workflows/whistle.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build CPU-only sidecar with bundled model
+        uses: docker/build-push-action@v6
+        with:
+          context: ./humux/sidecars/whistle
+          load: true
+          tags: humux-whistle-smoke:${{ github.run_id }}-${{ github.run_attempt }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Transcribe real OGG speech with networking disabled
+        env:
+          IMAGE: humux-whistle-smoke:${{ github.run_id }}-${{ github.run_attempt }}
+          CONTAINER: humux-whistle-smoke-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          trap 'docker logs "$CONTAINER"; docker rm -f "$CONTAINER"' EXIT
+          docker run -d --name "$CONTAINER" --network none \
+            -v "$PWD/humux/tests/smoke_whistle.py:/smoke.py:ro" \
+            -v "$PWD/humux/voice/samples:/samples:ro" "$IMAGE"
+          docker exec "$CONTAINER" python /smoke.py /samples/test-stt.ogg
