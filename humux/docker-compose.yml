@@ -6,6 +6,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
+      # data/ also persists Go module/build caches (go/pkg/mod/, go-build-cache/).
       # data/ also holds skills installed from git repos (data/skills/, #65).
       # Installs always target this volume — the skills/ seed dir is read-only
       # here and baked into the image in setups that don't mount it at all —

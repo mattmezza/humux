@@ -1,3 +1,6 @@
+# Shared switch: the builder always needs Go, but runtime installation is optional.
+ARG INSTALL_GO=true
+
 # ---------- builder: compile wacli (Go + CGO) ----------
 FROM golang:1.25-bookworm AS wacli-builder
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -8,10 +11,33 @@ RUN CGO_ENABLED=1 CGO_CFLAGS="-Wno-error=missing-braces" \
     GOBIN=/out \
     go install -tags sqlite_fts5 github.com/openclaw/wacli/cmd/wacli@${WACLI_VERSION}
 
+# Export the exact toolchain used by wacli, or an empty directory for lean builds.
+# COPY from this output keeps INSTALL_GO=false free of runtime Go layers.
+ARG INSTALL_GO
+RUN mkdir -p /out/toolchain && \
+    if [ "$INSTALL_GO" = "true" ]; then \
+      cp -a /usr/local/go /out/toolchain/go; \
+    fi
+
 # ---------- runtime ----------
 FROM python:3.14-slim
 
 WORKDIR /app
+
+# Go builds use the coding harness, with the same permissions as Node builds.
+# Both caches live in the existing writable /app/data volume (non-root friendly).
+ARG INSTALL_GO
+COPY --from=wacli-builder /out/toolchain/ /usr/local/
+ENV PATH="/usr/local/go/bin:/app/data/go/bin:${PATH}" \
+    GOPATH=/app/data/go \
+    GOCACHE=/app/data/go-build-cache \
+    GOTOOLCHAIN=local
+# Include the C compiler and pkg-config for CGO repos when Go is installed.
+RUN if [ "$INSTALL_GO" = "true" ]; then \
+      apt-get update && apt-get install -y --no-install-recommends build-essential pkg-config \
+      && rm -rf /var/lib/apt/lists/* \
+      && go version; \
+    fi
 
 # System deps (ffmpeg for voice pipeline, curl for health checks, sqlite3 for memory)
 # The bash-tool allowlist (core/executor.py ALLOWED_PREFIXES) promises these CLIs
@@ -47,7 +73,7 @@ RUN if [ "$INSTALL_NODE" = "true" ]; then \
       && node --version && npm --version; \
     fi
 
-# wacli binary from the builder stage — no Go toolchain in the final image.
+# wacli is installed even when the optional runtime Go toolchain is disabled.
 COPY --from=wacli-builder /out/wacli /usr/local/bin/wacli
 RUN wacli version
 
