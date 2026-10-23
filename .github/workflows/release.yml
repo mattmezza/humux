@@ -45,11 +45,24 @@ jobs:
             type=semver,pattern={{major}},value=${{ github.event.release.tag_name }}
             type=raw,value=${{ github.event.release.tag_name }}
             type=raw,value=latest
-      - uses: docker/build-push-action@v6
+      - name: Build standard release image
+        uses: docker/build-push-action@v6
         with:
           context: ./humux
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          load: true
+          tags: humux-release:${{ github.run_id }}-${{ github.run_attempt }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=humux-image-go-true
+          cache-to: type=gha,mode=max,scope=humux-image-go-true
+      - name: Smoke-test exact standard image before publishing
+        run: sh humux/tests/smoke_go_image.sh "humux-release:${{ github.run_id }}-${{ github.run_attempt }}"
+      - name: Push tested image without rebuilding
+        env:
+          IMAGE: humux-release:${{ github.run_id }}-${{ github.run_attempt }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          printf '%s\n' "$TAGS" | while IFS= read -r tag; do
+            test -n "$tag" || continue
+            docker tag "$IMAGE" "$tag"
+            docker push "$tag"
+          done
