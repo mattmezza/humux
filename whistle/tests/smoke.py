@@ -19,7 +19,7 @@ for attempt in range(60):
 else:
     raise RuntimeError("Whistle did not become healthy")
 
-boundary = "humux-whistle-smoke"
+boundary = "whistle-smoke"
 body = (
     (
         f'--{boundary}\r\nContent-Disposition: form-data; name="model"\r\n\r\n'

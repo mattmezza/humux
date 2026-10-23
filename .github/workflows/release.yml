@@ -10,6 +10,7 @@ permissions:
 
 jobs:
   ci:
+    if: github.event_name != 'release' || !startsWith(github.event.release.tag_name, 'whistle-v')
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4

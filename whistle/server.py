@@ -42,7 +42,7 @@ def transcribe(
     language: Annotated[str | None, Form()] = None,
     response_format: Annotated[str, Form()] = "json",
 ):
-    # whisper-1 is the model alias sent by Humux's existing remote STT client.
+    # whisper-1 is the model alias sent by OpenAI-compatible STT clients.
     if model not in {"whistle", "whisper-1"}:
         raise HTTPException(400, "Model must be whistle or whisper-1")
     if language is not None and language not in LANGUAGES:

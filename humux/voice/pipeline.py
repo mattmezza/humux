@@ -377,7 +377,7 @@ class VoicePipeline:
         return await _loop.run_in_executor(None, partial(self._transcribe_sync, audio_bytes))
 
     async def _transcribe_remote(self, audio_bytes: bytes) -> str:
-        """Call an OpenAI-compatible STT endpoint (e.g. the Whistle sidecar)."""
+        """Call an OpenAI-compatible STT endpoint (e.g. the Whistle service)."""
         import httpx
 
         url = f"{self.stt_api_base_url}/audio/transcriptions"

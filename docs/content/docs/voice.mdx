@@ -11,7 +11,7 @@ humux includes a voice pipeline for receiving and sending voice messages through
 
 | Component | Technology | Purpose |
 |-----------|-----------|---------|
-| **Speech-to-Text** | [Whistle](https://huggingface.co/Cactus-Compute/whistle) sidecar / optional local faster-whisper | Transcribe incoming voice messages |
+| **Speech-to-Text** | [Whistle](https://huggingface.co/Cactus-Compute/whistle) service / optional local faster-whisper | Transcribe incoming voice messages |
 | **Text-to-Speech** | [edge-tts](https://github.com/rany2/edge-tts) (default) or [Kokoro 82M](https://huggingface.co/hexgrad/Kokoro-82M) | Synthesize voice responses |
 
 ## How it works
@@ -59,7 +59,7 @@ The agent follows these conventions (defined in `skills/voice.md`):
 ```yaml
 voice:
   stt_timeout_seconds: 300    # Remote STT upload/read timeout; longer notes need more time
-  stt_api_base_url: "http://whistle:8000/v1"  # Compose sidecar
+  stt_api_base_url: "http://whistle:8000/v1"  # Whistle service
   stt_model: "base"           # Only used by optional local Whisper
   tts_voice: "en-US-GuyNeural"  # edge-tts voice name
   tts_enabled: true
@@ -72,17 +72,19 @@ voice:
 
 You can also set the backend and default voice from the admin UI (**Agents → Default agent → Voice**), and pick a per-agent voice in the agent editor. Both have a **Preview** box: type a few words, optionally pick a **language**, and hear the voice before saving. Next to the STT settings, **Test STT** transcribes bundled human speech (“zero, one, two”) through the selected engine (local or remote), reporting the text and timing — so a misconfigured sidecar surfaces there instead of silently failing on a real voice message. Because the voice (timbre) and the pronunciation language are independent in Kokoro, any voice can read any language — e.g. an Italian voice reading English.
 
-### Whistle sidecar
+### Whistle
 
-From `humux/`, start the CPU-only STT service:
+Whistle is an independent STT service with its own image releases. After the
+first Whistle image is published, start it from `humux/`:
 
 ```bash
-docker compose --profile whistle up -d --build
+docker compose --profile whistle pull whistle
+docker compose --profile whistle up -d whistle
 ```
 
 In the admin Voice settings, select **Remote (sidecar / API)**, set the URL to
 `http://whistle:8000/v1`, save, and use **Test STT**. When running the agent on the
-host instead of Compose, use `make sidecar-whistle` (or `make sidecars`) and
+host instead of Compose, use `make whistle` (or `make sidecars`) and
 `http://localhost:8000/v1`. Override `WHISTLE_PORT` if needed.
 
 The image bundles the Whistle model and native Needle engine at build time;
@@ -103,14 +105,17 @@ To migrate an existing Whisper sidecar:
 
 1. Stop and remove the old container (`docker stop humux-whisper` followed by
    `docker rm humux-whisper`).
-2. Start the Whistle service above, or run `make sidecar-whistle` for host development.
+2. Start the Whistle service above, or run `make whistle` for host development.
 3. Update the saved STT URL and run **Test STT**. Compose also keeps `whisper` as a
    DNS alias, so existing `http://whisper:8000/v1` settings continue to work.
 
 The old Compose profile `whisper` and Make target `sidecar-whisper` are replaced by
-`whistle` and `sidecar-whistle`. Local faster-whisper remains available through
+`whistle` and `make whistle`, respectively. Local faster-whisper remains available through
 `uv sync --extra whisper`, or `INSTALL_WHISPER=true` when building the main image.
-Whistle dependencies are installed only in its separate container.
+Whistle dependencies are installed only in its separate container. The image is
+pinned to `ghcr.io/mattmezza/whistle:3.2.8`; upgrading Humux does not publish a
+Whistle release. See the component README in `whistle/` for independent build
+and release instructions (`make release-whistle name=v3.2.9`).
 
 ### Whisper model sizes
 

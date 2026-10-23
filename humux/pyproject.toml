@@ -36,7 +36,7 @@ kokoro = ["kokoro-onnx>=0.4"]
 # image — see docker-compose.yml embeddings service.
 fastembed = ["fastembed"]
 # Local on-device STT. Pulls faster-whisper + ctranslate2 (~350MB).
-# Use a sidecar instead for a leaner image — see docker-compose.yml whistle service.
+# Use Whistle instead for a leaner image — see docker-compose.yml.
 whisper = ["faster-whisper"]
 
 [dependency-groups]
@@ -50,11 +50,6 @@ dev = [
 [tool.ruff]
 target-version = "py314"
 line-length = 100
-# The standalone STT container uses Python 3.12 independently of the agent.
-[tool.ruff.per-file-target-version]
-"sidecars/whistle/*.py" = "py312"
-"tests/smoke_whistle.py" = "py312"
-
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
 

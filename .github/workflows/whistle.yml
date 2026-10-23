@@ -1,38 +1,105 @@
-name: Whistle sidecar
+name: Whistle
 
 on:
   pull_request:
     paths:
-      - 'humux/sidecars/whistle/**'
-      - 'humux/tests/smoke_whistle.py'
-      - 'humux/voice/samples/**'
+      - 'whistle/**'
       - '.github/workflows/whistle.yml'
+  release:
+    types: [published]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  smoke:
+  verify:
+    if: github.event_name != 'release' || startsWith(github.event.release.tag_name, 'whistle-v')
     runs-on: self-hosted
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
+      - name: Validate component version
+        id: version
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          version=$(cat whistle/VERSION)
+          test "$(sed -n 's/^cactus-needle==//p' whistle/requirements.txt)" = "$version"
+          if [ -n "$RELEASE_TAG" ]; then
+            test "$RELEASE_TAG" = "whistle-v$version"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - uses: astral-sh/setup-uv@v3
+      - name: Test independent API
+        working-directory: ./whistle
+        run: |
+          uv venv --python 3.12
+          uv pip install -r requirements-dev.txt
+          uv run --no-project ruff check .
+          uv run --no-project pytest -q
       - uses: docker/setup-buildx-action@v3
-      - name: Build CPU-only sidecar with bundled model
+      - name: Build Whistle with bundled model
         uses: docker/build-push-action@v6
         with:
-          context: ./humux/sidecars/whistle
+          context: ./whistle
           load: true
-          tags: humux-whistle-smoke:${{ github.run_id }}-${{ github.run_attempt }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          tags: whistle-smoke:${{ github.run_id }}-${{ github.run_attempt }}
+          cache-from: type=gha,scope=whistle
+          cache-to: type=gha,mode=max,scope=whistle
       - name: Transcribe real OGG speech with networking disabled
         env:
-          IMAGE: humux-whistle-smoke:${{ github.run_id }}-${{ github.run_attempt }}
-          CONTAINER: humux-whistle-smoke-${{ github.run_id }}-${{ github.run_attempt }}
+          IMAGE: whistle-smoke:${{ github.run_id }}-${{ github.run_attempt }}
+          CONTAINER: whistle-smoke-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           trap 'docker logs "$CONTAINER"; docker rm -f "$CONTAINER"' EXIT
           docker run -d --name "$CONTAINER" --network none \
-            -v "$PWD/humux/tests/smoke_whistle.py:/smoke.py:ro" \
-            -v "$PWD/humux/voice/samples:/samples:ro" "$IMAGE"
+            -v "$PWD/whistle/tests/smoke.py:/smoke.py:ro" \
+            -v "$PWD/whistle/tests/fixtures:/samples:ro" "$IMAGE"
           docker exec "$CONTAINER" python /smoke.py /samples/test-stt.ogg
+      - name: Save tested release image
+        if: github.event_name == 'release'
+        env:
+          IMAGE: whistle-smoke:${{ github.run_id }}-${{ github.run_attempt }}
+        run: docker save "$IMAGE" | gzip > whistle-image.tar.gz
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'release'
+        with:
+          name: whistle-image-${{ github.run_attempt }}
+          path: whistle-image.tar.gz
+          retention-days: 1
+
+  publish:
+    if: github.event_name == 'release' && startsWith(github.event.release.tag_name, 'whistle-v')
+    needs: verify
+    runs-on: self-hosted
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: whistle-image-${{ github.run_attempt }}
+      - name: Load tested image
+        run: gunzip -c whistle-image.tar.gz | docker load
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Push version and stable tags
+        env:
+          SOURCE: whistle-smoke:${{ github.run_id }}-${{ github.run_attempt }}
+          VERSION: ${{ needs.verify.outputs.version }}
+          OWNER: ${{ github.repository_owner }}
+          PRERELEASE: ${{ github.event.release.prerelease }}
+        run: |
+          owner=$(printf '%s' "$OWNER" | tr '[:upper:]' '[:lower:]')
+          image="ghcr.io/$owner/whistle"
+          docker tag "$SOURCE" "$image:$VERSION"
+          docker push "$image:$VERSION"
+          if [ "$PRERELEASE" = false ]; then
+            docker tag "$SOURCE" "$image:latest"
+            docker push "$image:latest"
+          fi

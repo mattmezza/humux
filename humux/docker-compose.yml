@@ -39,12 +39,12 @@ services:
     restart: unless-stopped
     profiles: ["embeddings"]
 
-  # CPU-only Whistle STT sidecar — OpenAI-compatible transcription endpoint.
-  # Start with:  docker compose --profile whistle up --build
+  # Whistle — independently released, CPU-only STT service — OpenAI-compatible transcription endpoint.
+  # Start with:  docker compose --profile whistle up -d whistle
   # Then set voice.stt_api_base_url to http://whistle:8000/v1 in the admin UI.
   whistle:
-    build: ./sidecars/whistle
-    container_name: humux-whistle
+    image: ghcr.io/mattmezza/whistle:3.2.8
+    container_name: whistle
     restart: unless-stopped
     profiles: ["whistle"]
     networks:

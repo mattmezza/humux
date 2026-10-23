@@ -1,4 +1,4 @@
-"""Exercise the sidecar's HTTP contract and real ffmpeg decoding, without model downloads."""
+"""Exercise Whistle's HTTP contract and real ffmpeg decoding, without model downloads."""
 
 import importlib.util
 import io
@@ -20,10 +20,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 @pytest.fixture
-def sidecar(monkeypatch):
-    spec = importlib.util.spec_from_file_location(
-        "whistle_server", ROOT / "sidecars/whistle/server.py"
-    )
+def service(monkeypatch):
+    spec = importlib.util.spec_from_file_location("whistle_server", ROOT / "server.py")
     server = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(server)
 
@@ -43,7 +41,7 @@ def sidecar(monkeypatch):
 
 def upload(client, content=None, **fields):
     if content is None:
-        content = (ROOT / "voice/samples/test-stt.ogg").read_bytes()
+        content = (ROOT / "tests/fixtures/test-stt.ogg").read_bytes()
     return client.post(
         "/v1/audio/transcriptions",
         data={"model": "whisper-1", **fields},
@@ -52,8 +50,8 @@ def upload(client, content=None, **fields):
 
 
 @pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg is required")
-def test_health_and_humux_contract(sidecar):
-    _, client, model = sidecar
+def test_health_and_openai_contract(service):
+    _, client, model = service
     assert client.get("/health").json() == {"status": "ok", "model": "whistle"}
     response = upload(client)
     assert response.status_code == 200
@@ -64,8 +62,8 @@ def test_health_and_humux_contract(sidecar):
 
 
 @pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg is required")
-def test_whistle_model_and_language(sidecar):
-    _, client, model = sidecar
+def test_whistle_model_and_language(service):
+    _, client, model = service
     assert upload(client, model="whistle", language="it").status_code == 200
     assert model.transcribe.call_args.kwargs == {"language": "it"}
 
@@ -78,8 +76,8 @@ def test_whistle_model_and_language(sidecar):
         {"response_format": "text"},
     ],
 )
-def test_reject_unsupported_options(sidecar, fields):
-    _, client, model = sidecar
+def test_reject_unsupported_options(service, fields):
+    _, client, model = service
     assert upload(client, **fields).status_code == 400
     model.transcribe.assert_not_called()
 
@@ -95,22 +93,22 @@ def test_reject_unsupported_options(sidecar, fields):
         ),
     ],
 )
-def test_reject_invalid_upload(sidecar, content, status):
-    _, client, model = sidecar
+def test_reject_invalid_upload(service, content, status):
+    _, client, model = service
     assert upload(client, content=content).status_code == status
     model.transcribe.assert_not_called()
 
 
-def test_upload_limit(sidecar, monkeypatch):
-    server, client, model = sidecar
+def test_upload_limit(service, monkeypatch):
+    server, client, model = service
     monkeypatch.setattr(server, "MAX_UPLOAD_BYTES", 4)
     assert upload(client, content=b"12345").status_code == 413
     model.transcribe.assert_not_called()
 
 
 @pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg is required")
-def test_duration_limit(sidecar, monkeypatch):
-    server, client, model = sidecar
+def test_duration_limit(service, monkeypatch):
+    server, client, model = service
     monkeypatch.setattr(server, "MAX_AUDIO_SECONDS", 1)
     data = io.BytesIO()
     with wave.open(data, "wb") as audio:
@@ -120,8 +118,8 @@ def test_duration_limit(sidecar, monkeypatch):
     model.transcribe.assert_not_called()
 
 
-def test_decode_timeout(sidecar, monkeypatch):
-    server, client, model = sidecar
+def test_decode_timeout(service, monkeypatch):
+    server, client, model = service
 
     def timeout(*args, **kwargs):
         raise subprocess.TimeoutExpired("ffmpeg", 60)
@@ -132,8 +130,8 @@ def test_decode_timeout(sidecar, monkeypatch):
 
 
 @pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg is required")
-def test_inference_failure_and_silence(sidecar):
-    _, client, model = sidecar
+def test_inference_failure_and_silence(service):
+    _, client, model = service
     model.transcribe.side_effect = RuntimeError("native error")
     response = upload(client)
     assert response.status_code == 500
@@ -145,8 +143,8 @@ def test_inference_failure_and_silence(sidecar):
 
 
 @pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg is required")
-def test_concurrent_requests_serialize_native_inference(sidecar):
-    _, client, model = sidecar
+def test_concurrent_requests_serialize_native_inference(service):
+    _, client, model = service
     active = 0
     peak = 0
     counter_lock = threading.Lock()
