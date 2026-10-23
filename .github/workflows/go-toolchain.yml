@@ -24,7 +24,7 @@ jobs:
         with:
           context: ./humux
           load: true
-          tags: humux-go-smoke:${{ matrix.install-go }}
+          tags: humux-go-smoke:${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.install-go }}
           build-args: |
             INSTALL_GO=${{ matrix.install-go }}
             INSTALL_NODE=false
@@ -33,20 +33,21 @@ jobs:
       - name: Verify runtime toolchain and persistent caches
         env:
           INSTALL_GO: ${{ matrix.install-go }}
-          GO_SMOKE_VOLUME: humux-go-smoke-${{ github.run_id }}-${{ matrix.install-go }}
+          GO_SMOKE_IMAGE: humux-go-smoke:${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.install-go }}
+          GO_SMOKE_VOLUME: humux-go-smoke-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.install-go }}
         run: |
           if [ "$INSTALL_GO" = true ]; then
             docker run --rm -i --entrypoint sh \
               -v "$GO_SMOKE_VOLUME:/app/data" \
-              "humux-go-smoke:$INSTALL_GO" -s < humux/tests/smoke_go_toolchain.sh
+              "$GO_SMOKE_IMAGE" -s < humux/tests/smoke_go_toolchain.sh
             docker run --rm --entrypoint sh \
               -v "$GO_SMOKE_VOLUME:/app/data" \
-              "humux-go-smoke:$INSTALL_GO" -c \
+              "$GO_SMOKE_IMAGE" -c \
               'test -d /app/data/go/pkg/mod && test -n "$(ls -A /app/data/go-build-cache)"'
           else
             docker run --rm -i --entrypoint sh \
-              "humux-go-smoke:$INSTALL_GO" -s -- disabled < humux/tests/smoke_go_toolchain.sh
+              "$GO_SMOKE_IMAGE" -s -- disabled < humux/tests/smoke_go_toolchain.sh
           fi
       - name: Remove smoke-test cache volume
         if: always() && matrix.install-go == 'true'
-        run: docker volume rm "humux-go-smoke-${{ github.run_id }}-${{ matrix.install-go }}" || true
+        run: docker volume rm "humux-go-smoke-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.install-go }}" || true
