@@ -81,7 +81,7 @@ jobs:
 
   result:
     name: Go workspace image
-    if: always()
+    if: always() && !cancelled()
     needs: [changes, smoke]
     runs-on: self-hosted
     steps:
