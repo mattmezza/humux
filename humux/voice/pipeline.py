@@ -9,7 +9,7 @@ import subprocess
 import unicodedata
 import wave
 from functools import partial
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import edge_tts
 
@@ -227,37 +227,118 @@ class VoicePipeline:
         tts_api_base_url: str = "",
         stt_api_base_url: str = "",
         stt_timeout_seconds: float = 300,
+        load: bool = True,
     ):
         self.tts_voice = tts_voice
         self.tts_enabled = tts_enabled
         self.backend = backend
         self.stt_model = stt_model
         self.kokoro_default_voice = kokoro_default_voice
+        self.kokoro_model_path = kokoro_model_path
+        self.kokoro_voices_path = kokoro_voices_path
         self.tts_api_base_url = tts_api_base_url.rstrip("/") if tts_api_base_url else ""
         self.stt_api_base_url = stt_api_base_url.rstrip("/") if stt_api_base_url else ""
         self.stt_timeout_seconds = stt_timeout_seconds
         self._kokoro = None
         self._whisper = None
+        # The settings each loaded component was built from, so a live rebuild
+        # (#326) can reuse the half whose settings did not change.
+        self._stt_loaded: tuple | None = None
+        self._tts_loaded: tuple | None = None
 
+        if load:
+            self.load_stt()
+            self.load_tts()
+
+    # -- construction / live rebuild (#326) ---------------------------------
+
+    def stt_key(self) -> tuple:
+        """Settings the local STT model is built from.
+
+        Only the model name matters: ``stt_api_base_url`` is read per call, so
+        pointing at (or away from) a remote endpoint needs no reload at all.
+        """
+        return (self.stt_model,)
+
+    def tts_key(self) -> tuple:
+        """Settings the local TTS engine is built from.
+
+        The voice name, ``tts_enabled`` and the remote TTS URL are all read per
+        call, so changing them never has to reload Kokoro.
+        """
+        return (self.backend, self.kokoro_model_path, self.kokoro_voices_path)
+
+    def load_stt(self) -> None:
+        """Build the local STT component for the current settings."""
+        self._whisper = None
+        self._stt_loaded = self.stt_key()
         if WhisperModel is not None:
-            log.info("Loading Whisper model '%s' …", stt_model)
-            self._whisper = WhisperModel(stt_model, compute_type="int8")
+            log.info("Loading Whisper model '%s' …", self.stt_model)
+            self._whisper = WhisperModel(self.stt_model, compute_type="int8")
             log.info("Whisper model loaded.")
         elif not self.stt_api_base_url:
             log.warning("faster-whisper not installed and no stt_api_base_url — STT unavailable")
 
-        if backend == "kokoro":
-            # Load eagerly so a bad path/missing model degrades to edge-tts at
-            # startup (logged once) rather than on every reply.  Issue #84.
-            try:
-                from kokoro_onnx import Kokoro
+    def load_tts(self) -> None:
+        """Build the local TTS component for the current settings."""
+        self._kokoro = None
+        self._tts_loaded = self.tts_key()
+        if self.backend != "kokoro":
+            return
+        # Load eagerly so a bad path/missing model degrades to edge-tts at
+        # startup (logged once) rather than on every reply.  Issue #84.
+        try:
+            from kokoro_onnx import Kokoro
 
-                log.info("Loading Kokoro TTS (%s) …", kokoro_model_path)
-                self._kokoro = Kokoro(kokoro_model_path, kokoro_voices_path)
-                log.info("Kokoro TTS loaded.")
-            except Exception:
-                log.exception("Kokoro TTS unavailable, falling back to edge-tts")
-                self.backend = "edge-tts"
+            log.info("Loading Kokoro TTS (%s) …", self.kokoro_model_path)
+            self._kokoro = Kokoro(self.kokoro_model_path, self.kokoro_voices_path)
+            log.info("Kokoro TTS loaded.")
+        except Exception:
+            log.exception("Kokoro TTS unavailable, falling back to edge-tts")
+            self.backend = "edge-tts"
+
+    @classmethod
+    def from_config(cls, cfg: Any, previous: VoicePipeline | None = None) -> VoicePipeline:
+        """Build a pipeline from a ``VoiceConfig`` (or any object with the same
+        attributes), reusing ``previous``'s already-loaded STT/TTS components
+        when their settings did not change.
+
+        A change to only the voice name or a remote URL therefore costs nothing,
+        and an STT edit never reloads Kokoro (or vice versa) — only the half that
+        actually changed is rebuilt (issue #326).  Loading raises on failure, as
+        it always did at startup; callers that rebuild live catch it.
+        """
+        new = cls(
+            stt_model=cfg.stt_model,
+            tts_voice=cfg.tts_voice,
+            tts_enabled=cfg.tts_enabled,
+            backend=cfg.backend,
+            kokoro_model_path=cfg.kokoro.model_path,
+            kokoro_voices_path=cfg.kokoro.voices_path,
+            kokoro_default_voice=cfg.kokoro.default_voice,
+            tts_api_base_url=cfg.tts_api_base_url,
+            stt_api_base_url=cfg.stt_api_base_url,
+            stt_timeout_seconds=cfg.stt_timeout_seconds,
+            load=False,
+        )
+        # Compare against the settings each half was *loaded* with, not the ones
+        # it currently reports: a failed Kokoro load demotes ``backend`` to
+        # edge-tts, and re-reading that would look like a fresh change.
+        reuse_stt = previous is not None and previous._stt_loaded == new.stt_key()
+        reuse_tts = previous is not None and previous._tts_loaded == new.tts_key()
+        if reuse_stt:
+            new._whisper, new._stt_loaded = previous._whisper, previous._stt_loaded
+        if reuse_tts:
+            # Keep the effective backend too: a failed Kokoro load demotes this
+            # pipeline to edge-tts, and an unchanged config must not retry (and
+            # re-log) that failure on every save.
+            new._kokoro, new._tts_loaded = previous._kokoro, previous._tts_loaded
+            new.backend = previous.backend
+        if not reuse_stt:
+            new.load_stt()
+        if not reuse_tts:
+            new.load_tts()
+        return new
 
     # -- STT ----------------------------------------------------------------
 
@@ -452,3 +533,15 @@ class VoicePipeline:
                 )
             return await self._synthesize_kokoro(text, voice, lang or None), "audio/ogg"
         return await self._synthesize_edge(text, voice), "audio/mpeg"
+
+
+def build_voice_pipeline(cfg: Any, previous: VoicePipeline | None = None) -> VoicePipeline | None:
+    """Build the pipeline for a ``VoiceConfig``, or ``None`` when TTS is off.
+
+    One builder for both startup (``core/main.py``) and the live rebuild in the
+    admin API (#326), so the two can't drift.  ``previous`` lets an unchanged
+    STT/TTS half keep its loaded model instead of reloading it.
+    """
+    if not cfg.tts_enabled:
+        return None
+    return VoicePipeline.from_config(cfg, previous=previous)

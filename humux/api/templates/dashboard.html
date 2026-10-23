@@ -12,10 +12,13 @@
     -->
 
   {# Restart-required banner — shown after saving a setting the agent only reads at
-     startup. Sibling of #tab-content so it survives tab swaps. #}
-  <div id="restart-banner" class="card mb-4" style="display:none;" role="status">
+     startup, and when a live apply (voice rebuild) failed. Rendered state comes
+     from the server, so it survives a reload instead of being pure DOM state
+     (#326). Sibling of #tab-content so it survives tab swaps. #}
+  <div id="restart-banner" class="card mb-4"
+       {% if not restart_required %}style="display:none;"{% endif %} role="status">
     <div class="flex items-center justify-between gap-3 flex-wrap">
-      <span class="text-xs">⟳ A saved change needs an agent restart to take effect.</span>
+      <span class="text-xs">⟳ {% if restart_note %}{{ restart_note }}{% else %}A saved change needs an agent restart to take effect.{% endif %}</span>
       <span class="flex items-center gap-2">
         <button class="btn-primary btn-sm" type="button" onclick="restartAgentNow(this)">Restart now</button>
         <button class="btn btn-sm" type="button" onclick="dismissRestartBanner()">Dismiss</button>

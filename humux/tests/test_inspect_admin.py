@@ -272,8 +272,9 @@ def test_config_requires_restart_flags_startup_only_keys() -> None:
     from api.admin import _config_requires_restart
 
     # Read once at startup → restart required.
-    assert _config_requires_restart({"voice.tts_enabled": "true"}) is True
     assert _config_requires_restart({"history.max_turns": "20"}) is True
+    # voice.* is hot-applied by rebuilding the pipeline in the background (#326).
+    assert _config_requires_restart({"voice.tts_enabled": "true"}) is False
     # Hot-applied by patch_config (agent.config swap + llm/memory rebuild) → no restart.
     assert _config_requires_restart({"memory.long_term_limit": "50"}) is False
     assert _config_requires_restart({"agent.model": "x", "agent.thinking_level": "high"}) is False
@@ -296,8 +297,8 @@ def test_patch_config_restart_required_only_on_real_change(tmp_path) -> None:
     assert res["restart_required"] is False
     # max_turns actually changes → restart.
     assert patch({"history.max_turns": "20"})["restart_required"] is True
-    # voice change → restart; hot-applied key → no restart.
-    assert patch({"voice.tts_voice": "en-US-AvaNeural"})["restart_required"] is True
+    # voice change → hot-applied (#326); hot-applied key → no restart.
+    assert patch({"voice.tts_voice": "en-US-AvaNeural"})["restart_required"] is False
     assert patch({"memory.long_term_limit": "99"})["restart_required"] is False
 
 

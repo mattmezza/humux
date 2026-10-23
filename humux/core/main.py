@@ -23,7 +23,13 @@ import uvicorn
 from fastapi import Depends, Request
 from fastapi.responses import HTMLResponse
 
-from api.admin import AgentState, create_admin_app, install_log_buffer, set_log_timezone
+from api.admin import (
+    AgentState,
+    clear_restart_required,
+    create_admin_app,
+    install_log_buffer,
+    set_log_timezone,
+)
 from core.config_store import ConfigStore
 from core.email_config import materialize_himalaya_config
 from core.secret_store import SecretStore
@@ -46,7 +52,7 @@ async def _start_agent(config_store: ConfigStore):
     from channels.telegram import TelegramChannel
     from core.agent import AgentCore
     from core.config import GroupChatConfig, TelegramConfig
-    from voice.pipeline import VoicePipeline
+    from voice.pipeline import VoicePipeline, build_voice_pipeline
 
     # Decrypt infra secrets into memory so ${vault:NAME} resolves at config load
     # (with .env fallback). Then build the config and hand the shared secret store
@@ -115,18 +121,7 @@ async def _start_agent(config_store: ConfigStore):
             config.voice.tts_voice,
             config.voice.backend,
         )
-        voice = VoicePipeline(
-            stt_model=config.voice.stt_model,
-            tts_voice=config.voice.tts_voice,
-            tts_enabled=config.voice.tts_enabled,
-            backend=config.voice.backend,
-            kokoro_model_path=config.voice.kokoro.model_path,
-            kokoro_voices_path=config.voice.kokoro.voices_path,
-            kokoro_default_voice=config.voice.kokoro.default_voice,
-            tts_api_base_url=config.voice.tts_api_base_url,
-            stt_api_base_url=config.voice.stt_api_base_url,
-            stt_timeout_seconds=config.voice.stt_timeout_seconds,
-        )
+        voice = build_voice_pipeline(config.voice)
         agent.voice = voice
 
     # -- Telegram: each agent runs its own bot from its own token (#29/#133). The
@@ -415,6 +410,7 @@ def _attach_lifecycle_routes(
                 agent_state.agent = await _start_agent(config_store)
                 log.info("Agent started via API")
                 agent_state.status = "RUNNING"
+                clear_restart_required()  # startup picked up every saved setting
                 result = {
                     "status": "started",
                     "channels": list(agent_state.agent.channels.keys()),
@@ -479,6 +475,7 @@ def _attach_lifecycle_routes(
             agent_state.agent = await _start_agent(config_store)
             log.info("Agent restarted via API")
             agent_state.status = "RUNNING"
+            clear_restart_required()  # the restart the banner asked for happened
             result = {
                 "status": "restarted",
                 "channels": list(agent_state.agent.channels.keys()),
