@@ -13,6 +13,7 @@ RUN CGO_ENABLED=1 CGO_CFLAGS="-Wno-error=missing-braces" \
 
 # Export the exact toolchain used by wacli, or an empty directory for lean builds.
 # COPY from this output keeps INSTALL_GO=false free of runtime Go layers.
+FROM wacli-builder AS go-toolchain
 ARG INSTALL_GO
 RUN mkdir -p /out/toolchain && \
     if [ "$INSTALL_GO" = "true" ]; then \
@@ -154,10 +155,14 @@ RUN ARCH=$(dpkg --print-architecture) && \
     /tmp/tailwindcss --input api/static/input.css --output api/static/style.css --minify && \
     rm /tmp/tailwindcss
 
+# Data directory
+RUN mkdir -p /app/data \
+    && chown -R humux:humux /home/humux /app
+
 # Keep the variant-specific layers last so both variants share system/Python/Node
 # dependencies and application layers. Only the toolchain and CGO tools differ.
 ARG INSTALL_GO
-COPY --from=wacli-builder /out/toolchain/ /usr/local/
+COPY --from=go-toolchain /out/toolchain/ /usr/local/
 ENV PATH="/usr/local/go/bin:/app/data/go/bin:${PATH}" \
     GOPATH=/app/data/go \
     GOCACHE=/app/data/go-build-cache \
@@ -168,10 +173,6 @@ RUN if [ "$INSTALL_GO" = "true" ]; then \
       && rm -rf /var/lib/apt/lists/* \
       && go version; \
     fi
-
-# Data directory
-RUN mkdir -p /app/data \
-    && chown -R humux:humux /home/humux /app
 
 USER humux
 
