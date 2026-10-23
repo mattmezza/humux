@@ -64,7 +64,11 @@
     align-items: center;
     gap: .6rem;
   }
-  .name { font-weight: 600; letter-spacing: -.01em; margin-right: auto; }
+  .brand { display:inline-flex; align-items:center; gap:.5rem; text-decoration:none; color:inherit; margin-right:auto; min-width:0; }
+  .name { font-weight:600; letter-spacing:-.01em; overflow-wrap:anywhere; min-width:0; }
+  .bar > button { flex-shrink:0; }
+  .brand:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  @media(max-width:400px) { .bar { padding:.85rem .6rem; gap:.4rem; } }
   .share {
     display: inline-flex;
     align-items: center;
@@ -286,7 +290,10 @@
 <body>
 <header>
   <div class="bar">
-    <span class="name">{{ agent_name }}</span>
+    <a href="https://humux.dev" class="brand" target="_blank" rel="noopener">
+      {% include "partials/brand_logo.html" %}
+      <span class="name">{{ agent_name }}</span>
+    </a>
     <button class="share" id="think-toggle" type="button" aria-pressed="false"
             title="Always expand thinking">💭 thinking</button>
     <button class="share" id="share" type="button" aria-label="Copy link to this page">

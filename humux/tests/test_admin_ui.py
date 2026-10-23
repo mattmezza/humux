@@ -214,6 +214,26 @@ class TestPartialRoutes:
         assert resp.status_code == 200
         assert "text/html" in resp.headers["content-type"]
 
+    def test_status_identity_escapes_configured_name_and_keeps_controls(self):
+        store = _ConfigStoreStub()
+        store._data["agent.name"] = '<script>alert("name")</script>'
+        state = AgentState(agent=None)
+        app, _ = create_admin_app(state, cast(ConfigStore, store))
+        client = TestClient(app)
+        for status in ("RUNNING", "STARTING", "RESTARTING", "STOPPING", "STOPPED"):
+            state.status = status
+            text = client.get("/partials/status", headers=AUTH).text
+            assert '&lt;script&gt;' in text
+            assert '<script>' not in text
+            assert f'data-status="{status}"' in text
+            assert f'aria-label="Agent status: {status}. Open agent controls"' in text
+            assert 'onclick="openAgentModal()"' in text
+            assert "Your agents are" not in text
+        store._data["agent.name"] = ""
+        assert '<span class="agent-name">humux</span>' in client.get(
+            "/partials/status", headers=AUTH
+        ).text
+
     def test_identity_partial(self):
         client = _client(setup_complete=True)
         resp = client.get("/partials/identity", headers=AUTH)

@@ -10,7 +10,18 @@
   <link rel="manifest" href="/static/manifest.json">
   <link rel="apple-touch-icon" href="/static/icon-192.png">
   <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
-  <style>[x-cloak]{display:none!important}</style>
+  <style>
+    [x-cloak]{display:none!important}
+    .header-brand,.header-identity { min-width:0; }
+    .header-identity { display:flex; align-items:center; gap:.35rem; }
+    .agent-name { font-size:.875rem; font-weight:600; overflow-wrap:anywhere; min-width:0; }
+    .status-control { display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; width:28px; height:28px; padding:0; border:0; background:transparent; cursor:pointer; border-radius:50%; }
+    .status-control:focus-visible { outline:2px solid #6c9; outline-offset:2px; }
+    .status-dot { width:8px; height:8px; border-radius:50%; background:#ef4444; }
+    .status-dot[data-status="RUNNING"] { background:#22c55e; }
+    .status-dot[data-status="STARTING"],.status-dot[data-status="RESTARTING"] { background:#eab308; }
+    @media(max-width:480px) { body > header { padding-left:1rem; padding-right:1rem; } body > header nav { gap:.5rem; flex-shrink:0; } }
+  </style>
 
   <title>{% block title %}Agent Admin — humux{% endblock %}</title>
   <link rel="stylesheet" href="/static/style.css">
@@ -23,15 +34,11 @@
   {# Header bar #}
   <header class="sticky top-0 z-40 bg-[#0a0a0a]/95 backdrop-blur border-b border-border px-8 py-2.5">
     <div class="max-w-7xl mx-auto flex items-center justify-between gap-4">
-      <div class="flex items-center gap-3">
-        <a href="/" class="flex items-center gap-2 no-underline">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="22" height="22">
-            <rect width="32" height="32" rx="6" fill="#060606"/>
-            <text x="16" y="22" font-family="'JetBrains Mono',monospace" font-size="18" font-weight="bold" fill="#6c9" text-anchor="middle">h</text>
-          </svg>
-          <span class="text-sm font-semibold tracking-wide">humux</span>
+      <div class="header-brand flex items-center gap-3">
+        <a href="/" aria-label="humux home" class="flex items-center gap-2 no-underline">
+          {% include "partials/brand_logo.html" %}
         </a>
-        <div id="status-badge" class="hidden md:block"
+        <div id="status-badge" class="header-identity"
               hx-get="/partials/status" hx-trigger="load, refresh-status from:body" hx-swap="innerHTML">
           <span class="text-muted text-xs">Loading...</span>
         </div>
