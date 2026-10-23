@@ -127,7 +127,7 @@ Memories are extracted automatically from conversations. The agent reads AND wri
 
 <summary><strong>Voice</strong> — Speak to your agent, hear it reply</summary>
 
-- **STT**: [faster-whisper](https://github.com/SYSTRAN/faster-whisper) — local, offline, multi-language; or as a **sidecar** (`docker compose --profile whisper up`)
+- **STT**: [Whistle](https://huggingface.co/Cactus-Compute/whistle) — CPU-only service with a ~17 MB model (`docker compose --profile whistle up -d whistle`); optional local faster-whisper
 - **TTS**: [edge-tts](https://github.com/rany2/edge-tts) (cloud) or **Kokoro 82M** (fully offline, multilingual)
 - Kokoro can run as a **sidecar container** via an OpenAI-compatible TTS API (`docker compose --profile kokoro up`)
 - Voice marker syntax lets the model request a spoken reply per-turn
@@ -303,7 +303,7 @@ humux follows a **Python orchestrator + CLI tools** design. Python handles the a
 | **Calendar** | python-caldav |
 | **WhatsApp** | [wacli](https://github.com/openclaw/wacli) (Go) |
 | **Browser** | Playwright (Chromium) |
-| **Voice STT** | faster-whisper (CTranslate2) |
+| **Voice STT** | Whistle service / local faster-whisper |
 | **Voice TTS** | edge-tts / Kokoro 82M |
 | **Web search** | Tavily or self-hosted SearXNG |
 | **Scheduler** | APScheduler |
@@ -357,7 +357,7 @@ humux/
 │   ├── templates/        Jinja2 templates
 │   └── static/           Tailwind CSS
 ├── voice/            Voice pipeline
-│   └── pipeline.py       Whisper STT + edge-tts/Kokoro TTS
+│   └── pipeline.py       Whistle/local Whisper STT + edge-tts/Kokoro TTS
 ├── tools/            CLI helper scripts
 │   ├── calendar_read.py  CalDAV event reader
 │   ├── calendar_write.py CalDAV event creator
@@ -401,7 +401,7 @@ humux uses a dual-layer config system:
 | **Messaging** | python-telegram-bot, wacli (WhatsApp) |
 | **Persistence** | SQLite (7 databases: config, skills, agents, history, memory, jobs, imagegen) |
 | **Admin UI** | FastAPI + Jinja2 + HTMX + Alpine.js + Tailwind CSS v4 |
-| **Voice** | faster-whisper (STT), edge-tts / Kokoro 82M (TTS) |
+| **Voice** | Whistle service / local faster-whisper (STT), edge-tts / Kokoro 82M (TTS) |
 | **Browser** | Playwright (Chromium), headless or CDP sidecar |
 | **Scheduler** | APScheduler |
 | **Search** | Tavily or self-hosted SearXNG |
