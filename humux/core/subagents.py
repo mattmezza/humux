@@ -283,7 +283,12 @@ class SubagentRun:
     # LLM override resolved from subagents.allowed_models (#299); "" = inherit.
     provider: str = ""
     model: str = ""
-    status: str = "running"  # running | done | cancelled | error
+    continuations: int = 0
+    messages: list[dict] = field(default_factory=list, repr=False)
+    child_state: dict = field(default_factory=dict, repr=False)
+    child_agent: object = field(default=None, repr=False)
+    owner_state: dict = field(default_factory=dict, repr=False)
+    status: str = "running"  # running | partial | done | cancelled | error
     progress: str = ""
     result: str = ""
     error: str = ""
@@ -385,6 +390,8 @@ class SubagentRegistry:
         run = self._runs.get(run_id)
         if not run or run.status != "running":
             return False
+        if status == "done" and run.progress == "partial":
+            status = "partial"
         run.status = status
         run.result = result
         run.error = error

@@ -364,3 +364,13 @@ def test_inspect_payload_renders_tool_calls_thinking_and_results(tmp_path) -> No
     assert "exit 0" in r.text  # the result is paired and summarised
     assert "tool result" in r.text
     llm.clear_captured()
+
+
+def test_partial_subagent_has_continue_action(tmp_path) -> None:
+    run = SubagentRun(run_id="r1", agent="a", task="unfinished", status="partial")
+    client = _runs_client(tmp_path, [run])
+    response = client.get("/partials/subagent-runs", headers=AUTH)
+    assert response.status_code == 200
+    assert 'hx-post="/subagents/continue"' in response.text
+    assert ">partial</span>" in response.text
+    assert client.post("/subagents/continue", data={"run_id": "r1"}).status_code == 401

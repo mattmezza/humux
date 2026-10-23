@@ -1736,3 +1736,76 @@ def test_derive_label_prefers_the_model_label_then_the_task() -> None:
     assert derive_label("", "look up the swiss price of an iPhone") == "look up the swiss"
     assert derive_label("", "", 2) == "task2"
     assert len(derive_label("z" * 99, "")) == 32
+
+
+@pytest.mark.asyncio
+async def test_partial_continuation_preserves_history_without_replaying_tools(agent, monkeypatch):
+    agent.config.subagents.max_steps = 1
+    calls = []
+
+    async def execute(call, *args):
+        calls.append(call.id)
+        return {"file": "/tmp/prior-work"}
+
+    monkeypatch.setattr(agent, "_execute_tool", execute)
+    first = LLMToolCall(id="executed", name="web_search", arguments={})
+    pending = LLMToolCall(id="pending", name="web_search", arguments={})
+    agent.llm = _ScriptedLLM(
+        [
+            LLMResponse(text="", tool_calls=[first]),
+            LLMResponse(text="", tool_calls=[pending]),
+            LLMResponse(text="Found evidence; finish report.", tool_calls=[]),
+            LLMResponse(text="finished", tool_calls=[]),
+        ]
+    )
+    result = await agent.run_subagent(task="research")
+    assert result["status"] == "partial"
+    assert result["steps_completed"] == 1 and result["budget_exhausted"] == "steps"
+    run = agent.subagents.get(result["run_id"])
+    prior = list(run.messages)
+    resumed = await agent.continue_subagent(run.run_id, {}, "", "", {})
+    assert resumed["status"] == "done" and resumed["result"] == "finished"
+    assert run.messages[: len(prior)] == prior
+    assert "rather than starting over" in run.messages[-1]["content"]
+    assert calls == ["executed"]
+    assert run.continuations == 1 and run.steps == 0
+
+
+@pytest.mark.asyncio
+async def test_continuation_owner_limit_and_cancellation(agent, monkeypatch):
+    run = SubagentRun(
+        run_id="partial",
+        agent="",
+        task="t",
+        status="partial",
+        origin_channel="cli",
+        origin_user_id="u",
+        origin_chat_id="c",
+        messages=[{"role": "user", "content": "prior work"}],
+    )
+    agent.subagents.register(run)
+    state = {"origin": {"channel": "cli", "user_id": "u", "chat_id": "c"}}
+    denied = await agent.continue_subagent(run.run_id, {}, "cli", "intruder", {})
+    assert "unauthorized" in denied["error"] and run.status == "partial"
+    wrong_identity = {**state, "agent_obj": Agent(name="other")}
+    denied = await agent.continue_subagent(run.run_id, {}, "cli", "u", wrong_identity)
+    assert "unauthorized" in denied["error"]
+    wrong_parent = {**state, "run_id": "sibling"}
+    denied = await agent.continue_subagent(run.run_id, {}, "cli", "u", wrong_parent)
+    assert "unauthorized" in denied["error"]
+    agent.config.subagents.max_continuations = 0
+    assert "limit" in (await agent.continue_subagent(run.run_id, {}, "cli", "u", state))["error"]
+    agent.config.subagents.max_continuations = 1
+    entered = asyncio.Event()
+
+    async def blocked(*args):
+        entered.set()
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(agent, "_run_subagent_loop", blocked)
+    await agent.continue_subagent(run.run_id, {"background": True}, "cli", "u", state)
+    await entered.wait()
+    assert agent.subagents.cancel(run.run_id)
+    with pytest.raises(asyncio.CancelledError):
+        await run._task
+    assert run.status == "cancelled"

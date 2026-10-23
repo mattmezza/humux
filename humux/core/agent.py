@@ -863,6 +863,12 @@ TOOLS = [
                         "named a specialist or the subtask clearly belongs to one."
                     ),
                 },
+                "continue_run": {
+                    "type": "string",
+                    "description": (
+                        "Resume this partial run ID with fresh budgets; task tells it what remains."
+                    ),
+                },
                 "max_steps": {
                     "type": "integer",
                     "description": (
@@ -3929,6 +3935,10 @@ class AgentCore:
         self, params: dict, channel: str, user_id: str, request_state: dict
     ) -> dict:
         """``spawn_subagent`` tool: delegate a scoped subtask to a sub-loop."""
+        if params.get("continue_run"):
+            return await self.continue_subagent(
+                str(params["continue_run"]), params, channel, user_id, request_state
+            )
         task = str(params.get("task", "")).strip()
         if not task:
             return {"error": "Missing 'task' for spawn_subagent."}
@@ -3950,6 +3960,90 @@ class AgentCore:
             model=str(params.get("model", "")),
             provider=str(params.get("provider", "")),
         )
+
+    async def continue_subagent(
+        self,
+        run_id: str,
+        params: dict,
+        channel: str,
+        user_id: str,
+        parent_state: dict,
+        *,
+        admin: bool = False,
+    ) -> dict:
+        """Resume only an owned partial run, retaining its scoped execution context."""
+        run = self.subagents.get(run_id)
+        cfg = self.config.subagents
+        origin = parent_state.get("origin") or {}
+        caller = (
+            origin.get("channel", channel),
+            str(origin.get("user_id", user_id)),
+            str(origin.get("chat_id", "")),
+        )
+        owner = (run.origin_channel, run.origin_user_id, run.origin_chat_id) if run else None
+        if not run or (
+            not admin
+            and (
+                caller != owner
+                or parent_state.get("agent_obj") != run.owner_state.get("agent_obj")
+                or str(parent_state.get("run_id") or "") != run.parent_run_id
+            )
+        ):
+            return {"error": "Unknown or unauthorized subagent run."}
+        if not cfg.enabled or run.status != "partial" or not run.messages:
+            return {"error": "Only retained partial runs can be continued."}
+        if run.continuations >= max(0, cfg.max_continuations):
+            return {"error": "Subagent continuation limit reached."}
+        background = bool(params.get("background", False))
+        if background and parent_state.get("woken_by_subagent"):
+            return {"error": _NO_BACKGROUND_IN_WOKEN_TURN}
+        pool = self._turn_budget(parent_state)
+        error = pool.take_spawn()
+        if error:
+            return {"error": error}
+        # Claim before awaiting so competing requests cannot resume twice.
+        run.status = "running"
+        run.continuations += 1
+        run.finished_at = 0
+        run.synthesized = False
+        run.steps = run.tokens_used = 0
+        run.stopped_reason = ""
+        run.max_steps = resolve_cap(params.get("max_steps"), cfg.max_steps)
+        run.token_budget = resolve_cap(params.get("token_budget"), cfg.token_budget)
+        run.background = background
+        state = run.child_state
+        state["fanout_budget"] = pool
+        # Never deliver through a stale parent turn's attachment queue.
+        state.pop("attachments_reach_user", None)
+        state["pending_attachments"] = []
+        if not background and "pending_attachments" in parent_state:
+            state["pending_attachments"] = parent_state["pending_attachments"]
+            state["attachments_reach_user"] = True
+        run.messages.append(
+            {
+                "role": "user",
+                "content": (
+                    "You are resuming prior work. Finish what remains rather than starting over. "
+                    "Completed tool results and files remain available. "
+                    + str(params.get("task") or "Finish the remaining work.")
+                ),
+            }
+        )
+        if background:
+            task = asyncio.create_task(self._run_subagent_background(run, run.child_agent, state))
+            self.subagents.attach_task(run_id, task)
+            return {"ok": True, "run_id": run_id, "status": "running", "background": True}
+        self.subagents.attach_task(run_id, asyncio.current_task())
+        try:
+            text = await self._run_subagent_loop(run.task, run.child_agent, state, run)
+        except asyncio.CancelledError:
+            self.subagents.finish(run_id, "cancelled")
+            raise
+        except Exception as exc:
+            self.subagents.finish(run_id, "error", error=str(exc))
+            return {"error": str(exc), "run_id": run_id}
+        self.subagents.finish(run_id, "done", result=text)
+        return self._fanout_result_entry({"run": run, "index": 0})
 
     async def _tool_spawn_subagents(
         self, params: dict, channel: str, user_id: str, request_state: dict
@@ -4198,11 +4292,16 @@ class AgentCore:
             "tokens_used": run.tokens_used,
             "stopped_reason": run.stopped_reason,
         }
-        if run.status == "done":
+        if run.status in ("done", "partial"):
             out["summary"] = short_summary(run.result)
             out["result"] = run.result
         elif run.error:
             out["error"] = run.error
+        if run.status == "partial":
+            out.update(
+                steps_completed=run.steps,
+                budget_exhausted=("steps" if run.stopped_reason == "max_steps" else "tokens"),
+            )
         return out
 
     async def _notify_origin_chat(self, channel: str, chat_id: str, text: str) -> None:
@@ -4241,7 +4340,8 @@ class AgentCore:
         else:
             used = run.tokens_used
             tokens = f"{round(used / 1000)}k" if used >= 1000 else str(used)
-            text = f"✅ Subagent {name} — done ({run.elapsed_str}, {tokens} tokens)"
+            outcome = "partial" if run.status == "partial" else "done"
+            text = f"✅ Subagent {name} — {outcome} ({run.elapsed_str}, {tokens} tokens)"
         await self._notify_origin_chat(run.origin_channel, run.origin_chat_id, text)
 
     async def run_subagent(
@@ -4351,6 +4451,15 @@ class AgentCore:
             await self._notify_run_finished(run)
         return {
             "ok": True,
+            **(
+                {
+                    "status": "partial",
+                    "steps_completed": run.steps,
+                    "budget_exhausted": "steps" if run.stopped_reason == "max_steps" else "tokens",
+                }
+                if run.status == "partial"
+                else {}
+            ),
             "run_id": run_id,
             "agent": run.agent,
             "steps": run.steps,
@@ -4493,6 +4602,9 @@ class AgentCore:
             origin_user_id=origin_user_id,
             origin_chat_id=origin_chat_id,
         )
+        run.child_state = child_state
+        run.child_agent = child_agent
+        run.owner_state = dict(parent_state)
         return run, child_agent, child_state
 
     def _turn_budget(self, parent_state: dict) -> FanoutBudget:
@@ -4652,7 +4764,14 @@ class AgentCore:
         preamble = await self._turn_preamble(
             None, query=task, scope=_agent_scope(child_agent), agent=child_agent
         )
-        messages: list[dict] = [await self._build_user_message(task, None, preamble)]
+        messages: list[dict] = run.messages or [
+            await self._build_user_message(task, None, preamble)
+        ]
+        run.messages = messages
+        if run.continuations:
+            system += (
+                "\nYou are resuming prior work; finish what remains rather than starting over."
+            )
 
         # The child runs on its own agent's LLM override when it has one (so a
         # "senior" subagent gets its bigger model); an explicit spawn effort
@@ -4777,6 +4896,7 @@ class AgentCore:
             if pool is not None:
                 pool.charge(spent)
             text = wrap.text or text
+            messages.append(llm.assistant_message(wrap))
         # stopped_reason is a field the calling model can act on (retry, size up,
         # accept partial); the text suffix stays too — belt and braces.
         if aborted:
@@ -4801,7 +4921,7 @@ class AgentCore:
             run.stopped_reason = "truncated"
         else:
             run.stopped_reason = "complete"
-        run.progress = "done"
+        run.progress = "partial" if response.tool_calls and not aborted else "done"
         return text
 
     async def _run_subagent_background(
@@ -4866,7 +4986,7 @@ class AgentCore:
             and not r.synthesized
             and r.origin_channel == channel
             and r.origin_chat_id == chat_id
-            and r.status in ("done", "error")
+            and r.status in ("done", "partial", "error")
         ]
         if not batch:
             return
@@ -4931,6 +5051,11 @@ class AgentCore:
                 lines.append(f"- [{name}] status=error: {run.error or 'unknown error'}")
                 continue
             head = f"- [{name}] status={run.status}"
+            if run.status == "partial":
+                head += (
+                    f", run_id={run.run_id}, steps_completed={run.steps}, "
+                    f"budget_exhausted={'steps' if run.stopped_reason == 'max_steps' else 'tokens'}"
+                )
             # stopped_reason only when it says the result may be thin — "complete"
             # is the norm and carries nothing the agent can act on.
             if run.stopped_reason and run.stopped_reason != "complete":

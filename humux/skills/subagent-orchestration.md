@@ -187,3 +187,16 @@ chat, so a width-6 fan-out is two waves, not one.
   answers it, call the tool.
 - **Six near-identical briefs.** If they differ by one word, you wanted one
   subagent with a list, or a loop you run yourself.
+
+### Resume a partial run
+
+A budget stop returns `status: "partial"`, `run_id`, `steps_completed`, and
+`budget_exhausted` (`steps` or `tokens`). Resume it with
+`spawn_subagent(continue_run="sub_...", task="Finish the remaining work", max_steps=12)`.
+The same scoped agent retains its conversation and completed tool results; files
+remain on the shared filesystem. Step and token counters restart, while the
+current parent turn's shared token/spawn pool still applies. Continuation is
+explicit, limited by `subagents.max_continuations` (default 3; 0 disables), and
+available only to the spawning context. Partial runs can also be continued by the
+owner from the admin Inspect runs panel. Retention is in memory: a restart or
+registry eviction removes the continuation state.

@@ -37,6 +37,11 @@
     {% if r.children %}<span title="child runs">{{ r.children|length }} child{{ '' if r.children|length == 1 else 'ren' }}</span>{% endif %}
     {% if r.stopped_reason and r.status != 'running' %}<span title="why it stopped">stopped: {{ r.stopped_reason }}</span>{% endif %}
   </div>
+  {% if r.status == 'partial' %}
+  <button class="btn btn-sm mt-2 w-full"
+          hx-post="/subagents/continue{{ qs }}" hx-target="#subagent-runs" hx-swap="outerHTML"
+          hx-vals='{"run_id": {{ r.run_id|tojson }} }'>Continue</button>
+  {% endif %}
   {% if r.status == 'running' %}
   <button class="btn-danger btn-sm mt-2 w-full"
           hx-post="/subagents/cancel{{ qs }}" hx-target="#subagent-runs" hx-swap="outerHTML"

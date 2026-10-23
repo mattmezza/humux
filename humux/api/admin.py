@@ -3211,6 +3211,21 @@ def create_admin_app(
         log.info("Subagent %r cancelled via admin", run_id)
         return await partial_subagent_runs(channel=channel, chat_id=chat_id)
 
+    @app.post("/subagents/continue", dependencies=[Depends(auth)])
+    async def continue_subagent(
+        request: Request, channel: str = "", chat_id: str = ""
+    ) -> HTMLResponse:
+        agent = agent_state.agent
+        if not agent:
+            raise HTTPException(503, "Agent not running")
+        body = await request.form()
+        result = await agent.continue_subagent(
+            str(body.get("run_id", "")), {"background": True}, "", "", {}, admin=True
+        )
+        if result.get("error"):
+            raise HTTPException(400, result["error"])
+        return await partial_subagent_runs(channel=channel, chat_id=chat_id)
+
     # ── Config API ─────────────────────────────────────────────────────
 
     @app.get("/config", dependencies=[Depends(auth)])
