@@ -78,6 +78,8 @@ jobs:
       contents: read
       packages: write
     steps:
+      - name: Isolate registry credentials from other runner jobs
+        run: echo "DOCKER_CONFIG=$RUNNER_TEMP/docker-auth-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_ENV"
       - uses: actions/download-artifact@v4
         with:
           name: whistle-image-${{ github.run_attempt }}
