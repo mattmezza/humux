@@ -3985,7 +3985,8 @@ class AgentCore:
             not admin
             and (
                 caller != owner
-                or parent_state.get("agent_obj") != run.owner_state.get("agent_obj")
+                or getattr(parent_state.get("agent_obj"), "name", "")
+                != getattr(run.owner_state.get("agent_obj"), "name", "")
                 or str(parent_state.get("run_id") or "") != run.parent_run_id
             )
         ):
@@ -3997,6 +3998,45 @@ class AgentCore:
         background = bool(params.get("background", False))
         if background and parent_state.get("woken_by_subagent"):
             return {"error": _NO_BACKGROUND_IN_WOKEN_TURN}
+        # Permission grants are live configuration, not a capability frozen in
+        # retained history. Re-run spawn validation even for owner/admin resumes.
+        validation_state = dict(run.owner_state)
+        prior_parent = run.owner_state.get("agent_obj")
+        if prior_parent is not None:
+            current_parent = await self._load_agent(prior_parent.name)
+            if current_parent is None or not current_parent.enabled:
+                return {"error": "The spawning agent is deleted or disabled."}
+            if not current_parent.allows_tool("spawn_subagent"):
+                return {"error": "The spawning agent can no longer delegate."}
+            if (
+                prior_parent.spawnable_agents
+                and run.agent != prior_parent.name
+                and run.agent not in current_parent.spawnable_agents
+            ):
+                return {"error": "Delegation trust for this agent was revoked."}
+            validation_state["agent_obj"] = self._narrow_agent(current_parent, run.owner_state)
+        validation_state["depth"] = run.depth - 1
+        prepared = await self._prepare_subagent_run(
+            task=run.task,
+            agent_name=run.agent,
+            origin_channel=run.origin_channel,
+            origin_user_id=run.origin_user_id,
+            origin_chat_id=run.origin_chat_id,
+            parent_state=validation_state,
+            background=background,
+            model=run.model,
+            provider=run.provider,
+        )
+        if isinstance(prepared, dict):
+            return prepared
+        _, current_child, _ = prepared
+        # A changed grant may revoke access to sensitive information already in
+        # history. Refuse rather than replay that history under another scope.
+        # Also refuse expansions: continuation never gains newly granted access.
+        if current_child != run.child_agent:
+            return {"error": "Agent permissions changed; start a new scoped run."}
+        if run.status != "partial":
+            return {"error": "Subagent is no longer partial."}
         pool = self._turn_budget(parent_state)
         error = pool.take_spawn()
         if error:
@@ -4011,7 +4051,21 @@ class AgentCore:
         run.max_steps = resolve_cap(params.get("max_steps"), cfg.max_steps)
         run.token_budget = resolve_cap(params.get("token_budget"), cfg.token_budget)
         run.background = background
-        state = run.child_state
+        state = self._new_request_state(
+            current_child,
+            depth=run.depth,
+            run_id=run.run_id,
+            origin={
+                "channel": run.origin_channel,
+                "user_id": run.origin_user_id,
+                "chat_id": run.origin_chat_id,
+            },
+        )
+        # Independently resumed descendants no longer execute under a live
+        # ancestor's concurrency slot. Keep their original depth for tool gates.
+        state["independent_continuation"] = admin or background
+        state["executed_writes"] = set(run.child_state.get("executed_writes", set()))
+        run.child_state = state
         state["fanout_budget"] = pool
         # Never deliver through a stale parent turn's attachment queue.
         state.pop("attachments_reach_user", None)
@@ -4716,7 +4770,7 @@ class AgentCore:
                 # Per-chat concurrency gate: only a top-level (depth-1) run holds
                 # a slot — a nested child runs under its parent's slot, else a
                 # parent blocked awaiting its own child could deadlock the pool.
-                if run.depth <= 1:
+                if run.depth <= 1 or child_state.get("independent_continuation"):
                     async with self.subagents.slot(
                         self._subagent_chat_key(run.origin_channel, run.origin_chat_id),
                         lambda: self.config.subagents.max_concurrent,
