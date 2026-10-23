@@ -226,6 +226,7 @@ class VoicePipeline:
         kokoro_default_voice: str = "af_bella",
         tts_api_base_url: str = "",
         stt_api_base_url: str = "",
+        stt_timeout_seconds: float = 300,
     ):
         self.tts_voice = tts_voice
         self.tts_enabled = tts_enabled
@@ -234,6 +235,7 @@ class VoicePipeline:
         self.kokoro_default_voice = kokoro_default_voice
         self.tts_api_base_url = tts_api_base_url.rstrip("/") if tts_api_base_url else ""
         self.stt_api_base_url = stt_api_base_url.rstrip("/") if stt_api_base_url else ""
+        self.stt_timeout_seconds = stt_timeout_seconds
         self._kokoro = None
         self._whisper = None
 
@@ -287,7 +289,8 @@ class VoicePipeline:
         import httpx
 
         url = f"{self.stt_api_base_url}/audio/transcriptions"
-        async with httpx.AsyncClient(timeout=30) as client:
+        timeout = httpx.Timeout(self.stt_timeout_seconds, connect=10, pool=10)
+        async with httpx.AsyncClient(timeout=timeout) as client:
             r = await client.post(
                 url,
                 data={"model": "whisper-1"},

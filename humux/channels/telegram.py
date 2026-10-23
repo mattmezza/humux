@@ -521,13 +521,18 @@ class TelegramChannel:
         else:
             payload = f"{routing['speaker_tag']}{self._reply_context(message)}{text}"
         asyncio.create_task(
-            self._handle_text(
-                payload,
-                convo_user,
-                str(chat_id),
-                respond,
-                routing["addressed"],
-                getattr(message, "message_id", None),
+            self._run_message_handler(
+                self._handle_text(
+                    payload,
+                    convo_user,
+                    str(chat_id),
+                    respond,
+                    routing["addressed"],
+                    getattr(message, "message_id", None),
+                ),
+                chat_id,
+                "text",
+                notify=respond,
             ),
             name=f"tg-text-{convo_user}",
         )
@@ -611,12 +616,16 @@ class TelegramChannel:
         if not voice_msg:
             return
         asyncio.create_task(
-            self._handle_voice(
-                voice_msg.file_id,
-                convo_user,
-                str(chat_id),
-                prefix,
-                getattr(message, "message_id", None),
+            self._run_message_handler(
+                self._handle_voice(
+                    voice_msg.file_id,
+                    convo_user,
+                    str(chat_id),
+                    prefix,
+                    getattr(message, "message_id", None),
+                ),
+                chat_id,
+                "voice",
             ),
             name=f"tg-voice-{convo_user}",
         )
@@ -673,13 +682,17 @@ class TelegramChannel:
             return
 
         asyncio.create_task(
-            self._handle_photo(
-                file_ids,
-                caption,
-                prefix,
-                convo_user,
-                str(chat_id),
-                getattr(message, "message_id", None),
+            self._run_message_handler(
+                self._handle_photo(
+                    file_ids,
+                    caption,
+                    prefix,
+                    convo_user,
+                    str(chat_id),
+                    getattr(message, "message_id", None),
+                ),
+                chat_id,
+                "photo",
             ),
             name=f"tg-photo-{convo_user}",
         )
@@ -1183,6 +1196,20 @@ class TelegramChannel:
             )
         return allowed
 
+    async def _run_message_handler(self, handler, chat_id, kind: str, *, notify=True) -> None:
+        """Detached inbound tasks must report failures instead of disappearing."""
+        try:
+            await handler
+        except Exception:
+            log.exception("Telegram %s message processing failed (chat=%s)", kind, chat_id)
+            if notify:
+                try:
+                    await self.send(
+                        chat_id, f"Sorry, I couldn't process that {kind} message. Please try again."
+                    )
+                except Exception:
+                    log.exception("Could not send failure notification (chat=%s)", chat_id)
+
     async def _wait_for_voice_context(self, chat_id: int | str) -> None:
         """Keep later turns behind voice context without blocking other chats."""
         pending = self._voice_context_tasks.get(str(chat_id))
@@ -1294,20 +1321,29 @@ class TelegramChannel:
     ) -> None:
         await self._wait_for_voice_context(chat_id)
         async with self._typing(chat_id, message_id), self._progress(chat_id):
-            file = await self.app.bot.get_file(file_id)
-            audio_bytes = await file.download_as_bytearray()
-
-            # Transcribe via Whisper
-            log.info(
-                "Transcribing voice message from user %s (%d bytes)", user_id, len(audio_bytes)
-            )
             voice = self.voice
             if not voice:
                 await self.send(
                     chat_id, "Voice messages are not supported (voice pipeline not configured)."
                 )
                 return
-            transcript = await voice.transcribe(bytes(audio_bytes))
+            try:
+                file = await self.app.bot.get_file(file_id)
+                audio_bytes = await file.download_as_bytearray()
+                log.info(
+                    "Transcribing voice message from user %s (%d bytes)", user_id, len(audio_bytes)
+                )
+                transcript = await voice.transcribe(bytes(audio_bytes))
+            except Exception:
+                backend = "remote" if getattr(voice, "stt_api_base_url", "") else "local"
+                log.exception(
+                    "Voice download/transcription failed (chat=%s, file=%s, backend=%s)",
+                    chat_id,
+                    file_id,
+                    backend,
+                )
+                await self.send(chat_id, "(could not transcribe voice)")
+                return
 
             if not transcript.strip():
                 await self.send(chat_id, "(could not transcribe voice)")

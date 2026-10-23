@@ -69,6 +69,7 @@ calendar:
 #       password: "${PURELYMAIL_APP_PASSWORD}"
 
 voice:
+  stt_timeout_seconds: 300    # Remote STT upload/read timeout; longer notes need more time
   stt_model: "base"
   tts_voice: "en-US-GuyNeural"
   tts_enabled: true
