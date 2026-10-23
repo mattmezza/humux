@@ -286,6 +286,11 @@ runs concurrently with the live server (all databases run in WAL mode). See the
 
 ---
 
+The Docker image includes Node.js and Go (matching the Go 1.25 wacli builder) for
+coding workspace builds, including CGO support. Build with `INSTALL_NODE=false`
+and/or `INSTALL_GO=false` to opt out. Go module and build caches persist in the
+existing data volume. See [deployment build options](docs/content/docs/deployment.mdx#coding-toolchains).
+
 ## 🏗️ Architecture
 
 humux follows a **Python orchestrator + CLI tools** design. Python handles the async LLM loop, the admin web UI, and orchestration. Battle-tested CLI tools handle protocol complexity:

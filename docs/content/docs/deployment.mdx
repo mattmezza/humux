@@ -65,6 +65,39 @@ docker pull ghcr.io/mattmezza/humux:latest
 | `0.1` | Latest patch for minor version |
 | `0` | Latest minor for major version |
 
+### Coding toolchains
+
+The image includes Node.js (`node`, `npm`, `npx`) and Go by default for coding
+workspace builds. Go is copied from the `golang:1.25-bookworm` wacli builder, so
+both stages always use the same Go version. The runtime also includes the C/C++
+compiler and `pkg-config` for CGO projects. These commands run through the coding
+harness and its permission rules.
+
+Opt out independently when building a smaller image:
+
+```bash
+cd humux
+docker build --build-arg INSTALL_NODE=false --build-arg INSTALL_GO=false -t humux:lean .
+```
+
+`GOTOOLCHAIN=local` prevents automatic toolchain downloads. Repositories requiring
+a newer Go version need an image with a matching builder version. `GOPATH` is
+`/app/data/go`, and `GOCACHE` is `/app/data/go-build-cache`; the existing data
+volume preserves module downloads and compiled packages across container
+recreation. Both paths are writable by the image's `humux` user. Mount `/app/data`
+when using `docker run` directly, too.
+
+To smoke-test a built image as its default non-root user:
+
+```bash
+docker run --rm -i --entrypoint sh humux:latest -s < tests/smoke_go_toolchain.sh
+# The opt-out image should have no Go executable (wacli remains available):
+docker run --rm -i --entrypoint sh humux:lean -s -- disabled < tests/smoke_go_toolchain.sh
+```
+
+The enabled smoke test compiles, tests, and vets a small CGO program using only
+the standard library, so it needs no module downloads.
+
 ### Bundled embedding model
 
 The image **prefetches the local embedding model** (semantic memory, Tier 2) at build time into `/app/models` — outside the `/app/data` volume, so the mounted volume can't shadow it. The container therefore works offline with no runtime download. The model is overridable at build via the `EMBED_MODEL` build arg (keep it in sync with `memory.embedding.model`). See [Memory → Tier 2](/docs/memory#tier-2-semantic-retrieval-relevance-ranked-injection).
@@ -75,7 +108,7 @@ The Docker Compose file mounts these paths:
 
 | Host path | Container path | Purpose |
 |-----------|---------------|---------|
-| `./data` | `/app/data` | SQLite databases, Whisper models, sessions |
+| `./data` | `/app/data` | SQLite databases, Whisper models, sessions, Go module/build caches |
 | `./config.yml` | `/app/config.yml` | Agent configuration (read-only) |
 | `./character.md` | `/app/character.md` | Agent identity & personality |
 | `./skills` | `/app/skills` | Skill files (read-only) |
