@@ -121,7 +121,9 @@ make kokoro
 
 That installs the `kokoro` Python extra and downloads the model files into
 `models/kokoro/` (the configured `kokoro.model_path` / `kokoro.voices_path`).
-Then set `backend: kokoro` and restart the agent. To do it by hand instead:
+Then set `backend: kokoro` and restart the agent (switching it on the admin UI's
+Voice tab applies without a restart — the pipeline reloads in the background).
+To do it by hand instead:
 
 ```bash
 uv sync --extra kokoro

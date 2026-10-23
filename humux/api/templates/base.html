@@ -162,10 +162,33 @@
     }
     window.showToast = showToast;
 
-    // Restart-required affordance. Some settings (channels, voice, history length)
-    // are read once when the agent starts, so a save only takes effect after a
-    // restart. notifyRestartRequired() surfaces the banner; restartAgentNow()
-    // restarts and refreshes the top-left status badge via the refresh-status event.
+    // Restart-required affordance. Some settings (channels, history length) are
+    // read once when the agent starts, so a save only takes effect after a
+    // restart; the banner is rendered server-side when one is pending, so it
+    // survives a reload (#326). notifyRestartRequired() surfaces it in-session;
+    // restartAgentNow() restarts and refreshes the top-left status badge via the
+    // refresh-status event.
+
+    // Voice saves hot-apply by rebuilding the pipeline in the background (#326),
+    // so "saved" is not the same as "in effect": poll until the rebuild settles.
+    async function waitForVoiceRebuild(timeoutMs = 30000) {
+      const key = localStorage.getItem('admin_api_key') || '';
+      const deadline = Date.now() + timeoutMs;
+      while (Date.now() < deadline) {
+        await new Promise(res => setTimeout(res, 500));
+        let d = {};
+        try {
+          const r = await fetch('/voice/rebuild-status', {
+            headers: { 'Authorization': 'Bearer ' + key }
+          });
+          d = await r.json().catch(() => ({}));
+        } catch (e) { continue; }
+        if (d.status === 'ok') return { ok: true };
+        if (d.status === 'failed') return { ok: false, error: d.error || 'rebuild failed' };
+      }
+      return { ok: false, error: 'still rebuilding \u2014 see the Logs tab' };
+    }
+    window.waitForVoiceRebuild = waitForVoiceRebuild;
     function notifyRestartRequired() {
       const b = document.getElementById('restart-banner');
       if (b) b.style.display = 'block';

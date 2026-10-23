@@ -72,7 +72,7 @@
         <option value="medium">Whisper Medium</option>
         <option value="large">Whisper Large (accurate, ~3GB)</option>
       </select>
-      <p class="text-muted text-xs mt-1">Larger models are more accurate but slower and use more RAM. Restart after changing.</p>
+      <p class="text-muted text-xs mt-1">Larger models are more accurate but slower and use more RAM. Applied on save (the model reloads in the background).</p>
     </div>
 
     <div x-show="sttMode === 'remote'">
@@ -162,7 +162,6 @@
       </div>
       <p class="text-muted text-xs mt-1" x-show="ttsMode === 'kokoro'">Language sets pronunciation independently of the voice.</p>
     </div>
-    {% include "partials/restart_note.html" %}
   </div>
 
   <div class="flex justify-end mt-3">
@@ -201,9 +200,34 @@
               })
               .then(r => { voiceOk = r.ok; return r.json(); })
               .then(d => {
-                voiceResult = voiceOk ? 'Voice settings saved' : (d.detail || 'Error');
-                if (voiceOk && window.showToast) { window.showToast('Voice settings saved'); }
-                if (voiceOk && d.restart_required && window.notifyRestartRequired) { notifyRestartRequired(); }
+                if (!voiceOk) {
+                  voiceResult = d.detail || 'Error';
+                  if (window.showToast) { window.showToast(voiceResult, false); }
+                  return;
+                }
+                // "Saved" alone used to lie: voice settings were startup-only.
+                // Now the pipeline is rebuilt in the background, so report the
+                // real outcome once it settles (#326).
+                voiceResult = 'Voice settings saved';
+                if (window.showToast) { window.showToast('Voice settings saved'); }
+                if (d.restart_required && window.notifyRestartRequired) { notifyRestartRequired(); }
+                if (d.voice_rebuild === 'scheduled' && window.waitForVoiceRebuild) {
+                  voiceResult = 'Voice settings saved · applying…';
+                  if (window.showToast) { window.showToast('Applying voice settings…'); }
+                  waitForVoiceRebuild().then(res => {
+                    if (res.ok) {
+                      voiceOk = true;
+                      voiceResult = 'Voice settings saved · active';
+                      if (window.showToast) { window.showToast('Voice settings applied'); }
+                    } else {
+                      voiceOk = false;
+                      voiceResult = 'Voice settings saved but NOT active: ' + res.error +
+                        '. Restart the agent to load them.';
+                      if (window.showToast) { window.showToast('Voice rebuild failed — restart needed', false); }
+                      if (window.notifyRestartRequired) { notifyRestartRequired(); }
+                    }
+                  });
+                }
               })
               .catch(e => { voiceOk = false; voiceResult = e.message; })
             })">

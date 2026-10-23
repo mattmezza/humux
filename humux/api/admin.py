@@ -426,6 +426,138 @@ class AgentState:
 
 
 # ---------------------------------------------------------------------------
+# Live voice-pipeline rebuild (#326)
+# ---------------------------------------------------------------------------
+
+# ``voice.*`` settings used to be startup-only: PATCH /config stored them, told
+# the user "saved", and the running pipeline kept the old settings until the
+# next restart — which is how a live instance ended up with dead STT for 48
+# days.  A voice change now rebuilds the pipeline off the request thread and
+# swaps it into the agent and every channel.  This object tracks that rebuild so
+# the admin UI can report the truth (applying / applied / failed) instead of
+# guessing.
+
+
+class VoiceRebuildState:
+    """Status of the background voice rebuild started by PATCH /config."""
+
+    def __init__(self) -> None:
+        self.status: str = "idle"  # idle | rebuilding | ok | failed
+        self.error: str = ""
+        self.generation: int = 0
+        self.task: asyncio.Task | None = None
+
+
+# Restart-required state that survives a page reload.  The banner used to be pure
+# DOM state, so a dismissed (or reloaded) page forgot a still-pending restart.
+class _RestartState:
+    def __init__(self) -> None:
+        self.keys: set[str] = set()  # config keys saved but only read at startup
+        self.error: str = ""  # set when a live apply failed → restart is the way out
+
+
+VOICE_REBUILD = VoiceRebuildState()
+PENDING_RESTART = _RestartState()
+
+
+def mark_restart_required(keys: set[str]) -> None:
+    """Remember that ``keys`` need a restart to take effect (survives reloads)."""
+    PENDING_RESTART.keys |= keys
+
+
+def clear_restart_required() -> None:
+    """Forget pending restarts — called after a successful agent (re)start."""
+    PENDING_RESTART.keys.clear()
+    PENDING_RESTART.error = ""
+
+
+def restart_banner() -> dict:
+    """Template context for the restart banner (rendered server-side, so it is
+    still there after a reload)."""
+    return {
+        "restart_required": bool(PENDING_RESTART.keys or PENDING_RESTART.error),
+        "restart_note": PENDING_RESTART.error,
+    }
+
+
+def _install_voice_pipeline(agent: AgentCore, pipeline: object) -> int:
+    """Point the agent and every channel at ``pipeline``.
+
+    Both references matter: the agent synthesizes its own replies through
+    ``agent.voice``, while each channel transcribes incoming voice messages
+    through ``self.voice``.  Swapping only one leaves half the pipeline stale.
+    Returns the number of channels updated.
+    """
+    agent.voice = pipeline  # type: ignore[assignment]
+    channels = getattr(agent, "channels", {}) or {}
+    updated = 0
+    for channel in channels.values():
+        if hasattr(channel, "voice"):
+            channel.voice = pipeline
+            updated += 1
+    return updated
+
+
+async def _rebuild_voice_pipeline(
+    agent: AgentCore, voice_cfg: object, generation: int, state: AgentState
+) -> None:
+    """Rebuild the pipeline in a worker thread, then swap it in.
+
+    Construction is expensive (Whisper and Kokoro load eagerly), so it must not
+    run on the request thread; the old pipeline keeps serving until the new one
+    is ready.  A failure leaves the old pipeline in place and surfaces the
+    restart banner instead of pretending the save applied.
+    """
+    from voice.pipeline import build_voice_pipeline
+
+    previous = getattr(agent, "voice", None)
+    try:
+        pipeline = await asyncio.to_thread(build_voice_pipeline, voice_cfg, previous)
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:
+        log.exception("Voice pipeline rebuild failed — keeping the running pipeline")
+        if generation == VOICE_REBUILD.generation:
+            VOICE_REBUILD.status = "failed"
+            VOICE_REBUILD.error = str(exc) or exc.__class__.__name__
+            PENDING_RESTART.error = (
+                f"Voice settings saved but could not be applied ({VOICE_REBUILD.error}) "
+                "— restart the agent to load them."
+            )
+        return
+
+    # A newer save (or an agent restart) superseded this rebuild — drop it.
+    if generation != VOICE_REBUILD.generation or state.agent is not agent:
+        log.info("Discarding superseded voice rebuild (generation %d)", generation)
+        return
+
+    updated = _install_voice_pipeline(agent, pipeline)
+    VOICE_REBUILD.status = "ok"
+    VOICE_REBUILD.error = ""
+    log.info(
+        "Voice pipeline rebuilt and swapped in (agent + %d channel(s)); enabled=%s",
+        updated,
+        pipeline is not None,
+    )
+
+
+def _schedule_voice_rebuild(agent: AgentCore, voice_cfg: object, state: AgentState) -> None:
+    """Start a background voice rebuild, superseding any still running."""
+    VOICE_REBUILD.generation += 1
+    generation = VOICE_REBUILD.generation
+    VOICE_REBUILD.status = "rebuilding"
+    VOICE_REBUILD.error = ""
+    PENDING_RESTART.error = ""
+    previous = VOICE_REBUILD.task
+    if previous is not None and not previous.done():
+        previous.cancel()
+    VOICE_REBUILD.task = asyncio.create_task(
+        _rebuild_voice_pipeline(agent, voice_cfg, generation, state),
+        name=f"voice-rebuild-{generation}",
+    )
+
+
+# ---------------------------------------------------------------------------
 # In-memory ring buffer for recent log lines
 # ---------------------------------------------------------------------------
 
@@ -1507,6 +1639,7 @@ def create_admin_app(
             "dashboard.html",
             owner_name=owner_name,
             agent_name=agent_name,
+            **restart_banner(),
         )
 
     @app.get("/admin/skills/new", response_model=None)
@@ -3255,6 +3388,8 @@ def create_admin_app(
         changed = {k: v for k, v in values.items() if str(await config_store.get(k)) != str(v)}
         await config_store.set_many(values)
         agent = agent_state.agent
+        voice_changed = any(key.startswith("voice.") for key in changed)
+        new_config = None
         if agent:
             try:
                 new_config = await _resolved_config()
@@ -3288,9 +3423,37 @@ def create_admin_app(
                     agent.search_client = None
             except Exception:
                 log.exception("Failed to apply updated config to running agent")
+            # Voice settings are live-applied by rebuilding the pipeline (in the
+            # background — model loads are expensive) and swapping it into the
+            # agent and every channel (#326).
+            if voice_changed and new_config is not None:
+                _schedule_voice_rebuild(agent, new_config.voice, agent_state)
+        restart_bound = _restart_bound_keys(changed)
+        if restart_bound:
+            mark_restart_required(restart_bound)
+        restart_required = bool(restart_bound)
         return {
             "updated": list(values.keys()),
-            "restart_required": _config_requires_restart(changed),
+            "restart_required": restart_required,
+            # "scheduled" means the save is stored and the pipeline is being
+            # rebuilt: the UI can watch /voice/rebuild-status for the real outcome.
+            "voice_rebuild": (
+                "scheduled" if agent and voice_changed and new_config is not None else "none"
+            ),
+        }
+
+    @app.get("/voice/rebuild-status", dependencies=[Depends(auth)])
+    async def voice_rebuild_status() -> dict:
+        """Outcome of the background voice-pipeline rebuild (#326).
+
+        PATCH /config returns as soon as the save is stored and the rebuild is
+        scheduled; the Voice tab polls this until the pipeline is actually in
+        effect, so "saved" only becomes "active" when it is true.
+        """
+        return {
+            "status": VOICE_REBUILD.status,
+            "error": VOICE_REBUILD.error,
+            "restart_required": bool(PENDING_RESTART.keys or PENDING_RESTART.error),
         }
 
     @app.post("/voice/preview", dependencies=[Depends(auth)])
@@ -5371,13 +5534,24 @@ async def _history_from_config(config_store: ConfigStore):
 
 # Config keys the running agent only reads at startup, so a change to them via
 # PATCH /config takes effect only after an agent restart. Everything else is
-# hot-applied in patch_config (agent.config swap + llm/memory/search rebuild).
-# Channels are saved through their own routes (always restart-bound) and handled
-# client-side, so they are not listed here.
+# hot-applied in patch_config (agent.config swap + llm/memory/search/voice
+# rebuild).  Channels are saved through their own routes (always restart-bound)
+# and handled client-side, so they are not listed here.
+_RESTART_BOUND_KEYS = {"history.max_turns"}
+
+
+def _restart_bound_keys(values: dict) -> set[str]:
+    """The subset of ``values`` the running agent reads only at startup.
+
+    ``voice.*`` used to be here; PATCH /config now rebuilds the pipeline in the
+    background instead (#326), so only the history window is left.
+    """
+    return {key for key in values if key in _RESTART_BOUND_KEYS}
+
+
 def _config_requires_restart(values: dict) -> bool:
-    """True if any saved key is consumed only at agent startup (voice pipeline,
-    history window) and so needs a restart to take effect."""
-    return any(key == "history.max_turns" or key.startswith("voice.") for key in values)
+    """True if any saved key needs a restart to take effect."""
+    return bool(_restart_bound_keys(values))
 
 
 # Function-tools that an agent may scope. The vault tools and ``recall_memory``/
