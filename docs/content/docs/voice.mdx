@@ -23,6 +23,13 @@ humux includes a voice pipeline for receiving and sending voice messages through
 3. The transcript is prefixed with `[voice]` and processed as a regular text message
 4. The agent sees: `[voice] Hey, what's on my calendar today?`
 
+Remote transcription allows up to 300 seconds without upload/read progress by default
+(`voice.stt_timeout_seconds`); connection setup is limited to 10 seconds. Increase
+the STT timeout for slower hardware or longer recordings. If downloading or
+transcribing a voice message fails, Telegram sends `(could not transcribe voice)`
+and the server logs the error with the chat, file, and backend. Empty transcripts
+produce the same feedback.
+
 ### Sending voice responses
 
 The agent adds `[respond_with_voice]` at the end of its response to trigger TTS:
@@ -51,6 +58,7 @@ The agent follows these conventions (defined in `skills/voice.md`):
 
 ```yaml
 voice:
+  stt_timeout_seconds: 300    # Remote STT upload/read timeout; longer notes need more time
   stt_model: "base"           # Whisper model size
   tts_voice: "en-US-GuyNeural"  # edge-tts voice name
   tts_enabled: true

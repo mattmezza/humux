@@ -217,6 +217,7 @@ class KokoroConfig(BaseModel):
 
 class VoiceConfig(BaseModel):
     stt_model: str = "base"
+    stt_timeout_seconds: float = Field(default=300, gt=0)
     tts_voice: str = "en-US-AvaNeural"
     tts_enabled: bool = True
     backend: str = "edge-tts"  # "edge-tts" | "kokoro"
