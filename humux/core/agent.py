@@ -3998,6 +3998,7 @@ class AgentCore:
         background = bool(params.get("background", False))
         if background and parent_state.get("woken_by_subagent"):
             return {"error": _NO_BACKGROUND_IN_WOKEN_TURN}
+        generation = run.continuations
         # Permission grants are live configuration, not a capability frozen in
         # retained history. Re-run spawn validation even for owner/admin resumes.
         validation_state = dict(run.owner_state)
@@ -4039,6 +4040,8 @@ class AgentCore:
             return {"error": "Subagent is no longer partial."}
         if run.continuations >= max(0, self.config.subagents.max_continuations):
             return {"error": "Subagent continuation limit reached."}
+        if run.continuations != generation:
+            return {"error": "Subagent was already continued by another request."}
         pool = self._turn_budget(parent_state)
         error = pool.take_spawn()
         if error:

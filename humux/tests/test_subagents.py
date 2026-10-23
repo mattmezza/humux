@@ -1957,8 +1957,9 @@ async def test_continuation_revalidates_parent_delegation(agent, monkeypatch, re
 
 
 @pytest.mark.asyncio
-async def test_concurrent_continuations_recheck_limit_after_validation(agent, monkeypatch):
-    agent.config.subagents.max_continuations = 1
+@pytest.mark.parametrize("limit", [1, 3])
+async def test_concurrent_continuations_recheck_limit_after_validation(agent, monkeypatch, limit):
+    agent.config.subagents.max_continuations = limit
     run = SubagentRun(
         run_id="race",
         agent="",
@@ -1992,5 +1993,6 @@ async def test_concurrent_continuations_recheck_limit_after_validation(agent, mo
     release[0].set()
     assert (await first)["status"] == "partial"
     release[1].set()
-    assert "limit" in (await second)["error"]
+    error = (await second)["error"]
+    assert "limit" in error if limit == 1 else "already continued" in error
     assert run.continuations == 1 and run.status == "partial"
