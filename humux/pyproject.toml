@@ -36,7 +36,7 @@ kokoro = ["kokoro-onnx>=0.4"]
 # image — see docker-compose.yml embeddings service.
 fastembed = ["fastembed"]
 # Local on-device STT. Pulls faster-whisper + ctranslate2 (~350MB).
-# Use a sidecar instead for a leaner image — see docker-compose.yml whisper service.
+# Use a sidecar instead for a leaner image — see docker-compose.yml whistle service.
 whisper = ["faster-whisper"]
 
 [dependency-groups]

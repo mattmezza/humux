@@ -1,4 +1,4 @@
-.PHONY: help setup setup-hooks install install-dev sync lock lint format test run cli dev dev-agent dev-css dev-wa kokoro clean release css sidecars sidecar-embeddings sidecar-browser sidecar-whisper sidecar-kokoro sidecar-searxng sidecar-stop
+.PHONY: help setup setup-hooks install install-dev sync lock lint format test run cli dev dev-agent dev-css dev-wa kokoro clean release css sidecars sidecar-embeddings sidecar-browser sidecar-whistle sidecar-kokoro sidecar-searxng sidecar-stop
 
 PORT := 8001
 PYTHON := uv run python
@@ -54,7 +54,7 @@ help:
 	@echo ""
 	@echo "    make sidecar-embeddings   Infinity embedding API (port 7997)"
 	@echo "    make sidecar-browser       Browserless/chrome (port 3000)"
-	@echo "    make sidecar-whisper       Faster-Whisper STT (port 8000)"
+	@echo "    make sidecar-whistle       Faster-Whisper STT (port 8000)"
 	@echo "    make sidecar-kokoro        Kokoro TTS (port 8880)"
 	@echo "    make sidecar-searxng       SearXNG search (port 8080)"
 	@echo ""
@@ -153,17 +153,17 @@ SIDECAR_NET := humux-sidecars
 # Port mappings (host:container)
 EMBED_PORT   := 7997
 BROWSER_PORT := 3000
-WHISPER_PORT := 8000
+WHISTLE_PORT := 8000
 KOKORO_PORT  := 8880
 SEARXNG_PORT := 8080
 
 # Start all sidecars
-sidecars: $(SIDECAR_NET) sidecar-embeddings sidecar-browser sidecar-whisper sidecar-kokoro sidecar-searxng
+sidecars: $(SIDECAR_NET) sidecar-embeddings sidecar-browser sidecar-whistle sidecar-kokoro sidecar-searxng
 	@echo ""
 	@echo "All sidecars running. Update config.yml to point localhost:"
 	@echo "  memory.embedding.base_url: http://localhost:$(EMBED_PORT)"
 	@echo "  search.searxng_url:        http://localhost:$(SEARXNG_PORT)"
-	@echo "  voice.stt_api_base_url:    http://localhost:$(WHISPER_PORT)/v1"
+	@echo "  voice.stt_api_base_url:    http://localhost:$(WHISTLE_PORT)/v1"
 	@echo "  voice.tts_api_base_url:    http://localhost:$(KOKORO_PORT)/v1"
 	@echo "  tools.browser.cdp_url:     ws://localhost:$(BROWSER_PORT)"
 	@echo ""
@@ -189,12 +189,12 @@ sidecar-browser: $(SIDECAR_NET)
 		browserless/chrome:latest)
 	@echo "browser → ws://localhost:$(BROWSER_PORT)"
 
-sidecar-whisper: $(SIDECAR_NET)
-	$(eval _GPU := $(shell docker info 2>/dev/null | grep -q 'Runtimes.*nvidia' && echo '--gpus all' || echo ''))
-	$(call _SIDECAR_RUN,humux-whisper,\
-		-p $(WHISPER_PORT):8000 $(_GPU),\
-		fedirz/faster-whisper-server:latest-cpu)
-	@echo "whisper → http://localhost:$(WHISPER_PORT)/v1"
+sidecar-whistle: $(SIDECAR_NET)
+	docker build -t humux-whistle:local sidecars/whistle
+	$(call _SIDECAR_RUN,humux-whistle,\
+		-p 127.0.0.1:$(WHISTLE_PORT):8000,\
+		humux-whistle:local)
+	@echo "whistle → http://localhost:$(WHISTLE_PORT)/v1"
 
 sidecar-kokoro: $(SIDECAR_NET)
 	$(call _SIDECAR_RUN,humux-kokoro,\
@@ -210,8 +210,8 @@ sidecar-searxng: $(SIDECAR_NET)
 
 sidecar-stop:
 	@echo "Stopping all sidecars..."
-	-docker stop humux-embeddings humux-browser humux-whisper humux-kokoro humux-searxng 2>/dev/null
-	-docker rm humux-embeddings humux-browser humux-whisper humux-kokoro humux-searxng 2>/dev/null
+	-docker stop humux-embeddings humux-browser humux-whistle humux-whisper humux-kokoro humux-searxng 2>/dev/null
+	-docker rm humux-embeddings humux-browser humux-whistle humux-whisper humux-kokoro humux-searxng 2>/dev/null
 	-docker network rm $(SIDECAR_NET) 2>/dev/null || true
 	@echo "Done."
 

@@ -39,14 +39,18 @@ services:
     restart: unless-stopped
     profiles: ["embeddings"]
 
-  # Optional Whisper STT sidecar — OpenAI-compatible transcription endpoint.
-  # Start with:  docker compose --profile whisper up
-  # Then set voice.stt_api_base_url to http://whisper:8000/v1 in the admin UI.
-  whisper:
-    image: fedirz/faster-whisper-server:latest-cpu
-    container_name: humux-whisper
+  # CPU-only Whistle STT sidecar — OpenAI-compatible transcription endpoint.
+  # Start with:  docker compose --profile whistle up --build
+  # Then set voice.stt_api_base_url to http://whistle:8000/v1 in the admin UI.
+  whistle:
+    build: ./sidecars/whistle
+    container_name: humux-whistle
     restart: unless-stopped
-    profiles: ["whisper"]
+    profiles: ["whistle"]
+    networks:
+      default:
+        # Keep existing http://whisper:8000/v1 configurations working.
+        aliases: ["whisper"]
 
   # Optional Kokoro TTS sidecar — OpenAI-compatible TTS on port 8880.
   # Start with:  docker compose --profile kokoro up
