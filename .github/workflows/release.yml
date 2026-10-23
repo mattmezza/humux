@@ -64,8 +64,16 @@ jobs:
           IMAGE: humux-release:${{ github.run_id }}-${{ github.run_attempt }}
           TAGS: ${{ steps.meta.outputs.tags }}
         run: |
-          printf '%s\n' "$TAGS" | while IFS= read -r tag; do
-            test -n "$tag" || continue
-            docker tag "$IMAGE" "$tag"
-            docker push "$tag"
+          # Upload layers once, then publish the remaining tags as manifests.
+          mapfile -t tags < <(printf '%s\n' "$TAGS" | sed '/^$/d')
+          test "${#tags[@]}" -gt 0
+          docker tag "$IMAGE" "${tags[0]}"
+          docker push "${tags[0]}"
+          source=$(docker image inspect --format '{{index .RepoDigests 0}}' "$IMAGE")
+          aliases=()
+          for tag in "${tags[@]:1}"; do
+            aliases+=(--tag "$tag")
           done
+          if [ "${#aliases[@]}" -gt 0 ]; then
+            docker buildx imagetools create --prefer-index=false "${aliases[@]}" "$source"
+          fi

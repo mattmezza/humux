@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1
+
 # Shared switch: the builder always needs Go, but runtime installation is optional.
 ARG INSTALL_GO=true
 
@@ -7,7 +9,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential pkg-config \
     && rm -rf /var/lib/apt/lists/*
 ARG WACLI_VERSION=v0.11.0
-RUN CGO_ENABLED=1 CGO_CFLAGS="-Wno-error=missing-braces" \
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=1 CGO_CFLAGS="-Wno-error=missing-braces" \
     GOBIN=/out \
     go install -tags sqlite_fts5 github.com/openclaw/wacli/cmd/wacli@${WACLI_VERSION}
 
@@ -18,6 +22,34 @@ RUN mkdir -p /out/toolchain && \
     if [ "$INSTALL_GO" = "true" ]; then \
       cp -a /usr/local/go /out/toolchain/go; \
     fi
+
+# Export only third-party dependencies: a release version bump does not change
+# requirements.txt, so BuildKit can reuse the installed environment layer.
+FROM python:3.14-slim AS requirements
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+WORKDIR /build
+COPY pyproject.toml uv.lock ./
+ARG INSTALL_WHISPER=false
+ARG INSTALL_FASTEMBED=false
+ARG INSTALL_KOKORO=false
+RUN set -eu; extras=""; \
+    if [ "$INSTALL_WHISPER" = "true" ]; then extras="$extras --extra whisper"; fi; \
+    if [ "$INSTALL_FASTEMBED" = "true" ]; then extras="$extras --extra fastembed"; fi; \
+    if [ "$INSTALL_KOKORO" = "true" ]; then extras="$extras --extra kokoro"; fi; \
+    uv export --locked --no-dev --no-emit-project --no-header $extras -o requirements.txt
+
+# Compile CSS independently of Python/application changes. Cache the CLI download.
+FROM python:3.14-slim AS css-builder
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+RUN ARCH=$(dpkg --print-architecture) && \
+    if [ "$ARCH" = "arm64" ]; then TW_ARCH="linux-arm64"; else TW_ARCH="linux-x64"; fi && \
+    curl -fsSLo /usr/local/bin/tailwindcss "https://github.com/tailwindlabs/tailwindcss/releases/download/v4.1.18/tailwindcss-$TW_ARCH" && \
+    chmod +x /usr/local/bin/tailwindcss
+WORKDIR /build
+COPY api/static/input.css api/static/input.css
+COPY api/templates/ api/templates/
+RUN tailwindcss --input api/static/input.css --output style.css --minify
 
 # ---------- runtime ----------
 FROM python:3.14-slim
@@ -80,36 +112,24 @@ RUN wacli version
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-# Install dependencies (cached layer — only re-runs when lockfile changes)
-COPY pyproject.toml uv.lock ./
-RUN uv sync --no-dev --no-install-project
+# Create ownership before adding files; avoid a late recursive chown that copies
+# the entire environment into a new image layer on every application change.
+RUN groupadd --gid 10001 humux && \
+    useradd --uid 10001 --gid 10001 --create-home --shell /bin/bash humux && \
+    mkdir -p /app/data && chown humux:humux /app /app/data
 
-# Local on-device STT (faster-whisper + ctranslate2, ~350MB). OFF by default;
-# opt out with: docker build --build-arg INSTALL_WHISPER=false
-# When off, set voice.stt_api_base_url to a sidecar (see docker-compose.yml).
+# Download/build caches stay outside the image. Install all selected extras in
+# one transaction so a later uv sync cannot remove an earlier optional extra.
+ENV UV_LINK_MODE=copy
+COPY --from=requirements /build/requirements.txt /tmp/requirements.txt
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv venv /app/.venv && \
+    uv pip sync --python /app/.venv/bin/python --require-hashes /tmp/requirements.txt && \
+    chown -R humux:humux /app/.venv
 ARG INSTALL_WHISPER=false
-RUN if [ "$INSTALL_WHISPER" = "true" ]; then \
-      uv sync --no-dev --no-install-project --extra whisper; \
-    fi
-
-# Local on-device embeddings (fastembed + onnxruntime, ~200MB). OFF by default:
-# the infinity sidecar serves embeddings instead (docker-compose.yml `embeddings`
-# service — the config default points at it). Opt IN for a self-contained image:
-#   docker build --build-arg INSTALL_FASTEMBED=true .
-# (then set memory.embedding.provider to "local" in the admin UI).
 ARG INSTALL_FASTEMBED=false
-RUN if [ "$INSTALL_FASTEMBED" = "true" ]; then \
-      uv sync --no-dev --no-install-project --extra fastembed; \
-    fi
-
-# Offline on-device TTS (Kokoro, issue #84). ON by default so switching the TTS
-# backend to "kokoro" works out of the box (edge-tts stays the default backend).
-# The extra pulls onnxruntime (~200MB) plus the model later (~325MB); opt out for
-# a leaner edge-tts-only image with: docker build --build-arg INSTALL_KOKORO=false .
 ARG INSTALL_KOKORO=false
-RUN if [ "$INSTALL_KOKORO" = "true" ]; then \
-      uv sync --no-dev --no-install-project --extra kokoro; \
-    fi
+# Use --no-sync below to preserve the selected optional extras.
 
 # Bundle full Chromium for the browser tool (Tools tab: browser, issue #16).
 # OFF by default: use the browserless/chrome sidecar instead (see docker-compose.yml,
@@ -123,22 +143,20 @@ RUN if [ "$INSTALL_KOKORO" = "true" ]; then \
 ARG INSTALL_BROWSER=false
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 RUN if [ "$INSTALL_BROWSER" = "true" ]; then \
-      uv run playwright install --with-deps chromium && \
+      uv run --no-sync playwright install --with-deps chromium && \
       chmod -R a+rx /ms-playwright; \
     fi
 
-# Create non-root user
-RUN groupadd --gid 10001 humux && \
-    useradd --uid 10001 --gid 10001 --create-home --shell /bin/bash humux
-
-# Copy application code
-COPY core/ core/
-COPY channels/ channels/
-COPY schema/ schema/
-COPY skills/ skills/
-COPY tools/ tools/
-COPY voice/ voice/
-COPY api/ api/
+# Copy application code and manifests after expensive dependency layers.
+COPY --chown=10001:10001 pyproject.toml uv.lock ./
+COPY --chown=10001:10001 core/ core/
+COPY --chown=10001:10001 channels/ channels/
+COPY --chown=10001:10001 schema/ schema/
+COPY --chown=10001:10001 skills/ skills/
+COPY --chown=10001:10001 tools/ tools/
+COPY --chown=10001:10001 voice/ voice/
+COPY --chown=10001:10001 api/ api/
+COPY --from=css-builder --chown=10001:10001 /build/style.css api/static/style.css
 
 # Prefetch the local embedding model (semantic memory, Tier 2) so it is bundled
 # in the image — no runtime download, works offline. Stored in /app/models,
@@ -146,7 +164,8 @@ COPY api/ api/
 # default in sync with EmbeddingConfig (core/config.py).
 ARG EMBED_MODEL=intfloat/multilingual-e5-small
 RUN if [ "$INSTALL_FASTEMBED" = "true" ]; then \
-      uv run python -m core.embeddings prefetch "${EMBED_MODEL}" /app/models; \
+      uv run --no-sync python -m core.embeddings prefetch "${EMBED_MODEL}" /app/models && \
+      chown -R humux:humux /app/models; \
     fi
 
 # Prefetch Kokoro TTS model + voices when the kokoro backend is enabled (#84),
@@ -158,20 +177,9 @@ RUN if [ "$INSTALL_KOKORO" = "true" ]; then \
       curl -sSL https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx \
         -o /app/models/kokoro/kokoro-v1.0.onnx && \
       curl -sSL https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin \
-        -o /app/models/kokoro/voices-v1.0.bin; \
+        -o /app/models/kokoro/voices-v1.0.bin && \
+      chown -R humux:humux /app/models/kokoro; \
     fi
-
-# Build CSS with Tailwind CSS v4 standalone CLI
-RUN ARCH=$(dpkg --print-architecture) && \
-    if [ "$ARCH" = "arm64" ]; then TW_ARCH="linux-arm64"; else TW_ARCH="linux-x64"; fi && \
-    curl -sSLo /tmp/tailwindcss "https://github.com/tailwindlabs/tailwindcss/releases/download/v4.1.18/tailwindcss-$TW_ARCH" && \
-    chmod +x /tmp/tailwindcss && \
-    /tmp/tailwindcss --input api/static/input.css --output api/static/style.css --minify && \
-    rm /tmp/tailwindcss
-
-# Data directory
-RUN mkdir -p /app/data \
-    && chown -R humux:humux /home/humux /app
 
 USER humux
 
@@ -187,4 +195,4 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
   CMD curl -f "http://localhost:${PORT:-8000}/health" || exit 1
 
-CMD ["uv", "run", "python", "-m", "core.main"]
+CMD ["uv", "run", "--no-sync", "python", "-m", "core.main"]
