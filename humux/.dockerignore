@@ -11,4 +11,6 @@ tailwindcss/
 tests/
 *.md
 !skills/*.md
+# Keep attribution with the bundled CC BY-SA speech sample.
+!voice/samples/README.md
 .tmux-session
