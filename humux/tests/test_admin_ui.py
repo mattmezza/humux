@@ -6,6 +6,7 @@ import logging
 from types import SimpleNamespace
 from typing import Any, cast
 
+import pytest
 from fastapi.testclient import TestClient
 
 from api.admin import AgentState, _should_capture_log_record, create_admin_app
@@ -476,35 +477,80 @@ class TestVoicePreview:
 
 
 class TestVoiceTestStt:
-    def test_test_stt_local_round_trip(self):
-        # #297: the endpoint synthesizes the fixed test phrase via edge-tts,
-        # then feeds it through the pipeline's local transcription method —
-        # the same one real voice messages use.
-        class _VoiceStub:
-            stt_api_base_url = ""
-            stt_model = "base"
-            _whisper = object()  # non-None stand-in: "local STT is loaded"
+    @pytest.mark.parametrize("mode", ["local", "remote"])
+    def test_bundled_speech_uses_normal_pipeline_without_tts(self, mode):
+        from unittest.mock import AsyncMock, Mock
 
-            async def _synthesize_edge(self, text, voice):
-                assert "quick brown fox" in text.lower()
-                return b"FAKE-MP3"
+        from voice.pipeline import VoicePipeline
 
-            def _transcribe_sync(self, audio_bytes):
-                assert audio_bytes == b"FAKE-MP3"
-                return "the quick brown fox jumps over the lazy dog"
-
-        client = _client(agent=cast(Any, SimpleNamespace(voice=_VoiceStub())))
-        resp = client.post("/voice/test-stt", json={"mode": "local"}, headers=AUTH)
+        pipeline = VoicePipeline.__new__(VoicePipeline)
+        pipeline.stt_api_base_url = "http://stt"
+        pipeline.stt_model = "base"
+        pipeline._whisper = object()
+        pipeline._transcribe_remote = AsyncMock(return_value="zero one two")
+        pipeline._transcribe_sync = Mock(return_value="zero one two")
+        pipeline._synthesize_edge = AsyncMock(side_effect=AssertionError("TTS called"))
+        client = _client(agent=cast(Any, SimpleNamespace(voice=pipeline)))
+        resp = client.post("/voice/test-stt", json={"mode": mode}, headers=AUTH)
         assert resp.status_code == 200
         data = resp.json()
-        assert data == {
-            "ok": True,
-            "mode": "local",
-            "text": "the quick brown fox jumps over the lazy dog",
-            "duration_ms": data["duration_ms"],
-            "model": "base",
-        }
-        assert isinstance(data["duration_ms"], int)
+        assert data["ok"] is True
+        assert data["text"] == "zero one two"
+        assert data["mode"] == mode
+        transcriber = pipeline._transcribe_remote if mode == "remote" else pipeline._transcribe_sync
+        audio = transcriber.call_args.args[0]
+        assert audio.startswith(b"OggS")
+        assert b"OpusHead" in audio
+        pipeline._synthesize_edge.assert_not_called()
+        if mode == "local":
+            pipeline._transcribe_remote.assert_not_called()
+        else:
+            pipeline._transcribe_sync.assert_not_called()
+
+    def test_sample_failure_does_not_call_stt(self, monkeypatch, tmp_path):
+        from unittest.mock import AsyncMock
+
+        monkeypatch.setattr("api.admin._STT_TEST_SAMPLE", tmp_path / "missing.ogg")
+        pipeline = SimpleNamespace(transcribe=AsyncMock())
+        client = _client(agent=cast(Any, SimpleNamespace(voice=pipeline)))
+        resp = client.post("/voice/test-stt", json={}, headers=AUTH)
+        assert resp.status_code == 503
+        assert "Test audio failed" in resp.json()["detail"]
+        assert "STT was not tested" in resp.json()["detail"]
+        pipeline.transcribe.assert_not_called()
+
+    @pytest.mark.parametrize("result", [RuntimeError("sidecar unavailable"), ""])
+    def test_stt_failure(self, result):
+        from unittest.mock import AsyncMock
+
+        transcribe = (
+            AsyncMock(side_effect=result)
+            if isinstance(result, Exception)
+            else AsyncMock(return_value=result)
+        )
+        client = _client(
+            agent=cast(Any, SimpleNamespace(voice=SimpleNamespace(transcribe=transcribe)))
+        )
+        resp = client.post("/voice/test-stt", json={}, headers=AUTH)
+        assert resp.status_code == 200
+        assert resp.json()["ok"] is False
+        assert resp.json()["error"].startswith("STT failed:")
+
+    def test_explicit_remote_failure_does_not_fall_back(self):
+        from unittest.mock import AsyncMock, Mock
+
+        from voice.pipeline import VoicePipeline
+
+        pipeline = VoicePipeline.__new__(VoicePipeline)
+        pipeline.stt_api_base_url = "http://stt"
+        pipeline._whisper = object()
+        pipeline._transcribe_remote = AsyncMock(side_effect=RuntimeError("sidecar unavailable"))
+        pipeline._transcribe_sync = Mock()
+        client = _client(agent=cast(Any, SimpleNamespace(voice=pipeline)))
+        data = client.post("/voice/test-stt", json={"mode": "remote"}, headers=AUTH).json()
+        assert data["ok"] is False
+        assert "sidecar unavailable" in data["error"]
+        pipeline._transcribe_sync.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

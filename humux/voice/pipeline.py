@@ -262,18 +262,29 @@ class VoicePipeline:
     # -- STT ----------------------------------------------------------------
 
     async def transcribe(
-        self, audio_bytes: bytes, *, loop: asyncio.AbstractEventLoop | None = None
+        self,
+        audio_bytes: bytes,
+        *,
+        loop: asyncio.AbstractEventLoop | None = None,
+        mode: str | None = None,
     ) -> str:
         """Transcribe audio bytes (OGG/WAV/MP3) to text.
 
         Remote STT API takes priority when configured; falls back to local
         faster-whisper.  Local path is synchronous and CPU-bound — runs in the
         default executor to avoid blocking the event loop.
+        An explicit mode tests that backend without fallback.
         """
-        if self.stt_api_base_url:
+        if mode not in (None, "local", "remote"):
+            raise ValueError("Unknown STT mode")
+        if mode == "remote" and not self.stt_api_base_url:
+            raise RuntimeError("Remote STT URL isn't configured — set it above and save first")
+        if self.stt_api_base_url and mode != "local":
             try:
                 return await self._transcribe_remote(audio_bytes)
             except Exception:
+                if mode == "remote":
+                    raise
                 log.exception("Remote STT failed, falling back to local")
         if self._whisper is None:
             raise RuntimeError(

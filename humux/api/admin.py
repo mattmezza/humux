@@ -1174,10 +1174,8 @@ class STTTestIn(BaseModel):
     mode: str = Field("local", max_length=16)  # "local" or "remote"; anything else → local
 
 
-# Fixed phrase for the STT round-trip test (#297) — same text every run so
-# results (accuracy, timing) are comparable across local/remote and over time.
-_STT_TEST_PHRASE = "The quick brown fox jumps over the lazy dog"
-
+# Bundled real speech; see voice/samples/README.md for provenance and license.
+_STT_TEST_SAMPLE = Path(__file__).resolve().parent.parent / "voice/samples/test-stt.ogg"
 
 # ---------------------------------------------------------------------------
 # Auth dependency
@@ -3313,50 +3311,37 @@ def create_admin_app(
 
     @app.post("/voice/test-stt", dependencies=[Depends(auth)])
     async def voice_test_stt(body: STTTestIn) -> dict:
-        """Round-trip STT test (#297): synthesize a fixed phrase via edge-tts,
-        then transcribe it through the same VoicePipeline methods that process
-        real voice messages, forced to the requested mode — so a misconfigured
-        remote STT (bad URL, unreachable sidecar, format mismatch) surfaces here
-        instead of at the next real voice message."""
+        """Transcribe bundled speech through the normal pipeline, without TTS."""
         agent = agent_state.agent
         pipeline = getattr(agent, "voice", None) if agent else None
         if pipeline is None:
             raise HTTPException(
-                503, "Voice pipeline not loaded — enable TTS and restart the agent."
+                503,
+                "STT failed: voice pipeline not loaded — check voice settings "
+                "and restart the agent.",
             )
         mode = "remote" if body.mode == "remote" else "local"
-
         try:
-            audio = await pipeline._synthesize_edge(_STT_TEST_PHRASE, None)
-        except Exception as exc:
+            audio = _STT_TEST_SAMPLE.read_bytes()
+            if not audio:
+                raise ValueError("bundled clip is empty")
+        except (OSError, ValueError) as exc:
             raise HTTPException(
-                503, f"Couldn't generate test audio (edge-tts unavailable): {exc}"
+                503,
+                "Test audio failed: bundled speech sample could not be loaded; "
+                "STT was not tested. Restore voice/samples/test-stt.ogg.",
             ) from exc
 
         start = time.monotonic()
         try:
-            if mode == "remote":
-                if not pipeline.stt_api_base_url:
-                    raise HTTPException(
-                        400, "Remote STT URL isn't configured — set it above and save first."
-                    )
-                text = await pipeline._transcribe_remote(audio)
-            else:
-                if pipeline._whisper is None:
-                    raise HTTPException(
-                        400,
-                        "Local STT (Whisper) isn't loaded — install faster-whisper or switch "
-                        "to remote.",
-                    )
-                loop = asyncio.get_running_loop()
-                text = await loop.run_in_executor(None, pipeline._transcribe_sync, audio)
-        except HTTPException:
-            raise
+            text = await pipeline.transcribe(audio, mode=mode)
+            if not text.strip():
+                raise ValueError("No speech recognized in the bundled sample")
         except Exception as exc:
             return {
                 "ok": False,
                 "mode": mode,
-                "error": str(exc),
+                "error": f"STT failed: {str(exc) or type(exc).__name__}",
                 "duration_ms": int((time.monotonic() - start) * 1000),
             }
 
