@@ -1,7 +1,7 @@
 .PHONY: test build release
 
 test:
-	uv venv --python 3.12
+	uv venv --python 3.12 --allow-existing
 	uv pip install -r requirements-dev.txt
 	uv run --no-project ruff check .
 	uv run --no-project pytest -q
