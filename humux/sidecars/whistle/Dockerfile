@@ -13,7 +13,10 @@ COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 USER whistle
 # Fetch and load the native engine + model at build time, so startup is offline.
-RUN python -c 'from needle import Whistle; Whistle()'
+# Remove download caches in the same layer: Needle keeps its own runtime copies.
+RUN python -c 'from needle import Whistle; Whistle()' \
+    && rm -rf /home/whistle/.cache/huggingface
+ENV HF_HUB_OFFLINE=1
 COPY server.py ./
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
