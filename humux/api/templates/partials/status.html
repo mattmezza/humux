@@ -1,22 +1,7 @@
-{# Status bar partial — loaded via HTMX into #status-bar #}
+{# Identity and status — refreshed via HTMX into #status-badge. #}
 {% set status_label = status or (running and 'RUNNING' or 'STOPPED') %}
-{% set status_message = 'Your agents are up and running.' %}
-{% if status_label == 'STARTING' %}
-  {% set status_message = 'Your agents are starting...' %}
-{% elif status_label == 'RESTARTING' %}
-  {% set status_message = 'Your agents are restarting...' %}
-{% elif status_label == 'STOPPING' %}
-  {% set status_message = 'Your agents are stopping...' %}
-{% elif status_label == 'STOPPED' %}
-  {% set status_message = 'Your agents are stopped.' %}
-{% endif %}
-{% if status_label == 'RUNNING' %}
-<button class="badge-ok" type="button" onclick="openAgentModal()" style="cursor: pointer;">{{ status_label }}</button>
-{% elif status_label in ['STARTING', 'RESTARTING'] %}
-<button class="badge-warn" type="button" onclick="openAgentModal()" style="cursor: pointer;">{{ status_label }}</button>
-{% elif status_label == 'STOPPING' %}
-<button class="badge-warn" type="button" onclick="openAgentModal()" style="cursor: pointer;">{{ status_label }}</button>
-{% else %}
-<button class="badge-off" type="button" onclick="openAgentModal()" style="cursor: pointer;">{{ status_label }}</button>
-{% endif %}
-<span class="text-muted text-xs">{{ status_message }}</span>
+<span class="agent-name">{{ agent_name }}</span>
+<button class="status-control" type="button" onclick="openAgentModal()"
+        aria-label="Agent status: {{ status_label }}. Open agent controls" title="{{ status_label }} — open agent controls">
+  <span class="status-dot" data-status="{{ status_label }}" aria-hidden="true"></span>
+</button>

@@ -89,6 +89,8 @@ def test_page_renders_with_agent_name(tmp_path) -> None:
     resp = _client(tmp_path).get(f"/t/{token}")
     assert resp.status_code == 200
     assert "Ada" in resp.text
+    assert 'class="brand" target="_blank" rel="noopener"' in resp.text
+    assert 'fill="#6c9"' in resp.text
     assert "Nothing here yet" in resp.text
     assert resp.headers["cache-control"] == "no-store"
     assert "noindex" in resp.headers["x-robots-tag"]

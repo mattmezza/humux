@@ -1862,6 +1862,7 @@ def create_admin_app(
             status = "RUNNING"
         return _render_partial(
             "partials/status.html",
+            agent_name=await config_store.get("agent.name") or "humux",
             running=running,
             status=status,
             channels=channels,
