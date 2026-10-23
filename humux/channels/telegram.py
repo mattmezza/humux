@@ -183,6 +183,7 @@ class TelegramChannel:
         # This bot's own identity, cached lazily from the first update (the Bot
         # API has it only once polling is initialised). Used to detect @mentions
         # and replies aimed at this bot in group rooms (#30).
+        self._voice_context_tasks: dict[str, asyncio.Task] = {}
         self._bot_id: int | None = None
         self._bot_username: str | None = None
         self.app = Application.builder().token(config.bot_token).concurrent_updates(8).build()
@@ -570,16 +571,26 @@ class TelegramChannel:
                     "Voice note not addressed — transcribing for context only (chat=%s)",
                     chat_id,
                 )
-                asyncio.create_task(
+                previous = self._voice_context_tasks.get(str(chat_id))
+                task = asyncio.create_task(
                     self._record_voice_for_context(
                         voice_msg.file_id,
                         convo_user,
                         str(chat_id),
                         prefix,
+                        previous,
                     ),
                     name=f"tg-voice-context-{convo_user}",
                 )
+                self._voice_context_tasks[str(chat_id)] = task
+
+                def forget(done):
+                    if self._voice_context_tasks.get(str(chat_id)) is done:
+                        del self._voice_context_tasks[str(chat_id)]
+
+                task.add_done_callback(forget)
                 return
+            await self._wait_for_voice_context(chat_id)
             await self.agent.process(
                 message=f"{prefix}(voice message)",
                 channel=self.channel_name,
@@ -637,6 +648,7 @@ class TelegramChannel:
         # Respond-gate: record a placeholder for an image we're staying silent
         # on instead of downloading it (#30).
         if not routing["respond"]:
+            await self._wait_for_voice_context(chat_id)
             label = f"{caption} (image)" if caption else "(image)"
             await self.agent.process(
                 message=f"{prefix}{label}",
@@ -1171,6 +1183,12 @@ class TelegramChannel:
             )
         return allowed
 
+    async def _wait_for_voice_context(self, chat_id: int | str) -> None:
+        """Keep later turns behind voice context without blocking other chats."""
+        pending = self._voice_context_tasks.get(str(chat_id))
+        if pending is not None:
+            await asyncio.shield(pending)
+
     async def _handle_text(
         self,
         text: str,
@@ -1180,6 +1198,9 @@ class TelegramChannel:
         addressed: bool = True,
         message_id: int | None = None,
     ) -> None:
+        command = text.strip().split(maxsplit=1)
+        if not command or command[0].lower().split("@")[0] != "/stop":
+            await self._wait_for_voice_context(chat_id)
         # Respond-gate silent path (#30): record the turn for context, no typing
         # indicator, no reply.
         if not respond:
@@ -1208,6 +1229,7 @@ class TelegramChannel:
         user_id: str,
         chat_id: int | str,
         prefix: str,
+        previous: asyncio.Task | None = None,
     ) -> None:
         """Transcribe an unaddressed voice note and record it for context only (#328).
 
@@ -1218,6 +1240,8 @@ class TelegramChannel:
         pipeline shows up in the history instead of looking like a voice note nobody
         mentioned.
         """
+        if previous is not None:
+            await asyncio.shield(previous)
         content = f"{prefix}{_VOICE_CONTEXT_FAILED}"
         try:
             file = await self.app.bot.get_file(file_id)
@@ -1246,8 +1270,7 @@ class TelegramChannel:
                 content = f"{prefix}[voice] {transcript}"
             else:
                 log.warning(
-                    "Unaddressed voice note transcribed empty (chat=%s) — recording "
-                    "placeholder",
+                    "Unaddressed voice note transcribed empty (chat=%s) — recording placeholder",
                     chat_id,
                 )
         try:
@@ -1269,6 +1292,7 @@ class TelegramChannel:
         prefix: str,
         message_id: int | None = None,
     ) -> None:
+        await self._wait_for_voice_context(chat_id)
         async with self._typing(chat_id, message_id), self._progress(chat_id):
             file = await self.app.bot.get_file(file_id)
             audio_bytes = await file.download_as_bytearray()
@@ -1314,6 +1338,7 @@ class TelegramChannel:
     ) -> None:
         from core.models import IMAGE_MIME_TYPES, Attachment
 
+        await self._wait_for_voice_context(chat_id)
         async with self._typing(chat_id, message_id), self._progress(chat_id):
             attachments: list[Attachment] = []
             for file_id, mime_type in file_ids:
