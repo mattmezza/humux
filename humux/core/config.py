@@ -521,6 +521,7 @@ class SubagentsConfig(BaseModel):
 
     enabled: bool = True
     recursion_depth: int = 3  # max nesting; spawns are refused beyond this
+    max_continuations: int = 3  # explicit resumes per run; zero disables continuation
     max_steps: int = 12  # max tool-call rounds per run (hard stop)
     # Approx token ceiling per run. Counted as input+output EVERY round, and on
     # OpenAI-shaped providers `input_tokens` includes the whole re-sent prompt

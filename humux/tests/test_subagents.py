@@ -1736,3 +1736,263 @@ def test_derive_label_prefers_the_model_label_then_the_task() -> None:
     assert derive_label("", "look up the swiss price of an iPhone") == "look up the swiss"
     assert derive_label("", "", 2) == "task2"
     assert len(derive_label("z" * 99, "")) == 32
+
+
+@pytest.mark.asyncio
+async def test_partial_continuation_preserves_history_without_replaying_tools(agent, monkeypatch):
+    agent.config.subagents.max_steps = 1
+    calls = []
+
+    async def execute(call, *args):
+        calls.append(call.id)
+        return {"file": "/tmp/prior-work"}
+
+    monkeypatch.setattr(agent, "_execute_tool", execute)
+    first = LLMToolCall(id="executed", name="web_search", arguments={})
+    pending = LLMToolCall(id="pending", name="web_search", arguments={})
+    agent.llm = _ScriptedLLM(
+        [
+            LLMResponse(text="", tool_calls=[first]),
+            LLMResponse(text="", tool_calls=[pending]),
+            LLMResponse(text="Found evidence; finish report.", tool_calls=[]),
+            LLMResponse(text="finished", tool_calls=[]),
+        ]
+    )
+    result = await agent.run_subagent(task="research")
+    assert result["status"] == "partial"
+    assert result["steps_completed"] == 1 and result["budget_exhausted"] == "steps"
+    run = agent.subagents.get(result["run_id"])
+    prior = list(run.messages)
+    resumed = await agent.continue_subagent(run.run_id, {}, "", "", {})
+    assert resumed["status"] == "done" and resumed["result"] == "finished"
+    assert run.messages[: len(prior)] == prior
+    assert "rather than starting over" in run.messages[-1]["content"]
+    assert calls == ["executed"]
+    assert run.continuations == 1 and run.steps == 0
+
+
+@pytest.mark.asyncio
+async def test_continuation_owner_limit_and_cancellation(agent, monkeypatch):
+    run = SubagentRun(
+        run_id="partial",
+        agent="",
+        task="t",
+        status="partial",
+        origin_channel="cli",
+        origin_user_id="u",
+        origin_chat_id="c",
+        messages=[{"role": "user", "content": "prior work"}],
+    )
+    agent.subagents.register(run)
+    state = {"origin": {"channel": "cli", "user_id": "u", "chat_id": "c"}}
+    denied = await agent.continue_subagent(run.run_id, {}, "cli", "intruder", {})
+    assert "unauthorized" in denied["error"] and run.status == "partial"
+    wrong_identity = {**state, "agent_obj": Agent(name="other")}
+    denied = await agent.continue_subagent(run.run_id, {}, "cli", "u", wrong_identity)
+    assert "unauthorized" in denied["error"]
+    wrong_parent = {**state, "run_id": "sibling"}
+    denied = await agent.continue_subagent(run.run_id, {}, "cli", "u", wrong_parent)
+    assert "unauthorized" in denied["error"]
+    agent.config.subagents.max_continuations = 0
+    assert "limit" in (await agent.continue_subagent(run.run_id, {}, "cli", "u", state))["error"]
+    agent.config.subagents.max_continuations = 1
+    entered = asyncio.Event()
+
+    async def blocked(*args):
+        entered.set()
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(agent, "_run_subagent_loop", blocked)
+    await agent.continue_subagent(run.run_id, {"background": True}, "cli", "u", state)
+    await entered.wait()
+    assert agent.subagents.cancel(run.run_id)
+    with pytest.raises(asyncio.CancelledError):
+        await run._task
+    assert run.status == "cancelled"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "change", ["disabled", "deleted", "tools", "accounts", "repos", "model", "depth"]
+)
+async def test_continuation_revalidates_live_permissions(agent, monkeypatch, change):
+    import copy
+
+    child = Agent(
+        name="worker",
+        tools=["bash", "web_search"],
+        email_accounts=[{"account": "mail", "access_level": "read_write"}],
+        tool_config={"gh": {"repos": ["org/repo", "org/other"]}},
+    )
+    live = child
+
+    async def load(name):
+        return live
+
+    monkeypatch.setattr(agent, "_load_agent", load)
+    agent.config.subagents.allowed_models = ["deepseek:chosen"]
+    prepared = await agent._prepare_subagent_run(
+        task="work", agent_name="worker", parent_state={}, model="chosen"
+    )
+    run, _, _ = prepared
+    run.status = "partial"
+    run.messages = [{"role": "user", "content": "sensitive prior work"}]
+    agent.subagents.register(run)
+    live = copy.deepcopy(child)
+    if change == "disabled":
+        live.enabled = False
+    elif change == "deleted":
+        live = None
+    elif change == "tools":
+        live.tools = ["web_search"]
+    elif change == "accounts":
+        live.email_accounts = []
+    elif change == "repos":
+        live.tool_config = {"gh": {"repos": ["org/repo"]}}
+    elif change == "model":
+        agent.config.subagents.allowed_models = []
+    else:
+        agent.config.subagents.recursion_depth = 0
+    result = await agent.continue_subagent(run.run_id, {}, "", "", {}, admin=True)
+    assert "error" in result
+    assert run.status == "partial" and run.continuations == 0
+
+
+@pytest.mark.asyncio
+async def test_nested_admin_continuation_acquires_chat_slot(agent, monkeypatch):
+    agent.config.subagents.max_concurrent = 1
+    run = SubagentRun(
+        run_id="nested",
+        agent="",
+        task="t",
+        status="partial",
+        depth=2,
+        origin_channel="cli",
+        origin_chat_id="c",
+        messages=[{"role": "user", "content": "prior"}],
+    )
+    agent.subagents.register(run)
+    entered = asyncio.Event()
+
+    async def inner(task, child, state, resumed):
+        assert resumed.depth == state["depth"] == 2
+        entered.set()
+        return "finished"
+
+    monkeypatch.setattr(agent, "_run_subagent_loop_inner", inner)
+    key = agent._subagent_chat_key("cli", "c")
+    async with agent.subagents.slot(key, lambda: 1):
+        result = await agent.continue_subagent(
+            run.run_id, {"background": True}, "", "", {}, admin=True
+        )
+        assert result["status"] == "running"
+        await asyncio.sleep(0.01)
+        assert not entered.is_set()
+    await run._task
+    assert entered.is_set() and run.status == "done"
+
+
+@pytest.mark.asyncio
+async def test_continuation_resets_breakers_but_preserves_completed_writes(agent, monkeypatch):
+    run = SubagentRun(
+        run_id="retry",
+        agent="",
+        task="t",
+        status="partial",
+        messages=[{"role": "user", "content": "prior"}],
+    )
+    run.child_state = agent._new_request_state()
+    call = LLMToolCall(id="retry-call", name="web_search", arguments={"query": "same"})
+    backend = AsyncMock(return_value={"error": "temporary outage"})
+    monkeypatch.setattr(agent, "_execute_tool_inner", backend)
+    for _ in range(3):
+        await agent._execute_tool(call, "system", "u", run.child_state)
+    assert run.child_state["failure_counts"] and run.child_state["error_streaks"]
+    run.child_state["executed_writes"].add("completed-write")
+    run.child_state["approvals"]["old"] = True
+    agent.subagents.register(run)
+    backend.return_value = {"result": "recovered"}
+
+    async def resumed_loop(task, child, state, resumed):
+        assert state["executed_writes"] == {"completed-write"}
+        assert state["approvals"] == {}
+        assert await agent._execute_tool(call, "system", "u", state) == {"result": "recovered"}
+        return "finished"
+
+    monkeypatch.setattr(agent, "_run_subagent_loop", resumed_loop)
+    result = await agent.continue_subagent(run.run_id, {}, "", "", {})
+    assert result["status"] == "done" and backend.await_count == 4
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("revoke", ["trust", "spawn_tool", "parent_disabled", "parent_deleted"])
+async def test_continuation_revalidates_parent_delegation(agent, monkeypatch, revoke):
+    import copy
+
+    parent = Agent(name="parent", spawnable_agents=["worker"])
+    child = Agent(name="worker")
+    live_parent = parent
+
+    async def load(name):
+        return live_parent if name == "parent" else child
+
+    monkeypatch.setattr(agent, "_load_agent", load)
+    run, _, _ = await agent._prepare_subagent_run(
+        task="work", agent_name="worker", parent_state={"agent_obj": parent}
+    )
+    run.status = "partial"
+    run.messages = [{"role": "user", "content": "prior"}]
+    agent.subagents.register(run)
+    live_parent = copy.deepcopy(parent)
+    if revoke == "trust":
+        live_parent.spawnable_agents = []
+    elif revoke == "spawn_tool":
+        live_parent.tools = ["web_search"]
+    elif revoke == "parent_disabled":
+        live_parent.enabled = False
+    else:
+        live_parent = None
+    result = await agent.continue_subagent(run.run_id, {}, "", "", {}, admin=True)
+    assert "error" in result and run.status == "partial"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("limit", [1, 3])
+async def test_concurrent_continuations_recheck_limit_after_validation(agent, monkeypatch, limit):
+    agent.config.subagents.max_continuations = limit
+    run = SubagentRun(
+        run_id="race",
+        agent="",
+        task="t",
+        status="partial",
+        messages=[{"role": "user", "content": "prior"}],
+    )
+    agent.subagents.register(run)
+    entered = [asyncio.Event(), asyncio.Event()]
+    release = [asyncio.Event(), asyncio.Event()]
+    count = 0
+
+    async def prepare(**kwargs):
+        nonlocal count
+        index = count
+        count += 1
+        entered[index].set()
+        await release[index].wait()
+        return run, None, {}
+
+    async def partial(*args):
+        run.progress = "partial"
+        return "more remains"
+
+    monkeypatch.setattr(agent, "_prepare_subagent_run", prepare)
+    monkeypatch.setattr(agent, "_run_subagent_loop", partial)
+    first = asyncio.create_task(agent.continue_subagent(run.run_id, {}, "", "", {}))
+    await entered[0].wait()
+    second = asyncio.create_task(agent.continue_subagent(run.run_id, {}, "", "", {}))
+    await entered[1].wait()
+    release[0].set()
+    assert (await first)["status"] == "partial"
+    release[1].set()
+    error = (await second)["error"]
+    assert "limit" in error if limit == 1 else "already continued" in error
+    assert run.continuations == 1 and run.status == "partial"
