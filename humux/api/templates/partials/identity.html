@@ -25,7 +25,11 @@
   sttTestOk: false,
   testStt() {
     const key = localStorage.getItem('admin_api_key') || '';
+    const controller = new AbortController();
+    // Allow the 300s remote STT deadline plus connection and response overhead.
+    const timer = setTimeout(() => controller.abort(), 320000);
     return fetch('/voice/test-stt', {
+      signal: controller.signal,
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
       body: JSON.stringify({ mode: this.sttMode })
@@ -38,7 +42,13 @@
           ? `✓ ${d.mode} STT: \"${d.text}\" (${(d.duration_ms / 1000).toFixed(1)}s)`
           : `✗ ${d.mode} STT: ${d.error || 'failed'}`;
       })
-      .catch(e => { this.sttTestOk = false; this.sttTestResult = e.message; });
+      .catch(e => {
+        this.sttTestOk = false;
+        this.sttTestResult = e.name === 'AbortError'
+          ? 'STT test timed out after 320 seconds. Check the STT service and try again.'
+          : e.message;
+      })
+      .finally(() => clearTimeout(timer));
   }
 }">
   <h2 class="text-base mb-1">Voice</h2>
@@ -84,7 +94,7 @@
 
     <div>
       <button type="button" class="btn btn-sm" @click="withLoading($event.currentTarget, () => testStt())">Test STT</button>
-      <p class="text-muted text-xs mt-1">Speaks a fixed test phrase with edge-tts, then transcribes it with the selected STT engine above — no need to send a real voice message.</p>
+      <p class="text-muted text-xs mt-1">Transcribes bundled speech (zero, one, two) with the selected STT engine above — no TTS service needed — no need to send a real voice message.</p>
       <template x-if="sttTestResult">
         <div :class="sttTestOk ? 'alert-success' : 'alert-error'" class="mt-2 text-xs" x-text="sttTestResult"></div>
       </template>
