@@ -1,6 +1,7 @@
 #!/bin/sh
 # Run inside the built image as its default non-root user; see deployment docs.
 set -eu
+[ "$(id -u)" != 0 ]
 if [ "${1:-enabled}" = disabled ]; then
     if command -v go >/dev/null 2>&1; then
         echo 'Go must be absent from an INSTALL_GO=false image' >&2
@@ -10,6 +11,7 @@ if [ "${1:-enabled}" = disabled ]; then
     exit 0
 fi
 
+wacli version
 go version
 case "$(go env GOVERSION)" in
     go1.25.*) ;;

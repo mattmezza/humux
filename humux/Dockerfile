@@ -24,21 +24,6 @@ FROM python:3.14-slim
 
 WORKDIR /app
 
-# Go builds use the coding harness, with the same permissions as Node builds.
-# Both caches live in the existing writable /app/data volume (non-root friendly).
-ARG INSTALL_GO
-COPY --from=wacli-builder /out/toolchain/ /usr/local/
-ENV PATH="/usr/local/go/bin:/app/data/go/bin:${PATH}" \
-    GOPATH=/app/data/go \
-    GOCACHE=/app/data/go-build-cache \
-    GOTOOLCHAIN=local
-# Include the C compiler and pkg-config for CGO repos when Go is installed.
-RUN if [ "$INSTALL_GO" = "true" ]; then \
-      apt-get update && apt-get install -y --no-install-recommends build-essential pkg-config \
-      && rm -rf /var/lib/apt/lists/* \
-      && go version; \
-    fi
-
 # System deps (ffmpeg for voice pipeline, curl for health checks, sqlite3 for memory)
 # The bash-tool allowlist (core/executor.py ALLOWED_PREFIXES) promises these CLIs
 # exist — keep this list in sync with it: git (coding harness clone/commit),
@@ -168,6 +153,21 @@ RUN ARCH=$(dpkg --print-architecture) && \
     chmod +x /tmp/tailwindcss && \
     /tmp/tailwindcss --input api/static/input.css --output api/static/style.css --minify && \
     rm /tmp/tailwindcss
+
+# Keep the variant-specific layers last so both variants share system/Python/Node
+# dependencies and application layers. Only the toolchain and CGO tools differ.
+ARG INSTALL_GO
+COPY --from=wacli-builder /out/toolchain/ /usr/local/
+ENV PATH="/usr/local/go/bin:/app/data/go/bin:${PATH}" \
+    GOPATH=/app/data/go \
+    GOCACHE=/app/data/go-build-cache \
+    GOTOOLCHAIN=local
+# Include the C compiler and pkg-config for CGO repos when Go is installed.
+RUN if [ "$INSTALL_GO" = "true" ]; then \
+      apt-get update && apt-get install -y --no-install-recommends build-essential pkg-config \
+      && rm -rf /var/lib/apt/lists/* \
+      && go version; \
+    fi
 
 # Data directory
 RUN mkdir -p /app/data \
