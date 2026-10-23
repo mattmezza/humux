@@ -174,7 +174,8 @@ class Agent:
     # model it runs on, never carries its own credentials.
     llm: dict = field(default_factory=dict)
     # This agent's Telegram group-room behaviour (#30, moved per-agent in #133).
-    # Shape: {"enabled": bool, "reply_when_addressed_only": bool, "ignore_bots": bool}.
+    # Shape: {"enabled": bool, "reply_when_addressed_only": bool, "ignore_bots": bool,
+    # "transcribe_unaddressed_voice": bool}.
     # Empty = group rooms off (the GroupChatConfig defaults). Built into a
     # TelegramConfig for this agent's bot in ``core.main``.
     group_chat: dict = field(default_factory=dict)
@@ -364,10 +365,12 @@ def _as_chat_settings(value: object) -> dict:
 def _as_group_chat(value: object) -> dict:
     """Coerce a frontmatter / form / DB-column value into group-room settings (#133).
 
-    Shape: ``{"enabled": bool, "reply_when_addressed_only": bool, "ignore_bots": bool}``.
+    Shape: ``{"enabled": bool, "reply_when_addressed_only": bool, "ignore_bots": bool,
+    "transcribe_unaddressed_voice": bool}``.
     Accepts a parsed dict or a JSON string. Returns ``{}`` when group rooms are off
     (the default), so the stored value stays empty for the common case; only an
-    enabled config is persisted. A malformed value never breaks load.
+    enabled config is persisted. A malformed value never breaks load; a key missing
+    from an older stored config keeps its default (transcribe on, #328).
     """
     if isinstance(value, str) and value.strip():
         try:
@@ -380,6 +383,7 @@ def _as_group_chat(value: object) -> dict:
         "enabled": True,
         "reply_when_addressed_only": bool(value.get("reply_when_addressed_only", True)),
         "ignore_bots": bool(value.get("ignore_bots", True)),
+        "transcribe_unaddressed_voice": bool(value.get("transcribe_unaddressed_voice", True)),
     }
 
 
@@ -975,11 +979,12 @@ Extra prose in the body.
     assert a.tools == ["bash", "send_message"], a.tools
     assert a.bot_token == "123:ABC", a.bot_token
     assert a.allowed_user_ids == [111, 222], a.allowed_user_ids
-    # #133: per-agent group-room settings; enabled kept, ignore_bots defaults to True.
+    # #133: per-agent group-room settings; enabled kept, later keys default on (#328).
     assert a.group_chat == {
         "enabled": True,
         "reply_when_addressed_only": False,
         "ignore_bots": True,
+        "transcribe_unaddressed_voice": True,
     }, a.group_chat
     # A disabled/absent group_chat normalises to {} (the off default).
     assert _as_group_chat({"enabled": False}) == {}

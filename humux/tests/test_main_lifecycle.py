@@ -156,6 +156,7 @@ async def test_migrate_telegram_to_default_agent(tmp_path) -> None:
         "enabled": True,
         "reply_when_addressed_only": False,
         "ignore_bots": True,
+        "transcribe_unaddressed_voice": True,
     }
     # Staged keys are cleared, so a restart won't re-run or relaunch a global bot.
     assert not await cs.get("channels.telegram.bot_token")

@@ -67,6 +67,12 @@ _MENU_COMMANDS = [
 # a deliberate repeat seconds later still counts as a new turn.
 _DEDUP_WINDOW_S = 3.0
 
+# Recorded in place of an unaddressed voice note whose audio could not be
+# transcribed (#328). Deliberately distinct from the plain "(voice message)"
+# placeholder: one means "we chose not to load it", this one means "we tried and
+# failed" — the difference is what makes a broken STT pipeline visible (#325).
+_VOICE_CONTEXT_FAILED = "(voice message — could not transcribe)"
+
 # Callback data prefix for approval buttons
 _APPROVE_PREFIX = "perm_approve:"
 _DENY_PREFIX = "perm_deny:"
@@ -177,6 +183,7 @@ class TelegramChannel:
         # This bot's own identity, cached lazily from the first update (the Bot
         # API has it only once polling is initialised). Used to detect @mentions
         # and replies aimed at this bot in group rooms (#30).
+        self._voice_context_tasks: dict[str, asyncio.Task] = {}
         self._bot_id: int | None = None
         self._bot_username: str | None = None
         self.app = Application.builder().token(config.bot_token).concurrent_updates(8).build()
@@ -548,10 +555,42 @@ class TelegramChannel:
 
         reply_context = self._reply_context(message)
         prefix = f"{routing['speaker_tag']}{reply_context}"
-        # Respond-gate: a voice message we're staying silent on is recorded as a
-        # cheap placeholder — no point downloading/transcribing audio we won't
-        # answer (#30).
+        # Respond-gate: stay silent on a voice note that is not addressed to us (#30).
+        # Silence is not the same as blindness: the audio still holds conversation the
+        # agent needs later, so unless transcription for context is switched off it is
+        # downloaded and transcribed and recorded as text (#328). The placeholder is
+        # kept only for the genuinely cheap path (no STT backend, or opted out).
         if not routing["respond"]:
+            voice_msg = message.voice or message.audio
+            if (
+                voice_msg is not None
+                and self.voice is not None
+                and self.config.group_chat.transcribe_unaddressed_voice
+            ):
+                log.info(
+                    "Voice note not addressed — transcribing for context only (chat=%s)",
+                    chat_id,
+                )
+                previous = self._voice_context_tasks.get(str(chat_id))
+                task = asyncio.create_task(
+                    self._record_voice_for_context(
+                        voice_msg.file_id,
+                        convo_user,
+                        str(chat_id),
+                        prefix,
+                        previous,
+                    ),
+                    name=f"tg-voice-context-{convo_user}",
+                )
+                self._voice_context_tasks[str(chat_id)] = task
+
+                def forget(done):
+                    if self._voice_context_tasks.get(str(chat_id)) is done:
+                        del self._voice_context_tasks[str(chat_id)]
+
+                task.add_done_callback(forget)
+                return
+            await self._wait_for_voice_context(chat_id)
             await self.agent.process(
                 message=f"{prefix}(voice message)",
                 channel=self.channel_name,
@@ -609,6 +648,7 @@ class TelegramChannel:
         # Respond-gate: record a placeholder for an image we're staying silent
         # on instead of downloading it (#30).
         if not routing["respond"]:
+            await self._wait_for_voice_context(chat_id)
             label = f"{caption} (image)" if caption else "(image)"
             await self.agent.process(
                 message=f"{prefix}{label}",
@@ -1143,6 +1183,12 @@ class TelegramChannel:
             )
         return allowed
 
+    async def _wait_for_voice_context(self, chat_id: int | str) -> None:
+        """Keep later turns behind voice context without blocking other chats."""
+        pending = self._voice_context_tasks.get(str(chat_id))
+        if pending is not None:
+            await asyncio.shield(pending)
+
     async def _handle_text(
         self,
         text: str,
@@ -1152,6 +1198,9 @@ class TelegramChannel:
         addressed: bool = True,
         message_id: int | None = None,
     ) -> None:
+        command = text.strip().split(maxsplit=1)
+        if not command or command[0].lower().split("@")[0] != "/stop":
+            await self._wait_for_voice_context(chat_id)
         # Respond-gate silent path (#30): record the turn for context, no typing
         # indicator, no reply.
         if not respond:
@@ -1174,6 +1223,67 @@ class TelegramChannel:
             )
         await self._send_response(chat_id, response)
 
+    async def _record_voice_for_context(
+        self,
+        file_id: str,
+        user_id: str,
+        chat_id: int | str,
+        prefix: str,
+        previous: asyncio.Task | None = None,
+    ) -> None:
+        """Transcribe an unaddressed voice note and record it for context only (#328).
+
+        Nothing is sent to the chat — the respond-gate already decided this bot stays
+        silent, so no typing indicator or progress bubble either. Every failure
+        (download, no backend, an STT error — see #325 — or an empty transcript) is
+        caught and recorded as a distinguishable placeholder, so a broken voice
+        pipeline shows up in the history instead of looking like a voice note nobody
+        mentioned.
+        """
+        if previous is not None:
+            await asyncio.shield(previous)
+        content = f"{prefix}{_VOICE_CONTEXT_FAILED}"
+        try:
+            file = await self.app.bot.get_file(file_id)
+            audio_bytes = await file.download_as_bytearray()
+            voice = self.voice
+            if voice is None:
+                raise RuntimeError("voice pipeline unavailable")
+            transcript = (await voice.transcribe(bytes(audio_bytes))).strip()
+        except Exception:
+            log.exception(
+                "Could not transcribe unaddressed voice note for context "
+                "(chat=%s, file=%s) — recording placeholder",
+                chat_id,
+                file_id,
+            )
+        else:
+            if transcript:
+                log.info(
+                    "Transcribed unaddressed voice note for context (chat=%s, %d bytes, "
+                    "%d chars): %s",
+                    chat_id,
+                    len(audio_bytes),
+                    len(transcript),
+                    transcript[:200],
+                )
+                content = f"{prefix}[voice] {transcript}"
+            else:
+                log.warning(
+                    "Unaddressed voice note transcribed empty (chat=%s) — recording placeholder",
+                    chat_id,
+                )
+        try:
+            await self.agent.process(
+                message=content,
+                channel=self.channel_name,
+                user_id=str(user_id),
+                chat_id=str(chat_id),
+                respond=False,
+            )
+        except Exception:
+            log.exception("Failed to record unaddressed voice note (chat=%s)", chat_id)
+
     async def _handle_voice(
         self,
         file_id: str,
@@ -1182,6 +1292,7 @@ class TelegramChannel:
         prefix: str,
         message_id: int | None = None,
     ) -> None:
+        await self._wait_for_voice_context(chat_id)
         async with self._typing(chat_id, message_id), self._progress(chat_id):
             file = await self.app.bot.get_file(file_id)
             audio_bytes = await file.download_as_bytearray()
@@ -1227,6 +1338,7 @@ class TelegramChannel:
     ) -> None:
         from core.models import IMAGE_MIME_TYPES, Attachment
 
+        await self._wait_for_voice_context(chat_id)
         async with self._typing(chat_id, message_id), self._progress(chat_id):
             attachments: list[Attachment] = []
             for file_id, mime_type in file_ids:

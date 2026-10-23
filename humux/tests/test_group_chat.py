@@ -720,3 +720,209 @@ async def test_silent_then_reply_array_is_alternation_safe(tmp_path) -> None:
     # ...which the coalescer (called inside llm.generate) collapses before the API.
     collapsed = [m["role"] for m in _coalesce_user_messages(messages)]
     assert all(not (collapsed[i] == collapsed[i + 1] == "user") for i in range(len(collapsed) - 1))
+
+
+# ---------------------------------------------------------------------------
+# Unaddressed voice notes — transcribed for context, still never answered (#328)
+# ---------------------------------------------------------------------------
+
+
+class _VoiceStub:
+    """Minimal VoicePipeline double: records the audio it was asked to transcribe."""
+
+    def __init__(self, transcript: str = "hello from the group", *, boom: bool = False):
+        self.transcript = transcript
+        self.boom = boom
+        self.calls: list[bytes] = []
+
+    async def transcribe(self, audio_bytes: bytes, **_: object) -> str:
+        self.calls.append(audio_bytes)
+        if self.boom:
+            raise RuntimeError("STT backend exploded")
+        return self.transcript
+
+
+def _voice_channel(group_chat=None, *, transcript="hello from the group", boom=False):
+    """A group channel with a voice pipeline and a fake file download."""
+    ch = _channel(group_chat)
+    voice = _VoiceStub(transcript, boom=boom)
+    ch.voice = voice
+    audio_file = SimpleNamespace(download_as_bytearray=AsyncMock(return_value=bytearray(b"ogg")))
+    # PTB's Application/Bot are frozen objects, so swap the whole app for a double
+    # exposing just the one call the record-only path makes.
+    ch.app = SimpleNamespace(bot=SimpleNamespace(get_file=AsyncMock(return_value=audio_file)))
+    ch.send = AsyncMock()
+    return ch, voice
+
+
+def _voice_message(file_id="voice-file-1", *, addressed=False):
+    text = "@coachbot listen to this" if addressed else ""
+    msg = _msg(text, entities=[_ent("mention", "@coachbot")] if addressed else None)
+    msg.voice = SimpleNamespace(file_id=file_id)
+    msg.audio = None
+    msg.message_id = 77
+    return msg
+
+
+async def _drive_on_voice(ch, user, message, chat=GROUP):
+    upd = SimpleNamespace(effective_user=user, effective_chat=chat, message=message)
+    ctx = SimpleNamespace(bot=SimpleNamespace(id=999, username="coachbot"))
+    before = set(asyncio.all_tasks())
+    await ch._on_voice(upd, ctx)
+    spawned = [t for t in asyncio.all_tasks() if t not in before]
+    if spawned:
+        await asyncio.gather(*spawned)
+
+
+@pytest.mark.asyncio
+async def test_unaddressed_group_voice_is_transcribed_for_context() -> None:
+    """The gate still silences the bot, but the transcript — not a placeholder —
+    is what lands in the shared conversation (#328)."""
+    ch, voice = _voice_channel()
+    ch.agent.process = AsyncMock()
+    await _drive_on_voice(ch, _user(name="Bob"), _voice_message())
+    ch.agent.process.assert_awaited_once()
+    kwargs = ch.agent.process.await_args.kwargs
+    assert kwargs["message"] == "[from Bob]\n[voice] hello from the group"
+    assert kwargs["respond"] is False  # record only — no reply
+    assert kwargs["user_id"] == "-100"
+    assert voice.calls == [b"ogg"]
+    ch.send.assert_not_awaited()  # silent means silent: no acknowledgement
+
+
+@pytest.mark.asyncio
+async def test_unaddressed_voice_opt_out_keeps_the_cheap_placeholder() -> None:
+    ch, voice = _voice_channel(GroupChatConfig(enabled=True, transcribe_unaddressed_voice=False))
+    ch.agent.process = AsyncMock()
+    await _drive_on_voice(ch, _user(name="Bob"), _voice_message())
+    kwargs = ch.agent.process.await_args.kwargs
+    assert kwargs["message"] == "[from Bob]\n(voice message)"
+    assert kwargs["respond"] is False
+    assert voice.calls == []  # no STT spend when the flag is off
+
+
+@pytest.mark.asyncio
+async def test_unaddressed_voice_without_pipeline_keeps_the_placeholder() -> None:
+    ch = _channel()  # no voice pipeline loaded
+    ch.agent.process = AsyncMock()
+    await _drive_on_voice(ch, _user(name="Bob"), _voice_message())
+    assert ch.agent.process.await_args.kwargs["message"] == "[from Bob]\n(voice message)"
+
+
+@pytest.mark.asyncio
+async def test_unaddressed_voice_stt_failure_records_distinguishable_placeholder() -> None:
+    """A failed STT on a silent turn must not vanish, and must not look like the
+    "we did not even try" placeholder (#325)."""
+    ch, _ = _voice_channel(boom=True)
+    ch.agent.process = AsyncMock()
+    await _drive_on_voice(ch, _user(name="Bob"), _voice_message())
+    kwargs = ch.agent.process.await_args.kwargs
+    assert kwargs["message"] == "[from Bob]\n(voice message — could not transcribe)"
+    assert kwargs["respond"] is False
+    ch.send.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_unaddressed_voice_empty_transcript_records_placeholder() -> None:
+    ch, _ = _voice_channel(transcript="   ")
+    ch.agent.process = AsyncMock()
+    await _drive_on_voice(ch, _user(name="Bob"), _voice_message())
+    assert (
+        ch.agent.process.await_args.kwargs["message"]
+        == "[from Bob]\n(voice message — could not transcribe)"
+    )
+
+
+@pytest.mark.asyncio
+async def test_addressed_voice_still_takes_the_reply_path() -> None:
+    """Addressed voice notes are untouched: transcribe and answer as before."""
+    ch, _ = _voice_channel()
+    ch._handle_voice = AsyncMock()
+    ch._record_voice_for_context = AsyncMock()
+    await _drive_on_voice(ch, _user(name="Alice"), _voice_message(addressed=True))
+    ch._handle_voice.assert_awaited_once()
+    ch._record_voice_for_context.assert_not_awaited()
+
+
+def test_group_chat_config_defaults_transcribe_unaddressed_voice_on() -> None:
+    """A stored config predating the flag keeps transcribing (acceptance: opt-out)."""
+    from core.agents import _as_group_chat
+
+    assert _as_group_chat({"enabled": True})["transcribe_unaddressed_voice"] is True
+    assert (
+        _as_group_chat({"enabled": True, "transcribe_unaddressed_voice": False})[
+            "transcribe_unaddressed_voice"
+        ]
+        is False
+    )
+
+
+@pytest.mark.asyncio
+async def test_followup_waits_for_voice_context_and_other_chats_continue() -> None:
+    from contextlib import asynccontextmanager
+
+    ch, voice = _voice_channel()
+    started, release = asyncio.Event(), asyncio.Event()
+
+    async def transcribe(audio):
+        started.set()
+        await release.wait()
+        return "details from the voice note"
+
+    @asynccontextmanager
+    async def quiet(*args):
+        yield
+
+    voice.transcribe = transcribe
+    ch.agent.process = AsyncMock()
+    ch._typing = quiet
+    ch._progress = quiet
+    ch._send_response = AsyncMock()
+    upd = SimpleNamespace(effective_user=_user(), effective_chat=GROUP, message=_voice_message())
+    ctx = SimpleNamespace(bot=SimpleNamespace(id=999, username="coachbot"))
+    await ch._on_voice(upd, ctx)
+    await started.wait()
+    pending = ch._voice_context_tasks["-100"]
+    followup = asyncio.create_task(ch._handle_text("summarize that", "-100", "-100"))
+    await ch._handle_text("another chat", "-200", "-200")
+    assert not followup.done()
+    assert ch.agent.process.await_args.kwargs["message"] == "another chat"
+    release.set()
+    await asyncio.gather(pending, followup)
+    messages = [c.kwargs["message"] for c in ch.agent.process.await_args_list]
+    assert messages == [
+        "another chat",
+        "[from Alice]\n[voice] details from the voice note",
+        "summarize that",
+    ]
+    assert ch._voice_context_tasks == {}
+
+
+@pytest.mark.asyncio
+async def test_consecutive_voice_context_notes_keep_arrival_order() -> None:
+    ch, voice = _voice_channel()
+    started, release = asyncio.Event(), asyncio.Event()
+    count = 0
+
+    async def transcribe(audio):
+        nonlocal count
+        count += 1
+        if count == 1:
+            started.set()
+            await release.wait()
+        return f"note {count}"
+
+    voice.transcribe = transcribe
+    ch.agent.process = AsyncMock()
+    upd = SimpleNamespace(effective_user=_user(), effective_chat=GROUP, message=_voice_message())
+    ctx = SimpleNamespace(bot=SimpleNamespace(id=999, username="coachbot"))
+    await ch._on_voice(upd, ctx)
+    await started.wait()
+    await ch._on_voice(upd, ctx)
+    pending = ch._voice_context_tasks["-100"]
+    release.set()
+    await pending
+    assert [c.kwargs["message"] for c in ch.agent.process.await_args_list] == [
+        "[from Alice]\n[voice] note 1",
+        "[from Alice]\n[voice] note 2",
+    ]

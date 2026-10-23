@@ -232,6 +232,7 @@ def test_agent_group_chat_persists(tmp_path) -> None:
         "enabled": True,
         "reply_when_addressed_only": False,
         "ignore_bots": True,
+        "transcribe_unaddressed_voice": True,
     }
 
     client.post(

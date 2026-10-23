@@ -220,6 +220,10 @@
               <input type="checkbox" x-model="groupChat.ignore_bots" id="agent-group-ignore-bots">
               Never reply to other bots (loop guard)
             </label>
+            <label class="flex items-center gap-2 text-sm">
+              <input type="checkbox" x-model="groupChat.transcribe_unaddressed_voice" id="agent-group-transcribe-voice">
+              Transcribe unaddressed voice notes (context only — costs an STT call)
+            </label>
           </div>
         </div>
         <div class="pt-1 border-t border-border">
@@ -744,7 +748,8 @@
       // Per-agent Telegram group-room behaviour (#133). Defaults win when the
       // stored value is empty (group rooms off).
       groupChat: Object.assign(
-        { enabled: false, reply_when_addressed_only: true, ignore_bots: true },
+        { enabled: false, reply_when_addressed_only: true, ignore_bots: true,
+          transcribe_unaddressed_voice: true },
         {{ agent.group_chat|tojson }}
       ),
 
@@ -855,6 +860,7 @@
           enabled: true,
           reply_when_addressed_only: !!this.groupChat.reply_when_addressed_only,
           ignore_bots: !!this.groupChat.ignore_bots,
+          transcribe_unaddressed_voice: !!this.groupChat.transcribe_unaddressed_voice,
         };
       },
 
