@@ -4037,6 +4037,8 @@ class AgentCore:
             return {"error": "Agent permissions changed; start a new scoped run."}
         if run.status != "partial":
             return {"error": "Subagent is no longer partial."}
+        if run.continuations >= max(0, self.config.subagents.max_continuations):
+            return {"error": "Subagent continuation limit reached."}
         pool = self._turn_budget(parent_state)
         error = pool.take_spawn()
         if error:

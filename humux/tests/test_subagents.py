@@ -1954,3 +1954,43 @@ async def test_continuation_revalidates_parent_delegation(agent, monkeypatch, re
         live_parent = None
     result = await agent.continue_subagent(run.run_id, {}, "", "", {}, admin=True)
     assert "error" in result and run.status == "partial"
+
+
+@pytest.mark.asyncio
+async def test_concurrent_continuations_recheck_limit_after_validation(agent, monkeypatch):
+    agent.config.subagents.max_continuations = 1
+    run = SubagentRun(
+        run_id="race",
+        agent="",
+        task="t",
+        status="partial",
+        messages=[{"role": "user", "content": "prior"}],
+    )
+    agent.subagents.register(run)
+    entered = [asyncio.Event(), asyncio.Event()]
+    release = [asyncio.Event(), asyncio.Event()]
+    count = 0
+
+    async def prepare(**kwargs):
+        nonlocal count
+        index = count
+        count += 1
+        entered[index].set()
+        await release[index].wait()
+        return run, None, {}
+
+    async def partial(*args):
+        run.progress = "partial"
+        return "more remains"
+
+    monkeypatch.setattr(agent, "_prepare_subagent_run", prepare)
+    monkeypatch.setattr(agent, "_run_subagent_loop", partial)
+    first = asyncio.create_task(agent.continue_subagent(run.run_id, {}, "", "", {}))
+    await entered[0].wait()
+    second = asyncio.create_task(agent.continue_subagent(run.run_id, {}, "", "", {}))
+    await entered[1].wait()
+    release[0].set()
+    assert (await first)["status"] == "partial"
+    release[1].set()
+    assert "limit" in (await second)["error"]
+    assert run.continuations == 1 and run.status == "partial"
