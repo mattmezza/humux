@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 from collections import OrderedDict
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock
 
@@ -157,9 +159,13 @@ def _openai_resp(content: str, finish_reason: str, reasoning: str | None = None)
 
 
 def _openai_client(
-    create: AsyncMock, *, provider: str = "openai", base_url: str | None = None
+    create: AsyncMock,
+    *,
+    provider: str = "openai",
+    base_url: str | None = None,
+    thinking_level: str = "",
 ) -> LLMClient:
-    client = LLMClient(provider, "x", base_url)
+    client = LLMClient(provider, "x", base_url, thinking_level)
     completions = type("Co", (), {"create": create})()
     client._client = type("C", (), {"chat": type("Ch", (), {"completions": completions})()})()
     return client
@@ -267,7 +273,7 @@ def test_reasoning_kwargs_per_provider() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("model", ["gpt-6.2-sol", "gpt-5.2", "gpt-5-mini"])
+@pytest.mark.parametrize("model", ["gpt-5.4", "gpt-5.2", "gpt-5-mini"])
 async def test_openai_sends_completion_limit_for_chat_and_text(model: str) -> None:
     async def create(**kwargs):
         if "max_tokens" in kwargs:
@@ -376,3 +382,227 @@ async def test_openai_recovers_when_endpoint_stops_accepting_legacy_limit(monkey
     assert create.await_args_list[1].kwargs["max_completion_tokens"] == 42
     assert create.await_args_list[2].kwargs["max_completion_tokens"] == 42
     assert create.await_count == 3
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("model", "base_url"),
+    [
+        ("gpt-6.2-sol", "https://api.openai.com/v1"),
+        ("gpt-6.2-astra-2026-11-01", "https://eu.api.openai.com/v1"),
+    ],
+)
+async def test_gpt_62_responses_tool_round_trip(model: str, base_url: str, monkeypatch) -> None:
+    monkeypatch.setattr("core.metrics.record_usage", AsyncMock())
+    client = LLMClient("openai", "x", base_url, thinking_level="high")
+    tool_call = {
+        "type": "function_call",
+        "id": "fc_1",
+        "call_id": "call_1",
+        "name": "weather",
+        "arguments": '{"city":"Zurich"}',
+        "status": "completed",
+    }
+    first_output = [
+        {"type": "reasoning", "id": "rs_1", "summary": [], "encrypted_content": "encrypted"},
+        tool_call,
+    ]
+    answer = {
+        "type": "message",
+        "role": "assistant",
+        "id": "msg_1",
+        "status": "completed",
+        "content": [{"type": "output_text", "text": "It is sunny.", "annotations": []}],
+    }
+    messages = [
+        {"role": "user", "content": "Use my current city."},
+        {
+            "role": "assistant",
+            "content": "Let me check.",
+            "tool_calls": [
+                {
+                    "type": "function",
+                    "id": "call_old",
+                    "function": {"name": "location", "arguments": "{}"},
+                },
+            ],
+        },
+        {"role": "tool", "tool_call_id": "call_old", "content": "Zurich"},
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "What is the weather like here?"},
+                {"type": "image_url", "image_url": {"url": "data:image/png;base64,AA=="}},
+            ],
+        },
+    ]
+    requests = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v1/responses"
+        requests.append(json.loads(request.content))
+        first = len(requests) == 1
+        return httpx.Response(
+            200,
+            json={
+                "id": f"resp_{len(requests)}",
+                "object": "response",
+                "model": model,
+                "status": "completed",
+                "output": first_output if first else [answer],
+                "usage": {
+                    "input_tokens": 1500,
+                    "output_tokens": 100,
+                    "total_tokens": 1600,
+                    "input_tokens_details": {"cached_tokens": 1024},
+                    "output_tokens_details": {"reasoning_tokens": 65},
+                },
+            },
+        )
+
+    http_client = httpx.AsyncClient(transport=httpx.MockTransport(handle))
+    tools = [
+        {
+            "name": "weather",
+            "description": "Look up the weather",
+            "input_schema": {
+                "type": "object",
+                "properties": {"city": {"type": "string"}},
+            },
+        }
+    ]
+    async with client._client as sdk, sdk.with_options(http_client=http_client) as responses:
+        client._client = responses
+        first = await client.generate(
+            model=model, system="Be concise", messages=messages, tools=tools
+        )
+        assert first.tool_calls == [llm.LLMToolCall("call_1", "weather", {"city": "Zurich"})]
+        assert first.usage == {
+            "input_tokens": 1500,
+            "output_tokens": 100,
+            "context_tokens": 1500,
+            "cache_read_input_tokens": 1024,
+            "cache_creation_input_tokens": 0,
+        }
+
+        messages.append(client.assistant_message(first))
+        messages.extend(
+            client.tool_result_messages([{"tool_use_id": "call_1", "content": "Sunny"}])
+        )
+        final = await client.generate(model=model, system="Be concise", messages=messages, tools=[])
+
+    first_request, followup = requests
+    assert final.text == "It is sunny."
+    assert final.tool_calls == []
+    assert first_request["model"] == model
+    assert first_request["max_output_tokens"] == 4096
+    assert first_request["reasoning"] == {"effort": "high"}
+    assert first_request["store"] is False
+    assert first_request["include"] == ["reasoning.encrypted_content"]
+    assert first_request["tools"] == [
+        {
+            "type": "function",
+            "name": "weather",
+            "description": "Look up the weather",
+            "parameters": tools[0]["input_schema"],
+            "strict": False,
+        }
+    ]
+    assert first_request["input"][0] == {"role": "developer", "content": "Be concise"}
+    assert first_request["input"][3:5] == [
+        {"type": "function_call", "call_id": "call_old", "name": "location", "arguments": "{}"},
+        {"type": "function_call_output", "call_id": "call_old", "output": "Zurich"},
+    ]
+    assert first_request["input"][-1]["content"][-1] == {
+        "type": "input_image",
+        "image_url": "data:image/png;base64,AA==",
+        "detail": "auto",
+    }
+    assert followup["input"] == [
+        *first_request["input"],
+        *first_output,
+        {"type": "function_call_output", "call_id": "call_1", "output": "Sunny"},
+    ]
+    assert "tools" not in followup
+
+
+@pytest.mark.asyncio
+async def test_gpt_62_response_flags_incomplete_tool_call() -> None:
+    response = SimpleNamespace(
+        incomplete_details=SimpleNamespace(reason="max_output_tokens"),
+        output_text="",
+        output=[SimpleNamespace(type="function_call", status="incomplete", arguments='{"city":')],
+        usage=None,
+    )
+    create = AsyncMock(return_value=response)
+    client = LLMClient("openai", "x", "https://api.openai.com/v1", thinking_level="none")
+    client._client = SimpleNamespace(responses=SimpleNamespace(create=create))
+    result = await client.generate(model="gpt-6.2-sol", system="s", messages=[], tools=[])
+
+    assert result.truncated
+    assert result.tool_calls == []
+    assert create.await_args.kwargs["reasoning"] == {"effort": "low"}
+
+
+def test_responses_replays_anthropic_tool_history_with_user_steering() -> None:
+    messages = [
+        {
+            "role": "assistant",
+            "content": [
+                {"type": "thinking", "thinking": "Look up the current city first"},
+                {"type": "text", "text": "Let me check."},
+                {"type": "tool_use", "id": "toolu_1", "name": "location", "input": {}},
+            ],
+        },
+        {
+            "role": "user",
+            "content": [
+                {"type": "tool_result", "tool_use_id": "toolu_1", "content": "Oslo"},
+                {"type": "text", "text": "Please use Celsius."},
+            ],
+        },
+    ]
+    assert llm._responses_input("", messages) == [
+        {"role": "assistant", "content": "Let me check."},
+        {"type": "function_call", "call_id": "toolu_1", "name": "location", "arguments": "{}"},
+        {"type": "function_call_output", "call_id": "toolu_1", "output": "Oslo"},
+        {"role": "user", "content": [{"type": "input_text", "text": "Please use Celsius."}]},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_gpt_62_text_generation_uses_responses_with_default_reasoning() -> None:
+    create = AsyncMock(
+        return_value=SimpleNamespace(
+            output_text="ok",
+            output=[],
+            incomplete_details=None,
+            usage=None,
+        )
+    )
+    client = LLMClient("openai", "x", "https://api.openai.com/v1")
+    client._client = SimpleNamespace(responses=SimpleNamespace(create=create))
+    assert await client.generate_text(model="gpt-6.2-sol", prompt="hi") == "ok"
+    assert create.await_args.kwargs["input"] == [{"role": "user", "content": "hi"}]
+    assert "reasoning" not in create.await_args.kwargs
+
+
+@pytest.mark.asyncio
+async def test_openai_compatible_gateway_keeps_chat_completions_for_gpt_62() -> None:
+    create = AsyncMock(return_value=_openai_resp("hi", "stop"))
+    client = _openai_client(create, base_url="https://gateway.test/v1", thinking_level="high")
+    previous_turn = {
+        "role": "assistant",
+        "content": "Previous reply",
+        llm._RESPONSES_ITEMS: ["native state"],
+    }
+    result = await client.generate(
+        model="gpt-6.2-sol", system="s", messages=[previous_turn], tools=[{"name": "weather"}]
+    )
+
+    assert result.text == "hi"
+    args = create.await_args.kwargs
+    assert args["reasoning_effort"] == "high"
+    assert args["tools"][0]["function"]["name"] == "weather"
+    assert args["messages"][-1] == {"role": "assistant", "content": "Previous reply"}
+    assert llm._RESPONSES_ITEMS in previous_turn

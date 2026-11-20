@@ -8,10 +8,12 @@ import importlib
 import json
 import logging
 import random
+import re
 import time
 from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Any, cast
+from urllib.parse import urlsplit
 
 from anthropic import APIError as AnthropicAPIError
 from anthropic import AsyncAnthropic
@@ -138,6 +140,9 @@ async def _call_with_retries(fn):
 # Models with the same ID can sit behind different OpenAI-compatible servers.
 _OPENAI_TOKEN_PARAMETERS: OrderedDict[tuple[str, str], str] = OrderedDict()
 _OPENAI_TOKEN_PARAMETER_CACHE_CAP = 256
+_OPENAI_API_HOSTS = {"api.openai.com", "us.api.openai.com", "eu.api.openai.com"}
+_OPENAI_RESPONSES_MODELS = re.compile(r"gpt-6\.2-(?:sol|astra)(?:-\d{4}-\d{2}-\d{2})?")
+_RESPONSES_ITEMS = "_openai_response_items"
 
 
 def _token_parameter_rejected(exc: Any, parameter: str) -> bool:
@@ -173,6 +178,7 @@ _VISION_CAPABLE_PATTERNS = (
     "gpt-4o",
     "gpt-4.1",
     "gpt-5",
+    "gpt-6.2-",
     "o1",
     "o3",
     "o4",
@@ -217,9 +223,8 @@ class LLMResponse:
     # cache_creation_input_tokens, context_tokens (= full prompt size).
     usage: dict[str, int] | None = None
     # True when the provider stopped at the output-token limit (Anthropic
-    # stop_reason == "max_tokens" / OpenAI finish_reason == "length"), i.e. the
-    # response — including any tool-call arguments — was cut off mid-stream. The
-    # agent loop surfaces this instead of running a half-built tool call.
+    # stop_reason == "max_tokens" / OpenAI "length" or "max_output_tokens").
+    # The agent loop surfaces this instead of running a half-built tool call.
     truncated: bool = False
 
 
@@ -260,6 +265,19 @@ def _openai_usage(response: Any) -> dict[str, int] | None:
     }
 
 
+def _responses_usage(response: Any) -> dict[str, int] | None:
+    usage = response.usage
+    if usage is None:
+        return None
+    return {
+        "input_tokens": usage.input_tokens,
+        "output_tokens": usage.output_tokens,
+        "cache_read_input_tokens": getattr(usage.input_tokens_details, "cached_tokens", 0),
+        "cache_creation_input_tokens": 0,
+        "context_tokens": usage.input_tokens,
+    }
+
+
 def _openai_tools(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
     converted = []
     for tool in tools:
@@ -274,6 +292,94 @@ def _openai_tools(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
             }
         )
     return converted
+
+
+def _openai_tool_arguments(arguments: str) -> dict[str, Any]:
+    try:
+        parsed = json.loads(arguments or "{}")
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _responses_message(role: str, parts: list[dict[str, Any]]) -> dict[str, Any]:
+    # Stored Anthropic assistant text becomes a plain assistant message.
+    if role == "assistant":
+        return {"role": role, "content": "\n\n".join(p["text"] for p in parts if "text" in p)}
+    return {"role": role, "content": parts}
+
+
+def _responses_input(system: str, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Translate stored messages and replay native output in its original order."""
+    items: list[dict[str, Any]] = []
+    if system:
+        items.append({"role": "developer", "content": system})
+    for message in messages:
+        if output := message.get(_RESPONSES_ITEMS):
+            items.extend(output)
+            continue
+        role = message["role"]
+        content = message.get("content")
+        if role == "tool":
+            items.append(
+                {
+                    "type": "function_call_output",
+                    "call_id": message["tool_call_id"],
+                    "output": content or "",
+                }
+            )
+            continue
+
+        if isinstance(content, list):
+            parts: list[dict[str, Any]] = []
+            for block in content:
+                kind = block.get("type")
+                if kind == "text":
+                    parts.append({"type": "input_text", "text": block["text"]})
+                elif kind in ("image_url", "image"):
+                    if kind == "image_url":
+                        image = block["image_url"]
+                        url, detail = image["url"], image.get("detail", "auto")
+                    else:
+                        source = block["source"]
+                        url = f"data:{source['media_type']};base64,{source['data']}"
+                        detail = "auto"
+                    parts.append({"type": "input_image", "image_url": url, "detail": detail})
+                elif kind in ("tool_use", "tool_result"):
+                    # Anthropic sessions can have tool results interleaved with user text.
+                    if parts:
+                        items.append(_responses_message(role, parts))
+                        parts = []
+                    if kind == "tool_use":
+                        items.append(
+                            {
+                                "type": "function_call",
+                                "call_id": block["id"],
+                                "name": block["name"],
+                                "arguments": json.dumps(block["input"]),
+                            }
+                        )
+                    else:
+                        items.append(
+                            {
+                                "type": "function_call_output",
+                                "call_id": block["tool_use_id"],
+                                "output": block["content"],
+                            }
+                        )
+            if parts:
+                items.append(_responses_message(role, parts))
+        elif content:
+            items.append({"role": role, "content": content})
+        for call in message.get("tool_calls") or []:
+            items.append(
+                {
+                    "type": "function_call",
+                    "call_id": call["id"],
+                    **call["function"],
+                }
+            )
+    return items
 
 
 def _as_content_blocks(content: Any) -> list[dict[str, Any]]:
@@ -316,6 +422,8 @@ def _coalesce_user_messages(messages: list[dict[str, Any]]) -> list[dict[str, An
             and prev.get("role") == role == "assistant"
             and isinstance(prev.get("content"), str)
             and isinstance(msg.get("content"), str)
+            and _RESPONSES_ITEMS not in prev
+            and _RESPONSES_ITEMS not in msg
         ):
             out[-1] = {**prev, "content": f"{prev['content']}\n\n{msg['content']}"}
         else:
@@ -368,6 +476,15 @@ class LLMClient:
             }
             self._client = cast(Any, client_class)(**client_kwargs)  # type: ignore[call-arg]
             self.base_url = str(self._client.base_url)
+
+    def _uses_openai_responses(self, model: str) -> bool:
+        # OpenAI's GPT-6.2 models require Responses for function calling.
+        # OpenAI-compatible servers can serve the same model IDs via Chat Completions.
+        return (
+            self.provider == "openai"
+            and urlsplit(self.base_url or DEFAULT_BASE_URLS["openai"]).hostname in _OPENAI_API_HOSTS
+            and _OPENAI_RESPONSES_MODELS.fullmatch(model) is not None
+        )
 
     def _token_limit_kwargs(self, max_tokens: int) -> dict[str, int]:
         parameter = "max_completion_tokens" if self.provider == "openai" else "max_tokens"
@@ -463,9 +580,13 @@ class LLMClient:
         max_tokens: int = 4096,
     ) -> LLMResponse:
         resolved_model = _normalize_model(self.provider, model)
+        use_responses = self._uses_openai_responses(resolved_model)
         # Collapse any run of consecutive user turns (group rooms record silent
         # turns between replies, #30) so the array honours strict alternation.
         messages = _coalesce_user_messages(messages)
+        if not use_responses:
+            for message in messages:
+                message.pop(_RESPONSES_ITEMS, None)
         # Snapshot the exact request for the Inspect tab (#99). Shallow-copy the
         # lists so the caller's later mutations (tool-result ping-pong) don't edit
         # what we stored; each generate() overwrites, so the slot holds last-sent.
@@ -555,38 +676,11 @@ class LLMClient:
                 truncated=getattr(response, "stop_reason", None) == "max_tokens",
             )
 
-        openai_tools = _openai_tools(tools)
-        full_messages = [{"role": "system", "content": system}, *messages]
-        # The OpenAI schema rejects an empty `tools` array, so a deliberately
-        # tool-free call (vision captioning, a subagent's wrap-up round) has to
-        # omit the field entirely rather than send [].
-        tool_kwargs = {"tools": cast(Any, openai_tools)} if openai_tools else {}
-
-        response = await _call_with_retries(
-            lambda: self._create_chat_completion(
-                model=resolved_model,
-                max_tokens=max_tokens,
-                messages=cast(Any, full_messages),
-                **tool_kwargs,
-                **self._reasoning_kwargs(resolved_model),
-            )
-        )
-        message = response.choices[0].message
-        tool_calls = []
-        for call in message.tool_calls or []:
-            args = {}
-            try:
-                args = json.loads(call.function.arguments or "{}")
-            except json.JSONDecodeError:
-                args = {}
-            tool_calls.append(LLMToolCall(id=call.id, name=call.function.name, arguments=args))
-        # DeepSeek/others expose CoT as message.reasoning_content (or .reasoning).
-        reasoning = (
-            getattr(message, "reasoning_content", None) or getattr(message, "reasoning", None) or ""
-        ).strip()
-        if reasoning:
-            reasoning_log.info("%s", reasoning)
-        usage = _openai_usage(response)
+        generate = self._generate_openai_response if use_responses else self._generate_chat
+        result = await generate(resolved_model, system, messages, tools, max_tokens)
+        if result.reasoning:
+            reasoning_log.info("%s", result.reasoning)
+        usage = result.usage
         payload["usage"] = usage  # backfill real context size for Inspect (#116)
         if usage:
             try:
@@ -605,15 +699,114 @@ class LLMClient:
                 )
             except Exception as exc:
                 logging.getLogger(__name__).warning(
-                    "Failed to record token usage (openai): %s", exc
+                    "Failed to record token usage (%s): %s", self.provider, exc
                 )
+        return result
+
+    async def _generate_chat(
+        self,
+        model: str,
+        system: str,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        max_tokens: int,
+    ) -> LLMResponse:
+        openai_tools = _openai_tools(tools)
+        full_messages = [{"role": "system", "content": system}, *messages]
+        # The OpenAI schema rejects an empty `tools` array, so a deliberately
+        # tool-free call (vision captioning, a subagent's wrap-up round) has to
+        # omit the field entirely rather than send [].
+        tool_kwargs = {"tools": cast(Any, openai_tools)} if openai_tools else {}
+
+        response = await _call_with_retries(
+            lambda: self._create_chat_completion(
+                model=model,
+                max_tokens=max_tokens,
+                messages=cast(Any, full_messages),
+                **tool_kwargs,
+                **self._reasoning_kwargs(model),
+            )
+        )
+        message = response.choices[0].message
+        tool_calls = [
+            LLMToolCall(
+                call.id, call.function.name, _openai_tool_arguments(call.function.arguments)
+            )
+            for call in message.tool_calls or []
+        ]
+        # DeepSeek/others expose CoT as message.reasoning_content (or .reasoning).
+        reasoning = (
+            getattr(message, "reasoning_content", None) or getattr(message, "reasoning", None) or ""
+        ).strip()
         return LLMResponse(
             text=(message.content or "").strip(),
             tool_calls=tool_calls,
             reasoning=reasoning,
             raw=message.model_dump(exclude_none=True),
-            usage=usage,
+            usage=_openai_usage(response),
             truncated=getattr(response.choices[0], "finish_reason", None) == "length",
+        )
+
+    async def _generate_openai_response(
+        self,
+        model: str,
+        system: str,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        max_tokens: int,
+    ) -> LLMResponse:
+        # Keep existing tool schemas in non-strict mode (including optional properties).
+        function_tools = [
+            {"type": "function", **tool["function"], "strict": False}
+            for tool in _openai_tools(tools)
+        ]
+        chat_reasoning = self._reasoning_kwargs(model)
+        effort = chat_reasoning.get("reasoning_effort") or chat_reasoning.get(
+            "extra_body", {}
+        ).get("reasoning_effort")
+        # Low is the minimum for GPT-6.2. A previous model may have used none or minimal.
+        if effort in ("none", "minimal"):
+            effort = "low"
+        reasoning_kwargs = {"reasoning": {"effort": effort}} if effort else {}
+        input_items = _responses_input(system, messages)
+        response = await _call_with_retries(
+            lambda: self._client.responses.create(
+                model=model,
+                input=input_items,
+                **({"tools": function_tools} if function_tools else {}),
+                max_output_tokens=max_tokens,
+                store=False,
+                include=["reasoning.encrypted_content"],
+                **reasoning_kwargs,
+            )
+        )
+        truncated = getattr(response.incomplete_details, "reason", None) == "max_output_tokens"
+        text = response.output_text.strip()
+        tool_calls = []
+        # Keep the stored message readable by the transcript and retain the native
+        # items for the next stateless request, including encrypted reasoning.
+        raw: dict[str, Any] = {"role": "assistant", "content": text or None, _RESPONSES_ITEMS: []}
+        for item in response.output:
+            if getattr(item, "status", None) in ("incomplete", "in_progress"):
+                continue
+            raw[_RESPONSES_ITEMS].append(item.model_dump(exclude_none=True))
+            if item.type == "function_call":
+                tool_calls.append(
+                    LLMToolCall(item.call_id, item.name, _openai_tool_arguments(item.arguments))
+                )
+                raw.setdefault("tool_calls", []).append(
+                    {
+                        "type": "function",
+                        "id": item.call_id,
+                        "function": {"name": item.name, "arguments": item.arguments},
+                    }
+                )
+        return LLMResponse(
+            text=text,
+            tool_calls=tool_calls,
+            raw=raw,
+            usage=_responses_usage(response),
+            truncated=truncated,
         )
 
     def assistant_message(self, response: LLMResponse) -> dict[str, Any]:
@@ -649,6 +842,11 @@ class LLMClient:
 
     async def generate_text(self, *, model: str, prompt: str, max_tokens: int = 1024) -> str:
         resolved_model = _normalize_model(self.provider, model)
+        if self._uses_openai_responses(resolved_model):
+            response = await self._generate_openai_response(
+                resolved_model, "", [{"role": "user", "content": prompt}], [], max_tokens
+            )
+            return response.text
         if self.provider == "anthropic":
             client_any = cast(Any, self._client)
             messages_client = cast(Any, getattr(client_any, "messages"))  # type: ignore[attr-defined]

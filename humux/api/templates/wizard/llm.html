@@ -56,7 +56,7 @@
     if (!id) return false;
     if (id.includes('deepseek')) return false;
     if (prov === 'anthropic' || prov === 'google') return true;
-    return ['claude', 'gpt-4o', 'gpt-4.1', 'gpt-5', 'o1', 'o3', 'o4',
+    return ['claude', 'gpt-4o', 'gpt-4.1', 'gpt-5', 'gpt-6.2-', 'o1', 'o3', 'o4',
             'gemini', 'grok-4', 'grok-2-vision', 'vision', 'llava', 'pixtral']
       .some(pat => id.includes(pat));
   },
