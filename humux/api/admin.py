@@ -2247,7 +2247,14 @@ def create_admin_app(
     @app.get("/partials/llm/inference", dependencies=[Depends(auth)])
     async def partial_llm_inference() -> HTMLResponse:
         """LLM Inference sub-tab content."""
-        return _render_partial("partials/llm_inference.html")
+        decisions = {
+            "provider": await config_store.get("decisions.provider") or "",
+            "model": await config_store.get("decisions.model") or "jev-latest",
+            "voice": (await config_store.get("decisions.voice") or "true").lower() == "true",
+            "reactions": (await config_store.get("decisions.reactions") or "true").lower()
+            == "true",
+        }
+        return _render_partial("partials/llm_inference.html", decisions=decisions)
 
     @app.get("/partials/llm/providers", dependencies=[Depends(auth)])
     async def partial_llm_providers() -> HTMLResponse:

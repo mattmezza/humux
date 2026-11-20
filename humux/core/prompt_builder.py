@@ -17,7 +17,7 @@ from core.tools import active_tool_prompts
 VOICE_CHANNELS = ("", "telegram")
 
 
-def _channel_has_voice(channel: str) -> bool:
+def channel_has_voice(channel: str) -> bool:
     return channel.split(":", 1)[0] in VOICE_CHANNELS
 
 
@@ -310,7 +310,15 @@ def build_prompt_sections(
     # documentation of the [respond_with_voice] marker lived inside the `voice`
     # skill, so a model that hadn't loaded it would deny having any voice tool.
     voice_section = ""
-    if config.voice.tts_enabled and _channel_has_voice(channel):
+    if config.voice.tts_enabled and channel_has_voice(channel) and (
+        config.decisions.provider and config.decisions.voice
+    ):
+        voice_section = (
+            "<voice>Delivery as text or audio is selected after your reply. For each "
+            "short spoken-friendly part, append [respond_with_voice:xx] with the actual "
+            "ISO-639-1 language code so audio uses the right pronunciation.</voice>"
+        )
+    elif config.voice.tts_enabled and channel_has_voice(channel):
         voice_section = (
             "<voice>\n"
             "You can reply with a voice message instead of text: end your response with "

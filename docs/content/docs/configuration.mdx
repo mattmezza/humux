@@ -253,6 +253,21 @@ does and how the agent may dial it down per spawn.
 
 In a shared/group chat with several bots and people, decide per message whether to reply at all — staying quiet for messages aimed at another bot, caught in a bot-to-bot reaction loop, or that the agent can't usefully add to. A cheap one-shot LLM call (`model`) makes the call, fed the recent conversation (so follow-ups and pronouns read in context) and the names of the sibling bots in the room (so "aimed at another bot" is anchored to real agents); it **fails open** (replies) on any error, so a classifier hiccup never drops a real message. Off by default — 1:1 chats always reply and it costs one extra call. `group_only` (default `true`) gates only group chats (detected when the chat id differs from the user id). `max_replies_per_window`/`window_seconds` are a hard per-chat rate cap that backstops the LLM gate, so a runaway loop terminates even if the gate keeps voting "reply". Scheduler/system turns are never gated.
 
+
+#### `decisions`
+
+Select **TypeSafe AI** under **LLM → Inference → Decision Models** and supply a
+TypeSafe API key there or through `TYPESAFE_API_KEY`. A fresh install can also
+seed `decisions.provider: typesafe` and `decisions.model: jev-latest` from YAML.
+Once selected, Jev handles the Reply Decision gate when enabled. It also
+chooses the delivery format for Telegram replies when text-to-speech is
+enabled, and selects emoji reactions in Telegram. The voice and reaction
+settings can be toggled independently.
+
+The decision calls send relevant chat context and reply excerpts to TypeSafe.
+If TypeSafe is unavailable, Humux continues with a reply, uses text delivery
+and skips automatic reactions. See the [TypeSafe System One API](https://docs.typesafe.ai/api/system-one).
+
 ## Character and identity files
 
 ### `character.md`

@@ -244,6 +244,8 @@
     </template>
   </div>
 
+  {% include "partials/decision_models.html" %}
+
   <div class="card">
     <h2 class="text-base mb-1">Reply Decision</h2>
     <p class="text-muted text-xs mb-4">In shared/group chats with several bots and people, decide per message whether to reply at all — staying quiet for messages aimed at another bot, caught in a bot-to-bot reaction loop, or that the agent can't usefully add to. Off by default; uses a cheap/fast model for the yes/no call.</p>
@@ -271,7 +273,7 @@
             <option :value="item.value"></option>
           </template>
         </datalist>
-        <p class="text-muted text-xs mt-1">Model used to decide whether a group-chat message warrants a reply.</p>
+        <p class="text-muted text-xs mt-1">Used when no typed decision provider is selected.</p>
       </div>
 {{ think('rdThinkingLevel', 'rdProvider', 'rdModel', 'dl-think-rd', true) }}
 
