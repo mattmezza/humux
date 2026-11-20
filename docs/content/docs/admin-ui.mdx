@@ -48,6 +48,23 @@ Edit agent settings without touching config files:
 - **Vaults** — the [secrets vault](/docs/secrets), split into **Agents** (per-agent / login secrets), **Infra** (machine-key-encrypted infrastructure secrets + migrate plaintext credentials into the vault), and **Import** (Bitwarden import)
 - **Voice** — STT/TTS settings, including the **TTS backend** (Edge TTS or offline Kokoro), the default voice, a **Preview** button to hear a voice before saving, and **Test STT**, which speaks a fixed phrase and transcribes it back through the selected STT engine so a broken local/remote setup is caught without sending a real voice message
 
+### Reasoning settings
+
+In **LLM → Inference**, select a provider and model, then click **Fetch levels** beside
+**Reasoning setting**. The agent editor offers the same control for an override.
+The choices come from the provider's model metadata where available, or from its
+documented options for known models. You can type a value manually if your endpoint
+doesn't report any options. A blank setting uses the provider's default behavior.
+
+DeepSeek's hosted Flash API reports `low`, `high`, and `max`, and accepts `none` to
+disable reasoning. A DeepSeek V4.1 Flash model served by SGLang accepts an integer
+from 1 to 100 in its chat template. Configure the SGLang base URL under **Providers**
+and use the numeric field or enter `sglang:75` in **Reasoning setting**. Enter `none`
+to disable reasoning on SGLang. For models that accept a token budget, use the budget
+field or enter a value such as `budget:2048`. If a compatible endpoint accepts
+integers in its top-level `reasoning_effort` field, enter the integer directly.
+For an endpoint-specific name, type `effort:` followed by the name it accepts.
+
 ### Tools
 
 Enable optional tools. When a tool is enabled it is authenticated and advertised to the assistant in its system prompt; when disabled it stays hidden, keeping the prompt lean. Each tool honours the same per-agent whitelist and permission rules as any other tool.

@@ -29,6 +29,8 @@ from pathlib import Path
 import aiosqlite
 import yaml
 
+from core.reasoning import normalize_setting
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS agents (
     name TEXT PRIMARY KEY,
@@ -387,9 +389,6 @@ def _as_group_chat(value: object) -> dict:
     }
 
 
-_LLM_THINKING_LEVELS = ("", "low", "medium", "high", "max")
-
-
 def _as_llm_config(value: object) -> dict:
     """Coerce a frontmatter / form / DB-column value into a per-agent LLM override.
 
@@ -410,9 +409,9 @@ def _as_llm_config(value: object) -> dict:
         v = str(value.get(key, "") or "").strip()
         if v:
             out[key] = v.lower() if key == "provider" else v
-    lvl = str(value.get("thinking_level", "") or "").strip().lower()
-    if lvl in _LLM_THINKING_LEVELS and "thinking_level" in value:
-        out["thinking_level"] = lvl  # "" is meaningful: force thinking OFF
+    lvl = normalize_setting(value.get("thinking_level"))
+    if lvl is not None and "thinking_level" in value:
+        out["thinking_level"] = lvl  # Empty uses the provider default, overriding inheritance.
     try:
         mt = int(value["max_tokens"])
         if mt > 0:

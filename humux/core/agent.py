@@ -890,11 +890,10 @@ TOOLS = [
                 },
                 "thinking_effort": {
                     "type": "string",
-                    "enum": ["off", "low", "medium", "high"],
                     "description": (
                         "How hard the subagent reasons each step. Omit to inherit "
-                        "your own level. Use 'high' for tricky reasoning, 'off'/'low' "
-                        "for simple mechanical work."
+                        "your setting. Use a value supported by the selected model. "
+                        "'off' uses the provider default."
                     ),
                 },
                 "model": {
@@ -989,7 +988,7 @@ TOOLS = [
                             },
                             "thinking_effort": {
                                 "type": "string",
-                                "enum": ["off", "low", "medium", "high"],
+                                "description": "Reasoning setting for the selected model.",
                             },
                             "model": {
                                 "type": "string",

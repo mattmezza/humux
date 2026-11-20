@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "partials/_macros.html" import think %}
 {% block title %}{% if is_new %}New Agent{% else %}Edit Agent{% endif %} — humux{% endblock %}
 
 {% block body %}
@@ -147,21 +148,7 @@
             </datalist>
             <p class="text-xs text-muted mt-1">Type any model id, or pick a suggestion for the selected provider. Blank = the global model.</p>
           </div>
-          <div>
-            <label class="label" for="agent-llm-thinking">Thinking level</label>
-            <select class="select input-sm" style="max-width:300px" x-model="llmThinking" id="agent-llm-thinking">
-              <option value="inherit" x-text="'Global — ' + (llmDefaults.thinking_level || 'off')"></option>
-              <option value="off">Off</option>
-              <option value="low">Low</option>
-              <option value="medium">Medium</option>
-              <option value="high">High</option>
-              <option value="max">Max</option>
-            </select>
-            <p class="text-amber-600 text-xs mt-1"
-               x-show="['low','medium','high','max'].includes(llmThinking) && !window.llmModelSupportsThinking(llmModel || llmDefaults.model)">
-              Heads up: “<span x-text="llmModel || llmDefaults.model"></span>” isn't a recognized reasoning model — only set a level if you know it supports thinking.
-            </p>
-          </div>
+          {{ think('llmThinking', '(llmProvider || llmDefaults.provider)', '(llmModel.trim() || llmDefaults.model)', 'agent-llm-thinking', inherit=true) }}
           <div class="flex flex-wrap gap-4">
             <div>
               <label class="label" for="agent-llm-max-tokens">Max output tokens</label>
@@ -176,7 +163,7 @@
           </div>
           <p class="text-xs text-muted border-t border-border pt-2">
             This agent will run on
-            <code x-text="(llmProvider || llmDefaults.provider) + ' · ' + (llmModel.trim() || llmDefaults.model || 'unset')"></code><span x-show="llmThinking !== 'inherit' && llmThinking !== 'off'"> · thinking <span x-text="llmThinking"></span></span>.
+            <code x-text="(llmProvider || llmDefaults.provider) + ' · ' + (llmModel.trim() || llmDefaults.model || 'unset')"></code><span x-show="llmThinking && llmThinking !== 'inherit' && llmThinking !== 'off'"> · thinking <span x-text="llmThinking"></span></span>.
             Subagent runs it spawns use the same setup.
           </p>
         </div>
@@ -758,14 +745,14 @@
 
       init() {
         // Seed the LLM override controls from the stored config. A stored
-        // thinking_level of "" means "force thinking off" (distinct from the
+        // thinking_level of "" means "use the provider default" (distinct from the
         // key being absent = inherit the global level).
         const lc = this.llmCfg || {};
         if (Object.keys(lc).length) {
           this.llmOverride = true;
           this.llmProvider = lc.provider || '';
           this.llmModel = lc.model || '';
-          this.llmThinking = ('thinking_level' in lc) ? (lc.thinking_level || 'off') : 'inherit';
+          this.llmThinking = ('thinking_level' in lc) ? String(lc.thinking_level || '') : 'inherit';
           this.llmMaxTokens = lc.max_tokens != null ? String(lc.max_tokens) : '';
           this.llmTemperature = lc.temperature != null ? String(lc.temperature) : '';
         }
@@ -905,7 +892,7 @@
         const o = {};
         if (this.llmProvider) o.provider = this.llmProvider;
         if (this.llmModel.trim()) o.model = this.llmModel.trim();
-        if (this.llmThinking !== 'inherit') o.thinking_level = this.llmThinking === 'off' ? '' : this.llmThinking;
+        if (this.llmThinking !== 'inherit') o.thinking_level = this.llmThinking.trim();
         const mt = parseInt(this.llmMaxTokens, 10);
         if (mt > 0) o.max_tokens = mt;
         const t = parseFloat(this.llmTemperature);

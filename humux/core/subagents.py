@@ -22,6 +22,8 @@ from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
+from core.reasoning import normalize_setting
+
 # Keep at most this many finished runs for after-the-fact inspection.
 _MAX_FINISHED = 50
 
@@ -49,21 +51,10 @@ RESULT_FOR_AGENT_INSTRUCTION = (
     "elaborate tables. Just the facts the agent asked for, as briefly as possible."
 )
 
-_EFFORT_LEVELS = {"off": "", "low": "low", "medium": "medium", "high": "high"}
-
-
 def normalize_effort(value: str | None) -> str | None:
-    """Map a tool-supplied thinking effort to an LLM thinking level.
-
-    ``None``/empty → ``None`` = *inherit the caller's level* (the default, so a
-    subagent thinks as hard as its parent unless told otherwise). ``"off"`` →
-    ``""`` (reasoning off); ``low``/``medium``/``high`` pass through. Anything
-    unrecognised → ``None``, degrading to the safe inherit default rather than
-    erroring on a bad value.
-    """
-    if not value:
-        return None
-    return _EFFORT_LEVELS.get(str(value).strip().lower())
+    """Blank or invalid values inherit. Off omits the reasoning override."""
+    level = normalize_setting(value)
+    return "" if level == "off" else level or None
 
 
 def _parse_allowed(allowed: list[str] | None) -> list[tuple[str, str]]:
