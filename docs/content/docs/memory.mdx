@@ -64,8 +64,8 @@ The Tier 2–4 columns (`embedding`, `importance`, `last_accessed`, `access_coun
 Memory is **two-tier by scope**, mirroring the [secrets vault](/docs/secrets)'s shared-infra/per-agent model. The `scope` column is `''` for **shared** owner-level facts (preferences, relationships, biography — visible to every agent and the default identity) and `'<agent>'` for facts **private** to one agent (so a fitness coach and a finance assistant don't read each other's domain memory).
 
 - **Retrieval** at each turn filters to `scope IN ('', <active agent>)`. The active agent is resolved from the per-chat binding / [bot-per-agent](/docs/agents) channel; the default identity (no agent) reads **shared only**.
-- **Extraction** is agent-aware: when an agent is active the extractor may tag a fact private to it, defaulting to **shared when unsure** — so the owner doesn't have to re-teach each agent the same general facts.
-- **Isolation is enforced at the store, not just the prompt:** dedup/update/delete candidates are bounded to shared + the writer's own scope, consolidation promotes per scope, and the hygiene pass clusters within a scope only — a private memory can never merge into or delete another agent's. Existing memories migrate to `''` (shared), the correct default.
+- **Extraction** is agent-aware: facts default to the active agent’s private scope. The extractor explicitly marks facts shared when they apply across assistants or the owner asks for them to be shared. Each agent has its own cooldown and buffer for pending turns.
+- **Isolation is enforced at the store, not just the prompt:** long-term updates and deletions are restricted to the writer’s scope, consolidation promotes per scope, and the hygiene pass clusters within a scope only — a private memory can never merge into or delete another agent's. Use the Memory tab to correct the scope of previously stored facts.
 
 ### Long-term categories
 

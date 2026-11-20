@@ -384,32 +384,26 @@ def _clean_subject(subject: str, category: str) -> str:
 
 
 def _extraction_scope_block(agent_scope: str) -> str:
-    """Scope instruction injected into the extraction prompt (#42).
-
-    Empty when no agent is active (everything is shared). When an agent is
-    active, lets the model mark domain-specific facts private to it; the default
-    stays shared so owner-level facts reach every agent.
-    """
+    """Tell the extractor who can use each retained fact."""
     if not agent_scope:
         return ""
     return (
-        f'\nYou are extracting for the "{agent_scope}" agent. Add '
-        f'`"scope": "private"` to a fact ONLY if it is specific to this agent\'s '
-        f"domain and should NOT be shared with the owner's other assistants. "
-        f"General facts about the owner (preferences, relationships, biography) are "
-        f'shared — omit scope or use `"scope": "shared"`. When unsure, leave it shared.\n'
+        f'\nYou are extracting for the "{agent_scope}" agent. Set `"scope": "private"` '
+        'by default for both short-term and long-term facts. Use `"scope": "shared"` '
+        "only when the user explicitly asks all their assistants to remember it, or "
+        "the exchange clearly establishes a general fact or preference that is "
+        "useful across assistants and appropriate for all of them to see. "
+        "A globally applicable language preference can be shared. Project status, "
+        "tasks, deadlines, client or colleague details, agent-specific preferences, "
+        "and sensitive personal information stay private unless explicitly shared. "
+        "A fact can be about the user and still belong to this agent. When unsure, "
+        "keep it private. Split facts with different audiences.\n"
     )
 
 
 def _resolve_extracted_scope(mem: dict, agent_scope: str) -> str:
-    """Map an extracted item's scope hint to a stored scope key (#42).
-
-    Private only when an agent is active AND the model tagged it private;
-    everything else is shared (``''``).
-    """
-    if agent_scope and str(mem.get("scope", "")).strip().lower() == "private":
-        return agent_scope
-    return ""
+    """Only an explicit shared classification opts out of the active scope."""
+    return "" if mem.get("scope") == "shared" else agent_scope
 
 
 def _scope_filter(scope: str | None) -> tuple[str, tuple]:
@@ -536,10 +530,10 @@ class MemoryStore:
         self.hygiene_enabled = hygiene_enabled
         self.hygiene_similarity_threshold = hygiene_similarity_threshold
         self._ready = False
-        self._last_extraction: float | None = None  # monotonic timestamp of last extraction
+        self._last_extraction: dict[str, float] = {}  # monotonic timestamps by scope
         # Turns skipped by the cooldown, replayed into the next extraction so
         # back-to-back salient turns aren't dropped (issue #7).
-        self._pending_turns: list[tuple[str, str]] = []
+        self._pending_turns: dict[str, list[tuple[str, str]]] = {}
 
     async def _ensure_schema(self) -> None:
         if self._ready:
@@ -814,12 +808,12 @@ class MemoryStore:
     # Number of similar long-term memories retrieved as ADD/UPDATE/DELETE candidates.
     _UPDATE_TOP_K = 8
 
-    def _format_pending_turns(self) -> str:
+    def _format_pending_turns(self, turns: list[tuple[str, str]]) -> str:
         """Render buffered cooldown turns as a prompt section (empty if none)."""
-        if not self._pending_turns:
+        if not turns:
             return ""
         lines = ["", "Earlier turns since the last review (also consider these):"]
-        for user_msg, agent_msg in self._pending_turns:
+        for user_msg, agent_msg in turns:
             lines.append(f"User: {user_msg}")
             lines.append(f"Assistant: {agent_msg}")
         return "\n".join(lines) + "\n"
@@ -841,34 +835,32 @@ class MemoryStore:
         If fewer than *cooldown_seconds* have elapsed since the last
         extraction call, the call is skipped entirely (returns 0).
 
-        ``agent_scope`` is the active agent's key (#42). When set, the
-        extraction LLM may tag a fact ``"scope": "private"`` to keep it inside
-        that agent; everything else is stored shared (``''``). With no active
-        agent it is ``""`` and every fact is shared.
+        A named agent's extracted facts default to its private scope. The
+        extractor opts in to shared storage with ``"scope": "shared"``.
+        Cooldowns and buffered turns are isolated by the active agent's scope.
 
         Returns the number of memories stored.
         """
         now = time.monotonic()
-        if (
-            cooldown_seconds > 0
-            and self._last_extraction is not None
-            and now - self._last_extraction < cooldown_seconds
+        last_extraction = self._last_extraction.get(agent_scope)
+        if cooldown_seconds > 0 and last_extraction is not None and (
+            now - last_extraction < cooldown_seconds
         ):
             # Buffer the skipped turn instead of dropping it; it is replayed
             # into the next extraction once the cooldown elapses (issue #7).
-            self._pending_turns.append((user_msg, agent_msg))
-            del self._pending_turns[: -self._MAX_PENDING_TURNS]
+            pending = self._pending_turns.setdefault(agent_scope, [])
+            pending.append((user_msg, agent_msg))
+            del pending[: -self._MAX_PENDING_TURNS]
             log.debug(
                 "Buffering memory extraction (cooldown: %.0fs remaining, %d pending)",
-                cooldown_seconds - (now - self._last_extraction),
-                len(self._pending_turns),
+                cooldown_seconds - (now - last_extraction),
+                len(pending),
             )
             return 0
-        self._last_extraction = now
+        self._last_extraction[agent_scope] = now
 
         # Replay any turns buffered during the cooldown, then clear the buffer.
-        recent_turns_block = self._format_pending_turns()
-        self._pending_turns = []
+        recent_turns_block = self._format_pending_turns(self._pending_turns.pop(agent_scope, []))
 
         # Build existing-memories block so the LLM can avoid duplicates — scoped
         # to what this agent may see (shared + its own private).
@@ -946,8 +938,7 @@ class MemoryStore:
         LLM call. Malformed model output is a safe no-op.
 
         ``scope`` (#42) tags an ADD and bounds the dedup/UPDATE/DELETE candidate
-        set to shared + that scope, so a private fact never merges into or
-        deletes another agent's private memory.
+        set to the write scope, so a private fact cannot rewrite shared memory.
 
         Returns the operation applied: ``"ADD"``, ``"UPDATE"``, ``"DELETE"``,
         or ``"NOOP"``.
@@ -958,9 +949,7 @@ class MemoryStore:
         if not content:
             return "NOOP"
 
-        # Candidates restricted to shared + own scope: a private fact must not
-        # see — and therefore cannot UPDATE/DELETE — another agent's memory.
-        similar = await self._retrieve_similar_long_term(subject, content, scope or "")
+        similar = await self._retrieve_similar_long_term(subject, content, scope)
         if not similar:
             await self._insert_long_term(category, subject, content, scope=scope)
             log.debug("ADD long-term (no similar): [%s] %s: %s", category, subject, content[:80])
@@ -1012,20 +1001,22 @@ class MemoryStore:
             async with aiosqlite.connect(self.db_path) as db:
                 # Re-mentioning a fact reinforces it: bump importance (capped).
                 if blob is not None:
-                    await db.execute(
+                    cursor = await db.execute(
                         "UPDATE long_term SET category = ?, subject = ?, content = ?, "
                         "embedding = ?, importance = MIN(10.0, importance + 1.0), "
-                        "updated_at = datetime('now') WHERE id = ?",
-                        (new_category, new_subject, new_content, blob, target_id),
+                        "updated_at = datetime('now') WHERE id = ? AND scope = ?",
+                        (new_category, new_subject, new_content, blob, target_id, scope),
                     )
                 else:
-                    await db.execute(
+                    cursor = await db.execute(
                         "UPDATE long_term SET category = ?, subject = ?, content = ?, "
                         "importance = MIN(10.0, importance + 1.0), "
-                        "updated_at = datetime('now') WHERE id = ?",
-                        (new_category, new_subject, new_content, target_id),
+                        "updated_at = datetime('now') WHERE id = ? AND scope = ?",
+                        (new_category, new_subject, new_content, target_id, scope),
                     )
                 await db.commit()
+                if cursor.rowcount == 0:
+                    return "NOOP"
             log.debug("UPDATE long-term %s: %s", target_id, new_content[:80])
             return "UPDATE"
 
@@ -1036,8 +1027,12 @@ class MemoryStore:
                 return "NOOP"
             await self._ensure_schema()
             async with aiosqlite.connect(self.db_path) as db:
-                await db.execute("DELETE FROM long_term WHERE id = ?", (target_id,))
+                cursor = await db.execute(
+                    "DELETE FROM long_term WHERE id = ? AND scope = ?", (target_id, scope)
+                )
                 await db.commit()
+                if cursor.rowcount == 0:
+                    return "NOOP"
             log.debug("DELETE long-term %s (contradicted)", target_id)
             return "DELETE"
 
@@ -1054,13 +1049,13 @@ class MemoryStore:
         otherwise pure token overlap. A matching subject adds a fixed boost.
         Cheap and dependency-free at <1k rows.
 
-        ``scope`` (#42) bounds the candidate set: ``""`` = shared only, an agent
-        key = shared + that agent, ``None`` = every scope."""
+        ``scope`` restricts candidates to the exact write scope. ``None`` returns
+        candidates from every scope."""
         await self._ensure_schema()
-        clause, params = _scope_filter(scope)
+        clause, params = ("", ()) if scope is None else (" AND scope = ?", (scope,))
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
-            cursor = await db.execute(
+            cursor = cursor = await db.execute(
                 "SELECT id, category, subject, content, created_at, updated_at, embedding "
                 f"FROM long_term WHERE archived = 0{clause}",  # noqa: S608
                 params,
@@ -1452,7 +1447,7 @@ class MemoryStore:
         """Ask the LLM which short-term memories to promote to long-term.
 
         All rows are assumed to share ``scope`` (#42); promotions are stored in
-        that scope and deduplicated only against shared + that scope.
+        that scope. Shared facts are visible as context for deduplication.
         """
         # Build the short-term entries block
         st_lines = []
