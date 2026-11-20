@@ -1,11 +1,13 @@
-"""Tests for conversation compaction, token-usage capture, and the /clear alias."""
+"""Tests for conversation compaction, token-usage capture, and history commands."""
 
 from __future__ import annotations
 
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from core.agent import _control_command
 from core.compaction import (
     compact_messages,
     compaction_threshold_tokens,
@@ -164,8 +166,21 @@ async def test_replace_session_rewrites_messages(tmp_path) -> None:
     assert await h2.get_session("telegram", "u") == [{"role": "user", "content": "new"}]
 
 
+async def test_failed_session_replacement_preserves_cached_and_saved_messages(tmp_path) -> None:
+    db_path = str(tmp_path / "history.db")
+    history = ConversationHistory(db_path=db_path)
+    messages = [{"role": "user", "content": "existing message"}]
+    await history.append_session_messages("telegram", "u", messages)
+
+    with pytest.raises(TypeError):
+        await history.replace_session("telegram", "u", [{"role": "user", "content": object()}])
+
+    assert await history.get_session("telegram", "u") == messages
+    assert await ConversationHistory(db_path=db_path).get_session("telegram", "u") == messages
+
+
 # ---------------------------------------------------------------------------
-# Agent integration: _maybe_compact + /clear alias
+# Agent integration: automatic compaction and history commands
 # ---------------------------------------------------------------------------
 
 
@@ -224,3 +239,80 @@ async def test_clear_alias_clears_conversation(agent) -> None:
 async def test_new_still_clears_conversation(agent) -> None:
     resp = await agent.process("/new", channel="telegram", user_id="u", chat_id="")
     assert resp.text == "Conversation cleared."
+
+
+@pytest.mark.parametrize("command", ["/compact", "/compact@coachbot", "/compact\n\n/compact"])
+async def test_compact_summarizes_session_even_when_automatic_compaction_is_disabled(
+    agent, monkeypatch, command
+) -> None:
+    agent.config.compaction.enabled = False
+    agent.config.compaction.keep_recent_turns = 1
+    messages = _session_with_tool_pair()
+    await agent.history.append_session_messages("telegram", "u", messages, "group")
+    llm = FakeLLM()
+    monkeypatch.setattr(agent, "_background_llm", Mock(return_value=llm))
+
+    response = await agent.process(command, channel="telegram", user_id="u", chat_id="group")
+
+    assert response.text == "Summarized 6 earlier messages and kept 2 recent messages."
+    saved = await agent.history.get_session("telegram", "u", "group")
+    assert "<conversation_summary>\nSUMMARY" in saved[0]["content"]
+    assert saved[2:] == messages[-2:]
+    assert llm.calls == 1
+
+
+async def test_compact_leaves_short_session_untouched(agent, monkeypatch) -> None:
+    agent.config.compaction.keep_recent_turns = 1
+    messages = _session_with_tool_pair()[-2:]
+    await agent.history.append_session_messages("telegram", "u", messages, "")
+    llm = FakeLLM()
+    monkeypatch.setattr(agent, "_background_llm", Mock(return_value=llm))
+
+    response = await agent.process("/compact", channel="telegram", user_id="u")
+
+    assert response.text == "There is nothing to compact."
+    assert await agent.history.get_session("telegram", "u") == messages
+    assert llm.calls == 0
+
+
+async def test_compact_in_injection_mode_skips_llm(agent, monkeypatch) -> None:
+    agent.history_mode = "injection"
+    background_llm = Mock()
+    monkeypatch.setattr(agent, "_background_llm", background_llm)
+
+    response = await agent.process("/compact", channel="telegram", user_id="u")
+
+    assert response.text == "Conversation compaction only applies in session mode."
+    background_llm.assert_not_called()
+
+
+async def test_compact_reports_summarization_failure(agent, monkeypatch, caplog) -> None:
+    agent.config.compaction.keep_recent_turns = 1
+    messages = _session_with_tool_pair()
+    await agent.history.append_session_messages("telegram", "u", messages, "")
+    llm = SimpleNamespace(generate_text=AsyncMock(side_effect=RuntimeError("model unavailable")))
+    monkeypatch.setattr(agent, "_background_llm", Mock(return_value=llm))
+
+    response = await agent.process("/compact", channel="telegram", user_id="u")
+
+    assert response.text == "Conversation compaction failed: model unavailable"
+    assert "Requested conversation compaction failed" in caplog.text
+    assert await agent.history.get_session("telegram", "u") == messages
+
+
+async def test_unaddressed_compact_stays_silent_even_when_group_replies_are_enabled(
+    agent, monkeypatch
+) -> None:
+    background_llm = Mock()
+    monkeypatch.setattr(agent, "_background_llm", background_llm)
+
+    response = await agent.process(
+        "/compact", channel="telegram", user_id="group", chat_id="group", addressed=False
+    )
+
+    assert response.text == ""
+    background_llm.assert_not_called()
+
+
+def test_compact_with_other_words_is_not_a_command() -> None:
+    assert _control_command("/compact please") == ""

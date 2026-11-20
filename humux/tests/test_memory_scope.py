@@ -141,11 +141,12 @@ def test_scope_filter():
 
 
 def test_resolve_extracted_scope():
-    # Private only when an agent is active AND the model tagged it private.
+    # Only an explicit shared classification opts out of the active scope.
     assert _resolve_extracted_scope({"scope": "private"}, "coach") == "coach"
     assert _resolve_extracted_scope({"scope": "PRIVATE"}, "coach") == "coach"
     assert _resolve_extracted_scope({"scope": "shared"}, "coach") == ""
-    assert _resolve_extracted_scope({}, "coach") == ""
+    assert _resolve_extracted_scope({}, "coach") == "coach"
+    assert _resolve_extracted_scope({"scope": "typo"}, "coach") == "coach"
     # No active agent → always shared, even if tagged private.
     assert _resolve_extracted_scope({"scope": "private"}, "") == ""
 
@@ -219,3 +220,29 @@ async def test_update_short_term(store):
     assert n == 1
     coach = {r["content"] for r in await store.get_short_term("coach")}
     assert "edited" in coach
+
+
+async def test_private_extraction_cannot_update_shared_memory(store):
+    await store._insert_long_term("work", "owner", "Owner is working on a proposal.")
+    llm = AsyncMock()
+    llm.generate_text.return_value = (
+        '[{"tier":"LONG_TERM","category":"work","subject":"owner",'
+        '"content":"Owner is working on a confidential proposal."}]'
+    )
+    assert await store.extract_memories(llm, "m", "proposal", "noted", agent_scope="coach") == 1
+    assert _contents(await store.get_long_term("finance")) == {"Owner is working on a proposal."}
+    assert "Owner is working on a confidential proposal." in _contents(
+        await store.get_long_term("coach")
+    )
+    llm.generate_text.assert_awaited_once()
+
+
+async def test_extraction_buffer_never_replays_into_another_agents_prompt(store):
+    llm = AsyncMock()
+    llm.generate_text.return_value = "[]"
+    await store.extract_memories(llm, "m", "arm", "ok", agent_scope="coach")
+    await store.extract_memories(llm, "m", "coach-only detail", "ok", agent_scope="coach")
+    await store.extract_memories(llm, "m", "finance detail", "ok", agent_scope="finance")
+    assert "coach-only detail" not in llm.generate_text.call_args.kwargs["prompt"]
+    await store.extract_memories(llm, "m", "next", "ok", cooldown_seconds=0, agent_scope="coach")
+    assert "coach-only detail" in llm.generate_text.call_args.kwargs["prompt"]

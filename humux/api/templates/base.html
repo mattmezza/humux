@@ -274,7 +274,7 @@
     ];
     window.LLM_MODELS = {
       anthropic: ['claude-4-6-opus', 'claude-4-6-sonnet', 'claude-haiku-4-5'],
-      openai: ['gpt-5.2-thinking', 'gpt-5.2-pro', 'gpt-5.2-instant', 'gpt-5-mini'],
+      openai: ['gpt-6.2-sol', 'gpt-5.2', 'gpt-5-mini'],
       google: ['gemini-deep-think-latest', 'gemini-pro-latest', 'gemini-flash-latest'],
       grok: ['grok-4.20-beta', 'grok-4-latest', 'grok-4.1-fast'],
       deepseek: ['deepseek-chat', 'deepseek-reasoner'],
@@ -639,7 +639,8 @@
             body: JSON.stringify({
               service: service,
               api_key: apiKey,
-              base_url: this.resolvedBaseUrl(service) || undefined
+              base_url: this.resolvedBaseUrl(service) || undefined,
+              model: service === 'openai' && this.provider === service ? this.model : undefined
             })
           })
             .then(r => r.json())

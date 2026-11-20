@@ -24,6 +24,7 @@ from core.agents import Agent, AgentStore, default_agent_from_values, topic_base
 from core.artifacts import ARTIFACTS_SUBDIR
 from core.compaction import compact_messages, should_compact
 from core.config import Config, search_ready
+from core.decisions import DecisionClient, IncomingDecision
 from core.embeddings import LOCAL_PROVIDERS, EmbeddingClient, LocalEmbeddingClient
 from core.executor import ToolExecutor
 from core.goal_decomposition import DecomposedGoal, classify_complexity, decompose_goal
@@ -44,7 +45,7 @@ from core.log_streams import set_stream, subagent_stream
 from core.memory import MemoryStore
 from core.models import IMAGE_MIME_TYPES, AgentResponse, Attachment, OutputMessage
 from core.permissions import PermissionEngine, PermissionLevel, format_approval_message
-from core.prompt_builder import build_prompt_sections
+from core.prompt_builder import build_prompt_sections, channel_has_voice
 from core.reply_decision import should_reply
 from core.scheduler import AgentScheduler
 from core.secret_store import SecretStore
@@ -315,7 +316,7 @@ def _strip_command_suffix(message: str) -> str:
     return text.lower()
 
 
-_CONTROL_COMMANDS = ("/yolo-on", "/yolo-off", "/new", "/clear", "/stop")
+_CONTROL_COMMANDS = ("/yolo-on", "/yolo-off", "/new", "/clear", "/compact", "/stop")
 
 # Shown as the reply of an aborted turn AND stored as its assistant history entry,
 # so the next turn's model sees it was interrupted mid-work (#146).
@@ -1642,33 +1643,43 @@ class AgentCore:
             )
             return AgentResponse(text="Conversation cleared.")
 
+        if command == "/compact":
+            if not addressed:
+                return AgentResponse(text="")
+            if self.history_mode != "session":
+                return AgentResponse(text="Conversation compaction only applies in session mode.")
+            try:
+                counts = await self._compact_session(channel, user_id, chat_id)
+            except Exception as exc:
+                log.exception("Requested conversation compaction failed")
+                return AgentResponse(text=f"Conversation compaction failed: {exc}")
+            if counts is None:
+                return AgentResponse(text="There is nothing to compact.")
+            before, after = counts
+            # The rebuilt session begins with the summary and its acknowledgement.
+            kept = after - 2
+            return AgentResponse(
+                text=f"Summarized {before - kept} earlier messages and kept {kept} recent messages."
+            )
+
         # Tag this turn's log records with the agent's stream (#75) so the admin
         # Logs tab can filter per agent. Subagents spawned below inherit it (the
         # ContextVar is copied into their task) and add their own label.
         set_stream(agent.name if agent else "default")
 
-        # Reply decision (#36): in a shared/group chat, stay quiet for messages
-        # aimed at someone else or caught in a bot-to-bot reaction loop. Off by
-        # default; never gates 1:1 chats (group_only) or scheduler/system turns.
-        # A hard per-chat rate cap backstops the LLM gate so a runaway loop
-        # always terminates even if the gate keeps voting "reply". Runs before
-        # goal decomposition so a suppressed message costs only this one cheap
-        # call, never a decompose pass. Returns an empty response → no send.
         rd_cfg = self.config.reply_decision
-        if (
+        decision_cfg = self.config.decisions
+        gate_reply = (
             rd_cfg.enabled
-            and not addressed  # explicit @mention of THIS bot always replies (#185)
+            and not addressed
             and channel != "system"
             and (not rd_cfg.group_only or self._is_group_chat(user_id, chat_id))
-        ):
-            # Reserve a slot BEFORE the awaited LLM call so concurrent messages
-            # in the same chat (each its own task) see the reservation and trip
-            # the cap — closing the check-then-act race that would otherwise let
-            # a burst sail past the cap. A SKIP releases its slot below.
-            # The cap is per GROUP, not per topic (#183): a folded topic id would
-            # give a bot-loop one fresh budget per topic, reopening the storm the
-            # cap exists to close (#36/#53).
-            cap_chat = topic_base_id(chat_id) or chat_id
+        )
+        cap_chat = topic_base_id(chat_id) or chat_id
+        reserved = None
+        if gate_reply:
+            # Reserve before awaiting the model so concurrent messages cannot exceed
+            # the per-group backstop (forum topics share the group's budget).
             reserved = self._reserve_reply(channel, cap_chat, rd_cfg)
             if reserved is None:
                 log.warning(
@@ -1679,22 +1690,56 @@ class AgentCore:
                     channel,
                 )
                 return AgentResponse(text="")
+
+        decision = IncomingDecision()
+        can_react = (
+            decision_cfg.provider
+            and decision_cfg.reactions
+            and (addressed or gate_reply)
+            and message_id is not None
+            and channel != "system"
+            and not woken_by_subagent
+            and (agent is None or agent.allows_tool("set_reaction"))
+            and callable(getattr(self.channels.get(channel), "react", None))
+        )
+        if gate_reply or can_react:
             identity = (agent.agent_name or agent.name) if agent else "the assistant"
-            llm = self._background_llm(rd_cfg.provider, rd_cfg.thinking_level)
-            # Feed the gate the recent turns (so follow-ups / pronouns read) and
-            # the sibling bots' names (so "addressed to someone else" is anchored
-            # to real agents). Both best-effort — the gate works without them.
-            history = await self.history.get_messages(channel, user_id, chat_id)
-            others = [
-                a.agent_name or a.name
-                for a in await self.agents.list_agents()
-                if a.enabled and a.bot_token and a.name != (agent.name if agent else "")
-            ]
-            if not await should_reply(
-                llm, rd_cfg.model, message, identity, history=history, others=others
-            ):
-                self._release_reply(channel, cap_chat, reserved)
+            history = []
+            others = []
+            if gate_reply:
+                history = await self.history.get_messages(channel, user_id, chat_id)
+                others = [
+                    a.agent_name or a.name
+                    for a in await self.agents.list_agents()
+                    if a.enabled and a.bot_token and a.name != (agent.name if agent else "")
+                ]
+            if decision_cfg.provider:
+                decision = await DecisionClient(decision_cfg).incoming(
+                    message,
+                    identity,
+                    history=history,
+                    others=others,
+                    gate_reply=gate_reply,
+                    can_react=bool(can_react),
+                )
+            else:
+                llm = self._background_llm(rd_cfg.provider, rd_cfg.thinking_level)
+                decision = IncomingDecision(
+                    reply=await should_reply(
+                        llm, rd_cfg.model, message, identity, history=history, others=others
+                    )
+                )
+            if not decision.reply:
+                if reserved is not None:
+                    self._release_reply(channel, cap_chat, reserved)
                 return AgentResponse(text="")
+
+        reaction = decision.reaction
+        if reaction and decision.reaction_only:
+            if await self._apply_decision_reaction(reaction, agent, channel, chat_id, message_id):
+                await self._record_inbound(channel, user_id, chat_id, message, attachments)
+                return AgentResponse(text="")
+            reaction = None
 
         # Goal decomposition — classify and (if complex) decompose the request.
         # The resulting plan is request-specific, so it is injected per turn
@@ -1756,7 +1801,7 @@ class AgentCore:
         agent_token = set_usage_agent(agent.name if agent else "")
         try:
             if self.history_mode == "session":
-                return await self._process_session(
+                result = await self._process_session(
                     system,
                     preamble,
                     message,
@@ -1769,23 +1814,41 @@ class AgentCore:
                     message_id,
                     woken_by_subagent,
                 )
-            return await self._process_injection(
-                system,
-                preamble,
-                message,
-                channel,
-                user_id,
-                attachments,
-                chat_id,
-                tools,
-                agent,
-                message_id,
-                woken_by_subagent,
-            )
+            else:
+                result = await self._process_injection(
+                    system,
+                    preamble,
+                    message,
+                    channel,
+                    user_id,
+                    attachments,
+                    chat_id,
+                    tools,
+                    agent,
+                    message_id,
+                    woken_by_subagent,
+                )
+            if reaction:
+                await self._apply_decision_reaction(reaction, agent, channel, chat_id, message_id)
+            return result
         finally:
             reset_capture_context(cap_token)
             reset_usage_agent(agent_token)
             self._active_turns_map().pop(turn_key, None)
+
+    async def _apply_decision_reaction(
+        self, emoji: str, agent: Agent | None, channel: str, chat_id: str, message_id: int | None
+    ) -> bool:
+        params = {"emoji": emoji}
+        level = self.permissions.check("set_reaction", params, _agent_scope(agent))
+        if level != PermissionLevel.ALWAYS:
+            return False
+        result = await self._tool_set_reaction(
+            params, {"origin": {"channel": channel, "chat_id": chat_id, "message_id": message_id}}
+        )
+        if not result.get("ok"):
+            log.warning("Could not deliver decision model reaction")
+        return bool(result.get("ok"))
 
     async def _resolve_agent(self, channel: str, user_id: str, chat_id: str) -> Agent | None:
         """Resolve the agent for this request, in precedence order:
@@ -1905,6 +1968,8 @@ class AgentCore:
             search_enabled=self.search_enabled,
             deep_research_enabled=self.config.tools.deep_research.enabled,
         )
+        if self.config.decisions.provider and self.config.decisions.reactions:
+            tools = [t for t in tools if t["name"] != "set_reaction"]
         # deep_research fans out web searches — hide it from an agent whose
         # scope withholds web_search (#293); the handler refuses too.
         if agent and agent.tools and not agent.allows_tool("web_search"):
@@ -2181,31 +2246,43 @@ class AgentCore:
         if not should_compact(cfg, context_tokens, model or self.config.agent.model):
             return None
 
-        session = await self.history.get_session(channel, user_id, chat_id)
         try:
-            llm = self._background_llm(cfg.provider, cfg.thinking_level)
-            result = await compact_messages(llm, cfg.model, session, cfg.keep_recent_turns)
+            counts = await self._compact_session(channel, user_id, chat_id)
         except Exception:
             log.exception("Conversation compaction failed")
             return None
-        if not result:
+        if counts is None:
             return None
 
-        new_messages, _summary = result
-        await self.history.replace_session(channel, user_id, new_messages, chat_id)
+        before, after = counts
         log.info(
             "Compacted session %s/%s/%s: %d → %d messages (~%d ctx tokens)",
             channel,
             user_id,
             chat_id,
-            len(session),
-            len(new_messages),
+            before,
+            after,
             context_tokens,
         )
         return (
             f"🗜️ Our conversation was getting large (~{context_tokens:,} tokens). "
             "I summarized the earlier part to free up space; recent messages are kept as-is."
         )
+
+    async def _compact_session(
+        self, channel: str, user_id: str, chat_id: str
+    ) -> tuple[int, int] | None:
+        """Compact stored history and return the message counts before and after."""
+        cfg = self.config.compaction
+        session = await self.history.get_session(channel, user_id, chat_id)
+        llm = self._background_llm(cfg.provider, cfg.thinking_level)
+        result = await compact_messages(llm, cfg.model, session, cfg.keep_recent_turns)
+        if result is None:
+            return None
+
+        new_messages, _summary = result
+        await self.history.replace_session(channel, user_id, new_messages, chat_id)
+        return len(session), len(new_messages)
 
     async def _build_user_message(
         self,
@@ -2440,7 +2517,9 @@ class AgentCore:
         # Split into one or more delivery messages (#202); each part may be voice.
         # ``final_text`` becomes the combined marker-free text used for history,
         # memory extraction, and the backward-compat AgentResponse.text.
-        messages, final_text = await self._split_reply(final_text, agent)
+        messages, final_text = await self._split_reply(
+            final_text, agent, message=message, channel=channel
+        )
 
         # Persist the turn (user message + one assistant turn per delivered message).
         # A react-only turn (or any reply that sends nothing) yields no messages —
@@ -2626,7 +2705,9 @@ class AgentCore:
         # ``final_text`` becomes the combined marker-free text — one assistant turn
         # in the session (multiple assistant messages would break user/assistant
         # alternation), and the backward-compat AgentResponse.text.
-        messages, final_text = await self._split_reply(final_text, agent)
+        messages, final_text = await self._split_reply(
+            final_text, agent, message=message, channel=channel
+        )
 
         # Append the final assistant response to the session. Skip an empty final
         # (a react-only turn sends nothing): the reaction is already recorded as the
@@ -2672,7 +2753,7 @@ class AgentCore:
         return message
 
     async def _split_reply(
-        self, final_text: str, agent: Agent | None
+        self, final_text: str, agent: Agent | None, *, message: str = "", channel: str = ""
     ) -> tuple[list[OutputMessage], str]:
         """Split the model's final reply into ordered delivery messages (#202).
 
@@ -2682,7 +2763,7 @@ class AgentCore:
         Returns the message list and the combined marker-free text (for history,
         logging, and the backward-compat ``AgentResponse.text``).
 
-        A voice-marked part whose synthesis fails (or whose pipeline isn't
+        A voice-selected part whose synthesis fails (or whose pipeline isn't
         loaded) must never silently degrade into a duplicate text bubble
         (#304): if the same marker-free content was already going out as plain
         text elsewhere in the turn, the failed part is dropped instead of
@@ -2690,11 +2771,26 @@ class AgentCore:
         """
         voice_name = (agent.voice or None) if agent else None
         parts = [p for p in (seg.strip() for seg in _SPLIT_MARKER_RE.split(final_text)) if p]
+        clean_parts = [strip_voice_marker(part) for part in parts]
+        decision_cfg = self.config.decisions
+        if decision_cfg.provider and decision_cfg.voice:
+            spoken = set()
+            if self.voice and self.config.voice.tts_enabled and channel_has_voice(channel):
+                spoken = await DecisionClient(decision_cfg).spoken_parts(message, clean_parts)
+        else:
+            spoken = {i for i, part in enumerate(parts) if _VOICE_MARKER_RE.search(part)}
         items: list[tuple[str, bool, bytes | None]] = []
-        for part in parts:
-            marked = bool(_VOICE_MARKER_RE.search(part))
-            voice_bytes = await self._maybe_synthesize_voice(part, voice=voice_name)
-            items.append((strip_voice_marker(part), marked, voice_bytes))
+        for i, clean in enumerate(clean_parts):
+            marked = i in spoken
+            voice_bytes = None
+            if marked and self.voice:
+                try:
+                    voice_bytes = await self.voice.synthesize(
+                        clean, voice=voice_name, lang=voice_request_lang(parts[i])
+                    )
+                except Exception:
+                    log.exception("TTS synthesis failed, sending text only")
+            items.append((clean, marked, voice_bytes))
         delivered_as_text = {clean for clean, marked, _ in items if not marked}
 
         messages: list[OutputMessage] = []
@@ -2714,18 +2810,6 @@ class AgentCore:
             messages.append(OutputMessage(text=clean, voice=voice_bytes))
         combined = "\n".join(m.text for m in messages if m.text)
         return messages, combined
-
-    async def _maybe_synthesize_voice(self, text: str, voice: str | None = None) -> bytes | None:
-        """Synthesize voice if requested by the LLM, using the agent's voice
-        when one is set (else the configured default)."""
-        if _VOICE_MARKER_RE.search(text) and self.voice:
-            clean_text = strip_voice_marker(text)
-            lang = voice_request_lang(text)
-            try:
-                return await self.voice.synthesize(clean_text, voice=voice, lang=lang)
-            except Exception:
-                log.exception("TTS synthesis failed, sending text only")
-        return None
 
     async def _execute_tool(
         self,
@@ -2995,6 +3079,8 @@ class AgentCore:
             return result
 
         if name == "set_reaction":
+            if self.config.decisions.provider and self.config.decisions.reactions:
+                return {"error": "Message reactions are handled by the configured decision model."}
             return await self._tool_set_reaction(params, request_state)
 
         if name == "create_calendar_event":

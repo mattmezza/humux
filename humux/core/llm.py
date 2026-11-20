@@ -24,9 +24,12 @@ from core.reasoning import DEFAULT_BASE_URLS, normalize_setting, reasoning_kwarg
 # an anthropic-only install still loads this module.
 try:
     from openai import APIError as _OpenAIAPIError
+    from openai import BadRequestError as _OpenAIBadRequestError
 except ImportError:  # pragma: no cover - openai is declared in pyproject
+    _OPENAI_BAD_REQUEST_ERRORS: tuple[type[Exception], ...] = ()
     PROVIDER_API_ERRORS: tuple[type[Exception], ...] = (AnthropicAPIError,)
 else:
+    _OPENAI_BAD_REQUEST_ERRORS = (_OpenAIBadRequestError,)
     PROVIDER_API_ERRORS = (AnthropicAPIError, _OpenAIAPIError)
 
 # Dedicated logger for model chain-of-thought. Silent by default (WARNING);
@@ -130,6 +133,29 @@ async def _call_with_retries(fn):
                 _RETRY_ATTEMPTS,
             )
             await asyncio.sleep(delay)
+
+
+# Models with the same ID can sit behind different OpenAI-compatible servers.
+_OPENAI_TOKEN_PARAMETERS: OrderedDict[tuple[str, str], str] = OrderedDict()
+_OPENAI_TOKEN_PARAMETER_CACHE_CAP = 256
+
+
+def _token_parameter_rejected(exc: Any, parameter: str) -> bool:
+    if exc.param is not None and exc.param != parameter:
+        return False
+    message = exc.message.lower()
+    if exc.code in {"unsupported_parameter", "unknown_parameter", "unrecognized_parameter"}:
+        return exc.param == parameter or parameter in message
+    return parameter in message and any(
+        phrase in message
+        for phrase in (
+            "unsupported parameter",
+            "unknown parameter",
+            "unrecognized parameter",
+            "not supported",
+            "unexpected keyword argument",
+        )
+    )
 
 
 _ANTHROPIC_MODEL_ALIASES = {
@@ -343,6 +369,33 @@ class LLMClient:
             self._client = cast(Any, client_class)(**client_kwargs)  # type: ignore[call-arg]
             self.base_url = str(self._client.base_url)
 
+    def _token_limit_kwargs(self, max_tokens: int) -> dict[str, int]:
+        parameter = "max_completion_tokens" if self.provider == "openai" else "max_tokens"
+        return {parameter: max_tokens}
+
+    async def _create_chat_completion(self, *, model: str, max_tokens: int, **kwargs: Any) -> Any:
+        create = self._client.chat.completions.create
+        limits = self._token_limit_kwargs(max_tokens)
+        if self.provider != "openai":
+            return await create(model=model, **limits, **kwargs)
+
+        cache_key = (self.base_url, model)
+        parameter = _OPENAI_TOKEN_PARAMETERS.get(cache_key, next(iter(limits)))
+        try:
+            return await create(model=model, **{parameter: max_tokens}, **kwargs)
+        except _OPENAI_BAD_REQUEST_ERRORS as exc:
+            if not _token_parameter_rejected(exc, parameter):
+                raise
+            alternate = (
+                "max_tokens" if parameter == "max_completion_tokens" else "max_completion_tokens"
+            )
+            response = await create(model=model, **{alternate: max_tokens}, **kwargs)
+            _OPENAI_TOKEN_PARAMETERS[cache_key] = alternate
+            _OPENAI_TOKEN_PARAMETERS.move_to_end(cache_key)
+            if len(_OPENAI_TOKEN_PARAMETERS) > _OPENAI_TOKEN_PARAMETER_CACHE_CAP:
+                _OPENAI_TOKEN_PARAMETERS.popitem(last=False)
+            return response
+
     def _reasoning_kwargs(self, model: str = "") -> dict[str, Any]:
         return reasoning_kwargs(self.provider, self.base_url, model, self.thinking_level)
 
@@ -445,7 +498,7 @@ class LLMClient:
             response = await _call_with_retries(
                 lambda: messages_client.create(
                     model=resolved_model,
-                    max_tokens=max_tokens,
+                    **self._token_limit_kwargs(max_tokens),
                     system=cast(Any, system_param),
                     messages=cast(Any, messages),
                     tools=cast(Any, tools),
@@ -503,7 +556,6 @@ class LLMClient:
             )
 
         openai_tools = _openai_tools(tools)
-        client_any = cast(Any, self._client)
         full_messages = [{"role": "system", "content": system}, *messages]
         # The OpenAI schema rejects an empty `tools` array, so a deliberately
         # tool-free call (vision captioning, a subagent's wrap-up round) has to
@@ -511,7 +563,7 @@ class LLMClient:
         tool_kwargs = {"tools": cast(Any, openai_tools)} if openai_tools else {}
 
         response = await _call_with_retries(
-            lambda: client_any.chat.completions.create(
+            lambda: self._create_chat_completion(
                 model=resolved_model,
                 max_tokens=max_tokens,
                 messages=cast(Any, full_messages),
@@ -602,7 +654,7 @@ class LLMClient:
             messages_client = cast(Any, getattr(client_any, "messages"))  # type: ignore[attr-defined]
             response = await messages_client.create(
                 model=resolved_model,
-                max_tokens=max_tokens,
+                **self._token_limit_kwargs(max_tokens),
                 messages=cast(Any, [{"role": "user", "content": prompt}]),
                 **self._sampling_kwargs(resolved_model),
             )
@@ -612,8 +664,7 @@ class LLMClient:
                     return str(getattr(block_any, "text", "")).strip()
             return ""
 
-        client_any = cast(Any, self._client)
-        response = await client_any.chat.completions.create(
+        response = await self._create_chat_completion(
             model=resolved_model,
             max_tokens=max_tokens,
             messages=cast(Any, [{"role": "user", "content": prompt}]),

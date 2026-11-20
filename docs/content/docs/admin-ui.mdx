@@ -139,7 +139,7 @@ Jobs of type `subagent` are scheduled jobs like any other and live here. Live
 A sub-tab of the **LLM** tab (LLM → History). Configure conversation history and browse stored turns:
 
 - **Mode** — `injection` (replay the last N user/assistant pairs each request) or `session` (sticky per-chat session, full context, cache-friendly). Reset a conversation any time by sending `/new` (or its alias `/clear`).
-- **Context compaction** (session mode) — when the conversation nears the model's context window, the oldest turns are summarized by a small model while recent turns are kept verbatim, and the user gets a system message saying it happened. Set the trigger threshold here as either a **percent of the context window** or an **absolute token count** (e.g. 200k), plus how many recent turns to keep. The compaction model is configured in the **LLM** tab (under *Inference → History Compaction*). Has no effect in injection mode (which is already windowed).
+- **Context compaction** (session mode) — when the conversation nears the model's context window, the oldest turns are summarized by a small model while recent turns are kept verbatim, and the user gets a system message saying it happened. Set the trigger threshold here as either a **percent of the context window** or an **absolute token count** (e.g. 200k), plus how many recent turns to keep. The compaction model is configured in the **LLM** tab (under *Inference → History Compaction*). Send `/compact` to summarize older turns on demand, including when automatic compaction is disabled. Compaction only applies in session mode.
 
 ### Vaults
 

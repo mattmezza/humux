@@ -354,6 +354,22 @@ class TestVoicePreview:
         assert "reply_decision.enabled" in resp.text
         assert "reply_decision.max_replies_per_window" in resp.text
 
+    def test_llm_decision_settings_do_not_render_the_secret(self):
+        store = _ConfigStoreStub(setup_complete=True)
+        store._data.update({
+            "decisions.provider": "typesafe",
+            "decisions.model": "jev-test",
+            "decisions.api_key": "example-secret-key",
+            "decisions.voice": "False",
+        })
+        app, _ = create_admin_app(AgentState(agent=None), cast(ConfigStore, store))
+        client = TestClient(app)
+        resp = client.get("/partials/llm/inference", headers=AUTH)
+        assert resp.status_code == 200
+        assert "Decision Models" in resp.text
+        assert "jev-test" in resp.text
+        assert "example-secret-key" not in resp.text
+
     def test_llm_partial_has_openrouter(self):
         # OpenRouter provider card (#128): renders (exercises the positional
         # llmTab() call), saves the dedicated key, and carries the info text.

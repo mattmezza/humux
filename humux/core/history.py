@@ -297,7 +297,6 @@ class ConversationHistory:
         """
         await self._ensure_schema()
         key = (channel, user_id, chat_id)
-        self._sessions[key] = list(messages)
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute(
                 "DELETE FROM session_messages WHERE channel = ? AND user_id = ? AND chat_id = ?",
@@ -309,6 +308,7 @@ class ConversationHistory:
                 [(channel, user_id, chat_id, json.dumps(m)) for m in messages],
             )
             await db.commit()
+            self._sessions[key] = list(messages)
 
     async def append_to_last_turn(
         self,

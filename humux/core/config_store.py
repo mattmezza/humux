@@ -51,6 +51,7 @@ SECRET_KEYS = frozenset(
         "agent.grok_api_key",
         "agent.deepseek_api_key",
         "agent.openrouter_api_key",
+        "decisions.api_key",
         "channels.telegram.bot_token",
         "admin.api_key",
         "admin.password_hash",

@@ -11,9 +11,8 @@
       {value: 'claude-haiku-4-5', label: 'claude-haiku-4-5'}
     ],
     openai: [
-      {value: 'gpt-5.2-thinking', label: 'gpt-5.2-thinking'},
-      {value: 'gpt-5.2-pro', label: 'gpt-5.2-pro'},
-      {value: 'gpt-5.2-instant', label: 'gpt-5.2-instant'},
+      {value: 'gpt-6.2-sol', label: 'gpt-6.2-sol'},
+      {value: 'gpt-5.2', label: 'gpt-5.2'},
       {value: 'gpt-5-mini', label: 'gpt-5-mini'}
     ],
     google: [
@@ -198,7 +197,12 @@
                 fetch('/setup/test-connection', {
                   method: 'POST',
                   headers: {'Content-Type': 'application/json'},
-                  body: JSON.stringify({service: provider, api_key: apiKey, base_url: baseUrl})
+                  body: JSON.stringify({
+                    service: provider,
+                    api_key: apiKey,
+                    base_url: baseUrl,
+                    model: $data.provider === provider ? model : undefined
+                  })
                 })
                 .then(r => r.json())
                 .then(d => {

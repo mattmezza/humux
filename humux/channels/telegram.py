@@ -42,7 +42,7 @@ log = logging.getLogger(__name__)
 # _on_text sends these bare (no speaker tag / reply-quote) and honours an explicit
 # "@bot" target so a command never acts on the wrong bot in a multi-agent room.
 _AGENT_COMMANDS = frozenset(
-    {"/new", "/clear", "/yolo-on", "/yolo-off", "/yolo_on", "/yolo_off", "/stop"}
+    {"/new", "/clear", "/compact", "/yolo-on", "/yolo-off", "/yolo_on", "/yolo_off", "/stop"}
 )
 
 # The command menu surfaced in Telegram's ☰ button / "/" autocomplete
@@ -53,6 +53,7 @@ _AGENT_COMMANDS = frozenset(
 # under its /yolo_on alias (the runtime accepts both — see _COMMAND_ALIASES).
 _MENU_COMMANDS = [
     BotCommand("new", "Clear the conversation"),
+    BotCommand("compact", "Summarize the conversation to free up context"),
     BotCommand("subagents", "List active subagent runs"),
     BotCommand("weburl", "Open this chat as a live web page"),
     BotCommand("yolo_on", "Run actions without asking for approval"),

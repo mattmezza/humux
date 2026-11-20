@@ -12,13 +12,14 @@ import os
 import re
 from collections.abc import Callable
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 import yaml
 from dotenv import load_dotenv
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 ReasoningSetting = Annotated[str, Field(coerce_numbers_to_str=True)]
+
 
 def _resolve_env_vars(obj: object) -> object:
     """Recursively resolve ${ENV_VAR} references in strings.
@@ -312,6 +313,16 @@ class GoalDecompositionConfig(BaseModel):
     thinking_level: ReasoningSetting = ""  # Empty uses the provider default.
 
 
+class DecisionConfig(BaseModel):
+    """Optional typed decisions for message routing and delivery."""
+
+    provider: Literal["", "typesafe"] = ""
+    model: str = "jev-latest"
+    api_key: str = ""
+    voice: bool = True
+    reactions: bool = True
+
+
 class ReplyDecisionConfig(BaseModel):
     """Decide whether to reply in shared/group chats (#36).
 
@@ -555,6 +566,7 @@ class Config(BaseModel):
     memory: MemoryConfig = MemoryConfig()
     goal_decomposition: GoalDecompositionConfig = GoalDecompositionConfig()
     reply_decision: ReplyDecisionConfig = ReplyDecisionConfig()
+    decisions: DecisionConfig = DecisionConfig()
     compaction: CompactionConfig = CompactionConfig()
     search: SearchConfig = SearchConfig()
     vision: VisionConfig = VisionConfig()
