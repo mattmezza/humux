@@ -1,0 +1,59 @@
+  <div class="card" x-data="{ settings: {{ decisions|tojson|forceescape }}, key: '', status: '', success: false }">
+    <h2 class="text-base mb-1">Decision Models</h2>
+    <p class="text-muted text-xs mb-4">The decision provider evaluates chat context for the Reply Decision gate, voice delivery, and emoji reactions.</p>
+    <form class="space-y-4" @submit.prevent="withLoading($el.querySelector('button'), async () => {
+      status = '';
+      try {
+        const values = {
+          'decisions.provider': settings.provider,
+          'decisions.model': settings.model.trim() || 'jev-latest',
+          'decisions.voice': String(settings.voice),
+          'decisions.reactions': String(settings.reactions)
+        };
+        if (key.trim()) values['decisions.api_key'] = key.trim();
+        const response = await fetch('/config', {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + (localStorage.getItem('admin_api_key') || '')
+          },
+          body: JSON.stringify({ values })
+        });
+        success = response.ok;
+        status = success ? 'Decision settings saved' : 'Could not save decision settings';
+        if (success) key = '';
+      } catch {
+        success = false;
+        status = 'Could not save decision settings';
+      }
+    })">
+      <div>
+        <label class="label" for="decision-provider">Provider</label>
+        <select class="input-sm" style="max-width:500px" id="decision-provider" x-model="settings.provider">
+          <option value="">Use existing behavior</option>
+          <option value="typesafe">TypeSafe AI</option>
+        </select>
+      </div>
+      <div x-show="settings.provider === 'typesafe'" class="space-y-4">
+        <div>
+          <label class="label" for="decision-model">Model</label>
+          <input class="input-sm" style="max-width:500px" id="decision-model" x-model="settings.model"
+                 placeholder="jev-latest">
+        </div>
+        <div>
+          <label class="label" for="decision-api-key">TypeSafe API key</label>
+          <input type="password" class="input-sm" style="max-width:500px" id="decision-api-key"
+                 x-model="key" autocomplete="off" placeholder="Enter a key to replace the saved key">
+          <p class="text-muted text-xs mt-1">You can also set <code>TYPESAFE_API_KEY</code> in the server environment.</p>
+        </div>
+        <label class="flex items-center gap-2">
+          <input type="checkbox" x-model="settings.voice"> Choose voice or text for Telegram replies
+        </label>
+        <label class="flex items-center gap-2">
+          <input type="checkbox" x-model="settings.reactions"> Choose emoji reactions for Telegram messages
+        </label>
+      </div>
+      <button type="submit" class="btn-primary btn-sm">Save decision settings</button>
+      <div x-show="status" role="status" :class="success ? 'alert-success' : 'alert-error'" x-text="status"></div>
+    </form>
+  </div>

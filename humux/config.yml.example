@@ -241,3 +241,11 @@ reply_decision:
   group_only: true            # only gate group chats; DMs always get a reply
   max_replies_per_window: 6   # hard backstop: cap auto-replies per chat per window
   window_seconds: 120         # rolling window for the cap — guarantees loops end
+
+# Typed decisions (opt-in). The reply_decision settings above still determine
+# when the reply gate runs. Use TYPESAFE_API_KEY in the environment or set api_key.
+decisions:
+  provider: ""  # set to "typesafe" to use the Jev decision model
+  model: "jev-latest"
+  voice: true
+  reactions: true

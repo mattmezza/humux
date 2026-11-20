@@ -12,6 +12,7 @@ import os
 import re
 from collections.abc import Callable
 from pathlib import Path
+from typing import Literal
 
 import yaml
 from dotenv import load_dotenv
@@ -310,6 +311,16 @@ class GoalDecompositionConfig(BaseModel):
     thinking_level: str = ""  # "" (off) | "low" | "medium" | "high" | "max"
 
 
+class DecisionConfig(BaseModel):
+    """Optional typed decisions for message routing and delivery."""
+
+    provider: Literal["", "typesafe"] = ""
+    model: str = "jev-latest"
+    api_key: str = ""
+    voice: bool = True
+    reactions: bool = True
+
+
 class ReplyDecisionConfig(BaseModel):
     """Decide whether to reply in shared/group chats (#36).
 
@@ -553,6 +564,7 @@ class Config(BaseModel):
     memory: MemoryConfig = MemoryConfig()
     goal_decomposition: GoalDecompositionConfig = GoalDecompositionConfig()
     reply_decision: ReplyDecisionConfig = ReplyDecisionConfig()
+    decisions: DecisionConfig = DecisionConfig()
     compaction: CompactionConfig = CompactionConfig()
     search: SearchConfig = SearchConfig()
     vision: VisionConfig = VisionConfig()
