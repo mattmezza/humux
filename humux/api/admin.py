@@ -1883,7 +1883,7 @@ def create_admin_app(
 
     @app.get("/partials/dashboard", dependencies=[Depends(auth)])
     async def partial_dashboard() -> HTMLResponse:
-        """Dashboard overview with token usage stats (#199)."""
+        """Dashboard overview with token usage and inference spend."""
         from core.metrics import TokenUsageStore
 
         agent = agent_state.agent
@@ -1903,6 +1903,7 @@ def create_admin_app(
         tok_24h = await store.totals_since(24)
         tok_7d = await store.totals_since(24 * 7)
         tok_30d = await store.totals_since(24 * 30)
+        spend_stats = await store.spend_totals()
         # One structure the overview cards toggle between client-side (#199 flw) —
         # no per-period refetch. Keyed by the period label the buttons use.
         token_stats = {"24h": tok_24h, "7d": tok_7d, "30d": tok_30d}
@@ -1919,6 +1920,7 @@ def create_admin_app(
             scheduler_jobs=scheduler_jobs,
             tok_24h=tok_24h,
             token_stats=token_stats,
+            spend_stats=spend_stats,
             log_entries=log_entries,
         )
 

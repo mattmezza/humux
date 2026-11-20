@@ -1406,6 +1406,29 @@
     }
     window.tokenCards = tokenCards;
 
+    function spendCard(stats) {
+      const usd = new Intl.NumberFormat('en-US', {style: 'currency', currency: 'USD'});
+      const fractionalUsd = new Intl.NumberFormat('en-US', {
+        style: 'currency', currency: 'USD', maximumFractionDigits: 4,
+      });
+      const names = {
+        anthropic: 'Anthropic', deepseek: 'DeepSeek', google: 'Google', grok: 'xAI',
+        openai: 'OpenAI', openrouter: 'OpenRouter', typesafe: 'TypeSafe AI',
+      };
+      return {
+        period: 'All time',
+        periods: ['24h', '7d', '30d', 'All time'],
+        get spend() { return stats[this.period]; },
+        providerName(provider) { return Object.hasOwn(names, provider) ? names[provider] : provider; },
+        fmtUsd(amount) {
+          if (amount === null) return '—';
+          if (amount > 0 && amount < 0.0001) return '<$0.0001';
+          return amount > 0 && amount < 0.01 ? fractionalUsd.format(amount) : usd.format(amount);
+        },
+      };
+    }
+    window.spendCard = spendCard;
+
     // Global: listen for HX-Trigger showToast events from the server
     document.body.addEventListener('showToast', function(e) {
       if (window.showToast && e.detail && e.detail.value) {

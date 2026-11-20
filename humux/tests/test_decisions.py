@@ -26,6 +26,9 @@ def choice(value, probability):
 
 @pytest.mark.asyncio
 async def test_typesafe_api_contract(monkeypatch):
+    record = AsyncMock()
+    monkeypatch.setattr("core.metrics.record_usage", record)
+
     def handler(request):
         assert str(request.url) == "https://api.typesafe.ai/v1/systemone"
         assert request.headers["Authorization"] == "Bearer test-key"
@@ -39,11 +42,13 @@ async def test_typesafe_api_contract(monkeypatch):
         return httpx.Response(
             200,
             json={
+                "model": "jev-resolved",
+                "usage": {"input_tokens": 120, "output_tokens": 12},
                 "answers": {
                     "reply": noul(0.93),
                     "reaction": choice("thumbsup", 0.98),
                     "reaction_only": noul(0.96),
-                }
+                },
             },
         )
 
@@ -59,6 +64,13 @@ async def test_typesafe_api_contract(monkeypatch):
         can_react=True,
     )
     assert result.reply and result.reaction == "thumbsup" and result.reaction_only
+    record.assert_called_once_with(
+        provider="typesafe",
+        model="jev-test",
+        pricing_model="jev-resolved",
+        input_tokens=120,
+        output_tokens=12,
+    )
 
 
 @pytest.mark.parametrize("response", [httpx.Response(429), httpx.Response(200, json=[])])

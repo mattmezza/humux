@@ -47,6 +47,51 @@ def test_from_agent_config_openrouter_base_url_override() -> None:
 
 
 @pytest.mark.asyncio
+async def test_openrouter_records_reported_spend_for_chat_and_background_text(monkeypatch):
+    record = AsyncMock()
+    monkeypatch.setattr("core.metrics.record_usage", record)
+    client = LLMClient("openai", "test-key", "https://openrouter.ai/api/v1")
+    response = {
+        "id": "gen-test",
+        "object": "chat.completion",
+        "model": "router/resolved",
+        "created": 0,
+        "choices": [
+            {"index": 0, "message": {"role": "assistant", "content": "hi"}, "finish_reason": "stop"}
+        ],
+        "usage": {
+            "prompt_tokens": 200,
+            "completion_tokens": 10,
+            "total_tokens": 210,
+            "cost": 0,
+            "prompt_tokens_details": {"cached_tokens": 80, "cache_write_tokens": 50},
+        },
+    }
+    transport = httpx.MockTransport(lambda _req: httpx.Response(200, json=response))
+    http_client = httpx.AsyncClient(transport=transport)
+    async with client._client as sdk, sdk.with_options(http_client=http_client) as sdk_with_mock:
+        client._client = sdk_with_mock
+        assert (
+            await client.generate(model="router/test", system="", messages=[], tools=[])
+        ).text == "hi"
+        assert await client.generate_text(model="router/test", prompt="hi") == "hi"
+
+    assert record.call_count == 2
+    for call in record.call_args_list:
+        assert call.kwargs == {
+            "provider": "openrouter",
+            "model": "router/test",
+            "pricing_model": "router/resolved",
+            "cost_usd": 0.0,
+            "input_tokens": 70,
+            "output_tokens": 10,
+            "cache_read_input_tokens": 80,
+            "cache_creation_input_tokens": 50,
+            "agent": "",
+        }
+
+
+@pytest.mark.asyncio
 async def test_anthropic_generate_sends_effort_when_set() -> None:
     client = LLMClient("anthropic", "x", thinking_level="medium")
     create = AsyncMock(return_value=type("R", (), {"content": [], "usage": None})())

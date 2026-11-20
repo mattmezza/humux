@@ -18,6 +18,8 @@ from urllib.parse import urlsplit
 from anthropic import APIError as AnthropicAPIError
 from anthropic import AsyncAnthropic
 
+from core import metrics
+from core.pricing import usd_amount
 from core.reasoning import DEFAULT_BASE_URLS, normalize_setting, reasoning_kwargs
 
 # Typed API errors from both provider SDKs (auth, 4xx, 5xx, timeout…), caught at
@@ -141,6 +143,11 @@ async def _call_with_retries(fn):
 _OPENAI_TOKEN_PARAMETERS: OrderedDict[tuple[str, str], str] = OrderedDict()
 _OPENAI_TOKEN_PARAMETER_CACHE_CAP = 256
 _OPENAI_API_HOSTS = {"api.openai.com", "us.api.openai.com", "eu.api.openai.com"}
+_OPENROUTER_API_HOSTS = {"openrouter.ai", "us.openrouter.ai", "eu.openrouter.ai"}
+_PRICING_HOSTS = {provider: {urlsplit(url).hostname} for provider, url in DEFAULT_BASE_URLS.items()}
+_PRICING_HOSTS.update(
+    openai=_OPENAI_API_HOSTS, openrouter=_OPENROUTER_API_HOSTS, anthropic={"api.anthropic.com"}
+)
 _OPENAI_RESPONSES_MODELS = re.compile(r"gpt-6\.2-(?:sol|astra)(?:-\d{4}-\d{2}-\d{2})?")
 _RESPONSES_ITEMS = "_openai_response_items"
 
@@ -253,14 +260,15 @@ def _openai_usage(response: Any) -> dict[str, int] | None:
         return None
     prompt = getattr(u, "prompt_tokens", 0) or 0
     completion = getattr(u, "completion_tokens", 0) or 0
-    # DeepSeek ships prompt_cache_hit/miss_tokens (#199 review).
-    cache_hit = getattr(u, "prompt_cache_hit_tokens", 0) or 0
-    cache_miss = getattr(u, "prompt_cache_miss_tokens", 0) or 0
+    details = getattr(u, "prompt_tokens_details", None)
+    cache_hit = getattr(u, "prompt_cache_hit_tokens", None)
+    if cache_hit is None:
+        cache_hit = getattr(details, "cached_tokens", 0) or 0
     return {
         "input_tokens": prompt,
         "output_tokens": completion,
         "cache_read_input_tokens": cache_hit,
-        "cache_creation_input_tokens": cache_miss,
+        "cache_creation_input_tokens": getattr(details, "cache_write_tokens", 0) or 0,
         "context_tokens": prompt,
     }
 
@@ -269,11 +277,12 @@ def _responses_usage(response: Any) -> dict[str, int] | None:
     usage = response.usage
     if usage is None:
         return None
+    details = usage.input_tokens_details
     return {
         "input_tokens": usage.input_tokens,
         "output_tokens": usage.output_tokens,
-        "cache_read_input_tokens": getattr(usage.input_tokens_details, "cached_tokens", 0),
-        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": getattr(details, "cached_tokens", 0) or 0,
+        "cache_creation_input_tokens": getattr(details, "cache_write_tokens", 0) or 0,
         "context_tokens": usage.input_tokens,
     }
 
@@ -460,6 +469,7 @@ class LLMClient:
         self._client: Any
         if self.provider == "anthropic":
             self._client = AsyncAnthropic(api_key=api_key, timeout=60)
+            self.base_url = str(self._client.base_url)
         else:
             resolved_base = base_url or (
                 DEFAULT_BASE_URLS.get(self.provider) if self.provider != "openai" else None
@@ -476,6 +486,46 @@ class LLMClient:
             }
             self._client = cast(Any, client_class)(**client_kwargs)  # type: ignore[call-arg]
             self.base_url = str(self._client.base_url)
+
+    async def _record_usage(self, model: str, response: Any, usage: dict[str, int] | None) -> None:
+        if usage is None:
+            return
+        host = urlsplit(self.base_url or "").hostname
+        provider = self.provider
+        # Older configurations could connect to OpenRouter as "OpenAI compatible".
+        if host in _OPENROUTER_API_HOSTS:
+            provider = "openrouter"
+        native = host in _PRICING_HOSTS.get(provider, ())
+        pricing_model = ""
+        if native:
+            actual_model = getattr(response, "model", None)
+            pricing_model = model
+            if isinstance(actual_model, str) and actual_model:
+                pricing_model = actual_model
+        cost = None
+        if provider == "openrouter" and native:
+            cost = usd_amount(getattr(response.usage, "cost", None))
+            if cost is not None and getattr(response.usage, "is_byok", False) is True:
+                details = getattr(response.usage, "cost_details", None)
+                if isinstance(details, dict):
+                    cost += usd_amount(details.get("upstream_inference_cost")) or 0.0
+
+        uncached = usage["input_tokens"]
+        cache_read = usage["cache_read_input_tokens"]
+        cache_write = usage["cache_creation_input_tokens"]
+        if self.provider != "anthropic":
+            uncached = max(0, uncached - cache_read - cache_write)
+        await metrics.record_usage(
+            provider=provider,
+            model=model,
+            input_tokens=uncached,
+            output_tokens=usage["output_tokens"],
+            cache_read_input_tokens=cache_read,
+            cache_creation_input_tokens=cache_write,
+            agent=_usage_agent.get(),
+            cost_usd=cost,
+            pricing_model=pricing_model,
+        )
 
     def _uses_openai_responses(self, model: str) -> bool:
         # OpenAI's GPT-6.2 models require Responses for function calling.
@@ -647,26 +697,8 @@ class LLMClient:
             if reasoning:
                 reasoning_log.info("%s", reasoning)
             usage = _anthropic_usage(response)
+            await self._record_usage(resolved_model, response, usage)
             payload["usage"] = usage  # backfill real context size for Inspect (#116)
-            if usage:
-                try:
-                    from core.metrics import record_usage
-
-                    asyncio.ensure_future(
-                        record_usage(
-                            provider=self.provider,
-                            model=resolved_model,
-                            input_tokens=usage.get("input_tokens", 0),
-                            output_tokens=usage.get("output_tokens", 0),
-                            cache_read_input_tokens=usage.get("cache_read_input_tokens", 0),
-                            cache_creation_input_tokens=usage.get("cache_creation_input_tokens", 0),
-                            agent=_usage_agent.get(),
-                        )
-                    )
-                except Exception as exc:
-                    logging.getLogger(__name__).warning(
-                        "Failed to record token usage (anthropic): %s", exc
-                    )
             return LLMResponse(
                 text="\n".join(text_parts).strip(),
                 tool_calls=tool_calls,
@@ -680,27 +712,7 @@ class LLMClient:
         result = await generate(resolved_model, system, messages, tools, max_tokens)
         if result.reasoning:
             reasoning_log.info("%s", result.reasoning)
-        usage = result.usage
-        payload["usage"] = usage  # backfill real context size for Inspect (#116)
-        if usage:
-            try:
-                from core.metrics import record_usage
-
-                asyncio.ensure_future(
-                    record_usage(
-                        provider=self.provider,
-                        model=resolved_model,
-                        input_tokens=usage.get("input_tokens", 0),
-                        output_tokens=usage.get("output_tokens", 0),
-                        cache_read_input_tokens=usage.get("cache_read_input_tokens", 0),
-                        cache_creation_input_tokens=usage.get("cache_creation_input_tokens", 0),
-                        agent=_usage_agent.get(),
-                    )
-                )
-            except Exception as exc:
-                logging.getLogger(__name__).warning(
-                    "Failed to record token usage (%s): %s", self.provider, exc
-                )
+        payload["usage"] = result.usage  # backfill real context size for Inspect (#116)
         return result
 
     async def _generate_chat(
@@ -727,6 +739,8 @@ class LLMClient:
                 **self._reasoning_kwargs(model),
             )
         )
+        usage = _openai_usage(response)
+        await self._record_usage(model, response, usage)
         message = response.choices[0].message
         tool_calls = [
             LLMToolCall(
@@ -743,7 +757,7 @@ class LLMClient:
             tool_calls=tool_calls,
             reasoning=reasoning,
             raw=message.model_dump(exclude_none=True),
-            usage=_openai_usage(response),
+            usage=usage,
             truncated=getattr(response.choices[0], "finish_reason", None) == "length",
         )
 
@@ -761,9 +775,9 @@ class LLMClient:
             for tool in _openai_tools(tools)
         ]
         chat_reasoning = self._reasoning_kwargs(model)
-        effort = chat_reasoning.get("reasoning_effort") or chat_reasoning.get(
-            "extra_body", {}
-        ).get("reasoning_effort")
+        effort = chat_reasoning.get("reasoning_effort") or chat_reasoning.get("extra_body", {}).get(
+            "reasoning_effort"
+        )
         # Low is the minimum for GPT-6.2. A previous model may have used none or minimal.
         if effort in ("none", "minimal"):
             effort = "low"
@@ -780,6 +794,8 @@ class LLMClient:
                 **reasoning_kwargs,
             )
         )
+        usage = _responses_usage(response)
+        await self._record_usage(model, response, usage)
         truncated = getattr(response.incomplete_details, "reason", None) == "max_output_tokens"
         text = response.output_text.strip()
         tool_calls = []
@@ -805,7 +821,7 @@ class LLMClient:
             text=text,
             tool_calls=tool_calls,
             raw=raw,
-            usage=_responses_usage(response),
+            usage=usage,
             truncated=truncated,
         )
 
@@ -856,6 +872,7 @@ class LLMClient:
                 messages=cast(Any, [{"role": "user", "content": prompt}]),
                 **self._sampling_kwargs(resolved_model),
             )
+            await self._record_usage(resolved_model, response, _anthropic_usage(response))
             for block in response.content:
                 block_any = cast(Any, block)
                 if getattr(block_any, "type", None) == "text":
@@ -868,4 +885,5 @@ class LLMClient:
             messages=cast(Any, [{"role": "user", "content": prompt}]),
             **self._reasoning_kwargs(resolved_model),
         )
+        await self._record_usage(resolved_model, response, _openai_usage(response))
         return (response.choices[0].message.content or "").strip()

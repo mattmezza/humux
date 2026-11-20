@@ -8,6 +8,7 @@ from dataclasses import dataclass
 
 import httpx
 
+from core import metrics
 from core.config import DecisionConfig
 
 log = logging.getLogger(__name__)
@@ -89,6 +90,26 @@ class DecisionClient:
                 result.raise_for_status()
                 body = result.json()
             if isinstance(body, dict) and isinstance(body.get("answers"), dict):
+                usage = body.get("usage")
+                if isinstance(usage, dict):
+                    input_tokens = usage.get("input_tokens")
+                    output_tokens = usage.get("output_tokens")
+                    if (
+                        type(input_tokens) is int
+                        and input_tokens >= 0
+                        and type(output_tokens) is int
+                        and output_tokens >= 0
+                    ):
+                        model = body.get("model")
+                        await metrics.record_usage(
+                            provider="typesafe",
+                            model=self.model,
+                            input_tokens=input_tokens,
+                            output_tokens=output_tokens,
+                            pricing_model=(
+                                model if isinstance(model, str) and model else self.model
+                            ),
+                        )
                 return body["answers"]
         except httpx.HTTPStatusError as exc:
             log.warning("TypeSafe decision endpoint returned HTTP %d", exc.response.status_code)
