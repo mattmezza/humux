@@ -129,8 +129,10 @@ A few details worth knowing:
   address a specific bot with `/yolo-on@botname`, and the grant applies only in that chat
   (a bare `/yolo-on`, addressed to no bot, toggles nothing). The setting persists across
   restarts until you turn it off.
+- **Compacting context** — use `/compact` to summarize older messages in session mode
+  while keeping recent turns. In a group room, target a bot with `/compact@botname`.
 - **Command menu** — each bot publishes its commands to Telegram's ☰ menu / `/`
-  autocomplete on startup (`/new`, `/subagents`, `/weburl`, `/yolo_on`, `/yolo_off`,
+  autocomplete on startup (`/new`, `/compact`, `/subagents`, `/weburl`, `/yolo_on`, `/yolo_off`,
   `/stop` — `/jobs` still works as an alias for `/subagents`; Telegram forbids
   `-` in menu command names, so YOLO shows with an underscore; `/yolo-on` still works too).
   In a group each bot lists its own commands, `@bot`-suffixed, so tapping one targets that

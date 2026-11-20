@@ -316,7 +316,7 @@ def _strip_command_suffix(message: str) -> str:
     return text.lower()
 
 
-_CONTROL_COMMANDS = ("/yolo-on", "/yolo-off", "/new", "/clear", "/stop")
+_CONTROL_COMMANDS = ("/yolo-on", "/yolo-off", "/new", "/clear", "/compact", "/stop")
 
 # Shown as the reply of an aborted turn AND stored as its assistant history entry,
 # so the next turn's model sees it was interrupted mid-work (#146).
@@ -1644,6 +1644,25 @@ class AgentCore:
             )
             return AgentResponse(text="Conversation cleared.")
 
+        if command == "/compact":
+            if not addressed:
+                return AgentResponse(text="")
+            if self.history_mode != "session":
+                return AgentResponse(text="Conversation compaction only applies in session mode.")
+            try:
+                counts = await self._compact_session(channel, user_id, chat_id)
+            except Exception as exc:
+                log.exception("Requested conversation compaction failed")
+                return AgentResponse(text=f"Conversation compaction failed: {exc}")
+            if counts is None:
+                return AgentResponse(text="There is nothing to compact.")
+            before, after = counts
+            # The rebuilt session begins with the summary and its acknowledgement.
+            kept = after - 2
+            return AgentResponse(
+                text=f"Summarized {before - kept} earlier messages and kept {kept} recent messages."
+            )
+
         # Tag this turn's log records with the agent's stream (#75) so the admin
         # Logs tab can filter per agent. Subagents spawned below inherit it (the
         # ContextVar is copied into their task) and add their own label.
@@ -2228,31 +2247,43 @@ class AgentCore:
         if not should_compact(cfg, context_tokens, model or self.config.agent.model):
             return None
 
-        session = await self.history.get_session(channel, user_id, chat_id)
         try:
-            llm = self._background_llm(cfg.provider, cfg.thinking_level)
-            result = await compact_messages(llm, cfg.model, session, cfg.keep_recent_turns)
+            counts = await self._compact_session(channel, user_id, chat_id)
         except Exception:
             log.exception("Conversation compaction failed")
             return None
-        if not result:
+        if counts is None:
             return None
 
-        new_messages, _summary = result
-        await self.history.replace_session(channel, user_id, new_messages, chat_id)
+        before, after = counts
         log.info(
             "Compacted session %s/%s/%s: %d → %d messages (~%d ctx tokens)",
             channel,
             user_id,
             chat_id,
-            len(session),
-            len(new_messages),
+            before,
+            after,
             context_tokens,
         )
         return (
             f"🗜️ Our conversation was getting large (~{context_tokens:,} tokens). "
             "I summarized the earlier part to free up space; recent messages are kept as-is."
         )
+
+    async def _compact_session(
+        self, channel: str, user_id: str, chat_id: str
+    ) -> tuple[int, int] | None:
+        """Compact stored history and return the message counts before and after."""
+        cfg = self.config.compaction
+        session = await self.history.get_session(channel, user_id, chat_id)
+        llm = self._background_llm(cfg.provider, cfg.thinking_level)
+        result = await compact_messages(llm, cfg.model, session, cfg.keep_recent_turns)
+        if result is None:
+            return None
+
+        new_messages, _summary = result
+        await self.history.replace_session(channel, user_id, new_messages, chat_id)
+        return len(session), len(new_messages)
 
     async def _build_user_message(
         self,
