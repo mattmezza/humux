@@ -40,6 +40,7 @@ def _restore_module_state():
     test's mutations from leaking into the next one."""
     before = (VOICE_REBUILD.status, VOICE_REBUILD.error, VOICE_REBUILD.generation)
     keys, err = set(PENDING_RESTART.keys), PENDING_RESTART.error
+    clear_restart_required()
     try:
         yield
     finally:

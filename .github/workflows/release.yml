@@ -64,16 +64,11 @@ jobs:
           IMAGE: humux-release:${{ github.run_id }}-${{ github.run_attempt }}
           TAGS: ${{ steps.meta.outputs.tags }}
         run: |
-          # Upload layers once, then publish the remaining tags as manifests.
+          # Each push tags the smoke-tested local image. GHCR reuses layers that
+          # were uploaded by the first push.
           mapfile -t tags < <(printf '%s\n' "$TAGS" | sed '/^$/d')
           test "${#tags[@]}" -gt 0
-          docker tag "$IMAGE" "${tags[0]}"
-          docker push "${tags[0]}"
-          source=$(docker image inspect --format '{{index .RepoDigests 0}}' "$IMAGE")
-          aliases=()
-          for tag in "${tags[@]:1}"; do
-            aliases+=(--tag "$tag")
+          for tag in "${tags[@]}"; do
+            docker tag "$IMAGE" "$tag"
+            docker push "$tag"
           done
-          if [ "${#aliases[@]}" -gt 0 ]; then
-            docker buildx imagetools create --prefer-index=false "${aliases[@]}" "$source"
-          fi

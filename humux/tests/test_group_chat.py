@@ -641,29 +641,29 @@ def _reply_to_me():
 
 
 @pytest.mark.asyncio
-async def test_command_via_reply_runs_bare_without_quote_prefix() -> None:
-    """A "/yolo-on" sent as a reply to this bot still matches: no reply-quote prefix
-    is prepended (that would have broken the command match)."""
+@pytest.mark.parametrize("command", ["/yolo-on", "/compact"])
+async def test_command_via_reply_runs_bare_without_quote_prefix(command) -> None:
+    """A command sent as a reply to this bot is forwarded without a reply quote."""
     ch = _channel()
     ch.agent.process = AsyncMock(
         return_value=SimpleNamespace(voice=None, text="", system_notice=None)
     )
-    msg = _msg("/yolo-on@coachbot", reply_to=_reply_to_me())
+    msg = _msg(f"{command}@coachbot", reply_to=_reply_to_me())
     await _drive_on_text(ch, _user(uid=1, name="Owner"), msg)
     kwargs = ch.agent.process.await_args.kwargs
     # The reply/respond path omits the respond kwarg (defaults True).
     assert kwargs.get("respond", True) is True
     assert kwargs["addressed"] is True
-    assert kwargs["message"] == "/yolo-on@coachbot"  # bare, no [reply_to] wrapper
+    assert kwargs["message"] == f"{command}@coachbot"  # bare, no [reply_to] wrapper
 
 
 @pytest.mark.asyncio
-async def test_command_targeting_other_bot_is_recorded_not_run() -> None:
-    """ "/yolo-on@financebot" sent as a reply to coachbot must NOT toggle coachbot —
-    the explicit @handle targets another bot, so it is recorded, not executed."""
+@pytest.mark.parametrize("command", ["/yolo-on", "/compact"])
+async def test_command_targeting_other_bot_is_recorded_not_run(command) -> None:
+    """The explicit command target takes priority over replying to this bot."""
     ch = _channel()
     ch.agent.process = AsyncMock()
-    msg = _msg("/yolo-on@financebot", reply_to=_reply_to_me())
+    msg = _msg(f"{command}@financebot", reply_to=_reply_to_me())
     await _drive_on_text(ch, _user(uid=1, name="Owner"), msg)
     ch.agent.process.assert_awaited_once()
     assert ch.agent.process.await_args.kwargs["respond"] is False
