@@ -418,7 +418,8 @@
           google: currentProvider === 'google',
           grok: currentProvider === 'grok',
           deepseek: currentProvider === 'deepseek',
-          openrouter: currentProvider === 'openrouter'
+          openrouter: currentProvider === 'openrouter',
+          typesafe: false
         },
         testing: {
           anthropic: false,
@@ -426,7 +427,8 @@
           google: false,
           grok: false,
           deepseek: false,
-          openrouter: false
+          openrouter: false,
+          typesafe: false
         },
         testResults: {
           anthropic: '',
@@ -434,12 +436,13 @@
           google: '',
           grok: '',
           deepseek: '',
-          openrouter: ''
+          openrouter: '',
+          typesafe: ''
         },
         models: window.LLM_MODELS,
-        fetchedModels: {anthropic: [], openai: [], google: [], grok: [], deepseek: [], openrouter: []},
-        fetchingModels: {anthropic: false, openai: false, google: false, grok: false, deepseek: false, openrouter: false},
-        fetchModelsResult: {anthropic: '', openai: '', google: '', grok: '', deepseek: '', openrouter: ''},
+        fetchedModels: {anthropic: [], openai: [], google: [], grok: [], deepseek: [], openrouter: [], typesafe: []},
+        fetchingModels: {anthropic: false, openai: false, google: false, grok: false, deepseek: false, openrouter: false, typesafe: false},
+        fetchModelsResult: {anthropic: '', openai: '', google: '', grok: '', deepseek: '', openrouter: '', typesafe: ''},
         modelOptions(prov) {
           const fetched = this.fetchedModels[prov];
           if (fetched && fetched.length) {
@@ -490,15 +493,14 @@
         sameAsMain(prov, model) {
           return !!model && prov === this.provider && model === this.model;
         },
-        fetchModels(service) {
-          const apiKey = this.keyFor(service);
-          if (!apiKey) {
+        fetchModels(service, apiKey = this.keyFor(service)) {
+          if (!apiKey && service !== 'typesafe') {
             this.fetchModelsResult[service] = 'Missing API key — save/enter it first';
             return;
           }
           this.fetchingModels[service] = true;
           this.fetchModelsResult[service] = '';
-          fetch('/setup/list-models', {
+          return fetch(service === 'typesafe' ? '/llm/providers/typesafe/models' : '/setup/list-models', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -621,16 +623,15 @@
         canSelect(service) {
           return this.tests[service] === true;
         },
-        testProvider(service) {
-          const apiKey = this.keyFor(service);
-          if (!apiKey) {
+        testProvider(service, apiKey = this.keyFor(service)) {
+          if (!apiKey && service !== 'typesafe') {
             this.tests[service] = false;
             this.testResults[service] = 'Missing API key';
             return;
           }
           this.testing[service] = true;
           this.testResults[service] = '';
-          fetch('/setup/test-connection', {
+          return fetch(service === 'typesafe' ? '/llm/providers/typesafe/models' : '/setup/test-connection', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',

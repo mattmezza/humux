@@ -27,6 +27,7 @@ import json
 import logging
 import re
 import secrets as _secrets
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -90,6 +91,7 @@ INFRA_VAULT_KEYS: dict[str, str] = {
     "agent.grok_api_key": "GROK_API_KEY",
     "agent.deepseek_api_key": "DEEPSEEK_API_KEY",
     "agent.openrouter_api_key": "OPENROUTER_API_KEY",
+    "decisions.api_key": "TYPESAFE_API_KEY",
     "channels.telegram.bot_token": "TELEGRAM_BOT_TOKEN",
     "search.api_key": "TAVILY_API_KEY",
     "tools.gh.token": "GH_TOKEN",
@@ -604,10 +606,12 @@ class SecretStore:
         return os.environ.get(name)
 
 
-async def migrate_config_to_infra_vault(config_store, secret_store: SecretStore) -> list[str]:
+async def migrate_config_to_infra_vault(
+    config_store, secret_store: SecretStore, *, keys: Iterable[str] = INFRA_VAULT_KEYS
+) -> list[str]:
     """Move plaintext credentials from the config store onto the infra vault.
 
-    For every key in :data:`INFRA_VAULT_KEYS` whose stored config value is a real
+    For every requested key in :data:`INFRA_VAULT_KEYS` whose stored config value is a real
     plaintext secret — non-empty and not already a ``${...}`` reference — encrypt
     it into the infra vault under its canonical name and replace the config value
     with a ``${vault:NAME}`` reference (``.env`` stays a fallback). Idempotent:
@@ -619,7 +623,8 @@ async def migrate_config_to_infra_vault(config_store, secret_store: SecretStore)
     migrated: list[str] = []
     if secret_store is None or not secret_store.infra.available:
         return migrated
-    for cfg_key, vname in INFRA_VAULT_KEYS.items():
+    for cfg_key in keys:
+        vname = INFRA_VAULT_KEYS[cfg_key]
         val = await config_store.get(cfg_key)
         if val and not val.startswith("${"):
             # Fail-safe order: write the encrypted secret FIRST, then repoint the

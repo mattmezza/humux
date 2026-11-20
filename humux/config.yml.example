@@ -243,7 +243,8 @@ reply_decision:
   window_seconds: 120         # rolling window for the cap — guarantees loops end
 
 # Typed decisions (opt-in). The reply_decision settings above still determine
-# when the reply gate runs. Use TYPESAFE_API_KEY in the environment or set api_key.
+# when the reply gate runs. Save the key under LLM > Providers > TypeSafe AI,
+# or set TYPESAFE_API_KEY in the environment.
 decisions:
   provider: ""  # set to "typesafe" to use the Jev decision model
   model: "jev-latest"

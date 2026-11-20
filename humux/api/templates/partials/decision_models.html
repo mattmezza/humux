@@ -1,7 +1,7 @@
-  <div class="card" x-data="{ settings: {{ decisions|tojson|forceescape }}, key: '', status: '', success: false }">
+  <div class="card" x-data="{ settings: {{ decisions|tojson|forceescape }}, status: '', success: false }">
     <h2 class="text-base mb-1">Decision Models</h2>
     <p class="text-muted text-xs mb-4">The decision provider evaluates chat context for the Reply Decision gate, voice delivery, and emoji reactions.</p>
-    <form class="space-y-4" @submit.prevent="withLoading($el.querySelector('button'), async () => {
+    <form class="space-y-4" @submit.prevent="withLoading($el.querySelector('[type=submit]'), async () => {
       status = '';
       try {
         const values = {
@@ -10,7 +10,6 @@
           'decisions.voice': String(settings.voice),
           'decisions.reactions': String(settings.reactions)
         };
-        if (key.trim()) values['decisions.api_key'] = key.trim();
         const response = await fetch('/config', {
           method: 'PATCH',
           headers: {
@@ -21,7 +20,6 @@
         });
         success = response.ok;
         status = success ? 'Decision settings saved' : 'Could not save decision settings';
-        if (success) key = '';
       } catch {
         success = false;
         status = 'Could not save decision settings';
@@ -38,13 +36,15 @@
         <div>
           <label class="label" for="decision-model">Model</label>
           <input class="input-sm" style="max-width:500px" id="decision-model" x-model="settings.model"
-                 placeholder="jev-latest">
-        </div>
-        <div>
-          <label class="label" for="decision-api-key">TypeSafe API key</label>
-          <input type="password" class="input-sm" style="max-width:500px" id="decision-api-key"
-                 x-model="key" autocomplete="off" placeholder="Enter a key to replace the saved key">
-          <p class="text-muted text-xs mt-1">You can also set <code>TYPESAFE_API_KEY</code> in the server environment.</p>
+                 placeholder="jev-latest" list="dl-decision-model">
+          <datalist id="dl-decision-model">
+            <template x-for="item in modelOptions('typesafe')" :key="item.value">
+              <option :value="item.value"></option>
+            </template>
+          </datalist>
+          <p class="text-muted text-xs mt-1">Manage the TypeSafe AI key and fetch models in
+            <button type="button" class="text-accent hover:underline" @click="setSection('providers')">Providers</button>.
+          </p>
         </div>
         <label class="flex items-center gap-2">
           <input type="checkbox" x-model="settings.voice"> Choose voice or text for Telegram replies

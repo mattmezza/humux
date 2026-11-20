@@ -400,5 +400,72 @@
       </button>
     </div>
   </div>
+  <div class="card" x-data="{ typesafeKey: '', saveError: '' }">
+    <h2 class="text-base mb-1">TypeSafe AI</h2>
+    <p class="text-muted text-xs mb-4">Configure the provider for Jev decision models.</p>
+    <form class="space-y-3" @submit.prevent="withLoading($el.querySelector('[type=submit]'), async () => {
+      saveError = '';
+      try {
+        const response = await fetch('/config', {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + (localStorage.getItem('admin_api_key') || '')
+          },
+          body: JSON.stringify({values: {'decisions.api_key': typesafeKey.trim()}})
+        });
+        if (!response.ok) throw new Error('Could not save the TypeSafe API key');
+        typesafeKey = '';
+        if (window.showToast) window.showToast('TypeSafe settings saved');
+        reloadLlmPartial();
+      } catch (error) {
+        saveError = error.message;
+      }
+    })">
+      <div>
+        {% if typesafe_vault_ref %}
+        <span class="label">TypeSafe API Key</span>
+        <div class="text-xs text-muted py-1">
+          🔒 Stored in the vault as <code>{{ typesafe_vault_ref }}</code>. Manage it in
+          <button type="button" class="text-accent hover:underline" @click="$dispatch('switch-tab', 'secrets')">Vaults</button>.
+        </div>
+        {% else %}
+        <label class="label" for="llm-typesafe-key">TypeSafe API Key</label>
+        <input type="password" class="input-sm" style="max-width:500px"
+               autocomplete="new-password" id="llm-typesafe-key" x-model="typesafeKey"
+               {% if typesafe_key_saved %}placeholder="Enter a key to replace the saved key"{% endif %}>
+        {% if typesafe_env_key and not typesafe_key_saved %}
+        <p class="text-muted text-xs mt-1">Using <code>TYPESAFE_API_KEY</code> from the server environment.</p>
+        {% endif %}
+        {% if not infra_vault_available %}
+        <p class="text-muted text-xs mt-1">Set <code>HUMUX_MASTER_KEY</code> to encrypt saved credentials in the vault.</p>
+        {% endif %}
+        {% endif %}
+      </div>
+      <div class="flex items-center gap-2 flex-wrap">
+        {% set needs_key = " || !typesafeKey.trim()" if not (typesafe_key_saved or typesafe_env_key) else "" %}
+        <button class="btn btn-sm" type="button" :disabled="testing.typesafe{{ needs_key }}"
+                @click="testProvider('typesafe', typesafeKey.trim())">
+          <span x-show="!testing.typesafe">Test connection</span>
+          <span x-show="testing.typesafe"><span class="spinner-sm mr-1"></span>Testing...</span>
+        </button>
+        <button class="btn btn-sm" type="button" :disabled="fetchingModels.typesafe{{ needs_key }}"
+                @click="fetchModels('typesafe', typesafeKey.trim())">
+          <span x-show="!fetchingModels.typesafe">Fetch models</span>
+          <span x-show="fetchingModels.typesafe"><span class="spinner-sm mr-1"></span>Fetching...</span>
+        </button>
+        <button class="btn btn-sm" type="button" :disabled="!fetchedModels.typesafe.length"
+                @click="copyModels('typesafe')">Copy list</button>
+      </div>
+      <div x-show="testResults.typesafe" role="status"
+           :class="tests.typesafe ? 'alert-success' : 'alert-error'" x-text="testResults.typesafe"></div>
+      <div x-show="fetchModelsResult.typesafe" role="status"
+           class="text-muted text-xs" x-text="fetchModelsResult.typesafe"></div>
+      {% if not typesafe_vault_ref %}
+      <button class="btn btn-sm" type="submit" :disabled="!typesafeKey.trim()">Save TypeSafe AI</button>
+      <div x-show="saveError" role="alert" class="alert-error" x-text="saveError"></div>
+      {% endif %}
+    </form>
+  </div>
   </div>{# /providers #}
 

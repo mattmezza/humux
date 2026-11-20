@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 
+import httpx
 import pytest
 from cryptography.fernet import InvalidToken
 from fastapi.testclient import TestClient
@@ -614,6 +615,60 @@ async def test_llm_provider_key_autovaults_on_save(tmp_path) -> None:
     # A later blank save (the vaulted field submits empty) must not orphan the ref.
     client.patch("/config", json={"values": {"agent.anthropic_api_key": ""}}, headers=_auth())
     assert await cs.get("agent.anthropic_api_key") == "${vault:ANTHROPIC_API_KEY}"
+
+
+async def test_typesafe_provider_saves_and_uses_the_infra_vault(tmp_path, monkeypatch) -> None:
+    client, vault, config = await _migrate_app(tmp_path)
+    url = "/llm/providers/typesafe/models"
+    calls = []
+
+    def list_models(request):
+        assert str(request.url) == "https://api.typesafe.ai/v1/models"
+        calls.append(request.headers["Authorization"])
+        if calls[-1] == "Bearer rejected-key":
+            return httpx.Response(401, json={"detail": "rejected-key"})
+        return httpx.Response(200, json={"models": [{"name": "jev-latest"}]})
+
+    async_client = httpx.AsyncClient
+    monkeypatch.setattr(
+        "api.admin.httpx.AsyncClient",
+        lambda **kwargs: async_client(transport=httpx.MockTransport(list_models), **kwargs),
+    )
+    monkeypatch.setenv("TYPESAFE_API_KEY", "env-key")
+    assert client.post(url, json={}).status_code == 401
+    assert not calls
+    response = client.post(url, json={}, headers=_auth())
+    assert response.json() == {"ok": True, "models": ["jev-latest"]}
+    assert calls[-1] == "Bearer env-key"
+
+    rejected = client.post(url, json={"api_key": "rejected-key"}, headers=_auth())
+    assert rejected.json() == {"ok": False, "error": "TypeSafe returned HTTP 401"}
+    assert calls[-1] == "Bearer rejected-key"
+    assert not await config.get("decisions.api_key")
+
+    response = client.patch(
+        "/config", json={"values": {"decisions.api_key": "saved-key"}}, headers=_auth()
+    )
+    assert response.status_code == 200
+    assert await config.get("decisions.api_key") == "${vault:TYPESAFE_API_KEY}"
+    assert await vault.get_infra_secret("TYPESAFE_API_KEY") == "saved-key"
+    assert (await config.export_to_config(vault_resolve=vault.infra_resolve)).decisions.api_key == (
+        "saved-key"
+    )
+
+    providers = client.get("/partials/llm/providers", headers=_auth()).text
+    assert "${vault:TYPESAFE_API_KEY}" in providers
+    assert 'id="llm-typesafe-key"' not in providers
+    infra = client.get("/partials/secrets/infra", headers=_auth()).text
+    assert "TYPESAFE_API_KEY" in infra
+    assert "saved-key" not in providers + infra
+    response = client.post(url, json={}, headers=_auth())
+    assert response.json() == {"ok": True, "models": ["jev-latest"]}
+    assert calls[-1] == "Bearer saved-key"
+
+    await vault.set_infra_secret("TYPESAFE_API_KEY", "rotated-key")
+    client.post(url, json={}, headers=_auth())
+    assert calls[-1] == "Bearer rotated-key"
 
 
 async def test_llm_provider_key_plaintext_without_machine_key(tmp_path) -> None:

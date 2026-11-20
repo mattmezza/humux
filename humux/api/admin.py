@@ -46,6 +46,7 @@ from core.artifacts import ARTIFACT_CSP, NOT_FOUND_HTML, resolve, serving_base, 
 from core.compaction import effective_window
 from core.config import CompactionConfig, search_ready
 from core.config_store import ConfigStore
+from core.decisions import typesafe_api_key
 from core.goal_decomposition import classify_complexity, decompose_goal
 from core.llm import LLMClient, get_sent_payload, list_captured
 from core.log_streams import current_stream, current_subagent
@@ -1307,6 +1308,10 @@ class STTTestIn(BaseModel):
     mode: str = Field("local", max_length=16)  # "local" or "remote"; anything else → local
 
 
+class TypeSafeModelsIn(BaseModel):
+    api_key: str = ""
+
+
 # Bundled real speech; see voice/samples/README.md for provenance and license.
 _STT_TEST_SAMPLE = Path(__file__).resolve().parent.parent / "voice/samples/test-stt.ogg"
 
@@ -1495,6 +1500,7 @@ def create_admin_app(
         "agent.grok_api_key",
         "agent.deepseek_api_key",
         "agent.openrouter_api_key",
+        "decisions.api_key",
     }
 
     async def _preserve_vault_refs(values: dict) -> dict:
@@ -1554,6 +1560,7 @@ def create_admin_app(
         "agent.openrouter_api_key",
         "agent.openrouter_base_url",
         "agent.model",
+        "decisions.api_key",
     }
     _SEARCH_PREFIX = "search."
     _MEMORY_PREFIX = "memory."
@@ -2225,6 +2232,7 @@ def create_admin_app(
         grok_key = await config_store.get("agent.grok_api_key") or ""
         deepseek_key = await config_store.get("agent.deepseek_api_key") or ""
         openrouter_key = await config_store.get("agent.openrouter_api_key") or ""
+        typesafe_key = await config_store.get("decisions.api_key") or ""
         return {
             "anthropic_api_key": "" if _is_vault_ref(anthropic_key) else anthropic_key,
             "anthropic_vaulted": _is_vault_ref(anthropic_key),
@@ -2243,6 +2251,10 @@ def create_admin_app(
             "openrouter_api_key": "" if _is_vault_ref(openrouter_key) else openrouter_key,
             "openrouter_vaulted": _is_vault_ref(openrouter_key),
             "openrouter_base_url": await config_store.get("agent.openrouter_base_url") or "",
+            "typesafe_vault_ref": typesafe_key if _is_vault_ref(typesafe_key) else "",
+            "typesafe_key_saved": bool(typesafe_key),
+            "typesafe_env_key": bool(typesafe_api_key("")),
+            "infra_vault_available": secret_store is not None and secret_store.infra.available,
         }
 
     @app.get("/partials/llm/inference", dependencies=[Depends(auth)])
@@ -2261,6 +2273,17 @@ def create_admin_app(
     async def partial_llm_providers() -> HTMLResponse:
         """LLM Providers sub-tab content."""
         return _render_partial("partials/llm_providers.html", **(await _llm_providers_ctx()))
+
+    @app.post("/llm/providers/typesafe/models", dependencies=[Depends(auth)])
+    async def typesafe_models(body: TypeSafeModelsIn) -> dict:
+        """Probe TypeSafe and list models using a draft key or the saved credential."""
+        if not await config_store.is_setup_complete():
+            raise HTTPException(403, "Complete setup to manage providers")
+        api_key = body.api_key.strip()
+        if not api_key:
+            saved = await config_store.get("decisions.api_key") or ""
+            api_key = typesafe_api_key(_resolve_secret_ref(saved))
+        return await _list_models_typesafe(api_key)
 
     @app.get("/partials/llm/history", dependencies=[Depends(auth)])
     async def partial_llm_history() -> HTMLResponse:
@@ -5731,6 +5754,35 @@ async def _list_models_openai(
         return {"ok": True, "models": ids}
     except Exception as exc:
         return {"ok": False, "error": str(exc)}
+
+
+async def _list_models_typesafe(api_key: str) -> dict:
+    if not api_key or api_key.startswith("${"):
+        return {"ok": False, "error": "TypeSafe API key is missing"}
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            response = await client.get(
+                "https://api.typesafe.ai/v1/models", headers={"Authorization": f"Bearer {api_key}"}
+            )
+            response.raise_for_status()
+            body = response.json()
+    except httpx.HTTPStatusError as exc:
+        return {"ok": False, "error": f"TypeSafe returned HTTP {exc.response.status_code}"}
+    except httpx.RequestError:
+        return {"ok": False, "error": "Could not connect to TypeSafe"}
+    except ValueError:
+        return {"ok": False, "error": "TypeSafe returned an invalid model list"}
+    models = body.get("models") if isinstance(body, dict) else None
+    if not isinstance(models, list):
+        return {"ok": False, "error": "TypeSafe returned an invalid model list"}
+    return {
+        "ok": True,
+        "models": [
+            model["name"]
+            for model in models
+            if isinstance(model, dict) and isinstance(model.get("name"), str) and model["name"]
+        ],
+    }
 
 
 async def _test_telegram(bot_token: str) -> dict:

@@ -256,9 +256,13 @@ In a shared/group chat with several bots and people, decide per message whether 
 
 #### `decisions`
 
-Select **TypeSafe AI** under **LLM → Inference → Decision Models** and supply a
-TypeSafe API key there or through `TYPESAFE_API_KEY`. A fresh install can also
-seed `decisions.provider: typesafe` and `decisions.model: jev-latest` from YAML.
+Save the TypeSafe AI key under **LLM → Providers → TypeSafe AI**. With a
+machine key configured, Humux stores the credential as `TYPESAFE_API_KEY` in
+**Vaults → Infra**. You can also supply `TYPESAFE_API_KEY` in the server
+environment. Use **Fetch models** on the provider card to see the models
+available to your account, then select **TypeSafe AI** and choose a model
+under **LLM → Inference → Decision Models**. A fresh install can also seed
+`decisions.provider: typesafe` and `decisions.model: jev-latest` from YAML.
 Once selected, Jev handles the Reply Decision gate when enabled. It also
 chooses the delivery format for Telegram replies when text-to-speech is
 enabled, and selects emoji reactions in Telegram. The voice and reaction

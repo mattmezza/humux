@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 from fastapi.testclient import TestClient
 
@@ -124,6 +125,32 @@ def test_lifecycle_requires_auth() -> None:
     for path in ["/agent/start", "/agent/stop", "/agent/restart"]:
         resp = client.post(path)
         assert resp.status_code == 401, f"{path} should require auth"
+
+
+async def test_startup_migrates_existing_typesafe_key(tmp_path, monkeypatch) -> None:
+    from core.config_store import ConfigStore
+    from core.secret_store import SecretStore
+    from core.vault import InfraVault
+
+    db_path = str(tmp_path / "config.db")
+    config_store = ConfigStore(db_path=db_path)
+    secret_store = SecretStore(db_path=db_path, infra_vault=InfraVault("machine-key"))
+    await config_store.set_many(
+        {"decisions.api_key": "legacy-key", "agent.anthropic_api_key": "other-key"}
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("dotenv.load_dotenv", lambda: None)
+    monkeypatch.setenv("ADMIN_PASSWORD", "testpw")
+    monkeypatch.setattr(main, "_config_store", config_store)
+    monkeypatch.setattr(main, "_secret_store", secret_store)
+    monkeypatch.setattr(main, "_agent_state", main.AgentState())
+    monkeypatch.setattr(main, "materialize_himalaya_config", AsyncMock())
+
+    async with main._lifespan(None):
+        assert await config_store.get("decisions.api_key") == "${vault:TYPESAFE_API_KEY}"
+        assert await config_store.get("agent.anthropic_api_key") == "other-key"
+        assert await secret_store.get_infra_secret("TYPESAFE_API_KEY") == "legacy-key"
+        assert config_store.vault_resolve("TYPESAFE_API_KEY") == "legacy-key"
 
 
 async def test_migrate_telegram_to_default_agent(tmp_path) -> None:

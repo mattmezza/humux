@@ -47,12 +47,19 @@ def _probability(answer: object) -> float | None:
     return None
 
 
+def typesafe_api_key(configured: str) -> str:
+    """Use the resolved config value, falling back to the server environment."""
+    if configured and not configured.startswith("${"):
+        return configured
+    return os.environ.get("TYPESAFE_API_KEY", "")
+
+
 class DecisionClient:
     """Evaluate the configured decision model using typed questions."""
 
     def __init__(self, config: DecisionConfig):
         self.model = config.model
-        self._key = config.api_key or os.environ.get("TYPESAFE_API_KEY", "")
+        self._key = typesafe_api_key(config.api_key)
 
     async def _evaluate(self, state: dict, questions: dict) -> dict:
         if not self._key or self._key.startswith("${"):

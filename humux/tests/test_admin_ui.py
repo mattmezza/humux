@@ -356,12 +356,14 @@ class TestVoicePreview:
 
     def test_llm_decision_settings_do_not_render_the_secret(self):
         store = _ConfigStoreStub(setup_complete=True)
-        store._data.update({
-            "decisions.provider": "typesafe",
-            "decisions.model": "jev-test",
-            "decisions.api_key": "example-secret-key",
-            "decisions.voice": "False",
-        })
+        store._data.update(
+            {
+                "decisions.provider": "typesafe",
+                "decisions.model": "jev-test",
+                "decisions.api_key": "example-secret-key",
+                "decisions.voice": "False",
+            }
+        )
         app, _ = create_admin_app(AgentState(agent=None), cast(ConfigStore, store))
         client = TestClient(app)
         resp = client.get("/partials/llm/inference", headers=AUTH)
@@ -369,6 +371,16 @@ class TestVoicePreview:
         assert "Decision Models" in resp.text
         assert "jev-test" in resp.text
         assert "example-secret-key" not in resp.text
+        assert "decisions.api_key" not in resp.text
+        assert "modelOptions('typesafe')" in resp.text
+        assert "setSection('providers')" in resp.text
+
+        providers = client.get("/partials/llm/providers", headers=AUTH)
+        assert providers.status_code == 200
+        assert "TypeSafe AI" in providers.text
+        assert "decisions.api_key" in providers.text
+        assert "llm-typesafe-key" in providers.text
+        assert "example-secret-key" not in providers.text
 
     def test_llm_partial_has_openrouter(self):
         # OpenRouter provider card (#128): renders (exercises the positional

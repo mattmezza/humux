@@ -32,7 +32,7 @@ from api.admin import (
 )
 from core.config_store import ConfigStore
 from core.email_config import materialize_himalaya_config
-from core.secret_store import SecretStore
+from core.secret_store import SecretStore, migrate_config_to_infra_vault
 
 logging.basicConfig(
     level=logging.INFO,
@@ -338,6 +338,8 @@ async def _lifespan(application):  # noqa: ANN001
     # Himalaya materialisation below can expand ${vault:NAME} email passwords (#110).
     # Safe with no master key: the cache is empty and infra_resolve falls back to env.
     await _secret_store.load_infra_cache()
+    # Earlier versions saved the Decision Models key before TypeSafe had a provider card.
+    await migrate_config_to_infra_vault(_config_store, _secret_store, keys=("decisions.api_key",))
     _config_store.vault_resolve = _secret_store.infra_resolve
     await materialize_himalaya_config(_config_store)
 
