@@ -39,7 +39,7 @@
         if (!r.ok) throw new Error(d.detail || 'STT test failed');
         this.sttTestOk = d.ok;
         this.sttTestResult = d.ok
-          ? `✓ ${d.mode} STT: \"${d.text}\" (${(d.duration_ms / 1000).toFixed(1)}s)`
+          ? `✓ ${d.mode} STT: &quot;${d.text}&quot; (${(d.duration_ms / 1000).toFixed(1)}s)`
           : `✗ ${d.mode} STT: ${d.error || 'failed'}`;
       })
       .catch(e => {
@@ -215,9 +215,7 @@
                   if (window.showToast) { window.showToast(voiceResult, false); }
                   return;
                 }
-                // "Saved" alone used to lie: voice settings were startup-only.
-                // Now the pipeline is rebuilt in the background, so report the
-                // real outcome once it settles (#326).
+                // Report the outcome once the background voice rebuild settles (#326).
                 voiceResult = 'Voice settings saved';
                 if (window.showToast) { window.showToast('Voice settings saved'); }
                 if (d.restart_required && window.notifyRestartRequired) { notifyRestartRequired(); }
