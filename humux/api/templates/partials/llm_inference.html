@@ -1,5 +1,6 @@
 {% from "partials/_macros.html" import think %}
-  <div class="space-y-6" x-show="section === 'inference'">
+  <div class="space-y-6" x-show="section === 'inference'"
+       x-data="{ savedDecisionModel: {{ (decisions.model if decisions.provider else '')|tojson|forceescape }} }">
   <div class="card">
     <h2 class="text-base mb-1">Active Inference Provider</h2>
     <p class="text-muted text-xs mb-4">Select the provider used for agent inference after testing its connection.</p>
@@ -193,7 +194,7 @@
 
       <div>
         <label class="label" for="llm-gd-provider">Provider</label>
-        <select class="input-sm" style="max-width:500px" x-model="gdProvider" @change="resetBackgroundModel('gd')" x-effect="$el.value = gdProvider" :disabled="!gdEnabled" id="llm-gd-provider">
+        <select class="input-sm" style="max-width:500px" x-model="gdProvider" @change="resetGoalModel()" x-effect="$el.value = gdProvider" :disabled="!gdEnabled" id="llm-gd-provider">
           <template x-for="item in providerOptions" :key="'gd-' + item.value">
             <option :value="item.value" :selected="item.value === gdProvider" x-text="item.label"></option>
           </template>
@@ -248,7 +249,7 @@
 
   <div class="card">
     <h2 class="text-base mb-1">Reply Decision</h2>
-    <p class="text-muted text-xs mb-4">In shared/group chats with several bots and people, decide per message whether to reply at all — staying quiet for messages aimed at another bot, caught in a bot-to-bot reaction loop, or that the agent can't usefully add to. Off by default; uses a cheap/fast model for the yes/no call.</p>
+    <p class="text-muted text-xs mb-4">Decide whether to reply to messages that do not directly address the bot.</p>
 
     <form class="space-y-4" @submit.prevent>
       <div class="flex items-center gap-2">
@@ -256,31 +257,17 @@
         <input type="checkbox" x-model="rdEnabled" class="rounded border-border" id="llm-rd-enabled">
       </div>
 
-      <div>
-        <label class="label" for="llm-rd-provider">Provider</label>
-        <select class="input-sm" style="max-width:500px" x-model="rdProvider" @change="resetBackgroundModel('rd')" x-effect="$el.value = rdProvider" :disabled="!rdEnabled" id="llm-rd-provider">
-          <template x-for="item in providerOptions" :key="'rd-' + item.value">
-            <option :value="item.value" :selected="item.value === rdProvider" x-text="item.label"></option>
-          </template>
-        </select>
-      </div>
-      <div>
-        <label class="label" for="llm-rd-model">Model</label>
-        <input type="text" class="input-sm" style="max-width:500px" x-model="rdModel" :disabled="!rdEnabled"
-               list="dl-model-rd" id="llm-rd-model" placeholder="Type or pick a model">
-        <datalist id="dl-model-rd">
-          <template x-for="item in modelOptions(rdProvider)" :key="'rd-m-' + item.value">
-            <option :value="item.value"></option>
-          </template>
-        </datalist>
-        <p class="text-muted text-xs mt-1">Used when no typed decision provider is selected.</p>
-      </div>
-{{ think('rdThinkingLevel', 'rdProvider', 'rdModel', 'dl-think-rd', true) }}
+      <p class="text-muted text-xs" x-show="rdEnabled && savedDecisionModel">
+        Uses <code x-text="savedDecisionModel"></code> from Decision Models.
+      </p>
+      <p class="text-muted text-xs" x-show="rdEnabled && !savedDecisionModel">
+        Only the rate cap applies. Select a provider in Decision Models to filter replies.
+      </p>
 
       <div class="flex items-center gap-2">
         <label class="label mb-0" for="llm-rd-group-only">Group chats only</label>
         <input type="checkbox" x-model="rdGroupOnly" class="rounded border-border" :disabled="!rdEnabled" id="llm-rd-group-only">
-        <span class="text-muted text-xs">When on, 1:1 chats always get a reply; only group chats are gated.</span>
+        <span class="text-muted text-xs">Apply the gate and rate cap only in group chats.</span>
       </div>
       <div class="flex flex-wrap gap-4">
         <div>
@@ -292,7 +279,7 @@
           <input type="number" min="1" class="input-sm" style="max-width:160px" x-model="rdWindowSeconds" :disabled="!rdEnabled" id="llm-rd-window">
         </div>
       </div>
-      <p class="text-muted text-xs">Hard backstop: never send more than this many auto-replies into one chat per rolling window — guarantees a runaway loop terminates even if the model keeps voting to reply.</p>
+      <p class="text-muted text-xs">Caps automatic replies per chat in a rolling window. Direct mentions and replies to the bot bypass the cap.</p>
     </form>
 
     <div class="flex items-center gap-2 mt-4">
@@ -306,9 +293,6 @@
                   },
                   body: JSON.stringify({values: {
                     'reply_decision.enabled': rdEnabled ? 'true' : 'false',
-                    'reply_decision.provider': rdProvider,
-                    'reply_decision.model': rdModel,
-                    'reply_decision.thinking_level': rdThinkingLevel,
                     'reply_decision.group_only': rdGroupOnly ? 'true' : 'false',
                     'reply_decision.max_replies_per_window': String(rdMaxReplies),
                     'reply_decision.window_seconds': String(rdWindowSeconds)

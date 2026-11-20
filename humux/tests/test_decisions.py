@@ -32,6 +32,8 @@ async def test_typesafe_api_contract(monkeypatch):
         data = json.loads(request.content)
         assert data["model"] == "jev-test"
         assert data["state"]["latest_message"] == "please react"
+        assert data["state"]["recent_conversation"] == "user: Hello"
+        assert data["state"]["other_assistants"] == ["Chef"]
         assert data["questions"]["reply"]["type"] == "noul"
         assert "none" in data["questions"]["reaction"]["criteria"]
         return httpx.Response(
@@ -49,7 +51,12 @@ async def test_typesafe_api_contract(monkeypatch):
     monkeypatch.setattr("core.decisions.httpx.AsyncClient", lambda **kwargs: client)
     decider = DecisionClient(DecisionConfig(model="jev-test", api_key="test-key"))
     result = await decider.incoming(
-        "please react", "Assistant", history=[], others=[], gate_reply=True, can_react=True
+        "please react",
+        "Assistant",
+        history=[{"role": "user", "content": "Hello"}],
+        others=["Chef"],
+        gate_reply=True,
+        can_react=True,
     )
     assert result.reply and result.reaction == "thumbsup" and result.reaction_only
 

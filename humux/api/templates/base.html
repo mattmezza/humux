@@ -325,7 +325,7 @@
       };
     }
 
-    function llmTab(provider, apiKey, model, openaiKey, openaiBaseUrl, googleKey, googleBaseUrl, grokKey, grokBaseUrl, deepseekKey, deepseekBaseUrl, openrouterKey, openrouterBaseUrl, extractionProvider, extractionModel, consolidationProvider, consolidationModel, gdEnabled, gdProvider, gdModel, compactionProvider, compactionModel, thinkingLevel, extractionThinkingLevel, consolidationThinkingLevel, gdThinkingLevel, compactionThinkingLevel, visionEnabled, visionProvider, visionModel, rdEnabled, rdProvider, rdModel, rdThinkingLevel, rdGroupOnly, rdMaxReplies, rdWindowSeconds, maxTokens, maxToolRounds, temperature) {
+    function llmTab(provider, apiKey, model, openaiKey, openaiBaseUrl, googleKey, googleBaseUrl, grokKey, grokBaseUrl, deepseekKey, deepseekBaseUrl, openrouterKey, openrouterBaseUrl, extractionProvider, extractionModel, consolidationProvider, consolidationModel, gdEnabled, gdProvider, gdModel, compactionProvider, compactionModel, thinkingLevel, extractionThinkingLevel, consolidationThinkingLevel, gdThinkingLevel, compactionThinkingLevel, visionEnabled, visionProvider, visionModel, rdEnabled, rdGroupOnly, rdMaxReplies, rdWindowSeconds, maxTokens, maxToolRounds, temperature) {
       const currentProvider = provider || 'anthropic';
       return {
         // Sub-tab within the LLM tab (issue #114): inference | providers | history.
@@ -393,9 +393,6 @@
         gdResult: '',
         gdResultOk: false,
         rdEnabled: rdEnabled === 'true' || rdEnabled === true,
-        rdProvider: rdProvider || 'deepseek',
-        rdModel: rdModel || 'deepseek-v4-flash',
-        rdThinkingLevel: rdThinkingLevel || '',
         rdGroupOnly: rdGroupOnly === 'true' || rdGroupOnly === true,
         rdMaxReplies: rdMaxReplies || '6',
         rdWindowSeconds: rdWindowSeconds || '120',
@@ -563,7 +560,7 @@
             this.resetModel();
             this.resetMemoryModel('extraction');
             this.resetMemoryModel('consolidation');
-            this.resetBackgroundModel('gd');
+            this.resetGoalModel();
             // Load the initial sub-tab content after seeding model values.
             this._loadSection(this.section);
           });
@@ -585,16 +582,10 @@
           const list = this.modelOptions(this.consolidationProvider);
           if (list.length) { this.consolidationModel = list[0].value; }
         },
-        resetBackgroundModel(kind) {
-          if (kind === 'gd') {
-            if (this.gdModel) return;
-            const list = this.modelOptions(this.gdProvider);
-            if (list.length) { this.gdModel = list[0].value; }
-            return;
-          }
-          if (this.rdModel) return;
-          const list = this.modelOptions(this.rdProvider);
-          if (list.length) { this.rdModel = list[0].value; }
+        resetGoalModel() {
+          if (this.gdModel) return;
+          const list = this.modelOptions(this.gdProvider);
+          if (list.length) { this.gdModel = list[0].value; }
         },
         keyFor(service) {
           if (service === 'openai') return this.openaiKey;

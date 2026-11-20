@@ -125,7 +125,6 @@ memory:
 
 reply_decision:
   enabled: false
-  model: "deepseek-v4-flash"
   group_only: true
   max_replies_per_window: 6
   window_seconds: 120
@@ -251,7 +250,15 @@ does and how the agent may dial it down per spawn.
 
 #### `reply_decision`
 
-In a shared/group chat with several bots and people, decide per message whether to reply at all — staying quiet for messages aimed at another bot, caught in a bot-to-bot reaction loop, or that the agent can't usefully add to. A cheap one-shot LLM call (`model`) makes the call, fed the recent conversation (so follow-ups and pronouns read in context) and the names of the sibling bots in the room (so "aimed at another bot" is anchored to real agents); it **fails open** (replies) on any error, so a classifier hiccup never drops a real message. Off by default — 1:1 chats always reply and it costs one extra call. `group_only` (default `true`) gates only group chats (detected when the chat id differs from the user id). `max_replies_per_window`/`window_seconds` are a hard per-chat rate cap that backstops the LLM gate, so a runaway loop terminates even if the gate keeps voting "reply". Scheduler/system turns are never gated.
+Reply Decision is off by default. When enabled, the model selected in
+**LLM → Inference → Decision Models** uses the latest message, recent
+conversation, and sibling bot names to decide whether the agent should reply.
+With the default `group_only: true`, the gate applies to group chats. Directly
+addressed messages and scheduler turns bypass the gate and the rate cap.
+
+`max_replies_per_window` and `window_seconds` limit automatic replies per chat
+in a rolling window. When the decision provider is disabled or unavailable,
+the rate cap alone applies.
 
 
 #### `decisions`

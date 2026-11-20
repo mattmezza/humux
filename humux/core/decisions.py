@@ -9,11 +9,12 @@ from dataclasses import dataclass
 import httpx
 
 from core.config import DecisionConfig
-from core.reply_decision import _format_history
 
 log = logging.getLogger(__name__)
 
 _TYPESAFE_URL = "https://api.typesafe.ai/v1/systemone"
+_HISTORY_TAIL = 6
+_CONTENT_CLIP = 300
 _REACTIONS = {
     "none": "An ordinary question, instruction, or message where an emoji adds nothing.",
     "thumbsup": "A lightweight acknowledgment, agreement, or an explicit thumbs-up request.",
@@ -36,6 +37,19 @@ class IncomingDecision:
 
 def _noul(instructions: str) -> dict:
     return {"type": "noul", "instructions": instructions}
+
+
+def _format_history(history: list[dict]) -> str:
+    """Render the last few messages as a compact transcript."""
+    lines = []
+    for turn in history[-_HISTORY_TAIL:]:
+        role = turn.get("role", "?")
+        content = str(turn.get("content", "")).strip().replace("\n", " ")
+        if len(content) > _CONTENT_CLIP:
+            content = content[:_CONTENT_CLIP] + "…"
+        if content:
+            lines.append(f"{role}: {content}")
+    return "\n".join(lines) if lines else "(none)"
 
 
 def _probability(answer: object) -> float | None:

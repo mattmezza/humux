@@ -324,22 +324,12 @@ class DecisionConfig(BaseModel):
 
 
 class ReplyDecisionConfig(BaseModel):
-    """Decide whether to reply in shared/group chats (#36).
-
-    Off by default: 1:1 chats always warrant a reply, and the extra LLM call
-    adds latency. Turn it on for group chats that mix multiple bots/people,
-    where the agent should stay quiet for messages aimed at someone else or
-    caught in a bot-to-bot reaction loop.
-    """
+    """Apply a rate cap and use the configured decision model on eligible turns."""
 
     enabled: bool = False
-    provider: str = "deepseek"
-    model: str = "deepseek-v4-flash"  # fast + cheap is ideal for the yes/no reply call
-    thinking_level: ReasoningSetting = ""  # Empty uses the provider default.
     group_only: bool = True  # only gate group chats; DMs always get a reply
     # Hard backstop: never send more than this many auto-replies into one chat
-    # per rolling window — guarantees a runaway loop terminates even if the LLM
-    # gate keeps voting "reply".
+    # per rolling window, even if the decision model keeps voting "reply".
     max_replies_per_window: int = 6
     window_seconds: int = 120
 

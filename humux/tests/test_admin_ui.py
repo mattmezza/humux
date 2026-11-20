@@ -353,6 +353,9 @@ class TestVoicePreview:
         # The save button wires the full config block, incl. the rate-cap knobs.
         assert "reply_decision.enabled" in resp.text
         assert "reply_decision.max_replies_per_window" in resp.text
+        assert "Select a provider in Decision Models to filter replies." in resp.text
+        for field in ("provider", "model", "thinking_level"):
+            assert f"reply_decision.{field}" not in resp.text
 
     def test_llm_decision_settings_do_not_render_the_secret(self):
         store = _ConfigStoreStub(setup_complete=True)

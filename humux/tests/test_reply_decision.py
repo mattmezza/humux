@@ -1,95 +1,16 @@
 """Reply decision (#36): the gate that keeps the agent quiet in group chats.
 
-Covers the one-shot classifier (should_reply), the group-vs-DM heuristic, the
-rate-limit backstop, and the end-to-end suppression path through process().
+Covers group eligibility, the reply rate cap, and model routing through process().
 """
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, Mock
+
 import pytest
 
-from core.config import Config
-from core.reply_decision import should_reply
-
-
-class _LLMStub:
-    """Minimal LLM stub returning a canned generate_text response."""
-
-    def __init__(self, response: str):
-        self._response = response
-        self.calls = 0
-        self.last_prompt = ""
-        self.last_max_tokens = 0
-
-    async def generate_text(self, *, model: str, prompt: str, max_tokens: int = 1024) -> str:
-        self.calls += 1
-        self.last_prompt = prompt
-        self.last_max_tokens = max_tokens
-        return self._response
-
-
-class _BoomLLM:
-    async def generate_text(self, *, model: str, prompt: str, max_tokens: int = 1024) -> str:
-        raise RuntimeError("classifier exploded")
-
-
-# -- should_reply unit tests --------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_reply_when_model_says_reply() -> None:
-    llm = _LLMStub("REPLY")
-    assert await should_reply(llm, "m", "can you check my calendar?", "Coach") is True
-    assert llm.calls == 1
-
-
-@pytest.mark.asyncio
-async def test_skip_when_model_says_skip() -> None:
-    llm = _LLMStub("SKIP — addressed to another bot")
-    assert await should_reply(llm, "m", "@OtherBot what time is it?", "Coach") is False
-
-
-@pytest.mark.asyncio
-async def test_fail_open_on_error() -> None:
-    # A classifier failure must never drop a real message.
-    assert await should_reply(_BoomLLM(), "m", "hello there", "Coach") is True
-
-
-@pytest.mark.asyncio
-async def test_fail_open_on_blank_and_junk() -> None:
-    assert await should_reply(_LLMStub(""), "m", "hi", "Coach") is True  # empty model output
-    assert await should_reply(_LLMStub("maybe?"), "m", "hi", "Coach") is True  # unparseable
-    # Empty message short-circuits without an LLM call.
-    quiet = _LLMStub("SKIP")
-    assert await should_reply(quiet, "m", "   ", "Coach") is True
-    assert quiet.calls == 0
-
-
-@pytest.mark.asyncio
-async def test_history_and_siblings_feed_the_prompt() -> None:
-    llm = _LLMStub("REPLY")
-    history = [
-        {"role": "user", "content": "Chef, what's for dinner?"},
-        {"role": "assistant", "content": "Pasta."},
-    ]
-    await should_reply(llm, "m", "and dessert?", "Coach", history=history, others=["Chef", "Coach"])
-    p = llm.last_prompt
-    assert "Chef, what's for dinner?" in p  # recent turns are included
-    assert "user: " in p and "assistant: " in p
-    assert "Other assistants that may be in this chat: Chef." in p  # self filtered out
-    # Generous budget so a thinking model isn't truncated before REPLY/SKIP.
-    assert llm.last_max_tokens >= 256
-
-
-@pytest.mark.asyncio
-async def test_prompt_omits_hints_when_absent() -> None:
-    llm = _LLMStub("REPLY")
-    await should_reply(llm, "m", "hi", "Coach")
-    assert "(none)" in llm.last_prompt  # no history → placeholder, no crash
-    assert "Other assistants" not in llm.last_prompt  # no siblings → hint dropped
-
-
-# -- AgentCore gate: helpers + integration ------------------------------------
+from core.config import Config, ReplyDecisionConfig
+from core.decisions import DecisionClient
 
 
 @pytest.fixture
@@ -99,9 +20,21 @@ def agent(tmp_path, monkeypatch):
 
     cfg = Config()
     cfg.reply_decision.enabled = True
+    cfg.decisions.provider = "typesafe"
     cfg.goal_decomposition.enabled = False  # keep the gate the only background call
     cfg.memory.embedding.enabled = False  # no sidecar in tests → 12s timeout per embed call
-    return AgentCore(cfg)
+    agent = AgentCore(cfg)
+    monkeypatch.setattr(
+        agent, "_background_llm", Mock(side_effect=AssertionError("unexpected LLM"))
+    )
+    return agent
+
+
+@pytest.fixture
+def evaluate(monkeypatch):
+    evaluate = AsyncMock(return_value={"reply": {"type": "noul", "noul": 0.95}})
+    monkeypatch.setattr(DecisionClient, "_evaluate", evaluate)
+    return evaluate
 
 
 def test_is_group_chat_heuristic(agent) -> None:
@@ -155,8 +88,8 @@ def _stub_dispatch(agent, monkeypatch, text="ok"):
 
 
 @pytest.mark.asyncio
-async def test_process_suppresses_on_skip(agent, monkeypatch) -> None:
-    monkeypatch.setattr(agent, "_background_llm", lambda *a, **k: _LLMStub("SKIP"))
+async def test_process_suppresses_on_skip(agent, monkeypatch, evaluate) -> None:
+    evaluate.return_value = {"reply": {"type": "noul", "noul": 0.05}}
     _stub_dispatch(agent, monkeypatch)
 
     resp = await agent.process(
@@ -167,13 +100,17 @@ async def test_process_suppresses_on_skip(agent, monkeypatch) -> None:
         addressed=False,
     )
     assert resp.text == ""
+    evaluate.assert_awaited_once()
     # The reserved slot is released on SKIP, so a quiet chat keeps its budget.
     assert agent._reply_times.get(("telegram", "-999"), []) == []
 
 
 @pytest.mark.asyncio
-async def test_process_replies_in_group_and_records_slot(agent, monkeypatch) -> None:
-    monkeypatch.setattr(agent, "_background_llm", lambda *a, **k: _LLMStub("REPLY"))
+@pytest.mark.parametrize("answers", [{"reply": {"type": "noul", "noul": 0.95}}, {}])
+async def test_process_replies_in_group_and_records_slot(
+    agent, monkeypatch, evaluate, answers
+) -> None:
+    evaluate.return_value = answers
     _stub_dispatch(agent, monkeypatch, text="here you go")
 
     resp = await agent.process(
@@ -184,34 +121,50 @@ async def test_process_replies_in_group_and_records_slot(agent, monkeypatch) -> 
         addressed=False,
     )
     assert resp.text == "here you go"
+    evaluate.assert_awaited_once()
     # A real reply keeps its reserved slot — the backstop counts it.
     assert len(agent._reply_times[("telegram", "-999")]) == 1
 
 
 @pytest.mark.asyncio
-async def test_process_skips_gate_in_dm(agent, monkeypatch) -> None:
-    # In a DM (chat_id == user_id) the gate must be bypassed entirely, so
-    # should_reply is never consulted.
-    import core.agent as agent_mod
-
-    calls: list[int] = []
-
-    async def _spy(*a, **k):
-        calls.append(1)
-        return True
-
-    monkeypatch.setattr(agent_mod, "should_reply", _spy)
+async def test_process_skips_gate_in_dm(agent, monkeypatch, evaluate) -> None:
     _stub_dispatch(agent, monkeypatch, text="hi")
 
     resp = await agent.process(
-        message="hey there friend", channel="telegram", user_id="111", chat_id="111"
+        message="hey there friend",
+        channel="telegram",
+        user_id="111",
+        chat_id="111",
+        addressed=False,
     )
     assert resp.text == "hi"
-    assert calls == []  # gate skipped in a 1:1 chat
+    evaluate.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_concurrent_burst_is_bounded_by_cap(agent, monkeypatch) -> None:
+async def test_legacy_config_without_decision_provider_only_applies_cap(
+    agent, monkeypatch, evaluate
+) -> None:
+    agent.config.decisions.provider = ""
+    agent.config.reply_decision = ReplyDecisionConfig.model_validate(
+        {
+            "enabled": True,
+            "provider": "openrouter",
+            "model": "old-model",
+            "thinking_level": "low",
+            "max_replies_per_window": 1,
+        }
+    )
+    _stub_dispatch(agent, monkeypatch)
+
+    args = {"channel": "telegram", "user_id": "111", "chat_id": "-999", "addressed": False}
+    assert (await agent.process("first message", **args)).text == "ok"
+    assert (await agent.process("second message", **args)).text == ""
+    evaluate.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_concurrent_burst_is_bounded_by_cap(agent, monkeypatch, evaluate) -> None:
     # The whole point of the backstop: a bursty bot-to-bot loop (many messages
     # arriving as concurrent tasks for one chat) must not sail past the cap.
     # With reserve-before-await, exactly `max_replies_per_window` get through.
@@ -220,7 +173,6 @@ async def test_concurrent_burst_is_bounded_by_cap(agent, monkeypatch) -> None:
     cfg = agent.config.reply_decision
     cfg.max_replies_per_window = 6
     cfg.window_seconds = 120
-    monkeypatch.setattr(agent, "_background_llm", lambda *a, **k: _LLMStub("REPLY"))
     _stub_dispatch(agent, monkeypatch, text="r")
 
     resps = await asyncio.gather(
@@ -237,17 +189,17 @@ async def test_concurrent_burst_is_bounded_by_cap(agent, monkeypatch) -> None:
     )
     replied = sum(1 for r in resps if r.text)
     assert replied == 6  # not 50 — the cap held under concurrency
+    assert evaluate.await_count == 6
 
 
 @pytest.mark.asyncio
-async def test_process_suppresses_when_rate_capped(agent, monkeypatch) -> None:
+async def test_process_suppresses_when_rate_capped(agent, monkeypatch, evaluate) -> None:
     import time
 
     cfg = agent.config.reply_decision
     cfg.max_replies_per_window = 2
     agent._reply_times[("telegram", "-999")] = [time.time()] * 2
     # Rate cap is checked before the classifier — it must not even be called.
-    monkeypatch.setattr(agent, "_background_llm", lambda *a, **k: _BoomLLM())
     _stub_dispatch(agent, monkeypatch)
     resp = await agent.process(
         message="still going",
@@ -257,3 +209,4 @@ async def test_process_suppresses_when_rate_capped(agent, monkeypatch) -> None:
         addressed=False,
     )
     assert resp.text == ""
+    evaluate.assert_not_awaited()

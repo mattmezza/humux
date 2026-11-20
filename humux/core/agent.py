@@ -46,7 +46,6 @@ from core.memory import MemoryStore
 from core.models import IMAGE_MIME_TYPES, AgentResponse, Attachment, OutputMessage
 from core.permissions import PermissionEngine, PermissionLevel, format_approval_message
 from core.prompt_builder import build_prompt_sections, channel_has_voice
-from core.reply_decision import should_reply
 from core.scheduler import AgentScheduler
 from core.secret_store import SecretStore
 from core.skills import SkillsEngine
@@ -1669,7 +1668,7 @@ class AgentCore:
 
         rd_cfg = self.config.reply_decision
         decision_cfg = self.config.decisions
-        gate_reply = (
+        check_reply_limit = (
             rd_cfg.enabled
             and not addressed
             and channel != "system"
@@ -1677,7 +1676,7 @@ class AgentCore:
         )
         cap_chat = topic_base_id(chat_id) or chat_id
         reserved = None
-        if gate_reply:
+        if check_reply_limit:
             # Reserve before awaiting the model so concurrent messages cannot exceed
             # the per-group backstop (forum topics share the group's budget).
             reserved = self._reserve_reply(channel, cap_chat, rd_cfg)
@@ -1691,6 +1690,7 @@ class AgentCore:
                 )
                 return AgentResponse(text="")
 
+        gate_reply = bool(decision_cfg.provider) and check_reply_limit
         decision = IncomingDecision()
         can_react = (
             decision_cfg.provider
@@ -1713,22 +1713,14 @@ class AgentCore:
                     for a in await self.agents.list_agents()
                     if a.enabled and a.bot_token and a.name != (agent.name if agent else "")
                 ]
-            if decision_cfg.provider:
-                decision = await DecisionClient(decision_cfg).incoming(
-                    message,
-                    identity,
-                    history=history,
-                    others=others,
-                    gate_reply=gate_reply,
-                    can_react=bool(can_react),
-                )
-            else:
-                llm = self._background_llm(rd_cfg.provider, rd_cfg.thinking_level)
-                decision = IncomingDecision(
-                    reply=await should_reply(
-                        llm, rd_cfg.model, message, identity, history=history, others=others
-                    )
-                )
+            decision = await DecisionClient(decision_cfg).incoming(
+                message,
+                identity,
+                history=history,
+                others=others,
+                gate_reply=gate_reply,
+                can_react=bool(can_react),
+            )
             if not decision.reply:
                 if reserved is not None:
                     self._release_reply(channel, cap_chat, reserved)

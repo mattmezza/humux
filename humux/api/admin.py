@@ -1561,6 +1561,10 @@ def create_admin_app(
         "agent.openrouter_base_url",
         "agent.model",
         "decisions.api_key",
+        # Retired settings can still exist in older config databases.
+        "reply_decision.provider",
+        "reply_decision.model",
+        "reply_decision.thinking_level",
     }
     _SEARCH_PREFIX = "search."
     _MEMORY_PREFIX = "memory."
@@ -2158,9 +2162,6 @@ def create_admin_app(
         gd_thinking_level = await config_store.get("goal_decomposition.thinking_level") or ""
         rd_enabled = await config_store.get("reply_decision.enabled")
         rd_enabled = rd_enabled if rd_enabled is not None else "false"
-        rd_provider = await config_store.get("reply_decision.provider") or "deepseek"
-        rd_model = await config_store.get("reply_decision.model") or "deepseek-v4-flash"
-        rd_thinking_level = await config_store.get("reply_decision.thinking_level") or ""
         rd_group_only = await config_store.get("reply_decision.group_only")
         rd_group_only = rd_group_only if rd_group_only is not None else "true"
         rd_max_replies = await config_store.get("reply_decision.max_replies_per_window") or "6"
@@ -2208,9 +2209,6 @@ def create_admin_app(
             gd_model=gd_model,
             gd_thinking_level=gd_thinking_level,
             rd_enabled=rd_enabled,
-            rd_provider=rd_provider,
-            rd_model=rd_model,
-            rd_thinking_level=rd_thinking_level,
             rd_group_only=rd_group_only,
             rd_max_replies=rd_max_replies,
             rd_window_seconds=rd_window_seconds,

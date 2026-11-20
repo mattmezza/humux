@@ -19,6 +19,7 @@
           body: JSON.stringify({ values })
         });
         success = response.ok;
+        if (success) savedDecisionModel = values['decisions.provider'] ? values['decisions.model'] : '';
         status = success ? 'Decision settings saved' : 'Could not save decision settings';
       } catch {
         success = false;
@@ -28,7 +29,7 @@
       <div>
         <label class="label" for="decision-provider">Provider</label>
         <select class="input-sm" style="max-width:500px" id="decision-provider" x-model="settings.provider">
-          <option value="">Use existing behavior</option>
+          <option value="">Disabled</option>
           <option value="typesafe">TypeSafe AI</option>
         </select>
       </div>
