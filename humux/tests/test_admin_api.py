@@ -387,3 +387,31 @@ def test_pause_resume_rejects_unknown_job(tmp_path) -> None:
         headers=headers,
     )
     assert resp.status_code == 404
+
+
+def test_openai_connection_uses_edited_model_and_reports_rejection(monkeypatch) -> None:
+    generate = AsyncMock(side_effect=ValueError("model unavailable"))
+    monkeypatch.setattr("core.llm.LLMClient.generate_text", generate)
+    client = _client(setup_complete=False)
+    resp = client.post(
+        "/setup/test-connection",
+        json={"service": "openai", "api_key": "test", "model": " gpt-6.2-sol "},
+    )
+
+    assert resp.json() == {"ok": False, "error": "model unavailable"}
+    assert generate.await_args.kwargs["model"] == "gpt-6.2-sol"
+
+
+def test_openai_connection_uses_saved_model_if_request_omits_it(monkeypatch) -> None:
+    generate = AsyncMock(return_value="ok")
+    monkeypatch.setattr("core.llm.LLMClient.generate_text", generate)
+    monkeypatch.setattr(
+        _ConfigStoreStub,
+        "get",
+        AsyncMock(side_effect={"agent.llm_provider": "openai", "agent.model": "saved-model"}.get),
+    )
+    client = _client(setup_complete=False)
+    resp = client.post("/setup/test-connection", json={"service": "openai", "api_key": "test"})
+
+    assert resp.json() == {"ok": True, "response": "ok"}
+    assert generate.await_args.kwargs["model"] == "saved-model"
