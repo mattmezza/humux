@@ -305,7 +305,7 @@
         },
         optionsStatus(options) {
           if (options.error) return options.error;
-          if (options.source === 'unknown') return 'No reasoning options reported. You can enter a setting manually.';
+          if (options.source === 'unknown') return 'No reasoning options reported. Type a manual setting using the provider docs.';
           if (options.supported === false) return 'This model reports no reasoning control.';
           if (!options.source) return '';
           const source = options.source === 'provider' ? 'Reported by provider' : 'From provider documentation';

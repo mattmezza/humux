@@ -61,7 +61,9 @@ disable reasoning. A DeepSeek V4.1 Flash model served by SGLang accepts an integ
 from 1 to 100 in its chat template. Configure the SGLang base URL under **Providers**
 and use the numeric field or enter `sglang:75` in **Reasoning setting**. Enter `none`
 to disable reasoning on SGLang. For models that accept a token budget, use the budget
-field or enter a value such as `budget:2048`.
+field or enter a value such as `budget:2048`. If a compatible endpoint accepts
+integers in its top-level `reasoning_effort` field, enter the integer directly.
+For an endpoint-specific name, type `effort:` followed by the name it accepts.
 
 ### Tools
 
