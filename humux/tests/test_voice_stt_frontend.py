@@ -1,18 +1,46 @@
-"""Execute the Voice tab handler with browser APIs stubbed (no network)."""
+"""Check the rendered Voice tab and execute its STT handler without network."""
 
 import shutil
 import subprocess
-from pathlib import Path
+from html.parser import HTMLParser
 
 import pytest
 
+from api.admin import _render_partial
 
-def test_stt_handler_results_and_timeout():
+
+class _VoiceMarkup(HTMLParser):
+    data_expression = ""
+    save_expression = ""
+
+    def handle_starttag(self, tag, attrs):
+        attributes = dict(attrs)
+        if tag == "div" and "x-data" in attributes:
+            self.data_expression = attributes["x-data"] or ""
+        if tag == "button":
+            handler = attributes.get("@click") or ""
+            if "'voice.tts_enabled'" in handler:
+                self.save_expression = handler
+
+
+@pytest.fixture
+def voice_markup():
+    response = _render_partial("partials/identity.html", stt_api_base_url="http://whistle:8000/v1")
+    markup = _VoiceMarkup()
+    markup.feed(response.body.decode())
+    markup.close()
+    return markup
+
+
+def test_voice_handlers_survive_html_parsing(voice_markup):
+    assert voice_markup.data_expression.rstrip().endswith("}")
+    assert voice_markup.save_expression.rstrip().endswith("})")
+
+
+def test_stt_handler_results_and_timeout(voice_markup):
     node = shutil.which("node")
     if not node:
         pytest.skip("Node.js required to execute the frontend handler")
-    template = (Path(__file__).parents[1] / "api/templates/partials/identity.html").read_text()
-    handler = template.split("  testStt() {", 1)[1].split("\n  }\n}", 1)[0]
     script = r"""
 const assert = require('node:assert/strict');
 let fireTimeout, cleared, pendingSignal;
@@ -21,10 +49,10 @@ global.setTimeout = (fn, delay) => {
   assert.equal(delay, 320000); fireTimeout = fn; return 42;
 };
 global.clearTimeout = id => { assert.equal(id, 42); cleared = true; };
-const state = { sttMode: 'remote', testStt: function() { HANDLER } };
+const state = DATA_EXPRESSION;
 (async () => {
   for (const [ok, body, expected] of [
-    [true, { ok: true, mode: 'remote', text: 'zero one two', duration_ms: 10 }, 'zero one two'],
+    [true, { ok: true, mode: 'remote', text: 'zero one two', duration_ms: 10 }, '"zero one two"'],
     [true, { ok: false, mode: 'remote', error: 'STT failed: unavailable' },
       'STT failed: unavailable'],
     [false, { detail: 'Test audio failed: missing' }, 'Test audio failed: missing'],
@@ -50,5 +78,5 @@ const state = { sttMode: 'remote', testStt: function() { HANDLER } };
   assert(state.sttTestResult.includes('timed out after 320 seconds'));
   assert(cleared);
 })().catch(err => { console.error(err); process.exitCode = 1; });
-""".replace("HANDLER", handler)
+""".replace("DATA_EXPRESSION", voice_markup.data_expression)
     subprocess.run([node, "-e", script], check=True, timeout=10)
