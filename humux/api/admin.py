@@ -5076,33 +5076,41 @@ def create_admin_app(
         if service == "anthropic":
             return await _test_anthropic(payload.get("api_key", ""))
         if service == "openai":
+            model = (payload.get("model") or "").strip()
+            if not model and await config_store.get("agent.llm_provider") == "openai":
+                model = await config_store.get("agent.model")
             return await _test_openai(
                 payload.get("api_key", ""),
                 payload.get("base_url"),
+                model=model or "gpt-4o-mini",
             )
         if service == "google":
             return await _test_openai(
                 payload.get("api_key", ""),
                 payload.get("base_url"),
                 model="gemini-flash-latest",
+                provider="google",
             )
         if service == "grok":
             return await _test_openai(
                 payload.get("api_key", ""),
                 payload.get("base_url"),
                 model="grok-2-latest",
+                provider="grok",
             )
         if service == "deepseek":
             return await _test_openai(
                 payload.get("api_key", ""),
                 payload.get("base_url"),
                 model="deepseek-chat",
+                provider="deepseek",
             )
         if service == "openrouter":
             return await _test_openai(
                 payload.get("api_key", ""),
                 payload.get("base_url") or "https://openrouter.ai/api/v1",
                 model="openai/gpt-4o-mini",
+                provider="openrouter",
             )
         if service == "telegram":
             return await _test_telegram(payload.get("bot_token", ""))
@@ -5658,21 +5666,16 @@ async def _test_anthropic(api_key: str) -> dict:
         return {"ok": False, "error": str(exc)}
 
 
-async def _test_openai(api_key: str, base_url: str | None, model: str = "gpt-4o-mini") -> dict:
+async def _test_openai(
+    api_key: str, base_url: str | None, *, model: str, provider: str = "openai"
+) -> dict:
     if not api_key:
         return {"ok": False, "error": "API key is empty"}
     try:
-        import importlib
-
-        module = importlib.import_module("openai")
-        client_class = cast(Any, getattr(module, "AsyncOpenAI"))
-        client = cast(Any, client_class)(api_key=api_key, base_url=base_url or None)
-        response = await client.chat.completions.create(
-            model=model,
-            max_tokens=16,
-            messages=[{"role": "user", "content": "Say 'ok'"}],
+        client = LLMClient(provider, api_key, base_url)
+        text = await client.generate_text(
+            model=model, prompt="Say 'ok'", max_tokens=128 if provider == "openai" else 16
         )
-        text = response.choices[0].message.content or ""
         return {"ok": True, "response": text}
     except Exception as exc:
         return {"ok": False, "error": str(exc)}

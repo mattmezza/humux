@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from typing import Any
 from unittest.mock import AsyncMock
 
+import httpx
 import pytest
+from openai import BadRequestError
 
 from core import llm
 from core.config import AgentConfig
@@ -52,6 +55,8 @@ async def test_anthropic_generate_sends_effort_when_set() -> None:
     kwargs = create.await_args.kwargs
     assert kwargs["thinking"] == {"type": "adaptive"}
     assert kwargs["output_config"] == {"effort": "medium"}
+    assert kwargs["max_tokens"] == 4096
+    assert "max_completion_tokens" not in kwargs
 
 
 @pytest.mark.asyncio
@@ -79,6 +84,8 @@ async def test_anthropic_generate_text_sends_effort_when_set() -> None:
     kwargs = create.await_args.kwargs
     assert kwargs["thinking"] == {"type": "adaptive"}
     assert kwargs["output_config"] == {"effort": "low"}
+    assert kwargs["max_tokens"] == 1024
+    assert "max_completion_tokens" not in kwargs
 
 
 @pytest.mark.asyncio
@@ -149,8 +156,10 @@ def _openai_resp(content: str, finish_reason: str, reasoning: str | None = None)
     return type("R", (), {"choices": [choice], "usage": None})()
 
 
-def _openai_client(create: AsyncMock) -> LLMClient:
-    client = LLMClient("openai", "x")
+def _openai_client(
+    create: AsyncMock, *, provider: str = "openai", base_url: str | None = None
+) -> LLMClient:
+    client = LLMClient(provider, "x", base_url)
     completions = type("Co", (), {"create": create})()
     client._client = type("C", (), {"chat": type("Ch", (), {"completions": completions})()})()
     return client
@@ -255,3 +264,115 @@ def test_reasoning_kwargs_per_provider() -> None:
     assert LLMClient("anthropic", "x")._reasoning_kwargs() == {}
     # unknown level value is ignored (off)
     assert LLMClient("anthropic", "x", thinking_level="bogus")._reasoning_kwargs() == {}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("model", ["gpt-6.2-sol", "gpt-5.2", "gpt-5-mini"])
+async def test_openai_sends_completion_limit_for_chat_and_text(model: str) -> None:
+    async def create(**kwargs):
+        if "max_tokens" in kwargs:
+            raise _unsupported_parameter("max_tokens")
+        assert kwargs["max_completion_tokens"] == 256
+        return _openai_resp("hi", "stop")
+
+    request = AsyncMock(side_effect=create)
+    client = _openai_client(request)
+    response = await client.generate(model=model, system="s", messages=[], tools=[], max_tokens=256)
+    assert response.text == "hi"
+    assert await client.generate_text(model=model, prompt="hi", max_tokens=256) == "hi"
+    assert request.await_count == 2
+
+
+def _unsupported_parameter(parameter: str) -> BadRequestError:
+    body = {
+        "code": "unsupported_parameter",
+        "param": parameter,
+        "message": f"Unsupported parameter: {parameter}",
+    }
+    request = httpx.Request("POST", "https://example.test/v1/chat/completions")
+    return BadRequestError(
+        body["message"], response=httpx.Response(400, request=request), body=body
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("first_call", ["chat", "text"])
+async def test_openai_falls_back_and_caches_limit_by_endpoint_and_model(
+    first_call: str, monkeypatch
+) -> None:
+    monkeypatch.setattr(llm, "_OPENAI_TOKEN_PARAMETERS", OrderedDict())
+
+    async def create(**kwargs):
+        if "max_completion_tokens" in kwargs:
+            raise _unsupported_parameter("max_completion_tokens")
+        assert kwargs["max_tokens"] == 42
+        return _openai_resp("hi", "stop")
+
+    request = AsyncMock(side_effect=create)
+    primary = _openai_client(request, base_url="https://legacy.test/v1")
+    second = _openai_client(request, base_url="https://legacy.test/v1")
+
+    async def call(client: LLMClient, mode: str) -> str:
+        if mode == "text":
+            return await client.generate_text(model="custom", prompt="hi", max_tokens=42)
+        response = await client.generate(
+            model="custom", system="s", messages=[], tools=[], max_tokens=42
+        )
+        return response.text
+
+    assert await call(primary, first_call) == "hi"
+    assert await call(second, "chat" if first_call == "text" else "text") == "hi"
+    assert request.await_count == 3
+    assert request.await_args_list[0].kwargs["max_completion_tokens"] == 42
+
+    modern_request = AsyncMock(return_value=_openai_resp("hi", "stop"))
+    modern = _openai_client(modern_request, base_url="https://modern.test/v1")
+    assert await call(modern, "text") == "hi"
+    assert modern_request.await_args.kwargs["max_completion_tokens"] == 42
+    assert await second.generate_text(model="other", prompt="hi", max_tokens=42) == "hi"
+    assert request.await_args_list[3].kwargs["max_completion_tokens"] == 42
+
+
+@pytest.mark.asyncio
+async def test_openai_does_not_retry_unrelated_unsupported_parameter() -> None:
+    error = _unsupported_parameter("reasoning_effort")
+    create = AsyncMock(side_effect=error)
+    client = _openai_client(create)
+    with pytest.raises(BadRequestError) as exc:
+        await client.generate_text(model="custom", prompt="hi")
+    assert exc.value is error
+    assert create.await_count == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider", ["google", "grok", "deepseek", "openrouter"])
+async def test_other_providers_use_legacy_limit(provider: str) -> None:
+    create = AsyncMock(return_value=_openai_resp("hi", "stop"))
+    client = _openai_client(create, provider=provider)
+    assert await client.generate_text(model="custom", prompt="hi", max_tokens=30) == "hi"
+    assert create.await_args.kwargs["max_tokens"] == 30
+    assert "max_completion_tokens" not in create.await_args.kwargs
+
+
+@pytest.mark.asyncio
+async def test_openai_recovers_when_endpoint_stops_accepting_legacy_limit(monkeypatch) -> None:
+    cache = OrderedDict({("https://upgraded.test/v1/", "gpt-6.2-sol"): "max_tokens"})
+    monkeypatch.setattr(llm, "_OPENAI_TOKEN_PARAMETERS", cache)
+    create = AsyncMock(
+        side_effect=[
+            _unsupported_parameter("max_tokens"),
+            _openai_resp("hi", "stop"),
+            _openai_resp("hi", "stop"),
+        ]
+    )
+    client = _openai_client(create, base_url="https://upgraded.test/v1")
+
+    response = await client.generate(
+        model="gpt-6.2-sol", system="s", messages=[], tools=[], max_tokens=42
+    )
+    assert response.text == "hi"
+    assert await client.generate_text(model="gpt-6.2-sol", prompt="hi", max_tokens=42) == "hi"
+    assert create.await_args_list[0].kwargs["max_tokens"] == 42
+    assert create.await_args_list[1].kwargs["max_completion_tokens"] == 42
+    assert create.await_args_list[2].kwargs["max_completion_tokens"] == 42
+    assert create.await_count == 3
