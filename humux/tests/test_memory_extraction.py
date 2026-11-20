@@ -278,14 +278,14 @@ async def test_cooldown_buffers_skipped_turn_for_next_extraction(store) -> None:
     await store.extract_memories(
         llm, model="m", user_msg="buffered fact", agent_msg="reply", cooldown_seconds=300
     )
-    assert store._pending_turns == [("buffered fact", "reply")]
+    assert store._pending_turns[""] == [("buffered fact", "reply")]
     assert len(llm.prompts) == 1  # the buffered turn made no LLM call
 
     # Third turn (cooldown disabled) replays the buffered turn and clears it.
     await store.extract_memories(
         llm, model="m", user_msg="turn three", agent_msg="ok", cooldown_seconds=0
     )
-    assert store._pending_turns == []
+    assert store._pending_turns == {}
     assert "buffered fact" in llm.prompts[-1]
     assert "turn three" in llm.prompts[-1]
 
@@ -306,9 +306,9 @@ async def test_pending_turns_buffer_is_capped(store) -> None:
         await store.extract_memories(
             llm, model="m", user_msg=f"turn {i}", agent_msg="ok", cooldown_seconds=300
         )
-    assert len(store._pending_turns) == store._MAX_PENDING_TURNS
+    assert len(store._pending_turns[""]) == store._MAX_PENDING_TURNS
     # Oldest dropped, newest kept.
-    assert store._pending_turns[-1][0] == f"turn {store._MAX_PENDING_TURNS + 4}"
+    assert store._pending_turns[""][-1][0] == f"turn {store._MAX_PENDING_TURNS + 4}"
 
 
 @pytest.mark.asyncio
