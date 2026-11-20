@@ -61,6 +61,10 @@ def test_menu_command_names_are_telegram_valid() -> None:
         assert cmd.description
 
 
+def test_compact_is_in_command_menu() -> None:
+    assert any(cmd.command == "compact" for cmd in _MENU_COMMANDS)
+
+
 @pytest.mark.asyncio
 async def test_register_commands_full_replaces_menu() -> None:
     ch = object.__new__(TelegramChannel)
