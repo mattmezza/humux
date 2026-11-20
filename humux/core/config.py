@@ -12,11 +12,13 @@ import os
 import re
 from collections.abc import Callable
 from pathlib import Path
+from typing import Annotated
 
 import yaml
 from dotenv import load_dotenv
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+ReasoningSetting = Annotated[str, Field(coerce_numbers_to_str=True)]
 
 def _resolve_env_vars(obj: object) -> object:
     """Recursively resolve ${ENV_VAR} references in strings.
@@ -93,7 +95,7 @@ class AgentConfig(BaseModel):
     openrouter_api_key: str = ""
     openrouter_base_url: str = ""
     model: str = "deepseek-v4-flash"
-    thinking_level: str = ""  # "" (off) | "low" | "medium" | "high" | "max"
+    thinking_level: ReasoningSetting = ""  # Empty uses the provider default.
     # Hard ceiling on tokens the model may emit per response. The agentic loop
     # truncates mid-tool-call when this is too small for the output (e.g. a large
     # file written via the write tool), so keep it generous. 16384 is safe across providers;
@@ -286,8 +288,8 @@ class MemoryConfig(BaseModel):
     extraction_model: str = "deepseek-v4-flash"
     consolidation_provider: str = "deepseek"
     consolidation_model: str = "deepseek-v4-flash"
-    extraction_thinking_level: str = ""  # "" (off) | "low" | "medium" | "high" | "max"
-    consolidation_thinking_level: str = ""  # "" (off) | "low" | "medium" | "high" | "max"
+    extraction_thinking_level: ReasoningSetting = ""  # Empty uses the provider default.
+    consolidation_thinking_level: ReasoningSetting = ""  # Empty uses the provider default.
     extraction_cooldown_seconds: int = 120  # minimum seconds between extractions
 
     embedding: EmbeddingConfig = EmbeddingConfig()
@@ -307,7 +309,7 @@ class GoalDecompositionConfig(BaseModel):
     enabled: bool = True
     provider: str = "deepseek"
     model: str = "deepseek-v4-flash"
-    thinking_level: str = ""  # "" (off) | "low" | "medium" | "high" | "max"
+    thinking_level: ReasoningSetting = ""  # Empty uses the provider default.
 
 
 class ReplyDecisionConfig(BaseModel):
@@ -322,7 +324,7 @@ class ReplyDecisionConfig(BaseModel):
     enabled: bool = False
     provider: str = "deepseek"
     model: str = "deepseek-v4-flash"  # fast + cheap is ideal for the yes/no reply call
-    thinking_level: str = ""  # "" (off) | "low" | "medium" | "high" | "max"
+    thinking_level: ReasoningSetting = ""  # Empty uses the provider default.
     group_only: bool = True  # only gate group chats; DMs always get a reply
     # Hard backstop: never send more than this many auto-replies into one chat
     # per rolling window — guarantees a runaway loop terminates even if the LLM
@@ -341,7 +343,7 @@ class CompactionConfig(BaseModel):
     enabled: bool = True
     provider: str = "deepseek"
     model: str = "deepseek-v4-flash"
-    thinking_level: str = ""  # "" (off) | "low" | "medium" | "high" | "max"
+    thinking_level: ReasoningSetting = ""  # Empty uses the provider default.
     threshold_type: str = "percent"  # "percent" (of context window) or "tokens" (absolute)
     threshold_percent: int = 80  # trigger at this % of the model's context window
     threshold_tokens: int = 150000  # absolute trigger when threshold_type == "tokens"

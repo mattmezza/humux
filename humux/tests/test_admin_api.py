@@ -387,3 +387,27 @@ def test_pause_resume_rejects_unknown_job(tmp_path) -> None:
         headers=headers,
     )
     assert resp.status_code == 404
+
+
+def test_thinking_levels_uses_saved_endpoint_with_saved_key(monkeypatch) -> None:
+    class Store(_ConfigStoreStub):
+        async def get(self, key):
+            values = {
+                "agent.openai_api_key": "provider-key",
+                "agent.openai_base_url": "http://localhost:30000/v1",
+            }
+            return values[key] if key in values else await super().get(key)
+
+    discover = AsyncMock(return_value={"ok": True, "levels": ["none", "low"]})
+    monkeypatch.setattr("api.admin.discover_options", discover)
+    app, _ = create_admin_app(AgentState(agent=None), cast(ConfigStore, Store()))
+    client = TestClient(app)
+    payload = {"service": "openai", "model": "local-model", "base_url": "https://other.example"}
+    assert client.post("/setup/thinking-levels", json=payload).status_code == 401
+    response = client.post(
+        "/setup/thinking-levels", json=payload, headers={"Authorization": "Bearer secret"},
+    )
+    assert response.json() == {"ok": True, "levels": ["none", "low"]}
+    discover.assert_awaited_once_with(
+        "openai", "provider-key", "http://localhost:30000/v1", "local-model",
+    )

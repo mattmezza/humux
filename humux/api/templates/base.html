@@ -280,14 +280,50 @@
       deepseek: ['deepseek-chat', 'deepseek-reasoner'],
       openrouter: ['anthropic/claude-sonnet-4.5', 'openai/gpt-5', 'google/gemini-2.5-flash', 'deepseek/deepseek-chat']
     };
-    // ponytail: substring heuristic for reasoning-capable models — extend the
-    // list as model ids change.
-    window.llmModelSupportsThinking = function (modelId) {
-      const id = (modelId || '').toLowerCase();
-      if (!id) return false;
-      return ['opus', 'sonnet', 'thinking', 'pro', 'deep-think', 'reasoner', 'grok-4']
-        .some(pat => id.includes(pat));
-    };
+    function reasoningControl() {
+      return {
+        lookups: {},
+        lookupKey(service, model) { return JSON.stringify([service, (model || '').trim()]); },
+        options(service, model) { return this.lookups[this.lookupKey(service, model)] || {}; },
+        async fetchThinkingLevels(service, model) {
+          const key = this.lookupKey(service, model);
+          this.lookups[key] = {loading: true};
+          try {
+            const response = await fetch('/setup/thinking-levels', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + (localStorage.getItem('admin_api_key') || '')
+              },
+              body: JSON.stringify({service, model})
+            });
+            const data = await response.json();
+            this.lookups[key] = data.ok ? data : {error: data.error || data.detail || 'Could not load reasoning options'};
+          } catch (error) {
+            this.lookups[key] = {error: error.message};
+          }
+        },
+        optionsStatus(options) {
+          if (options.error) return options.error;
+          if (options.source === 'unknown') return 'No reasoning options reported. You can enter a setting manually.';
+          if (options.supported === false) return 'This model reports no reasoning control.';
+          if (!options.source) return '';
+          const source = options.source === 'provider' ? 'Reported by provider' : 'From provider documentation';
+          if (options.levels.length) return source + ' · ' + options.levels.join(', ');
+          return options.budget ? source : source + ' · no named levels';
+        },
+        providerDocsUrl(provider) {
+          return ({
+            anthropic: 'https://platform.claude.com/docs/en/build-with-claude/thinking',
+            openai: 'https://developers.openai.com/api/docs/guides/reasoning',
+            google: 'https://ai.google.dev/gemini-api/docs/openai#thinking',
+            grok: 'https://docs.x.ai/developers/model-capabilities/text/reasoning',
+            deepseek: 'https://api-docs.deepseek.com/api/create-chat-completion/',
+            openrouter: 'https://openrouter.ai/docs/guides/best-practices/reasoning-tokens'
+          })[provider] || '';
+        }
+      };
+    }
 
     function llmTab(provider, apiKey, model, openaiKey, openaiBaseUrl, googleKey, googleBaseUrl, grokKey, grokBaseUrl, deepseekKey, deepseekBaseUrl, openrouterKey, openrouterBaseUrl, extractionProvider, extractionModel, consolidationProvider, consolidationModel, gdEnabled, gdProvider, gdModel, compactionProvider, compactionModel, thinkingLevel, extractionThinkingLevel, consolidationThinkingLevel, gdThinkingLevel, compactionThinkingLevel, visionEnabled, visionProvider, visionModel, rdEnabled, rdProvider, rdModel, rdThinkingLevel, rdGroupOnly, rdMaxReplies, rdWindowSeconds, maxTokens, maxToolRounds, temperature) {
       const currentProvider = provider || 'anthropic';
@@ -335,9 +371,6 @@
         consolidationThinkingLevel: consolidationThinkingLevel || '',
         gdThinkingLevel: gdThinkingLevel || '',
         compactionThinkingLevel: compactionThinkingLevel || '',
-        fetchedLevels: {anthropic: [], openai: [], google: [], grok: [], deepseek: [], openrouter: []},
-        fetchingLevels: {anthropic: false, openai: false, google: false, grok: false, deepseek: false, openrouter: false},
-        fetchLevelsResult: {anthropic: '', openai: '', google: '', grok: '', deepseek: '', openrouter: ''},
         openaiKey: openaiKey || '',
         openaiBaseUrl: openaiBaseUrl || '',
         googleKey: googleKey || '',
@@ -414,7 +447,6 @@
           }
           return (this.models[prov] || []).map(id => ({value: id, label: id}));
         },
-        modelSupportsThinking(modelId) { return window.llmModelSupportsThinking(modelId); },
         // ponytail: mirror of model_supports_vision() in core/llm.py — keep in
         // sync. True when the model reads images natively (no fallback needed).
         modelSupportsVision(modelId, prov) {
@@ -452,52 +484,6 @@
               if (this.visionResultOk && window.showToast) { window.showToast('Vision settings saved'); }
             })
             .catch(e => { this.visionResultOk = false; this.visionResult = e.message; });
-        },
-        // Effort values offered in the thinking-level datalist. Anthropic can be
-        // enriched live via "Fetch levels"; others fall back to the common set.
-        levelOptions(prov) {
-          const fetched = this.fetchedLevels[prov];
-          if (fetched && fetched.length) return fetched;
-          return ['low', 'medium', 'high', 'max'];
-        },
-        fetchThinkingLevels(service, model) {
-          const apiKey = this.keyFor(service);
-          if (!apiKey) { this.fetchLevelsResult[service] = 'Missing API key — save/enter it first'; return; }
-          if (!model) { this.fetchLevelsResult[service] = 'Enter a model id first'; return; }
-          this.fetchingLevels[service] = true;
-          this.fetchLevelsResult[service] = '';
-          fetch('/setup/thinking-levels', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': 'Bearer ' + (localStorage.getItem('admin_api_key') || '')
-            },
-            body: JSON.stringify({service: service, api_key: apiKey, model: model})
-          })
-            .then(r => r.json())
-            .then(d => {
-              if (d.ok && Array.isArray(d.levels) && d.levels.length) {
-                this.fetchedLevels[service] = d.levels;
-                this.fetchLevelsResult[service] = 'Supported: ' + d.levels.join(', ');
-              } else if (d.ok) {
-                this.fetchLevelsResult[service] = d.supported ? 'Thinking supported (no effort levels reported)' : 'Model does not support thinking';
-              } else {
-                this.fetchLevelsResult[service] = 'Failed: ' + (d.error || 'unknown');
-              }
-            })
-            .catch(e => { this.fetchLevelsResult[service] = 'Error: ' + e.message; })
-            .finally(() => { this.fetchingLevels[service] = false; });
-        },
-        // Docs for the reasoning-effort value to type, per provider.
-        providerDocsUrl(prov) {
-          return ({
-            anthropic: 'https://platform.claude.com/docs/en/build-with-claude/effort',
-            openai: 'https://platform.openai.com/docs/guides/reasoning',
-            google: 'https://ai.google.dev/gemini-api/docs/thinking',
-            grok: 'https://docs.x.ai/docs/guides/reasoning',
-            deepseek: 'https://api-docs.deepseek.com/guides/reasoning_model',
-            openrouter: 'https://openrouter.ai/docs/use-cases/reasoning-tokens'
-          })[prov] || '';
         },
         // True when a background kind points at the exact same provider+model as
         // main inference — surfaced in the UI so shared config is obvious.

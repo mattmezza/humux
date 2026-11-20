@@ -52,6 +52,7 @@ from core.log_streams import current_stream, current_subagent
 from core.prompt_builder import (
     build_prompt_sections,
 )
+from core.reasoning import PROVIDERS, discover_options
 from core.tools import gh_token_secret_name, tool_env
 from core.tools import registry as tool_registry
 from core.transcript import to_entries
@@ -5124,24 +5125,33 @@ def create_admin_app(
             return await _list_models_openai(api_key, base_url or "https://openrouter.ai/api/v1")
         return {"ok": False, "error": f"Unknown service: {service}"}
 
-    @app.post("/setup/thinking-levels")
+    @app.post("/setup/thinking-levels", dependencies=[Depends(auth)])
     async def thinking_levels(request: Request) -> dict:
-        """Autodiscover supported reasoning-effort levels for a model.
-
-        Only Anthropic exposes this via the Models API; other providers must be
-        configured by typing the effort value (see the docs link in the UI).
-        """
+        """Look up reasoning options for a configured provider and model."""
         payload = await request.json()
         service = payload.get("service", "")
-        api_key = payload.get("api_key", "")
-        model = payload.get("model", "")
-        if service == "anthropic":
-            return await _thinking_levels_anthropic(api_key, model)
-        return {
-            "ok": False,
-            "error": "Autodiscovery is only available for Anthropic — "
-            "enter the effort value manually for this provider.",
-        }
+        model = str(payload.get("model") or "").strip()
+        if not isinstance(service, str) or service not in PROVIDERS:
+            return {"ok": False, "error": "Unknown provider"}
+        if not model:
+            return {"ok": False, "error": "Enter a model id first"}
+
+        # Keep saved credentials paired with the saved endpoint, including keys
+        # that were moved into the infra vault. Explicit keys are used as a pair.
+        api_key = payload.get("api_key")
+        if api_key:
+            base_url = payload.get("base_url")
+        else:
+            api_key = _resolve_secret_ref(await config_store.get(f"agent.{service}_api_key") or "")
+            base_url = await config_store.get(f"agent.{service}_base_url")
+        try:
+            return await discover_options(service, api_key, base_url, model)
+        except Exception as exc:
+            status = getattr(exc, "status_code", None)
+            message = "Could not load reasoning options from the provider"
+            if status:
+                message += f" (HTTP {status})"
+            return {"ok": False, "error": message}
 
     # ── Secrets vault (issue #19, #35) ─────────────────────────────────
     # INFRA_VAULT_KEYS (core.secret_store) maps the single-value credential keys
@@ -5667,33 +5677,6 @@ async def _test_openai(api_key: str, base_url: str | None, model: str = "gpt-4o-
         )
         text = response.choices[0].message.content or ""
         return {"ok": True, "response": text}
-    except Exception as exc:
-        return {"ok": False, "error": str(exc)}
-
-
-async def _thinking_levels_anthropic(api_key: str, model: str) -> dict:
-    if not api_key:
-        return {"ok": False, "error": "API key is empty"}
-    if not model:
-        return {"ok": False, "error": "Enter a model id first"}
-    try:
-        from anthropic import AsyncAnthropic
-
-        client = AsyncAnthropic(api_key=api_key)
-        m = await client.models.retrieve(model)
-        caps = getattr(m, "capabilities", None)
-        if caps is not None and not isinstance(caps, dict):
-            caps = getattr(caps, "model_dump", lambda: {})() or {}
-        caps = caps or {}
-        effort = caps.get("effort") or {}
-        levels = [
-            lvl
-            for lvl in ("low", "medium", "high", "xhigh", "max")
-            if isinstance(effort.get(lvl), dict) and effort[lvl].get("supported")
-        ]
-        thinking = caps.get("thinking") or {}
-        supported = bool(thinking.get("supported")) or bool(levels)
-        return {"ok": True, "supported": supported, "levels": levels}
     except Exception as exc:
         return {"ok": False, "error": str(exc)}
 

@@ -51,7 +51,7 @@ is the part that stays user-led (see [Choosing an agent](#choosing-an-agent)).
   "agent": "coding-helper",   // optional — omit to run as yourself (same identity & scope)
   "max_steps": 6,                // optional — caller-chosen, capped at the configured max
   "token_budget": 120000,        // optional — caller-chosen, min 50000, capped at the configured max
-  "thinking_effort": "high",     // optional — off | low | medium | high; omit to inherit yours
+  "thinking_effort": "high",     // optional — a setting the model supports; omit to inherit yours
   "model": "deepseek-v4-flash",  // optional — must be an allowed model; omit to inherit yours
   "provider": "deepseek",        // optional — only to disambiguate; follows from "model"
   "background": false            // true → run async, report back when done

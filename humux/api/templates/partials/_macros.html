@@ -1,29 +1,47 @@
 {# Shared Jinja macros used by multiple tab partials #}
 
 {# ── LLM thinking-level control ─────────────────────────────── #}
-{%- macro think(level, prov, model, lid, bg=false) -%}
-      <div class="mt-2">
-        <label class="label" for="{{ lid }}-input">Thinking level{% if bg %}<span class="text-muted text-xs font-normal" x-show="sameAsMain({{ prov }}, {{ model }})"> · same config as Main inference</span>{% endif %}</label>
-        <div class="flex items-center gap-2">
+{%- macro think(level, prov, model, lid, bg=false, inherit=false) -%}
+      {% set choice = "options(" ~ prov ~ ", " ~ model ~ ")" %}
+      <div class="mt-2" x-data="reasoningControl()">
+        <label class="label" for="{{ lid }}-input">Reasoning setting{% if bg %}<span class="text-muted text-xs font-normal" x-show="sameAsMain({{ prov }}, {{ model }})"> · same model as Main inference</span>{% endif %}</label>
+        {% if inherit %}
+        <label class="flex items-center gap-2 text-xs mb-2">
+          <input type="checkbox" :checked="{{ level }} === 'inherit'"
+                 @change="{{ level }} = $event.target.checked ? 'inherit' : ''">
+          <span x-text="'Use global setting · ' + (llmDefaults.thinking_level || 'provider default')"></span>
+        </label>
+        {% endif %}
+        <div class="flex flex-wrap items-center gap-2">
           <input type="text" class="input-sm" style="max-width:300px" x-model="{{ level }}"
-                 list="{{ lid }}" id="{{ lid }}-input" placeholder="off — type or pick low / medium / high">
+                 list="{{ lid }}" id="{{ lid }}-input" placeholder="Provider default"
+                 {% if inherit %}x-show="{{ level }} !== 'inherit'"{% endif %}>
           <datalist id="{{ lid }}">
-            <option value=""></option>
-            <template x-for="lvl in levelOptions({{ prov }})" :key="'{{ lid }}-' + lvl">
+            <template x-for="lvl in ({{ choice }}.levels || [])" :key="'{{ lid }}-' + lvl">
               <option :value="lvl"></option>
             </template>
           </datalist>
-          <button type="button" class="btn-secondary btn-sm" x-show="{{ prov }} === 'anthropic'"
-                  @click="fetchThinkingLevels({{ prov }}, {{ model }})" :disabled="fetchingLevels[{{ prov }}]">
-            <span x-show="!fetchingLevels[{{ prov }}]">Fetch levels</span>
-            <span x-show="fetchingLevels[{{ prov }}]"><span class="spinner-sm mr-1"></span>…</span>
-          </button>
-          <a class="text-xs text-muted underline" x-show="{{ prov }} !== 'anthropic'"
-             :href="providerDocsUrl({{ prov }})" target="_blank" rel="noopener">effort docs ↗</a>
+          <button type="button" class="btn-secondary btn-sm"
+                  @click="fetchThinkingLevels({{ prov }}, {{ model }})"
+                  :disabled="!({{ model }} || '').trim() || !!{{ choice }}.loading"
+                  x-text="{{ choice }}.loading ? 'Fetching…' : 'Fetch levels'"></button>
+          <a class="text-xs text-muted underline" x-show="providerDocsUrl({{ prov }})"
+             :href="providerDocsUrl({{ prov }})" target="_blank" rel="noopener">Provider docs ↗</a>
         </div>
-        <p class="text-muted text-xs mt-1" x-show="fetchLevelsResult[{{ prov }}]" x-text="fetchLevelsResult[{{ prov }}]"></p>
-        <p class="text-muted text-xs mt-1">Leave <strong>Off</strong> for non-reasoning models. Higher = more reasoning, more tokens. Anthropic: "Fetch levels" autodiscovers supported values; other providers: see the docs link and type the value.</p>
-        <p class="text-amber-600 text-xs mt-1" x-show="{{ level }} && !modelSupportsThinking({{ model }})">Heads up: "<span x-text="{{ model }}"></span>" isn't a recognized reasoning model — only set a level if you know it supports thinking, or the inference call may error.</p>
+        <p class="text-muted text-xs mt-1">Leave blank to use the provider default. You can type a value or choose a fetched level.</p>
+        <p class="text-muted text-xs mt-1" aria-live="polite" x-text="optionsStatus({{ choice }})"></p>
+        <template x-if="{{ choice }}.budget{% if inherit %} && {{ level }} !== 'inherit'{% endif %}">
+          <div class="flex items-center gap-2 mt-1" x-data="{get budget() { return {{ choice }}.budget || {}; }}">
+            <label class="text-xs text-muted" for="{{ lid }}-budget"
+                   x-text="budget.label + (budget.conditional ? ' · ' + budget.conditional : '')"></label>
+            <input type="number" step="1" class="input-sm" style="max-width:120px" id="{{ lid }}-budget"
+                   :min="budget.min" :max="budget.max"
+                   :value="{{ level }}.startsWith(budget.prefix) ? {{ level }}.slice(budget.prefix.length) : ''"
+                   @change="if (!$el.value || $el.checkValidity()) {{ level }} = $el.value ? budget.prefix + $el.value : ''">
+            <button type="button" class="btn-secondary btn-sm" x-show="budget.dynamic"
+                    @click="{{ level }} = budget.prefix + '-1'">Dynamic budget</button>
+          </div>
+        </template>
       </div>
 {%- endmacro %}
 

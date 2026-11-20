@@ -16,6 +16,8 @@ from typing import Any, cast
 from anthropic import APIError as AnthropicAPIError
 from anthropic import AsyncAnthropic
 
+from core.reasoning import DEFAULT_BASE_URLS, normalize_setting, reasoning_kwargs
+
 # Typed API errors from both provider SDKs (auth, 4xx, 5xx, timeout…), caught at
 # the turn boundary so a failed model call reaches the user instead of dying in
 # the channel layer (#317). openai is imported lazily, like the client itself, so
@@ -129,13 +131,6 @@ async def _call_with_retries(fn):
             )
             await asyncio.sleep(delay)
 
-
-_DEFAULT_BASE_URLS = {
-    "google": "https://generativelanguage.googleapis.com/v1beta/openai",
-    "grok": "https://api.x.ai/v1",
-    "deepseek": "https://api.deepseek.com",
-    "openrouter": "https://openrouter.ai/api/v1",  # #128: OpenAI-compatible gateway
-}
 
 _ANTHROPIC_MODEL_ALIASES = {
     "claude-4-5-haiku": "claude-haiku-4-5",
@@ -323,8 +318,8 @@ class LLMClient:
         thinking_level: str = "",
     ):
         self.provider = _normalize_provider(provider)
-        # "" (off) | "low" | "medium" | "high" — applied only to the main generate() call
-        self.thinking_level = (thinking_level or "").strip().lower()
+        self.thinking_level = normalize_setting(thinking_level) or ""
+        self.base_url = base_url
         # Sampling temperature (#12). None = use the provider default. Set by the
         # caller on the main agent client; applied via _sampling_kwargs().
         self.temperature: float | None = None
@@ -332,7 +327,9 @@ class LLMClient:
         if self.provider == "anthropic":
             self._client = AsyncAnthropic(api_key=api_key, timeout=60)
         else:
-            resolved_base = base_url or _DEFAULT_BASE_URLS.get(self.provider)
+            resolved_base = base_url or (
+                DEFAULT_BASE_URLS.get(self.provider) if self.provider != "openai" else None
+            )
             try:
                 module = importlib.import_module("openai")
                 client_class = cast(Any, getattr(module, "AsyncOpenAI"))
@@ -344,27 +341,18 @@ class LLMClient:
                 "timeout": 60,
             }
             self._client = cast(Any, client_class)(**client_kwargs)  # type: ignore[call-arg]
+            self.base_url = str(self._client.base_url)
 
-    def _reasoning_kwargs(self) -> dict[str, Any]:
-        """Provider-specific request kwargs for the configured thinking level.
+    def _reasoning_kwargs(self, model: str = "") -> dict[str, Any]:
+        return reasoning_kwargs(self.provider, self.base_url, model, self.thinking_level)
 
-        Empty when no level is set, so non-reasoning calls are untouched.
-        """
-        level = self.thinking_level
-        if level not in ("low", "medium", "high", "max"):
-            return {}
-        if self.provider == "anthropic":
-            return {"thinking": {"type": "adaptive"}, "output_config": {"effort": level}}
-        return {"reasoning_effort": level}
-
-    def _sampling_kwargs(self) -> dict[str, Any]:
-        """Reasoning kwargs plus an explicit temperature when configured (#12).
-
-        Temperature is skipped on reasoning calls — several providers reject an
-        explicit temperature alongside reasoning_effort/thinking.
-        """
-        kwargs = self._reasoning_kwargs()
-        if self.temperature is not None and not kwargs:
+    def _sampling_kwargs(self, model: str) -> dict[str, Any]:
+        """Suppress custom temperature while Anthropic thinking is enabled."""
+        kwargs = self._reasoning_kwargs(model)
+        thinking = kwargs.get("thinking")
+        if self.temperature is not None and (
+            thinking is None or thinking["type"] == "disabled"
+        ):
             kwargs["temperature"] = self.temperature
         return kwargs
 
@@ -403,7 +391,7 @@ class LLMClient:
                 thinking_level=thinking,
             )
         if provider == "openrouter":
-            # OpenAI-compatible; empty base_url falls back to _DEFAULT_BASE_URLS.
+            # OpenAI-compatible; empty base_url falls back to the provider default.
             return cls(
                 provider,
                 getattr(config, "openrouter_api_key", ""),
@@ -461,7 +449,7 @@ class LLMClient:
                     system=cast(Any, system_param),
                     messages=cast(Any, messages),
                     tools=cast(Any, tools),
-                    **self._sampling_kwargs(),
+                    **self._sampling_kwargs(resolved_model),
                 )
             )
             tool_calls = []
@@ -528,7 +516,7 @@ class LLMClient:
                 max_tokens=max_tokens,
                 messages=cast(Any, full_messages),
                 **tool_kwargs,
-                **self._reasoning_kwargs(),
+                **self._reasoning_kwargs(resolved_model),
             )
         )
         message = response.choices[0].message
@@ -616,7 +604,7 @@ class LLMClient:
                 model=resolved_model,
                 max_tokens=max_tokens,
                 messages=cast(Any, [{"role": "user", "content": prompt}]),
-                **self._sampling_kwargs(),
+                **self._sampling_kwargs(resolved_model),
             )
             for block in response.content:
                 block_any = cast(Any, block)
@@ -629,6 +617,6 @@ class LLMClient:
             model=resolved_model,
             max_tokens=max_tokens,
             messages=cast(Any, [{"role": "user", "content": prompt}]),
-            **self._reasoning_kwargs(),
+            **self._reasoning_kwargs(resolved_model),
         )
         return (response.choices[0].message.content or "").strip()

@@ -238,7 +238,7 @@ def _setup_logging(spinner: Spinner) -> None:
 
 def _print_debug_config(config, agent=None) -> None:
     a = config.agent
-    th = a.thinking_level or "off"
+    th = a.thinking_level or "provider default"
     if agent:
         name = agent.agent_name or agent.role or agent.name
         agent_row = ("agent (agent)", f"{name} (owner {a.owner_name})")
