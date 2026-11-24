@@ -32,20 +32,21 @@
   </div>
 
   <section class="card px-5 py-4" x-data='spendCard({{ spend_stats|tojson }})'>
-    <div class="flex flex-wrap justify-between items-center gap-3">
-      <h2 class="text-xs text-muted uppercase tracking-wider">Inference spend</h2>
-      <div class="flex items-center gap-3" role="group" aria-label="Spend period">
+    <h2 class="text-xs text-muted uppercase tracking-wider" id="spend-heading">Inference spend</h2>
+    <div class="mt-1 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2"
+         role="group" aria-labelledby="spend-heading">
+      <div class="flex flex-wrap items-baseline gap-x-2" aria-live="polite" aria-atomic="true">
+        <span class="text-2xl text-accent font-semibold" x-text="fmtUsd(spend.usd)"></span>
+        <span class="text-xs text-muted" x-show="spend.usd !== null">USD</span>
+        <span class="text-xs text-muted" x-text="windowLabel"></span>
+      </div>
+      <div class="flex flex-wrap items-center gap-3" role="group" aria-label="Spend period">
         <template x-for="p in periods" :key="p">
           <button type="button" class="text-xs"
                   :class="period === p ? 'text-accent font-semibold' : 'text-muted hover:text-accent'"
                   :aria-pressed="period === p" @click="period = p" x-text="p"></button>
         </template>
       </div>
-    </div>
-    <div class="mt-1 flex items-baseline gap-2">
-      <span class="text-2xl text-accent font-semibold" x-text="fmtUsd(spend.usd)" aria-live="polite"></span>
-      <span class="text-xs text-muted" x-show="spend.usd !== null">USD</span>
-      <span class="text-xs text-muted" x-show="spend.estimated">Includes estimates</span>
     </div>
     <p class="text-xs text-muted mt-1" x-show="!spend.providers.length">No model usage recorded for this period.</p>
     <p class="text-xs text-muted mt-1" x-show="spend.unpriced"
@@ -62,7 +63,6 @@
         </div>
       </template>
     </div>
-    <p class="text-xs text-muted mt-3" x-show="spend.estimated">Estimates use current list rates.</p>
   </section>
 
   {# Token usage — three cards sharing one client-side period toggle (#199 flw).

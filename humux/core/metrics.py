@@ -39,32 +39,30 @@ _MIGRATIONS = {"agent": "TEXT DEFAULT ''", "cost_usd": "REAL", "pricing_model": 
 _CONFIG_DB = "data/config.db"
 _SPEND_PERIODS = ("24h", "7d", "30d", "All time")
 
-# Older OpenAI-compatible rows recorded the entire prompt as input, and could
-# record DeepSeek cache misses as writes. New rows store disjoint input counts.
+# Only current rows have a trustworthy, disjoint input/cache split.
+# Legacy rows contribute reported costs or unpriced call counts, not estimates.
 # Group by context size to apply per-request long-context rates before summing.
 _SPEND_QUERY = """
 WITH usage AS (
-    SELECT provider, model, pricing_model, cost_usd, output_tokens, cache_read_input_tokens,
-        CASE WHEN pricing_model IS NULL AND provider != 'anthropic'
-             THEN MAX(0, input_tokens - cache_read_input_tokens)
-             ELSE input_tokens END AS uncached,
-        CASE WHEN pricing_model IS NULL AND provider != 'anthropic'
-             THEN 0 ELSE cache_creation_input_tokens END AS cache_write,
+    SELECT provider, pricing_model, cost_usd, output_tokens, cache_read_input_tokens, recorded_at,
+        input_tokens AS uncached,
+        cache_creation_input_tokens AS cache_write,
         CASE WHEN recorded_at >= datetime('now', '-24 hours') THEN 0
              WHEN recorded_at >= datetime('now', '-7 days') THEN 1
              WHEN recorded_at >= datetime('now', '-30 days') THEN 2
              ELSE 3 END AS age
     FROM token_usage
 )
-SELECT provider, model, pricing_model, age,
-    CASE WHEN cost_usd IS NULL THEN uncached + cache_read_input_tokens + cache_write
+SELECT provider, pricing_model, age,
+    CASE WHEN cost_usd IS NULL AND pricing_model IS NOT NULL
+         THEN uncached + cache_read_input_tokens + cache_write
          ELSE 0 END AS context,
     SUM(cost_usd) AS reported_cost,
     SUM(uncached) AS input_tokens, SUM(output_tokens) AS output_tokens,
     SUM(cache_read_input_tokens) AS cache_read, SUM(cache_write) AS cache_write,
-    COUNT(*) AS calls
+    COUNT(*) AS calls, MIN(recorded_at) AS first_at, MAX(recorded_at) AS last_at
 FROM usage
-GROUP BY provider, model, pricing_model, age, context, cost_usd IS NULL
+GROUP BY provider, pricing_model, age, context, cost_usd IS NULL
 """
 
 
@@ -227,7 +225,7 @@ class TokenUsageStore:
         catalog = {}
         if any(
             row["reported_cost"] is None
-            and row["pricing_model"] != ""
+            and row["pricing_model"]
             and row["provider"] != "typesafe"
             for row in rows
         ):
@@ -236,7 +234,9 @@ class TokenUsageStore:
         providers: list[dict[str, Spend]] = [{} for _ in _SPEND_PERIODS]
         for row in rows:
             provider = row["provider"]
-            model = row["pricing_model"] if row["pricing_model"] is not None else row["model"]
+            # Legacy rows lack a trustworthy cache split. Keep reported costs,
+            # but count calls without a reported cost as unpriced.
+            model = row["pricing_model"]
             usd = row["reported_cost"]
             estimated = usd is None
             if estimated and model:
@@ -254,8 +254,14 @@ class TokenUsageStore:
                 totals[period].add(usd, estimated, row["calls"])
                 providers[period].setdefault(provider, Spend()).add(usd, estimated, row["calls"])
 
+        bounds = [row for row in rows if row["first_at"] is not None]
+        coverage = {
+            "first": min(row["first_at"] for row in bounds),
+            "last": max(row["last_at"] for row in bounds),
+        } if bounds else None
         return {
             period: {
+                **({"coverage": coverage} if period == "All time" else {}),
                 **asdict(total),
                 "providers": [
                     {"provider": provider, **asdict(spend)}
