@@ -15,6 +15,13 @@ Fan out when **both** hold: each subtask needs several tool calls and its own
 reading, and the subtasks are genuinely independent. If only one holds, do it
 inline or run a pipeline.
 
+**The whole request is never a subtask.** When the owner asks you to do
+something, that work is yours: do it. Spawning anonymously to hand over the
+entire job buys a colder copy of yourself — no conversation, no issue link, no
+feedback history — and its result still has to be summarised back before it is
+worth anything. Split the work when there is something to split; otherwise
+start.
+
 ## Independent vs dependent
 
 **Independent → `spawn_subagents`.** "Compare Postgres, MySQL and SQLite for
@@ -50,7 +57,8 @@ independent — pipeline it.
 
 ## Delegating to specialists
 
-Omit `agent` to run a subtask as yourself — the right default. Name an agent
+Omit `agent` to run a *scoped piece of* the work as yourself — the right default
+for a subtask, not a way to hand over the request. Name an agent
 only when your roster lists it and the subtask plainly belongs to it: a listed
 teammate runs with its *own* tools, skills, accounts and memory, which is
 exactly why you pick it (a legal question to the legal agent, a code review to
@@ -72,15 +80,26 @@ the task's first words if nothing better comes to mind.
 | Focused web research, 3–6 sources | 10–15 | 100k–150k | `low` | cheap fast model |
 | Code reading + explanation across a module | 15–25 | 150k–250k | `medium` | parent's model |
 | Judgement, design, tradeoff analysis, review | 20–30 | 250k–300k | `high` | parent's model |
+| End-to-end delivery (branch → code → tests → PR) | **omit** | **omit** | parent's | parent's model |
 
 A round re-sends the whole prompt, so it costs 15–35k tokens and each round
 costs more than the last: `max_steps` × ~25k is the honest floor for a budget.
 Leaving `token_budget` out entirely is usually right — the default already
 sizes it so `max_steps` is what stops the run.
 
+**Never put a number on work whose end you cannot see.** The table's other rows
+are bounded tasks: you know how many rounds a lookup or a reading pass takes.
+Delivery is not bounded — branch, read, edit, test, push, open a PR, answer a
+round of review, retest — and any cap you invent lands mid-branch. There is no
+honest middle value between "enough" and "nothing": a delivery run capped at
+55 steps spends all 55, stops half-done, and hands back no PR. Omit both caps
+and let the configured default bind.
+
 Requested values are capped at the configured maxima — asking for 1M tokens
 gets the cap, not an error. Undersizing is the commoner mistake: a run that
-stops with `stopped_reason: max_steps` wasted everything it spent.
+stops with `stopped_reason: max_steps` wasted everything it spent. When a
+budget stop does happen, continue the run with `continue_run` rather than
+re-briefing a cold spawn from scratch.
 
 ## The patterns
 

@@ -75,6 +75,28 @@ def allowed_models_hint(allowed: list[str] | None) -> str:
     return "Available: " + ", ".join(f"{p}:{m}" for p, m in pairs)
 
 
+def budget_hint(max_steps: int, token_budget: int) -> str:
+    """One line naming the caps an unsized spawn inherits, or "" when neither is set.
+
+    A model told to "size the run" with no ceiling in view has to invent a
+    number, and the only calibration it has is the sizing table in the
+    orchestration skill — which stops at review-shaped work (~30 steps).
+    End-to-end delivery then gets capped at roughly twice that and stops
+    mid-branch. Naming the ceiling turns "omit it" from a guess into a
+    measurable decision, and it keeps working when the model is swapped for one
+    that never read the skill at all.
+    """
+    steps = max(0, int(max_steps or 0))
+    tokens = max(0, int(token_budget or 0))
+    if not steps or not tokens:
+        return ""
+    return (
+        f"Leaving max_steps and token_budget out runs at the configured default "
+        f"({steps} steps, ~{tokens:,} tokens). An explicit cap only ever shortens "
+        f"a run, so omit both for open-ended work."
+    )
+
+
 def resolve_model_override(
     provider: str, model: str, allowed: list[str] | None
 ) -> tuple[str, str, str]:

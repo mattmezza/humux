@@ -322,6 +322,19 @@ def test_delegation_block_present_and_gated() -> None:
     assert "<delegation>" not in _prompt(cfg, walled_off)
 
 
+def test_delegation_block_forbids_outsourcing_own_work() -> None:
+    """The block licensed self-delegation: "reach for them on your own" plus
+    "delegate when a request has parts that each need several tool calls" reads as
+    an instruction to hand over an implementation request wholesale. A coding
+    agent did exactly that and shipped nothing, so the block has to say the whole
+    request is not a subtask."""
+    cfg = Config()
+    cfg.subagents.enabled = True
+    block = _prompt(cfg).split("<delegation>", 1)[1].split("</delegation>", 1)[0]
+    assert "splits work; it does not outsource it" in block
+    assert "is your job" in block
+
+
 def test_allowlist_note_dedup_never_widens_the_advertised_set() -> None:
     """The note is display-only de-dup: every prefix it advertises must be one the
     executor actually permits, and no genuinely distinct prefix may be hidden."""

@@ -56,6 +56,7 @@ from core.subagents import (
     SubagentRegistry,
     SubagentRun,
     allowed_models_hint,
+    budget_hint,
     derive_label,
     narrow_accounts,
     narrow_scope,
@@ -826,10 +827,14 @@ TOOLS = [
             "tools, scope). Name an agent from your roster when the subtask "
             "belongs to that specialist — follow the roster's guidance on when. "
             "Never pick an agent the roster doesn't list.\n"
-            "Sizing: by default the subagent runs at the configured ceilings. Size "
-            "it to the job with 'max_steps', 'token_budget', and 'thinking_effort' "
-            "— smaller for a quick lookup, larger / 'high' effort for hard "
-            "multi-step work. Requested values are capped at the configured maxima.\n"
+            "Sizing: a cap only ever shortens a run. Set 'max_steps' or "
+            "'token_budget' to cut a bounded task short (a lookup, one reading "
+            "pass); leave both out for open-ended work — implementing a change, "
+            "verifying one — because a run that hits its cap stops mid-work and "
+            "wastes what it spent. 'thinking_effort' is free to set either way.\n"
+            "A subagent is a colder copy of your context: it cannot see this "
+            "conversation, so it cannot do your own job better than you. Spawn to "
+            "split work, never to hand off the whole request.\n"
             "Files: you share a filesystem with the subagent, so it reports the "
             "absolute paths of any files it creates in its result — you can then "
             "read or send them.\n"
@@ -873,8 +878,9 @@ TOOLS = [
                     "type": "integer",
                     "description": (
                         "Tool-call rounds the subagent may run before a hard stop. "
-                        "Omit for the configured default; capped at the maximum. "
-                        "Lower it for quick tasks, raise it for thorough ones."
+                        "Omit it for open-ended work — the default is generous and a "
+                        "cap only ever shortens the run. Set it only to bound a small "
+                        "bounded task; a run that hits the cap stops mid-work."
                     ),
                 },
                 "token_budget": {
@@ -975,7 +981,13 @@ TOOLS = [
                                     "Agent to run as; omit to run as yourself (default)."
                                 ),
                             },
-                            "max_steps": {"type": "integer"},
+                            "max_steps": {
+                                "type": "integer",
+                                "description": (
+                                    "Omit for open-ended work: a cap only "
+                                    "shortens the run and stops it mid-work."
+                                ),
+                            },
                             "token_budget": {
                                 "type": "integer",
                                 "description": (
@@ -1974,12 +1986,23 @@ class AgentCore:
             plural = next((t for t in TOOLS if t["name"] == "spawn_subagents"), None)
             if plural:
                 tools = [*tools, plural]
-        # Name the models a spawn may pick (#299), else the agent can't know them.
+        # Name the models a spawn may pick (#299) and the caps it inherits when it
+        # sizes nothing — a model asked to "size the run" with no ceiling in view
+        # invents one, and lands on a number too small to finish the work.
         # Copy the schema — the module-level list is shared across turns.
+        notes = []
         hint = allowed_models_hint(self.config.subagents.allowed_models)
         if hint:
+            notes.append(f"Subagent models — {hint}.")
+        sizing = budget_hint(
+            self.config.subagents.max_steps, self.config.subagents.token_budget
+        )
+        if sizing:
+            notes.append(sizing)
+        if notes:
+            suffix = "\n" + "\n".join(notes)
             tools = [
-                {**t, "description": f"{t['description']}\nSubagent models — {hint}."}
+                {**t, "description": f"{t['description']}{suffix}"}
                 if t["name"] in ("spawn_subagent", "spawn_subagents")
                 else t
                 for t in tools
