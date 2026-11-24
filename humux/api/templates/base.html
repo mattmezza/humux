@@ -1416,9 +1416,21 @@
         openai: 'OpenAI', openrouter: 'OpenRouter', typesafe: 'TypeSafe AI',
       };
       return {
-        period: 'All time',
+        period: '24h',
         periods: ['24h', '7d', '30d', 'All time'],
         get spend() { return stats[this.period]; },
+        get windowLabel() {
+          const labels = {'24h': 'Last 24 hours', '7d': 'Last 7 days', '30d': 'Last 30 days'};
+          let label = labels[this.period] ?? 'All time';
+          const coverage = this.spend.coverage;
+          if (coverage) {
+            const utc = timestamp => Date.parse(timestamp.replace(' ', 'T') + 'Z');
+            if (utc(coverage.last) - utc(coverage.first) > 30 * 86400000) {
+              label += ` (${coverage.first.slice(0, 10)} – ${coverage.last.slice(0, 10)} UTC)`;
+            }
+          }
+          return label + (this.spend.estimated ? ' · includes estimates at list rates' : '');
+        },
         providerName(provider) { return Object.hasOwn(names, provider) ? names[provider] : provider; },
         fmtUsd(amount) {
           if (amount === null) return '—';

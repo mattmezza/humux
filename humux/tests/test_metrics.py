@@ -90,11 +90,11 @@ async def test_spend_periods_include_reported_estimated_and_unpriced_calls(tmp_p
     async with aiosqlite.connect(store.db_path) as db:
         await db.execute(
             "INSERT INTO token_usage (provider, model, recorded_at, input_tokens, output_tokens, "
-            "cache_read_input_tokens, cache_creation_input_tokens) "
+            "cache_read_input_tokens, cache_creation_input_tokens, pricing_model) "
             "VALUES ('openai', 'gpt-example', datetime('now', '-3 days'), "
-            "400000, 1000, 100000, 300000), "
-            "('openai', 'gpt-example', datetime('now', '-40 days'), 1000, 0, 0, 0), "
-            "('deepseek', 'unlisted', datetime('now', '-20 days'), 1000, 0, 100, 900)"
+            "300000, 1000, 100000, 0, 'gpt-example'), "
+            "('openai', 'gpt-example', datetime('now', '-40 days'), 100000, 0, 0, 0, NULL), "
+            "('deepseek', 'unlisted', datetime('now', '-20 days'), 1000, 0, 100, 900, NULL)"
         )
         await db.commit()
 
@@ -103,9 +103,15 @@ async def test_spend_periods_include_reported_estimated_and_unpriced_calls(tmp_p
     assert spend["24h"]["unpriced"] == 1
     assert spend["7d"]["usd"] == pytest.approx(0.521 + 1.235)
     assert spend["30d"]["unpriced"] == 2
-    assert spend["All time"]["usd"] == pytest.approx(0.521 + 1.235 + 0.002)
+    assert spend["All time"]["usd"] == pytest.approx(0.521 + 1.235)
+    assert spend["All time"]["unpriced"] == 3
+    async with aiosqlite.connect(store.db_path) as db:
+        [(first, last)] = await db.execute_fetchall(
+            "SELECT MIN(recorded_at), MAX(recorded_at) FROM token_usage"
+        )
+    assert spend["All time"]["coverage"] == {"first": first, "last": last}
     assert spend["All time"]["providers"] == [
-        {"provider": "openai", "usd": pytest.approx(1.237), "estimated": True, "unpriced": 1},
+        {"provider": "openai", "usd": pytest.approx(1.235), "estimated": True, "unpriced": 2},
         {"provider": "openrouter", "usd": 0.5, "estimated": False, "unpriced": 0},
         {"provider": "typesafe", "usd": pytest.approx(0.021), "estimated": True, "unpriced": 0},
         {"provider": "deepseek", "usd": None, "estimated": False, "unpriced": 1},
@@ -117,7 +123,9 @@ async def test_reported_zero_spend_needs_no_catalog(tmp_path, monkeypatch):
     catalog = AsyncMock()
     monkeypatch.setattr("core.metrics.price_catalog", catalog)
     store = TokenUsageStore(str(tmp_path / "m.db"))
-    assert (await store.spend_totals())["24h"]["usd"] is None
+    empty = await store.spend_totals()
+    assert empty["24h"]["usd"] is None
+    assert empty["All time"]["coverage"] is None
     await store.record("openrouter", "router/free", cost_usd=0)
     assert (await store.spend_totals())["24h"]["usd"] == 0
     catalog.assert_not_awaited()
