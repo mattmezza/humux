@@ -19,6 +19,7 @@ from core.subagents import (
     FILE_HANDOFF_INSTRUCTION,
     SubagentRegistry,
     SubagentRun,
+    budget_hint,
     derive_label,
     narrow_scope,
     normalize_effort,
@@ -882,6 +883,38 @@ async def test_run_subagent_model_override_needs_an_allowlist(agent) -> None:
     agent.llm = _ScriptedLLM([LLMResponse(text="ok", tool_calls=[])])
     refused = await agent.run_subagent(task="x", model="anything")  # allowed_models empty
     assert "not enabled" in refused["error"]
+
+
+def test_budget_hint_names_the_ceilings_or_says_nothing() -> None:
+    hint = budget_hint(500, 300_000)
+    assert "500 steps" in hint and "300,000 tokens" in hint
+    # No caps configured — nothing honest to advertise, so say nothing.
+    assert budget_hint(0, 300_000) == ""
+    assert budget_hint(500, 0) == ""
+
+
+def test_spawn_subagent_description_states_the_config_ceilings(agent) -> None:
+    """A model told to 'size the run' with no ceiling in view has to invent a
+    number, and the only calibration it has is the skill's table — which stops
+    at review-shaped work. An end-to-end delivery then gets capped at roughly
+    twice that and stops mid-branch. The ceiling is one config read away."""
+    agent.config.subagents.max_steps = 500
+    agent.config.subagents.token_budget = 300_000
+    spawn = next(t for t in agent._tools_for_turn(None) if t["name"] == "spawn_subagent")
+    assert "500 steps" in spawn["description"]
+    assert "300,000 tokens" in spawn["description"]
+
+    # Another deployment advertises its own numbers, not the defaults.
+    agent.config.subagents.max_steps = 40
+    spawn = next(t for t in agent._tools_for_turn(None) if t["name"] == "spawn_subagent")
+    assert "40 steps" in spawn["description"]
+    assert "500 steps" not in spawn["description"]
+
+    # The shared module-level schema is untouched by the per-turn copy.
+    from core.agent import TOOLS
+
+    shared = next(t for t in TOOLS if t["name"] == "spawn_subagent")
+    assert "40 steps" not in shared["description"]
 
 
 def test_spawn_subagent_description_names_allowed_models(agent) -> None:
